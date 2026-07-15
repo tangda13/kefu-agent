@@ -1,0 +1,26 @@
+node_modules/
+dist/
+coverage/
+.vite/
+release/
+*.log
+.env
+.env.*
+!.env.example
+.codex-work/
+*.local
+
+# 运行时数据（TTS/语音/附件/商品图上传）
+uploads/
+
+# 数据库备份（含账号哈希/会话数据/服务密钥，严禁入库）
+apps/api/backups/
+
+# 本地个人配置
+.claude/settings.local.json
+
+# Office 临时锁文件 / macOS 压缩包残留
+~$*
+__MACOSX/
+.DS_Store
+

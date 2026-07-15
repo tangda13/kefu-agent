@@ -1,0 +1,21 @@
+{
+  "name": "cross-border-customer-service-training",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @cecs/portal dev",
+    "dev:api": "pnpm --filter @cecs/api dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "desktop": "electron apps/desktop/main.cjs"
+  },
+  "devDependencies": {
+    "electron": "43.1.0",
+    "typescript": "7.0.2"
+  }
+}
+

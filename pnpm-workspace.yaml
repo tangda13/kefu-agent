@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+allowBuilds:
+  esbuild: true
+  electron: true
+minimumReleaseAgeExclude:
+  - tsx@4.23.1

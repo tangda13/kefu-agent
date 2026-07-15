@@ -1,0 +1,15 @@
+import { ArrowUpRight, Award, ChevronRight, MessageSquareText, PlayCircle, TrendingUp } from "lucide-react";
+import { ASSESSMENT_DIMENSIONS } from "@cecs/contracts";
+import { MetricCard, PageHeader } from "../../components/AppShell";
+import { scoreHistory } from "../../data/demo";
+
+const scores = [86, 83, 79, 82, 88, 84];
+
+export function Records() {
+  return <div className="page records-page"><PageHeader eyebrow="LEARNING REVIEW" title="我的实训记录与复盘" description="从成绩变化、能力维度与对话细节中找到下一步。" actions={<button className="secondary-button"><Award size={17} /> 查看成长报告</button>} />
+    <section className="metric-grid three"><MetricCard label="综合能力分" value="84" trend="近 30 天 +6" icon={Award} tone="green" /><MetricCard label="已完成实训" value="12" trend="四类业务均已覆盖" icon={PlayCircle} /><MetricCard label="进步最快" value="情绪安抚" trend="近三次平均 +9" icon={TrendingUp} tone="amber" /></section>
+    <div className="records-grid"><section className="panel radar-panel"><div className="panel-heading"><div><h2>个人能力雷达</h2><p>最近 10 次实训平均表现</p></div><select><option>最近 10 次实训</option><option>本学期</option></select></div><div className="radar-wrap"><svg className="radar" viewBox="0 0 320 300" aria-label="六维能力雷达图"><g className="radar-grid">{[1, 0.8, 0.6, 0.4, 0.2].map((scale) => <polygon key={scale} points={scores.map((_, i) => { const angle = (Math.PI * 2 * i) / 6 - Math.PI / 2; return `${160 + Math.cos(angle) * 110 * scale},${145 + Math.sin(angle) * 110 * scale}`; }).join(" ")} />)}{scores.map((_, i) => { const angle = (Math.PI * 2 * i) / 6 - Math.PI / 2; return <line key={i} x1="160" y1="145" x2={160 + Math.cos(angle) * 110} y2={145 + Math.sin(angle) * 110} />; })}</g><polygon className="radar-value" points={scores.map((score, i) => { const angle = (Math.PI * 2 * i) / 6 - Math.PI / 2; return `${160 + Math.cos(angle) * 110 * score / 100},${145 + Math.sin(angle) * 110 * score / 100}`; }).join(" ")} />{scores.map((score, i) => { const angle = (Math.PI * 2 * i) / 6 - Math.PI / 2; return <circle className="radar-dot" key={i} cx={160 + Math.cos(angle) * 110 * score / 100} cy={145 + Math.sin(angle) * 110 * score / 100} r="4" />; })}</svg><div className="radar-labels">{ASSESSMENT_DIMENSIONS.map((item, index) => <span key={item.id}><strong>{scores[index]}</strong>{item.label}</span>)}</div></div><div className="improvement-note"><TrendingUp size={18} /><p><strong>本周亮点</strong> 情绪安抚提升明显。下一步建议加强“问题解决”中的时间与责任边界表达。</p></div></section>
+      <section className="panel history-panel"><div className="panel-heading"><div><h2>历史实训成绩</h2><p>教师评语与对话复盘入口</p></div><button className="text-button">查看全部 <ChevronRight size={15} /></button></div><div className="history-list">{scoreHistory.map((record) => <article key={record.name}><div className={`score-orb score-${record.score >= 85 ? "high" : record.score >= 80 ? "mid" : "low"}`}><strong>{record.score}</strong><span>分</span></div><div><span><em>{record.stage}</em><small>{record.date}</small></span><h3>{record.name}</h3><p><MessageSquareText size={14} /> 教师评语：{record.comment}</p></div><button className="replay-button"><PlayCircle size={18} /> 对话复盘 <ArrowUpRight size={14} /></button></article>)}</div></section></div>
+  </div>;
+}
+

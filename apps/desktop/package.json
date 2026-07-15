@@ -1,0 +1,10 @@
+{
+  "name": "@cecs/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "node -e \"console.log('Electron shell uses the portal build output')\"",
+    "test": "node --test security.test.cjs"
+  }
+}
+
