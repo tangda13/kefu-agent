@@ -1,4 +1,11 @@
-# 交接文档（2026-07-14）
+# 交接文档（2026-07-15 更新）
+
+## Git 仓库（2026-07-15 建立）
+- 本地 main 分支，远程 https://github.com/tangda13/kefu-agent（首次提交 80cac5c 已推送）。
+- **推送必须走代理**：直连 github.com 443 会超时，已配仓库级 `git config http.proxy http://127.0.0.1:7890`（Clash，随系统代理）。
+- git 身份为仓库级配置（joesph_voluptatibuste@chef.net），未动全局；用户可自行改 user.name。
+- .gitignore 已排除：`apps/api/.env`（密钥）、`apps/api/backups/`（**备份含密码哈希与服务密钥，严禁入库**）、`uploads/`（运行时数据）、node_modules/dist、Office 锁文件、`.claude/settings.local.json`。
+- ⚠️ **工作区有未提交改动**（另一并行会话的开发中功能：`apps/api/src/review-gen.ts` 买家闭环评价 + conversations/orders/client/domain 若干修改）——接手后先确认该功能完成度（build+test）再提交推送，勿直接丢弃。
 
 ## 项目状态总览
 
@@ -12,10 +19,17 @@
 | 6 | Electron 打包（electron-builder+签名）、部署文档、操作手册 | ⏸ 待做 |
 
 ## 关键待办（按优先级）
-1. **换正式 LLM Provider**：keliagent 实测 TTFT P50=5.9s、≤3s率仅7%（红线99%）❌。拿到正式服务后在管理端「AI与语音服务」填地址+密钥+模型，保存即热切换，再点「运行验收测试(100次)」复验。输出速度/TTS/ASR 均已达标。
-2. 阶段6：electron-builder 打包学生/教师版安装包 + 部署说明 + 操作手册。
-3. 并发压测（200账号/100并发目标）。
-4. 零散债：任务限时未强制执行；侧边栏品牌"AI 实训平台"含"实训"字样待用户拍板是否改名。
+1. 提交工作区未提交改动（买家闭环评价 review-gen 等，见上方 Git 段落）。
+2. **换正式 LLM Provider**：keliagent 实测 TTFT P50=5.9s、≤3s率仅7%（红线99%）❌。拿到正式服务后在管理端「AI与语音服务」填地址+密钥+模型，保存即热切换，再点「运行验收测试(100次)」复验。输出速度/TTS/ASR 均已达标。
+3. 阶段6：electron-builder 打包安装包（现为单客户端）+ 部署说明 + 操作手册。
+4. 并发压测（200账号/100并发目标）。
+5. 零散债：任务限时未强制执行；侧边栏品牌"AI 实训平台"含"实训"字样待用户拍板是否改名。
+
+## 学生端其他页面（2026-07-15 并行完成，详见记忆 cecs-project-state）
+- **订单页 v2/v3**：电商后台式两级导航（千牛式列表→详情 hero 五步条+三页签），物流轨迹细颗粒扫描事件、收件信息按国籍虚拟。
+- **评价管理独立页**（侧边栏"评价"）：全店评价统计/筛选，人工回复为主+AI 辅助（components/ReviewReply.tsx），回复记录 localStorage。
+- **邮件页 v2**：邮箱客户端三栏（收件箱=按订单状态派生的买家来信/回复/写邮件/已发送/草稿箱）+ AI 辅助写信（/v1/mail/assist）+ 买家 AI 回信（015迁移 mail_replies，营销信按客户类型概率回）。
+- 共用组件已抽出：components/{BuyerAvatar,SuggestionComposer,ReviewReply}.tsx；邮箱派生在 domain（stableHash/deriveBuyerEmail，前后端共用勿改算法）。
 
 ## 环境速查
 - 一键启动：根目录 `启动开发环境.cmd`（或 `scripts/start-dev.ps1`，`-Stop` 停止，含关闭客户端）；启动后自动拉起**单一桌面客户端**（Electron，学生/教师在登录页内切「学生登录/教师登录」页签，账号角色与页签不符会提示切换），单独启动用根目录 `客户端.cmd`（或 `scripts/start-client.ps1`，`-Role teacher` 预选教师页签）；管理端仍走浏览器 `?role=admin`
@@ -47,7 +61,7 @@
 - 已实测：买家会因连续无关推销自然离场（END 机制真实触发）；沉睡客用两条短气泡口语回应连发唤醒。
 
 ## 架构要点
-- 单仓 pnpm：apps/{api,portal,desktop} + packages/{contracts,domain}；API=Fastify+pg（12个迁移，migrations.ts）；前端 React+Vite；桌面 Electron（已安全加固，待打包）
+- 单仓 pnpm：apps/{api,portal,desktop} + packages/{contracts,domain}；API=Fastify+pg（15个迁移，migrations.ts）；前端 React+Vite；桌面 Electron（已安全加固，待打包）
 - 买家=自研轻量Agent（导演-演员）：director.ts 每轮异步评分/情绪演变/剧情阶段/事实记忆（conversations.state），人设每轮重注入防漂移；记忆按会话行级隔离
 - 画像：DB模板(教师维护)打底 + 任务persona_rule约束 + 按国籍姓名池真随机；头像=本地真人库按性别
 - **核心设计原则：实训是幕后逻辑，学生端界面必须是纯正客服软件**（任务=未分配新客进线，无实训字样）
