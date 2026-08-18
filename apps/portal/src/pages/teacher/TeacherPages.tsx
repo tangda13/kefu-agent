@@ -8,12 +8,14 @@ import { LiveAssignments } from "./LiveAssignments";
 import { LiveClasses } from "./LiveClasses";
 import { LiveScenarioConfig } from "./LiveScenarioConfig";
 import { LiveOverview } from "./LiveOverview";
+import { LiveNotices } from "./LiveNotices";
 import { LiveTracking } from "./LiveTracking";
 import { LiveReports } from "./LiveReports";
 
 export function TeacherPages({ page, session }: { page: string; session?: Session | null }) {
   if (page === "assignments") return session ? <LiveAssignments session={session} /> : <Assignments />;
   if (page === "classes") return session ? <LiveClasses session={session} /> : <Classes />;
+  if (page === "notices") return session ? <LiveNotices session={session} /> : <Notices />;
   if (page === "tracking") return session ? <LiveTracking session={session} /> : <Tracking />;
   if (page === "reports") return session ? <LiveReports session={session} /> : <Reports />;
   if (page === "scenarios") return session ? <LiveScenarioConfig session={session} /> : <Scenarios />;
@@ -48,6 +50,10 @@ function Reports() {
 function Scenarios() {
   const stageCounts = trainingScenarios.reduce<Record<string, number>>((result, item) => ({ ...result, [item.stage]: (result[item.stage] ?? 0) + 1 }), {});
   return <div className="page"><PageHeader eyebrow="SCENE & PERSONA" title="场景配置" description="维护场景库与买家画像随机规则，开始前不向学生暴露完整画像。" actions={<button className="primary-button"><Plus size={16} /> 新建场景</button>} /><div className="scenario-layout"><section className="panel scene-library"><div className="panel-heading"><div><h2>场景库</h2><p>{trainingScenarios.length} 个内置场景 · 覆盖 4 个业务环节</p></div><span className="status-pill green">全部达标</span></div><div className="stage-summary">{Object.entries(BUSINESS_STAGE_LABELS).map(([id, label]) => <span key={id}><strong>{stageCounts[id] ?? 0}</strong>{label}</span>)}</div><div className="scene-cards">{trainingScenarios.map((scene) => <article key={scene.id}><div><span className="scene-code">{scene.id}</span><em className="state-done">已启用</em></div><h3>{scene.name}</h3><p>{scene.objective}</p><footer><span>{BUSINESS_STAGE_LABELS[scene.stage]}</span><button className="icon-button"><Settings2 size={16} /></button></footer></article>)}</div></section><aside className="panel persona-rules"><div className="panel-heading"><div><h2>买家画像随机规则</h2><p>当前模板库 {personaTemplates.length} 个</p></div></div><RulePool label="国籍池" values={NATIONALITIES} minimum="10 个，已达标" /><RulePool label="性格池" values={PERSONALITIES} minimum="5 种，已达标" /><RulePool label="情绪范围" values={EMOTIONS} minimum="不少于 3 种" /><div className="random-toggle"><span><strong>每次会话动态组合</strong><small>模板 + 随机标签生成会话快照</small></span><i className="toggle on" /></div><button className="primary-button full">保存随机规则</button></aside></div></div>;
+}
+
+function Notices() {
+  return <div className="page"><PageHeader eyebrow="ANNOUNCEMENTS" title="通知公告" description="面向班级或全体学生的广播信息，发布后即时显示在学生端顶栏。" actions={<button className="primary-button"><Plus size={16} /> 发布公告</button>} /><section className="panel"><div className="panel-heading"><div><h2>公告列表</h2><p>共 2 条 · 1 条生效中</p></div></div><div className="ann-list">{[["任务三本周五 23:59 截止", "跨境电商 2301 班", "请尽快完成「清关延误客户安抚」任务，逾期将影响平时成绩。", false], ["期中考核安排", "全体", "第 10 周进行期中实训考核，覆盖售前、售中、售后三个环节。", true]].map(([title, scope, content, expired]) => <div key={String(title)} className={expired ? "ann-row expired" : "ann-row"}><MessageCircleMore size={15} /><div className="ann-row-main"><div className="ann-row-title"><strong>{title}</strong><span className="ann-scope">{scope}</span>{expired ? <em className="ann-expired">已过期</em> : null}</div><p>{content}</p></div><small>07-14 发布 · 08-13 到期</small><button className="text-button">撤回</button></div>)}</div></section></div>;
 }
 
 function RulePool({ label, values, minimum }: { label: string; values: readonly string[]; minimum: string }) {

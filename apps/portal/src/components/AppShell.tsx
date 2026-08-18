@@ -11,6 +11,7 @@ import {
   LibraryBig,
   ListChecks,
   Mail,
+  Megaphone,
   MessageSquareMore,
   PackageSearch,
   Settings2,
@@ -20,7 +21,7 @@ import {
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { UserRole } from "@cecs/contracts";
 
 export interface NavItem {
@@ -42,6 +43,7 @@ export const roleNav: Record<UserRole, NavItem[]> = {
     { id: "overview", label: "数据总览", icon: BarChart3 },
     { id: "assignments", label: "实训任务", icon: ClipboardList },
     { id: "classes", label: "班级与学生", icon: UsersRound },
+    { id: "notices", label: "通知公告", icon: Megaphone },
     { id: "tracking", label: "实训跟踪", icon: MessageSquareMore },
     { id: "reports", label: "考核报表", icon: FileBarChart },
     { id: "scenarios", label: "场景配置", icon: Boxes },
@@ -122,7 +124,70 @@ function NotificationBell({ center }: { center?: ShellNotificationCenter }) {
   );
 }
 
-export function AppShell({ role, active, onNavigate, children, onSignOut, userName, userMeta, notifications }: { role: UserRole; active: string; onNavigate: (id: string) => void; children: ReactNode; onSignOut?: () => void; userName?: string; userMeta?: string; notifications?: ShellNotificationCenter }) {
+export interface ShellAnnouncement {
+  id: string;
+  title: string;
+  content: string;
+  publisherName?: string;
+  time: string;
+  fresh: boolean;
+}
+
+/* 学生端顶栏公告条：教师/管理员发布的广播公告，多条自动轮播，点击展开完整列表 */
+function TopbarNotice({ items }: { items?: ShellAnnouncement[] }) {
+  const list = items ?? [];
+  const [cursor, setCursor] = useState(0);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (list.length <= 1 || open) return;
+    const timer = window.setInterval(() => setCursor((value) => (value + 1) % list.length), 8000);
+    return () => window.clearInterval(timer);
+  }, [list.length, open]);
+  const current = list.length ? list[cursor % list.length]! : null;
+  return (
+    <div className="topbar-notice">
+      <Megaphone size={15} aria-hidden="true" />
+      {current ? (
+        <>
+          <button
+            className="topbar-notice-body"
+            onClick={() => setOpen(true)}
+            title={`${current.title}：${current.content}`}
+          >
+            {current.fresh ? <em className="topbar-notice-tag">新</em> : null}
+            <strong>{current.title}</strong>
+            <span>{current.content}</span>
+            <small>{current.time}</small>
+          </button>
+          {list.length > 1 ? (
+            <span className="topbar-notice-count">{(cursor % list.length) + 1}/{list.length}</span>
+          ) : null}
+          {open ? (
+            <>
+              <div className="notify-overlay" onClick={() => setOpen(false)} />
+              <div className="ann-panel" role="dialog" aria-label="全部公告">
+                <div className="notify-head"><strong>公告</strong></div>
+                <div className="notify-list">
+                  {list.map((item) => (
+                    <div key={item.id} className="ann-item">
+                      <span className="notify-title">{item.title}<small>{item.time}</small></span>
+                      <p>{item.content}</p>
+                      {item.publisherName ? <small className="ann-publisher">发布人：{item.publisherName}</small> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : null}
+        </>
+      ) : (
+        <span className="topbar-notice-empty">暂无公告</span>
+      )}
+    </div>
+  );
+}
+
+export function AppShell({ role, active, onNavigate, children, onSignOut, userName, userMeta, notifications, announcements }: { role: UserRole; active: string; onNavigate: (id: string) => void; children: ReactNode; onSignOut?: () => void; userName?: string; userMeta?: string; notifications?: ShellNotificationCenter; announcements?: ShellAnnouncement[] }) {
   const fallback = identity[role];
   const user = {
     name: userName ?? fallback.name,
@@ -130,6 +195,8 @@ export function AppShell({ role, active, onNavigate, children, onSignOut, userNa
     initials: (userName ?? fallback.name).slice(0, 1),
   };
   const navigation = roleNav[role];
+  const roleLabel = role === "student" ? "学生端" : role === "teacher" ? "教师端" : "管理端";
+  const activeLabel = navigation.find((item) => item.id === active)?.label;
   return (
     <div className="app-frame">
       <aside className="sidebar">
@@ -137,7 +204,7 @@ export function AppShell({ role, active, onNavigate, children, onSignOut, userNa
           <span className="brand-mark">K</span>
           <span><strong>跨境电商客服</strong><small>AI 实训平台</small></span>
         </div>
-        <div className="role-chip">{role === "student" ? "学生端" : role === "teacher" ? "教师端" : "管理端"}</div>
+        <div className="role-chip">{roleLabel}</div>
         <nav aria-label="主导航">
           {navigation.map((item) => {
             const Icon = item.icon;
@@ -152,6 +219,14 @@ export function AppShell({ role, active, onNavigate, children, onSignOut, userNa
       </aside>
       <section className="app-main">
         <header className="topbar">
+          {role === "student" ? (
+            <TopbarNotice items={announcements} />
+          ) : (
+            <nav className="topbar-crumb" aria-label="当前位置">
+              <span>{roleLabel}</span>
+              {activeLabel ? <><i aria-hidden="true">/</i><strong>{activeLabel}</strong></> : null}
+            </nav>
+          )}
           <div className="top-actions">
             <NotificationBell center={notifications} />
             <button className="profile-button"><span className="avatar small">{user.initials}</span><span><strong>{user.name}</strong><small>{user.meta}</small></span><ChevronDown size={15} /></button>
@@ -168,6 +243,6 @@ export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?:
 }
 
 export function MetricCard({ label, value, suffix, trend, icon: Icon, tone = "blue" }: { label: string; value: string; suffix?: string; trend: string; icon: LucideIcon; tone?: "blue" | "green" | "amber" | "coral" }) {
-  return <article className={`metric-card tone-${tone}`}><div className="metric-top"><span className="metric-icon"><Icon size={19} /></span><span className="mini-chart" aria-hidden="true"><i /><i /><i /><i /><i /></span></div><div><strong>{value}<small>{suffix}</small></strong><span>{label}</span></div><p>{trend}</p></article>;
+  return <article className={`metric-card tone-${tone}`}><div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon size={16} /></span></div><strong className="metric-value">{value}<small>{suffix}</small></strong><p>{trend}</p></article>;
 }
 

@@ -2,8 +2,6 @@ import {
   BookText,
   Calculator,
   CheckCheck,
-  ChevronDown,
-  ChevronUp,
   CircleAlert,
   Copy,
   Film,
@@ -21,6 +19,7 @@ import {
   StickyNote,
   TicketPercent,
   Volume2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BUSINESS_STAGE_LABELS } from "@cecs/contracts";
@@ -28,9 +27,12 @@ import {
   ApiError,
   assetUrl,
   createConversation,
+  createMyPhrase,
+  deleteMyPhrase,
   fetchConversationMessages,
   fetchConversationOrders,
   fetchConversations,
+  fetchMyPhrases,
   fetchPhrases,
   fetchStoreCoupons,
   fetchStoreProducts,
@@ -50,6 +52,7 @@ import {
   type ConversationMessage,
   type ConversationOrder,
   type ConversationSummary,
+  type MyPhrase,
   type OrderAddress,
   type Session,
   type StoreCoupon,
@@ -60,8 +63,8 @@ import {
 import { OPEN_CONVERSATION_EVENT, OPEN_CONVERSATION_KEY } from "../../App";
 import { WavRecorder } from "../../api/recorder";
 
-type StatusTab = "all" | "unreplied" | "closed";
-type AssignTab = "assigned" | "unassigned";
+/* 千牛式两页签：当前会话（活跃会话 + 置顶的待接入新客）/ 最近联系（已结束会话） */
+type RailTab = "current" | "recent";
 type PanelTab = "profile" | "order" | "product" | "coupon";
 type ProductTab = "store" | "browsed";
 
@@ -98,10 +101,21 @@ const ORDER_FILTERS = [
 ] as const;
 
 const EMOJIS = [
-  "😀", "😄", "😊", "🙂", "😉", "😍", "🤝", "👍",
-  "🙏", "🎉", "✅", "❗", "❓", "💡", "📦", "🚚",
-  "✈️", "💳", "🔥", "⭐", "😅", "😂", "🤔", "😐",
-  "😢", "😮", "🙌", "👏", "💬", "🕐", "🌟", "❤️",
+  // 微笑问候
+  "😀", "😃", "😄", "😁", "😊", "🙂", "😉", "😍",
+  "🥰", "🤗", "😎", "😇", "😌", "🤩", "🙃", "😘",
+  // 情绪安抚
+  "😅", "😂", "🤣", "🤔", "😐", "😮", "😢", "😥",
+  "🥺", "😓", "😞", "🙁", "😳", "😴", "🤯", "😱",
+  // 手势互动
+  "👍", "👌", "🙏", "🤝", "👏", "🙌", "💪", "✌️",
+  "👋", "🤞", "👀", "❤️", "💖", "💯", "💬", "🕐",
+  // 电商物流
+  "📦", "🚚", "✈️", "🛒", "🎁", "💳", "💰", "🧾",
+  "🏷️", "📮", "⏰", "📅", "🔔", "📞", "✉️", "🔍",
+  // 状态提示
+  "✅", "❌", "❗", "❓", "💡", "🔥", "⭐", "🌟",
+  "✨", "🎉", "🎊", "🚀", "☀️", "🌈", "⚠️", "🙈",
 ];
 
 const AUTO_TRANSLATE_KEY = "cecs.autoTranslate";
@@ -118,6 +132,16 @@ function listTimeLabel(iso: string): string {
   const date = new Date(iso);
   if (date.toDateString() === new Date().toDateString()) return timeLabel(iso);
   return date.toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
+}
+
+/* 未回复会话的已等待时长（千牛式：7分钟 / 58分钟 / 1小时 / 2天） */
+function waitingLabel(iso: string, now: number): string {
+  const minutes = Math.floor((now - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return "刚刚";
+  if (minutes < 60) return `${minutes}分钟`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}小时`;
+  return `${Math.floor(hours / 24)}天`;
 }
 
 function dateTimeLabel(iso: string | null): string {
@@ -275,20 +299,32 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const [closedConversations, setClosedConversations] = useState<ConversationSummary[]>([]);
   const [tasks, setTasks] = useState<StudentTask[]>([]);
   const [stats, setStats] = useState<WorkbenchStats | null>(null);
-  const [statsOpen, setStatsOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[] | null>(null);
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [assignTab, setAssignTab] = useState<AssignTab>("assigned");
-  const [statusTab, setStatusTab] = useState<StatusTab>("all");
+  const [railTab, setRailTab] = useState<RailTab>("current");
+  /* 任务隔离：会话/进线按任务过滤。"all" 全部 | "practice" 自由练习 | 任务 id 聚焦该任务 */
+  const [taskFilter, setTaskFilter] = useState<string>("all");
+  const [dataReady, setDataReady] = useState(false);
+  /* 未回复等待时长每 30 秒刷新一次显示 */
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
   const [searchText, setSearchText] = useState("");
   const [panelTab, setPanelTab] = useState<PanelTab>("profile");
   const [phrases, setPhrases] = useState<string[] | null>(null);
   const [showPhrases, setShowPhrases] = useState(false);
   const [phraseFilter, setPhraseFilter] = useState("");
+  // 个人快捷短语（自建，存服务端）
+  const [myPhrases, setMyPhrases] = useState<MyPhrase[] | null>(null);
+  const [newPhraseOpen, setNewPhraseOpen] = useState(false);
+  const [newPhraseText, setNewPhraseText] = useState("");
+  const [phraseSaving, setPhraseSaving] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [coupons, setCoupons] = useState<StoreCoupon[]>([]);
@@ -305,6 +341,24 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     const value = Number(localStorage.getItem("cecs.ws.panelW"));
     return value >= 280 && value <= 500 ? value : 328;
   });
+  // 表情/快捷短语面板：点击面板（及其开关按钮）以外的任意位置收起
+  const emojiPanelRef = useRef<HTMLDivElement | null>(null);
+  const phrasePanelRef = useRef<HTMLDivElement | null>(null);
+  const emojiButtonRef = useRef<HTMLButtonElement | null>(null);
+  const phraseButtonRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!showEmoji && !showPhrases) return;
+    if (newPhraseOpen) return; // 新建短语弹窗打开时，点击弹窗不应收起短语面板
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+      if (emojiPanelRef.current?.contains(target) || emojiButtonRef.current?.contains(target)) return;
+      if (phrasePanelRef.current?.contains(target) || phraseButtonRef.current?.contains(target)) return;
+      setShowEmoji(false);
+      setShowPhrases(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [showEmoji, showPhrases, newPhraseOpen]);
   // 商品面板：规格属性 / 算价 展开
   const [specOpen, setSpecOpen] = useState<string | null>(null);
   const [calcOpen, setCalcOpen] = useState<string | null>(null);
@@ -378,7 +432,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     document.addEventListener("mouseup", onUp);
   }
 
-  const pool = statusTab === "closed" ? closedConversations : conversations;
+  const pool = railTab === "recent" ? closedConversations : conversations;
   const active = pool.find((item) => item.id === activeId)
     ?? conversations.find((item) => item.id === activeId)
     ?? closedConversations.find((item) => item.id === activeId)
@@ -397,6 +451,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       setConversations(conversationList);
       setTasks(taskList);
       setActiveId((current) => current ?? conversationList[0]?.id ?? null);
+      setDataReady(true);
       loadStats();
       return conversationList;
     } catch (cause) {
@@ -412,9 +467,9 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   }, [loadConversations, session]);
 
   useEffect(() => {
-    if (statusTab !== "closed") return;
+    if (railTab !== "recent") return;
     fetchConversations(session, "closed").then(setClosedConversations).catch(() => undefined);
-  }, [session, statusTab]);
+  }, [session, railTab]);
 
   // 顶栏「消息」中的教师指导 → 跳转到对应会话
   useEffect(() => {
@@ -422,8 +477,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       const id = sessionStorage.getItem(OPEN_CONVERSATION_KEY);
       if (!id) return;
       sessionStorage.removeItem(OPEN_CONVERSATION_KEY);
-      setAssignTab("assigned");
-      setStatusTab("all");
+      setRailTab("current");
+      setTaskFilter("all"); // 目标会话可能属于其他任务/练习，跳转时退出任务聚焦以免列表中不可见
       setActiveId(id);
     };
     applyPending();
@@ -431,19 +486,25 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     return () => window.removeEventListener(OPEN_CONVERSATION_EVENT, applyPending);
   }, []);
 
+  /* 从任务大厅进入 = 任务聚焦模式：会话列表/进线队列只显示该任务（等数据加载完再决策，避免重复建会话）。
+     已有活跃会话则续接；否则按任务待接入的场景创建首个会话 */
   useEffect(() => {
-    if (!initialTaskId || startedForTask.current === initialTaskId) return;
+    if (!initialTaskId || !dataReady || startedForTask.current === initialTaskId) return;
     startedForTask.current = initialTaskId;
+    setTaskFilter(initialTaskId);
     void (async () => {
       const existing = conversations.find((item) => item.taskId === initialTaskId);
       if (existing) {
         setActiveId(existing.id);
         return;
       }
-      await acceptIncoming(initialTaskId);
+      const task = tasks.find((item) => item.id === initialTaskId);
+      const started = new Set((task?.startedScenarioIds ?? []).filter(Boolean));
+      const firstUnstarted = (task?.scenarios ?? []).find((scenario) => !started.has(scenario.id))?.id;
+      await acceptIncoming(initialTaskId, firstUnstarted);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialTaskId, conversations]);
+  }, [initialTaskId, dataReady, conversations, tasks]);
 
   useEffect(() => {
     if (!activeId) {
@@ -568,20 +629,22 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     });
   }
 
-  // 接入未分配的新客户（背后对应实训任务，界面不体现）
-  async function acceptIncoming(taskId: string) {
-    if (busy) return;
+  // 任务入口创建首位买家会话（不传场景时服务端取任务首个场景）。
+  // 共享自动进线的任务级锁，避免与调度器在同一窗口内重复创建
+  async function acceptIncoming(taskId: string, scenarioId?: string) {
+    if (busy || arrivalBusyRef.current.has(taskId)) return;
     setBusy(true);
+    arrivalBusyRef.current.add(taskId);
     setNotice("");
     try {
-      const created = await createConversation(session, { taskId });
+      const created = await createConversation(session, scenarioId ? { taskId, scenarioId } : { taskId });
       await loadConversations();
-      setAssignTab("assigned");
-      setStatusTab("all");
+      setRailTab("current");
       setActiveId(created.id);
     } catch (cause) {
       setNotice(errorText(cause));
     } finally {
+      arrivalBusyRef.current.delete(taskId);
       setBusy(false);
     }
   }
@@ -891,6 +954,35 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     if (phrases === null) {
       fetchPhrases(session).then(setPhrases).catch(() => setPhrases([]));
     }
+    if (myPhrases === null) {
+      fetchMyPhrases(session).then(setMyPhrases).catch(() => setMyPhrases([]));
+    }
+  }
+
+  async function saveNewPhrase() {
+    const text = newPhraseText.trim();
+    if (!text || phraseSaving) return;
+    setPhraseSaving(true);
+    try {
+      const created = await createMyPhrase(session, text);
+      setMyPhrases((current) => [created, ...(current ?? [])]);
+      setNewPhraseText("");
+      setNewPhraseOpen(false);
+      setPhraseFilter("");
+    } catch (cause) {
+      setNotice(errorText(cause));
+    } finally {
+      setPhraseSaving(false);
+    }
+  }
+
+  async function removeMyPhrase(phraseId: string) {
+    setMyPhrases((current) => (current ?? []).filter((item) => item.id !== phraseId));
+    try {
+      await deleteMyPhrase(session, phraseId);
+    } catch (cause) {
+      setNotice(errorText(cause));
+    }
   }
 
   // 订单操作：备注 / 改地址
@@ -923,16 +1015,134 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     void navigator.clipboard?.writeText(orderNo).catch(() => undefined);
   }
 
-  // 未分配 = 尚未接入的新客户进线（背后是待开始的实训任务）
-  const incomingQueue = tasks.filter((task) => task.progressStatus === "todo");
+  /* 买家自动进线（取代手动「接入」，真实客服没有"放客户进来"的动作）：
+     已进入(in_progress)的任务按教师配置的接待节奏自动进线：
+     - sequential 依次进线：该任务没有进行中的会话时，下一位隔 3-8 秒进线
+     - interval 固定间隔：距该任务最近一次进线超过 N 分钟即再进一位（可并发堆积）
+     - all_at_once 同时进线：还有待进线场景就逐个补齐（每位隔几秒，模拟陆续涌入）
+     待开始(todo)的任务仍由任务大厅「开始任务」触发首位买家；仅工作台打开时调度（在岗才有客户进线） */
+  const arrivalBusyRef = useRef<Set<string>>(new Set());
+  const arrivalNotBeforeRef = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    if (!dataReady) return;
+    const activeOfTask = (taskId: string) =>
+      conversations.filter((item) => item.taskId === taskId && !closedLocal.has(item.id)).length;
+    const nextScenario = (task: StudentTask): { ok: boolean; scenarioId?: string } => {
+      const list = task.scenarios ?? [];
+      const started = new Set((task.startedScenarioIds ?? []).filter(Boolean));
+      if (task.completionRule === "conversation_count") {
+        if ((task.conversationCount ?? 0) >= task.requiredTotal) return { ok: false };
+        const unstarted = list.find((item) => !started.has(item.id));
+        const fallback = list.length ? list[Math.floor(Math.random() * list.length)] : undefined;
+        return { ok: true, scenarioId: (unstarted ?? fallback)?.id };
+      }
+      const unstarted = list.filter((item) => !started.has(item.id));
+      if (list.length === 0 || unstarted.length === 0) return { ok: false };
+      return { ok: true, scenarioId: unstarted[0]!.id };
+    };
+    const arrive = async (task: StudentTask, scenarioId?: string) => {
+      if (arrivalBusyRef.current.has(task.id)) return;
+      arrivalBusyRef.current.add(task.id);
+      try {
+        const created = await createConversation(session, scenarioId ? { taskId: task.id, scenarioId } : { taskId: task.id });
+        // 后台生成买家开场消息（不抢当前聊天焦点），落库后列表出现未读红点与等待时长
+        openingRequested.current.add(created.id);
+        void streamConversationOpening(session, created.id, {
+          onDelta: () => undefined,
+          onDone: () => {
+            void loadConversations();
+            // 学生已提前点开这条会话：同步把刚生成的开场消息刷进聊天区
+            if (activeIdRef.current === created.id) {
+              fetchConversationMessages(session, created.id)
+                .then((rows) => {
+                  if (activeIdRef.current === created.id) setMessages(rows);
+                })
+                .catch(() => undefined);
+            }
+          },
+          onError: () => {
+            openingRequested.current.delete(created.id);
+          },
+        });
+        await loadConversations();
+      } catch {
+        /* 创建失败（如场景被停用）：退避 60 秒再试，避免每个周期反复冲击服务器 */
+        arrivalNotBeforeRef.current.set(task.id, Date.now() + 60_000);
+      } finally {
+        arrivalBusyRef.current.delete(task.id);
+      }
+    };
+    const evaluate = () => {
+      for (const task of tasks) {
+        if (task.locked || task.progressStatus !== "in_progress") continue;
+        const next = nextScenario(task);
+        if (!next.ok) {
+          arrivalNotBeforeRef.current.delete(task.id);
+          continue;
+        }
+        const mode = task.arrivalMode ?? "sequential";
+        let ready: boolean;
+        if (mode === "all_at_once") {
+          ready = true;
+        } else if (mode === "interval") {
+          const interval = Math.max(1, task.arrivalIntervalMinutes ?? 5) * 60_000;
+          const lastArrival = conversations
+            .filter((item) => item.taskId === task.id)
+            .reduce((max, item) => Math.max(max, new Date(item.createdAt).getTime()), 0);
+          ready = lastArrival === 0 || Date.now() - lastArrival >= interval;
+        } else {
+          ready = activeOfTask(task.id) === 0;
+        }
+        if (!ready) {
+          arrivalNotBeforeRef.current.delete(task.id);
+          continue;
+        }
+        // 条件满足后随机延迟 3-8 秒再进线，模拟真实进线的不规律感
+        const notBefore = arrivalNotBeforeRef.current.get(task.id);
+        if (notBefore === undefined) {
+          arrivalNotBeforeRef.current.set(task.id, Date.now() + 3000 + Math.random() * 5000);
+          continue;
+        }
+        if (Date.now() < notBefore) continue;
+        arrivalNotBeforeRef.current.delete(task.id);
+        void arrive(task, next.scenarioId);
+      }
+    };
+    evaluate();
+    const timer = setInterval(evaluate, 5000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataReady, tasks, conversations, closedLocal, session]);
+
+  /* 任务过滤条：进行中/待办任务 + 有会话的任务；有练习会话时提供「自由练习」项 */
+  const taskNameById = useMemo(() => new Map(tasks.map((task) => [task.id, task.name])), [tasks]);
+  const filterChips = useMemo(() => {
+    const withConversation = new Set(
+      [...conversations, ...closedConversations].map((item) => item.taskId).filter(Boolean) as string[],
+    );
+    return tasks.filter(
+      (task) => (task.progressStatus !== "done" && !task.locked) || withConversation.has(task.id),
+    );
+  }, [tasks, conversations, closedConversations]);
+  const practiceExists = useMemo(
+    () => [...conversations, ...closedConversations].some((item) => !item.taskId),
+    [conversations, closedConversations],
+  );
 
   const visibleConversations = useMemo(() => {
     let list = pool;
-    if (statusTab === "unreplied") list = list.filter((item) => item.unreplied);
+    if (taskFilter === "practice") list = list.filter((item) => !item.taskId);
+    else if (taskFilter !== "all") list = list.filter((item) => item.taskId === taskFilter);
     const query = searchText.trim().toLowerCase();
     if (query) list = list.filter((item) => item.buyer.name.toLowerCase().includes(query));
     return list;
-  }, [pool, statusTab, searchText]);
+  }, [pool, taskFilter, searchText]);
+
+  const filteredAssignedCount = useMemo(() => {
+    if (taskFilter === "practice") return conversations.filter((item) => !item.taskId).length;
+    if (taskFilter !== "all") return conversations.filter((item) => item.taskId === taskFilter).length;
+    return conversations.length;
+  }, [conversations, taskFilter]);
 
   const visibleOrders = useMemo(() => {
     let list = orders ?? [];
@@ -959,15 +1169,14 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const visibleMessages = (messages ?? []).filter((message) => message.sender !== "teacher");
   const composerDisabled = !active || isClosed || streamingText !== null;
 
-  const kpiDetails: Array<[string, string]> = [
-    ["12 小时响应率", stats?.twelveHourResponseRate != null ? `${stats.twelveHourResponseRate}%` : "—"],
-    ["满意率", stats?.satisfactionRate != null ? `${stats.satisfactionRate}%` : "—"],
-    ["平均响应时长", durationLabel(stats?.avgResponseSeconds)],
-    ["今日接待人数", String(stats?.todayConversations ?? "—")],
-    ["询单支付金额", `USD ${(stats?.inquiryPaidAmount ?? 0).toFixed(2)}`],
-    ["付款人数", String(stats?.paidBuyers ?? "—")],
-    ["询单转化率", stats?.conversionRate != null ? `${stats.conversionRate}%` : "—"],
-  ];
+  const phraseQuery = phraseFilter.trim().toLowerCase();
+  const visibleMyPhrases = (myPhrases ?? []).filter((item) => item.text.toLowerCase().includes(phraseQuery));
+  const visibleLibraryPhrases = (phrases ?? []).filter((phrase) => phrase.toLowerCase().includes(phraseQuery)).slice(0, 30);
+
+  function insertPhrase(text: string) {
+    setInput((current) => (current ? `${current} ${text}` : text));
+    setShowPhrases(false);
+  }
 
   return (
     <div className="workbench-page">
@@ -977,18 +1186,29 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
           <div><span>平均响应时长</span><strong>{durationLabel(stats?.avgResponseSeconds)}</strong></div>
           <div className={stats && stats.unreplied > 0 ? "warn" : ""}><span>未回复</span><strong>{stats?.unreplied ?? "—"}</strong></div>
           <div><span>满意率</span><strong>{stats?.satisfactionRate != null ? `${stats.satisfactionRate}%` : "—"}</strong></div>
-          <button className="text-button kpi-toggle" onClick={() => setStatsOpen((value) => !value)}>
-            {statsOpen ? <>收起详情 <ChevronUp size={14} /></> : <>查看详情 <ChevronDown size={14} /></>}
-          </button>
+          <div><span>12 小时响应率</span><strong>{stats?.twelveHourResponseRate != null ? `${stats.twelveHourResponseRate}%` : "—"}</strong></div>
+          <div><span>询单支付金额</span><strong>USD {(stats?.inquiryPaidAmount ?? 0).toFixed(2)}</strong></div>
+          <div><span>付款人数</span><strong>{stats?.paidBuyers ?? "—"}</strong></div>
+          <div><span>询单转化率</span><strong>{stats?.conversionRate != null ? `${stats.conversionRate}%` : "—"}</strong></div>
         </div>
+        {filterChips.length > 0 || practiceExists ? (
+          <select
+            className="topline-task-filter"
+            value={taskFilter}
+            onChange={(event) => setTaskFilter(event.target.value)}
+            aria-label="按任务筛选会话"
+          >
+            <option value="all">全部任务</option>
+            {filterChips.map((task) => (
+              <option key={task.id} value={task.id}>{task.name}</option>
+            ))}
+            {taskFilter !== "all" && taskFilter !== "practice" && !filterChips.some((task) => task.id === taskFilter) ? (
+              <option value={taskFilter}>{taskNameById.get(taskFilter) ?? "当前任务"}</option>
+            ) : null}
+            {practiceExists ? <option value="practice">自由练习</option> : null}
+          </select>
+        ) : null}
       </header>
-      {statsOpen ? (
-        <div className="kpi-details">
-          {kpiDetails.map(([label, value]) => (
-            <div key={label}><span>{label}</span><strong>{value}</strong></div>
-          ))}
-        </div>
-      ) : null}
       {notice ? <div className="provider-notice"><CircleAlert size={17} />{notice}</div> : null}
       <div
         className="workbench-grid"
@@ -1001,39 +1221,42 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
               <input value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="搜索所有聊天记录…" aria-label="搜索会话" />
             </div>
             <div className="rail-tabs">
-              <button className={assignTab === "assigned" ? "active" : ""} onClick={() => setAssignTab("assigned")}>
-                已分配 <b className="count">{conversations.length}</b>
+              <button className={railTab === "current" ? "active" : ""} onClick={() => setRailTab("current")}>
+                当前会话 <b className="count">{filteredAssignedCount}</b>
               </button>
-              <button className={assignTab === "unassigned" ? "active" : ""} onClick={() => setAssignTab("unassigned")}>
-                未分配 {incomingQueue.length > 0 ? <b>{incomingQueue.length}</b> : null}
+              <button className={railTab === "recent" ? "active" : ""} onClick={() => setRailTab("recent")}>
+                最近联系
               </button>
             </div>
-            {assignTab === "assigned" ? (
-              <div className="rail-tabs sub">
-                {([["all", "全部"], ["unreplied", "未回复"], ["closed", "已关闭"]] as const).map(([id, label]) => (
-                  <button key={id} className={statusTab === id ? "active" : ""} onClick={() => setStatusTab(id)}>
-                    {label}
-                    {id === "unreplied" && stats && stats.unreplied > 0 ? <b>{stats.unreplied}</b> : null}
-                  </button>
-                ))}
-              </div>
-            ) : null}
           </div>
           <div className="buyer-list">
-            {assignTab === "unassigned" ? (
+            {railTab === "current" ? (
               <>
-                {incomingQueue.map((task) => (
-                  <div key={task.id} className="incoming-card">
-                    <span className="avatar">客</span>
+                {visibleConversations.map((item) => (
+                  <button
+                    key={item.id}
+                    className={item.id === activeId ? "buyer-card active" : "buyer-card"}
+                    onClick={() => setActiveId(item.id)}
+                  >
+                    <BuyerAvatar buyer={item.buyer} />
                     <span className="buyer-meta">
-                      <span><strong>新买家进线</strong><small>等待接入</small></span>
-                      <p>客户正在等待客服接待…</p>
-                      <span className="card-tags"><em>{BUSINESS_STAGE_LABELS[task.businessStage]}</em></span>
+                      <span>
+                        <strong>{item.buyer.name}</strong>
+                        {item.unreplied && item.status !== "closed" && !closedLocal.has(item.id) && item.lastMessage ? (
+                          <small className="waiting" title="买家消息已等待回复的时长">
+                            {waitingLabel(item.lastMessage.createdAt, nowTick)}
+                          </small>
+                        ) : (
+                          <small>{item.lastMessage ? listTimeLabel(item.lastMessage.createdAt) : listTimeLabel(item.createdAt)}</small>
+                        )}
+                      </span>
+                      {/* 沉浸层原则：会话列表不显示任何标签，客户类型等资料在右侧客户资料面板查看 */}
+                      <p>{item.lastMessage ? item.lastMessage.content : "客户已进线…"}</p>
                     </span>
-                    <button className="primary-button compact" disabled={busy} onClick={() => acceptIncoming(task.id)}>接入</button>
-                  </div>
+                    {item.unreplied ? <i className="unread-dot" aria-label="待回复" /> : null}
+                  </button>
                 ))}
-                {incomingQueue.length === 0 ? <p className="muted rail-empty">暂无待接入的客户。</p> : null}
+                {visibleConversations.length === 0 ? <p className="muted rail-empty">暂无会话。</p> : null}
               </>
             ) : (
               <>
@@ -1050,15 +1273,10 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
                         <small>{item.lastMessage ? listTimeLabel(item.lastMessage.createdAt) : listTimeLabel(item.createdAt)}</small>
                       </span>
                       <p>{item.lastMessage ? item.lastMessage.content : "客户已进线…"}</p>
-                      <span className="card-tags">
-                        {item.scenario?.stage ? <em>{BUSINESS_STAGE_LABELS[item.scenario.stage as never]}</em> : null}
-                        <em className="type-tag">{CUSTOMER_MAIN_TAG[item.buyer.customerType] ?? item.buyer.customerType}</em>
-                      </span>
                     </span>
-                    {item.unreplied && statusTab !== "closed" ? <i className="unread-dot" aria-label="待回复" /> : null}
                   </button>
                 ))}
-                {visibleConversations.length === 0 ? <p className="muted rail-empty">暂无符合条件的会话。</p> : null}
+                {visibleConversations.length === 0 ? <p className="muted rail-empty">暂无最近联系。</p> : null}
               </>
             )}
           </div>
@@ -1072,7 +1290,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
               <BuyerAvatar buyer={buyer} />
               <span>
                 <strong>{buyer?.name ?? "请选择会话"}</strong>
-                <p>{buyer ? `${buyer.nationality} · ${buyer.identity}` : "从左侧选择会话或接入新客户"}</p>
+                <p>{buyer ? `${buyer.nationality} · ${buyer.identity}` : "从左侧选择会话开始接待"}</p>
               </span>
               {active?.scenario?.stage ? (
                 <span className="status-pill head-pill">{BUSINESS_STAGE_LABELS[active.scenario.stage as never]}</span>
@@ -1123,26 +1341,52 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
           </div>
           <div className="composer">
             {showPhrases ? (
-              <div className="phrase-panel">
+              <div className="phrase-panel" ref={phrasePanelRef}>
                 <div className="phrase-head">
                   <input value={phraseFilter} onChange={(event) => setPhraseFilter(event.target.value)} placeholder="搜索快捷短语…" aria-label="搜索快捷短语" />
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      if (!newPhraseOpen && !newPhraseText.trim() && input.trim()) setNewPhraseText(input.trim());
+                      setNewPhraseOpen(!newPhraseOpen);
+                    }}
+                  >
+                    + 新建
+                  </button>
                   <button className="text-button" onClick={() => setShowPhrases(false)}>收起</button>
                 </div>
                 <div className="phrase-list">
-                  {(phrases ?? [])
-                    .filter((phrase) => phrase.toLowerCase().includes(phraseFilter.toLowerCase()))
-                    .slice(0, 30)
-                    .map((phrase) => (
-                      <button key={phrase} onClick={() => { setInput((current) => (current ? `${current} ${phrase}` : phrase)); setShowPhrases(false); }}>
-                        {phrase}
+                  {visibleMyPhrases.length > 0 ? <p className="phrase-group">我的短语</p> : null}
+                  {visibleMyPhrases.map((item) => (
+                    <div className="phrase-row" key={item.id}>
+                      <button onClick={() => insertPhrase(item.text)}>{item.text}</button>
+                      <button className="phrase-del" title="删除该短语" onClick={() => void removeMyPhrase(item.id)}>×</button>
+                    </div>
+                  ))}
+                  {visibleMyPhrases.length > 0 && visibleLibraryPhrases.length > 0 ? <p className="phrase-group">标准话术</p> : null}
+                  {visibleLibraryPhrases.map((phrase) => (
+                    <button key={phrase} onClick={() => insertPhrase(phrase)}>{phrase}</button>
+                  ))}
+                  {phrases !== null && myPhrases !== null && phraseQuery && visibleMyPhrases.length === 0 && visibleLibraryPhrases.length === 0 ? (
+                    <div className="phrase-empty">
+                      <p>没有找到包含“{phraseFilter.trim()}”的短语</p>
+                      <button
+                        className="text-button"
+                        onClick={() => {
+                          setNewPhraseText(phraseFilter.trim());
+                          setNewPhraseOpen(true);
+                        }}
+                      >
+                        + 将它保存为新短语
                       </button>
-                    ))}
-                  {phrases === null ? <p className="muted">加载中…</p> : null}
+                    </div>
+                  ) : null}
+                  {phrases === null || myPhrases === null ? <p className="muted">加载中…</p> : null}
                 </div>
               </div>
             ) : null}
             {showEmoji ? (
-              <div className="emoji-panel" role="listbox" aria-label="选择表情">
+              <div className="emoji-panel" ref={emojiPanelRef} role="listbox" aria-label="选择表情">
                 {EMOJIS.map((emoji) => (
                   <button key={emoji} onClick={() => { setInput((current) => current + emoji); setShowEmoji(false); }}>{emoji}</button>
                 ))}
@@ -1157,20 +1401,20 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
               </div>
             ) : null}
             <div className="composer-tools">
-              <button onClick={() => { setShowEmoji((value) => !value); setShowPhrases(false); }} disabled={composerDisabled} title="发送表情"><Smile size={17} /></button>
+              <button ref={emojiButtonRef} onClick={() => { setShowEmoji((value) => !value); setShowPhrases(false); }} disabled={composerDisabled} title="发送表情"><Smile size={17} /></button>
               <button onClick={() => imageInputRef.current?.click()} disabled={composerDisabled} title="发送图片"><ImagePlus size={17} /></button>
               <button onClick={() => videoInputRef.current?.click()} disabled={composerDisabled} title="发送视频"><Film size={17} /></button>
               <button onClick={() => fileInputRef.current?.click()} disabled={composerDisabled} title="发送文件"><Paperclip size={17} /></button>
-              <button onClick={openPhrasePanel} disabled={!active} title="快捷短语"><BookText size={17} /></button>
+              <button ref={phraseButtonRef} onClick={openPhrasePanel} disabled={!active} title="快捷短语"><BookText size={17} /></button>
               <span className="tools-flex" />
               <button
                 className={autoTranslate ? "auto-translate on" : "auto-translate"}
                 onClick={toggleAutoTranslate}
-                title="自动翻译买家消息"
+                title="自动将买家消息翻译为中文（支持英语、西语、法语等所有语种）"
               >
                 <Languages size={15} /> 自动翻译<i className={autoTranslate ? "toggle on" : "toggle"} />
               </button>
-              <span>{buyer?.language ?? ""}</span>
+              <span title="当前买家的沟通语言（自动翻译不限语种）">{buyer?.language ?? ""}</span>
             </div>
             <input ref={imageInputRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => onAttachmentChosen("image", event)} />
             <input ref={videoInputRef} type="file" hidden accept="video/mp4,video/webm,video/quicktime" onChange={(event) => onAttachmentChosen("video", event)} />
@@ -1417,19 +1661,19 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
                           发送商品
                         </button>
                         <button className="secondary-button compact" disabled={composerDisabled} onClick={() => void sendCard("invite", product.id)}>
-                          <ShoppingCart size={13} /> 邀请下单
+                          <ShoppingCart size={12} /> 邀请下单
                         </button>
                         <button
                           className={specExpanded ? "secondary-button compact op-active" : "secondary-button compact"}
                           onClick={() => { setSpecOpen(specExpanded ? null : product.id); setCalcOpen(null); }}
                         >
-                          <ListTree size={13} /> 规格属性
+                          <ListTree size={12} /> 规格属性
                         </button>
                         <button
                           className={calcExpanded ? "secondary-button compact op-active" : "secondary-button compact"}
                           onClick={() => { setCalcOpen(calcExpanded ? null : product.id); setSpecOpen(null); setCalcQty(1); }}
                         >
-                          <Calculator size={13} /> 算价
+                          <Calculator size={12} /> 算价
                         </button>
                       </div>
                       {specExpanded ? (
@@ -1513,6 +1757,47 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
           ) : null}
         </aside>
       </div>
+      {newPhraseOpen ? (
+        <div className="tch-dialog-overlay" onClick={() => setNewPhraseOpen(false)}>
+          <div
+            className="tch-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="新建快捷短语"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header>
+              <strong>新建快捷短语</strong>
+              <button className="icon-button" onClick={() => setNewPhraseOpen(false)} aria-label="关闭"><X size={17} /></button>
+            </header>
+            <label>
+              短语内容
+              <textarea
+                value={newPhraseText}
+                onChange={(event) => setNewPhraseText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void saveNewPhrase();
+                  }
+                  if (event.key === "Escape") setNewPhraseOpen(false);
+                }}
+                placeholder="例如：Thanks for your patience, let me check that for you."
+                maxLength={200}
+                rows={3}
+                autoFocus
+              />
+            </label>
+            <p className="tch-dialog-hint muted">保存后出现在快捷短语面板的“我的短语”分组，仅自己可见 · {newPhraseText.length} / 200</p>
+            <footer>
+              <button className="secondary-button" onClick={() => { setNewPhraseOpen(false); setNewPhraseText(""); }}>取消</button>
+              <button className="primary-button" disabled={!newPhraseText.trim() || phraseSaving} onClick={() => void saveNewPhrase()}>
+                {phraseSaving ? "保存中…" : "保存"}
+              </button>
+            </footer>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

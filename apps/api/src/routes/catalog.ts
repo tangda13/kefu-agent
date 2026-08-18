@@ -111,6 +111,64 @@ export function registerCatalogRoutes(
     },
   );
 
+  // 个人快捷短语：工作台自建，仅本人可见
+  app.get(
+    "/v1/catalog/my-phrases",
+    { preHandler: guard.requireRole() },
+    async (request) => {
+      const result = await db.query(
+        "select id, text from student_phrases where student_id = $1 order by created_at desc",
+        [request.user!.sub],
+      );
+      return result.rows.map((row) => ({ id: row.id, text: row.text }));
+    },
+  );
+
+  app.post<{ Body: { text?: string } }>(
+    "/v1/catalog/my-phrases",
+    { preHandler: guard.requireRole() },
+    async (request, reply) => {
+      const text = request.body?.text?.trim();
+      if (!text) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "短语内容不能为空。" };
+      }
+      if (text.length > 200) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "短语内容不能超过 200 字。" };
+      }
+      const dup = await db.query(
+        "select id from student_phrases where student_id = $1 and text = $2",
+        [request.user!.sub, text],
+      );
+      if (dup.rowCount) {
+        reply.code(409);
+        return { code: "DUPLICATE", message: "该短语已存在。" };
+      }
+      const result = await db.query(
+        "insert into student_phrases (student_id, text) values ($1, $2) returning id, text",
+        [request.user!.sub, text],
+      );
+      return { id: result.rows[0].id, text: result.rows[0].text };
+    },
+  );
+
+  app.delete<{ Params: { phraseId: string } }>(
+    "/v1/catalog/my-phrases/:phraseId",
+    { preHandler: guard.requireRole() },
+    async (request, reply) => {
+      const result = await db.query(
+        "delete from student_phrases where id = $1 and student_id = $2 returning id",
+        [request.params.phraseId, request.user!.sub],
+      );
+      if (!result.rowCount) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "短语不存在。" };
+      }
+      return { ok: true };
+    },
+  );
+
   // 店铺商品（DB 维护，教师端场景配置可增删改启停 CFG-05）
   app.get<{ Querystring: { all?: string } }>(
     "/v1/store/products",

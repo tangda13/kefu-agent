@@ -24,6 +24,8 @@ import { registerCatalogRoutes } from "./routes/catalog";
 import { registerTaskRoutes } from "./routes/tasks";
 import { registerConversationRoutes } from "./routes/conversations";
 import { registerOrderRoutes } from "./routes/orders";
+import { registerBaselineRoutes } from "./routes/baseline";
+import { registerAnnouncementRoutes } from "./routes/announcements";
 import { registerTeacherRoutes } from "./routes/teacher";
 import { registerAdminRoutes } from "./routes/admin";
 
@@ -115,6 +117,8 @@ export async function buildServer(options: BuildServerOptions = {}) {
   registerTaskRoutes(app, db, guard);
   registerConversationRoutes(app, db, guard, conversationProvider);
   registerOrderRoutes(app, db, guard, conversationProvider);
+  registerBaselineRoutes(app, db, guard);
+  registerAnnouncementRoutes(app, db, guard);
   registerTeacherRoutes(app, db, guard);
   registerAdminRoutes(app, db, guard, conversationProvider);
 

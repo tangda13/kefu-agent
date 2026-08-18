@@ -90,31 +90,53 @@ function buildInboundMail(order: StudentOrder): InboundMail | null {
   let body = "";
   let atMs = placedMs;
 
+  const variant = seed % 3;
   if (info.status === "pending_payment") {
-    subject = `Question before I complete payment (${info.orderNo})`;
-    body = `Hi Support team,\n\nI just placed order ${info.orderNo} for the ${info.productName}, but I haven't paid yet. Could you tell me the estimated shipping time to my country, and whether any discount code applies to this order?\n\nI'll complete the payment once I hear back from you.\n\n${sign}`;
+    const pool: Array<[string, string]> = [
+      [`Question before I complete payment (${info.orderNo})`, `Hi Support team,\n\nI just placed order ${info.orderNo} for the ${info.productName}, but I haven't paid yet. Could you tell me the estimated shipping time to my country, and whether any discount code applies to this order?\n\nI'll complete the payment once I hear back from you.\n\n${sign}`],
+      [`Shipping cost question - order ${info.orderNo}`, `Hello,\n\nBefore I pay for order ${info.orderNo} (${info.productName}), I'd like to confirm: is the shipping fee already included in the total? And do you provide a tracking number once it ships?\n\nWaiting for your confirmation.\n\n${sign}`],
+      [`Can I change quantity before paying? (${info.orderNo})`, `Hi,\n\nI placed order ${info.orderNo} for the ${info.productName} but I'm considering adding one more piece. Should I cancel and reorder, or can you adjust it on your side? Also, would a larger order qualify for any discount?\n\n${sign}`],
+    ];
+    [subject, body] = pool[variant]!;
     atMs = placedMs + 45 * 60_000;
   } else if (info.status === "paid") {
-    subject = `When will order ${info.orderNo} ship?`;
-    body = `Hello,\n\nMy payment for order ${info.orderNo} (${info.productName}) went through yesterday, but the status still shows "processing". When can I expect it to be handed to the carrier?\n\nThanks in advance.\n\n${sign}`;
+    const pool: Array<[string, string]> = [
+      [`When will order ${info.orderNo} ship?`, `Hello,\n\nMy payment for order ${info.orderNo} (${info.productName}) went through yesterday, but the status still shows "processing". When can I expect it to be handed to the carrier?\n\nThanks in advance.\n\n${sign}`],
+      [`Order ${info.orderNo} - dispatch time?`, `Hi Support team,\n\nJust checking in on order ${info.orderNo}. I paid already and would love to know when the ${info.productName} will leave your warehouse, as I need it for an upcoming occasion.\n\n${sign}`],
+      [`Please confirm my payment (${info.orderNo})`, `Hello,\n\nI completed the payment for order ${info.orderNo} but haven't received a shipping confirmation yet. Could you confirm everything is in order and let me know the expected dispatch date?\n\n${sign}`],
+    ];
+    [subject, body] = pool[variant]!;
     atMs = placedMs + 20 * 3_600_000;
   } else if (info.status === "in_transit") {
     const customsAt = info.logistics?.nodes.find((node) => node.key === "customs")?.at;
-    subject = `Package status inquiry - ${info.orderNo}`;
-    body = `Hi,\n\nThe tracking for my order ${info.orderNo} hasn't updated for a few days and it seems to be stuck at customs. Is there anything wrong with the shipment? I'm a bit worried since I need the ${info.productName} soon.\n\nCould you check and let me know the latest status?\n\n${sign}`;
+    const pool: Array<[string, string]> = [
+      [`Package status inquiry - ${info.orderNo}`, `Hi,\n\nThe tracking for my order ${info.orderNo} hasn't updated for a few days and it seems to be stuck at customs. Is there anything wrong with the shipment? I'm a bit worried since I need the ${info.productName} soon.\n\nCould you check and let me know the latest status?\n\n${sign}`],
+      [`Where is my parcel? ${info.orderNo}`, `Hello,\n\nIt's been quite a while since order ${info.orderNo} shipped, and the last tracking event is from several days ago. Is this normal for international delivery? Please check with the carrier - I'm getting worried.\n\n${sign}`],
+      [`Customs delay? Order ${info.orderNo}`, `Hi Support team,\n\nMy tracking shows the ${info.productName} is in customs clearance. Do I need to do anything on my side, like paying import tax or providing documents? Please advise.\n\n${sign}`],
+    ];
+    [subject, body] = pool[variant]!;
     atMs = customsAt ? new Date(customsAt).getTime() + 6 * 3_600_000 : placedMs + 10 * 86_400_000;
   } else if (info.status === "delivered" && info.review && info.review.rating <= 3) {
+    // 投诉来信与该订单的差评内容保持一致
     subject = `Disappointed with my order ${info.orderNo}`;
-    body = `Hello,\n\nI received the ${info.productName} today, but I'm sorry to say it arrived damaged and looks different from the listing photos. This is really disappointing.\n\nI'd like to know how you plan to resolve this - a replacement or a refund would both work for me.\n\n${sign}`;
+    body = `Hello,\n\nI received the ${info.productName}, but I have to complain: ${info.review.content}\n\nI'd like to know how you plan to resolve this - a replacement or a refund would both work for me.\n\n${sign}`;
     atMs = new Date(info.review.at).getTime() - 3 * 3_600_000;
   } else if (info.status === "delivered") {
-    subject = `Order ${info.orderNo} received - quick question`;
-    body = `Hi Support team,\n\nJust letting you know the ${info.productName} arrived safely today. It looks great so far!\n\nOne quick question: what's the recommended way to clean and maintain it so it lasts longer?\n\n${sign}`;
+    const pool: Array<[string, string]> = [
+      [`Order ${info.orderNo} received - quick question`, `Hi Support team,\n\nJust letting you know the ${info.productName} arrived safely today. It looks great so far!\n\nOne quick question: what's the recommended way to clean and maintain it so it lasts longer?\n\n${sign}`],
+      [`Delivered - how do I register the warranty? (${info.orderNo})`, `Hello,\n\nThe ${info.productName} from order ${info.orderNo} was delivered today in good condition. Is there a warranty I should register, and how long does it last?\n\nThanks!\n\n${sign}`],
+      [`Got the package - sizing question (${info.orderNo})`, `Hi,\n\nMy order ${info.orderNo} arrived, thank you. The ${info.productName} is nice, though I'm debating whether I picked the right size/variant. If I ever need to exchange it, what's the process?\n\n${sign}`],
+    ];
+    [subject, body] = pool[variant]!;
     const deliveredAt = info.logistics?.nodes.find((node) => node.key === "delivery")?.at;
     atMs = deliveredAt ? new Date(deliveredAt).getTime() + 5 * 3_600_000 : placedMs + 20 * 86_400_000;
   } else if (info.status === "completed") {
-    subject = `Do you restock the ${info.productName}?`;
-    body = `Hello,\n\nI bought the ${info.productName} a while ago (order ${info.orderNo}) and I've been really happy with it. I'd like to order another one as a gift - will it be restocked soon, and is there any offer for returning customers?\n\n${sign}`;
+    const pool: Array<[string, string]> = [
+      [`Do you restock the ${info.productName}?`, `Hello,\n\nI bought the ${info.productName} a while ago (order ${info.orderNo}) and I've been really happy with it. I'd like to order another one as a gift - will it be restocked soon, and is there any offer for returning customers?\n\n${sign}`],
+      [`Repurchase question - ${info.productName}`, `Hi Support team,\n\nMy previous order ${info.orderNo} worked out great. Do you have any newer model or color of the ${info.productName}? I'd also appreciate a coupon for a returning customer if available.\n\n${sign}`],
+      [`Recommendation for my next order?`, `Hello,\n\nI've been enjoying the ${info.productName} from order ${info.orderNo}. Based on that purchase, is there anything similar in your store you'd recommend? I'm planning another order this month.\n\n${sign}`],
+    ];
+    [subject, body] = pool[variant]!;
     atMs = info.review ? new Date(info.review.at).getTime() + 26 * 3_600_000 : placedMs + 50 * 86_400_000;
   } else {
     return null;

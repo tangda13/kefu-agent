@@ -552,6 +552,30 @@ function orderBase(
   };
 }
 
+/** 差评文案池（订单生成期预设差评从中抽取；闭环评价 LLM 失败时也作兜底） */
+export const NEGATIVE_REVIEW_POOL = [
+  "Item arrived damaged and looks different from the listing. Very disappointed with this purchase.",
+  "The color is completely different from the photos. Not what I ordered at all.",
+  "Took almost a month to arrive and the box was crushed. The product inside has scratches.",
+  "Quality feels much cheaper than described. The stitching started coming apart after two days.",
+  "Wrong size was delivered even though I ordered according to the size chart. Very frustrating.",
+  "The item stopped working after the first use. I expected much better for this price.",
+  "Package arrived with a part missing. Now I can't use it at all until this is fixed.",
+  "Smells strongly of chemicals and the material feels flimsy. Not as advertised.",
+] as const;
+
+/** 好评文案池 */
+export const POSITIVE_REVIEW_POOL = [
+  "Good quality and fast shipping. Would consider buying again.",
+  "Exactly as described and nicely packaged. The seller answered my questions quickly.",
+  "Arrived earlier than expected and works perfectly. Very happy with this purchase.",
+  "Great value for the price. The material feels solid and well made.",
+  "Second time ordering from this store, consistent quality every time. Recommended.",
+  "Lovely product and the customer service was friendly and helpful. Five stars.",
+  "Shipping to my country was smooth and tracking updated regularly. Item is great.",
+  "Better than I expected from the photos. My family loves it too.",
+] as const;
+
 /** 根据业务环节生成当前咨询关联的订单；售前咨询返回 null */
 export function generateOrderForScenario(
   stage: BusinessStage,
@@ -594,8 +618,7 @@ export function generateOrderForScenario(
       review: negativeReview
         ? {
             rating: 1 + Math.floor(random() * 2),
-            content:
-              "Item arrived damaged and looks different from the listing. Very disappointed with this purchase.",
+            content: pick(NEGATIVE_REVIEW_POOL, random),
             at: daysAgo(now, 1),
           }
         : null,
@@ -610,7 +633,7 @@ export function generateOrderForScenario(
     logistics: buildLogistics(now, random, 5, 40),
     review: {
       rating: 4 + Math.floor(random() * 2),
-      content: "Good quality and fast shipping. Would consider buying again.",
+      content: pick(POSITIVE_REVIEW_POOL, random),
       at: daysAgo(now, 40),
     },
   };
@@ -689,7 +712,7 @@ export function generateBuyerOrderHistory(
           random() < 0.6
             ? {
                 rating: 4 + Math.floor(random() * 2),
-                content: "Good quality and fast shipping. Would consider buying again.",
+                content: pick(POSITIVE_REVIEW_POOL, random),
                 at: daysAgo(now, 35 + Math.floor(random() * 30)),
               }
             : null,

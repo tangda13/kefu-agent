@@ -46,6 +46,39 @@ export function registerOrderRoutes(
     },
   );
 
+  // 全店评价累计（评价管理页数据源：不受订单列表 50 条上限约束，按评价时间倒序）
+  app.get(
+    "/v1/student/reviews",
+    { preHandler: guard.requireRole("student") },
+    async (request) => {
+      const user = request.user!;
+      const result = await db.query(
+        `select o.id, o.order_no, o.conversation_id, o.payload, c.persona, c.status as conversation_status
+         from orders o
+         join conversations c on c.id = o.conversation_id
+         where o.student_id = $1
+           and o.payload->'review' is not null
+           and o.payload->'review' != 'null'::jsonb
+         order by o.payload->'review'->>'at' desc
+         limit 500`,
+        [user.sub],
+      );
+      return result.rows.map((row) => {
+        const payload = row.payload as Record<string, unknown>;
+        return {
+          orderId: row.id,
+          conversationId: row.conversation_id,
+          conversationStatus: row.conversation_status,
+          orderNo: row.order_no,
+          productName: payload.productName,
+          productImage: payload.productImage ?? null,
+          buyer: toStudentPersonaView(ensurePersonaAvatar(row.persona, row.conversation_id) as never),
+          review: payload.review,
+        };
+      });
+    },
+  );
+
   // 我的记录：历史评分、评语与雷达聚合
   app.get(
     "/v1/student/assessments",
@@ -53,7 +86,7 @@ export function registerOrderRoutes(
     async (request) => {
       const user = request.user!;
       const result = await db.query(
-        `select a.*, c.persona, s.name as scenario_name
+        `select a.*, c.persona, c.task_id, s.name as scenario_name
          from assessments a
          join conversations c on c.id = a.conversation_id
          left join scenarios s on s.id = c.scenario_id
@@ -69,18 +102,21 @@ export function registerOrderRoutes(
         total: Number(row.total),
         comment: row.comment,
         suggestions: row.suggestions,
+        /* 自由练习（无任务归属）：保留 AI 反馈供学习，但不计入平均分与雷达 */
+        practice: row.task_id == null,
         createdAt: row.created_at,
       }));
+      const scored = records.filter((row) => !row.practice);
       const radar: Record<string, number> = {};
-      if (records.length > 0) {
-        for (const key of Object.keys(records[0]!.scores as Record<string, number>)) {
+      if (scored.length > 0) {
+        for (const key of Object.keys(scored[0]!.scores as Record<string, number>)) {
           radar[key] = Math.round(
-            records.reduce((sum, item) => sum + Number((item.scores as Record<string, number>)[key] ?? 0), 0) /
-              records.length,
+            scored.reduce((sum, item) => sum + Number((item.scores as Record<string, number>)[key] ?? 0), 0) /
+              scored.length,
           );
         }
       }
-      return { records, radar, average: records.length ? Math.round(records.reduce((s, r) => s + r.total, 0) / records.length) : null };
+      return { records, radar, average: scored.length ? Math.round(scored.reduce((s, r) => s + r.total, 0) / scored.length) : null };
     },
   );
 

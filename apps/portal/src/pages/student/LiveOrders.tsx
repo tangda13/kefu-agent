@@ -771,11 +771,21 @@ export function LiveOrders({ session }: { session: Session }) {
                 <small>{fmtDateTime(info.review.at)}</small>
               </div>
             </div>
-            <em className={negative ? "status-pill warn-pill review-flag" : "status-pill green review-flag"}>
-              {negative ? "差评" : "好评"}
-            </em>
+            <span className="review-flag">
+              {info.review.revised ? (
+                <em className="status-pill" title={info.review.original?.content ?? undefined}>
+                  已改评{typeof info.review.original?.rating === "number" ? ` · 原 ${info.review.original.rating} 星` : ""}
+                </em>
+              ) : null}
+              <em className={negative ? "status-pill warn-pill" : "status-pill green"}>
+                {negative ? "差评" : "好评"}
+              </em>
+            </span>
           </div>
           <p className="review-content">{info.review.content}</p>
+          {info.review.revised && info.review.original?.content ? (
+            <p className="rv-original muted">原评价：{info.review.original.content}</p>
+          ) : null}
           {replied ? (
             <div className="rv-replied">
               <strong>商家回复</strong><small>{fmtDateTime(replied.at)}</small>

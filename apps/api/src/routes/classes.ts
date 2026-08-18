@@ -86,6 +86,118 @@ export function registerClassRoutes(
     },
   );
 
+  /* 班级改名：仅授权教师或管理员 */
+  app.patch<{ Params: { classId: string }; Body: { name?: string } }>(
+    "/v1/classes/:classId",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request, reply) => {
+      const { classId } = request.params;
+      const user = request.user!;
+      const name = request.body?.name?.trim();
+      if (!name) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "请填写班级名称。" };
+      }
+      if (!(await teacherOwnsClass(db, user, classId))) {
+        reply.code(403);
+        return { code: "FORBIDDEN", message: "您未被授权管理该班级。" };
+      }
+      try {
+        const result = await db.query(
+          "update classes set name = $1 where id = $2 returning id, name",
+          [name, classId],
+        );
+        if (!result.rowCount) {
+          reply.code(404);
+          return { code: "NOT_FOUND", message: "班级不存在。" };
+        }
+        await writeAudit(db, user.sub, "class.rename", classId, { name });
+        return { id: classId, name };
+      } catch (error: unknown) {
+        if ((error as { code?: string }).code === "23505") {
+          reply.code(409);
+          return { code: "CLASS_EXISTS", message: "同名班级已存在。" };
+        }
+        throw error;
+      }
+    },
+  );
+
+  /* 删除班级：仅允许删除没有学生的空班级，避免误删教学数据 */
+  app.delete<{ Params: { classId: string } }>(
+    "/v1/classes/:classId",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request, reply) => {
+      const { classId } = request.params;
+      const user = request.user!;
+      if (!(await teacherOwnsClass(db, user, classId))) {
+        reply.code(403);
+        return { code: "FORBIDDEN", message: "您未被授权管理该班级。" };
+      }
+      const students = await db.query(
+        "select count(*)::int as n from users where class_id = $1 and role = 'student'",
+        [classId],
+      );
+      if (students.rows[0].n > 0) {
+        reply.code(409);
+        return { code: "CLASS_NOT_EMPTY", message: "班级内仍有学生，请先转移或清空学生后再删除。" };
+      }
+      const client = await db.connect();
+      try {
+        await client.query("begin");
+        await client.query("delete from task_classes where class_id = $1", [classId]);
+        await client.query("delete from teacher_classes where class_id = $1", [classId]);
+        await client.query("delete from announcements where class_id = $1", [classId]);
+        await client.query("delete from classes where id = $1", [classId]);
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release();
+      }
+      await writeAudit(db, user.sub, "class.delete", classId);
+      return { ok: true };
+    },
+  );
+
+  /* 学生禁用/启用：禁用后无法登录（登录校验 status），会话数据保留 */
+  app.patch<{ Params: { studentId: string }; Body: { status?: string } }>(
+    "/v1/students/:studentId",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request, reply) => {
+      const { studentId } = request.params;
+      const user = request.user!;
+      const status = request.body?.status;
+      if (status !== "active" && status !== "disabled") {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "状态只能是 active 或 disabled。" };
+      }
+      const result = await db.query(
+        "select id, class_id from users where id = $1 and role = 'student'",
+        [studentId],
+      );
+      const student = result.rows[0];
+      if (!student) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "学生不存在。" };
+      }
+      if (!student.class_id || !(await teacherOwnsClass(db, user, student.class_id))) {
+        reply.code(403);
+        return { code: "FORBIDDEN", message: "您未被授权管理该学生。" };
+      }
+      await db.query("update users set status = $1, updated_at = now() where id = $2", [status, studentId]);
+      if (status === "disabled") {
+        await db.query(
+          "update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null",
+          [studentId],
+        );
+      }
+      await writeAudit(db, user.sub, "student.status", studentId, { status });
+      return { id: studentId, status };
+    },
+  );
+
   app.get(
     "/v1/classes",
     { preHandler: guard.requireRole("teacher", "admin") },

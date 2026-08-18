@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { UserRole } from "@cecs/contracts";
 import { AdminPages } from "./pages/admin/AdminPages";
-import { AppShell, roleNav, type ShellNotificationCenter } from "./components/AppShell";
+import { AppShell, roleNav, type ShellAnnouncement, type ShellNotificationCenter } from "./components/AppShell";
 import { LoginScreen } from "./components/LoginScreen";
 import { MailStudio } from "./pages/student/MailStudio";
 import { LiveMail } from "./pages/student/LiveMail";
@@ -16,10 +16,12 @@ import { LiveWorkbench } from "./pages/student/LiveWorkbench";
 import { TeacherPages } from "./pages/teacher/TeacherPages";
 import {
   clearSession,
+  fetchStudentAnnouncements,
   fetchStudentGuidance,
   loadSession,
   type GuidanceItem,
   type Session,
+  type StudentAnnouncement,
 } from "./api/client";
 
 const GUIDANCE_READ_KEY = "cecs.guidance.read";
@@ -73,6 +75,33 @@ export function App() {
     const timer = window.setInterval(load, 20_000);
     return () => window.clearInterval(timer);
   }, [studentLive, session]);
+
+  // 公告：教师/管理员发布的广播（与铃铛"消息"分流），学生端顶栏轮播，60 秒轮询
+  const [announcementItems, setAnnouncementItems] = useState<StudentAnnouncement[]>([]);
+  useEffect(() => {
+    if (!studentLive || !session) return;
+    const load = () => fetchStudentAnnouncements(session).then(setAnnouncementItems).catch(() => undefined);
+    load();
+    const timer = window.setInterval(load, 60_000);
+    return () => window.clearInterval(timer);
+  }, [studentLive, session]);
+
+  const announcements = useMemo<ShellAnnouncement[] | undefined>(() => {
+    if (!studentLive) return undefined;
+    return announcementItems.map((item) => ({
+      id: item.id,
+      title: item.title,
+      content: item.content,
+      publisherName: item.publisherName,
+      time: new Date(item.createdAt).toLocaleString("zh-CN", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      fresh: Date.now() - new Date(item.createdAt).getTime() < 48 * 3600_000,
+    }));
+  }, [studentLive, announcementItems]);
 
   const notifications = useMemo<ShellNotificationCenter | undefined>(() => {
     if (!studentLive) return undefined;
@@ -134,6 +163,7 @@ export function App() {
       userName={session?.user.displayName}
       userMeta={session?.user.username}
       notifications={notifications}
+      announcements={announcements}
       onSignOut={
         demo
           ? undefined
@@ -204,6 +234,7 @@ function StudentPage({
         setStartTaskId(taskId ?? null);
         onNavigate("workbench");
       }}
+      onOpenRecords={() => onNavigate("records")}
       session={session}
     />
   );

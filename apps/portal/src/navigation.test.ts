@@ -15,6 +15,7 @@ describe("document-defined navigation", () => {
       "数据总览",
       "实训任务",
       "班级与学生",
+      "通知公告",
       "实训跟踪",
       "考核报表",
       "场景配置",

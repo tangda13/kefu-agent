@@ -306,4 +306,73 @@ create table if not exists mail_replies (
 create index if not exists mail_replies_student_idx on mail_replies(student_id);
 `,
   },
+  {
+    id: "016_baseline_assessments",
+    sql: `
+create table if not exists baseline_assessments (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references users(id) on delete cascade,
+  answers jsonb not null,
+  scores jsonb not null,
+  total int not null,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists baseline_assessments_student_uq on baseline_assessments(student_id);
+`,
+  },
+  {
+    id: "017_announcements",
+    sql: `
+create table if not exists announcements (
+  id uuid primary key default gen_random_uuid(),
+  publisher_id uuid not null references users(id) on delete cascade,
+  class_id uuid references classes(id) on delete cascade,
+  title text not null,
+  content text not null,
+  expires_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists announcements_class_idx on announcements(class_id);
+`,
+  },
+  {
+    /* 任务定时开放：start_at 之前学生可见但不可进入（服务端强制）；留空 = 立即开放 */
+    id: "018_task_start_at",
+    sql: `
+alter table tasks add column if not exists start_at timestamptz;
+`,
+  },
+  {
+    /* 学生个人快捷短语：工作台自建，仅本人可见，与标准话术库（content_terms）并列展示 */
+    id: "019_student_phrases",
+    sql: `
+create table if not exists student_phrases (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references users(id) on delete cascade,
+  text text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists student_phrases_student_idx on student_phrases(student_id);
+`,
+  },
+  {
+    /* 任务完成标准（教师可配）：
+       completion_rule = all_scenarios（每个场景至少完成一次会话）| conversation_count（完成 required_count 次会话）
+       pass_score = 达标分数线（空 = 不设线，完成即达标）。达标状态由 score 与 pass_score 推导，不落库 */
+    id: "020_task_completion_rule",
+    sql: `
+alter table tasks add column if not exists completion_rule text not null default 'all_scenarios';
+alter table tasks add column if not exists required_count int;
+alter table tasks add column if not exists pass_score int;
+`,
+  },
+  {
+    /* 接待节奏（教师可配，买家自动进线取代手动「接入」）：
+       sequential 上一位会话结束后下一位进线 | interval 每 N 分钟进线一位（可并发）| all_at_once 开始任务后全部进线 */
+    id: "021_task_arrival_policy",
+    sql: `
+alter table tasks add column if not exists arrival_mode text not null default 'sequential';
+alter table tasks add column if not exists arrival_interval_minutes int;
+`,
+  },
 ];

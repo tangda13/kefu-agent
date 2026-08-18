@@ -6,9 +6,9 @@ import { ReviewReply, loadReviewReplies, saveReviewReply, type StoredReply } fro
 import {
   ApiError,
   assetUrl,
-  fetchStudentOrders,
+  fetchStudentReviews,
   type Session,
-  type StudentOrder,
+  type StudentReview,
 } from "../../api/client";
 
 type Grade = "good" | "medium" | "bad";
@@ -27,6 +27,14 @@ const FILTERS: ReadonlyArray<[GradeFilter, string]> = [
   ["bad", "差评"],
 ];
 
+/** 时间范围：null=累计全部 */
+const TIME_RANGES: ReadonlyArray<[string, string, number | null]> = [
+  ["all", "全部时间", null],
+  ["7d", "近 7 天", 7],
+  ["30d", "近 30 天", 30],
+  ["90d", "近 90 天", 90],
+];
+
 /** 淘宝口径：4-5 星好评、3 星中评、1-2 星差评 */
 function gradeOf(rating: number): Grade {
   if (rating >= 4) return "good";
@@ -39,14 +47,6 @@ function fmtDateTime(iso: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-interface ReviewEntry {
-  order: StudentOrder;
-  rating: number;
-  content: string;
-  at: string;
-  grade: Grade;
-}
-
 export function LiveReviews({
   session,
   onOpenOrder,
@@ -54,8 +54,9 @@ export function LiveReviews({
   session: Session;
   onOpenOrder?: (orderId: string) => void;
 }) {
-  const [orders, setOrders] = useState<StudentOrder[]>([]);
+  const [records, setRecords] = useState<StudentReview[]>([]);
   const [filter, setFilter] = useState<GradeFilter>("all");
+  const [rangeKey, setRangeKey] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [replies, setReplies] = useState<Record<string, StoredReply>>({});
   const [notice, setNotice] = useState("");
@@ -64,7 +65,7 @@ export function LiveReviews({
   const load = useCallback(async () => {
     try {
       setReplies(loadReviewReplies(session.user.id));
-      setOrders(await fetchStudentOrders(session));
+      setRecords(await fetchStudentReviews(session));
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
     }
@@ -72,54 +73,54 @@ export function LiveReviews({
 
   useEffect(() => { void load(); }, [load]);
 
-  const reviews = useMemo<ReviewEntry[]>(() => {
-    return orders
-      .filter((order) => order.detail.review)
-      .map((order) => ({
-        order,
-        rating: order.detail.review!.rating,
-        content: order.detail.review!.content,
-        at: order.detail.review!.at,
-        grade: gradeOf(order.detail.review!.rating),
-      }))
-      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
-  }, [orders]);
+  const range = TIME_RANGES.find(([key]) => key === rangeKey) ?? TIME_RANGES[0]!;
+  const rangeLabel = range[2] === null ? "累计" : range[1];
+
+  /** 先按时间范围过滤，统计与等级页签均基于该结果 */
+  const inRange = useMemo(() => {
+    const days = range[2];
+    if (days === null) return records;
+    const cutoff = Date.now() - days * 86_400_000;
+    return records.filter((record) => new Date(record.review.at).getTime() >= cutoff);
+  }, [records, range]);
 
   const stats = useMemo(() => {
-    const total = reviews.length;
-    const good = reviews.filter((entry) => entry.grade === "good").length;
-    const medium = reviews.filter((entry) => entry.grade === "medium").length;
-    const bad = reviews.filter((entry) => entry.grade === "bad").length;
-    const unreplied = reviews.filter((entry) => entry.grade !== "good" && !replies[entry.order.id]).length;
-    const avg = total ? reviews.reduce((sum, entry) => sum + entry.rating, 0) / total : 0;
+    const total = inRange.length;
+    const good = inRange.filter((record) => gradeOf(record.review.rating) === "good").length;
+    const medium = inRange.filter((record) => gradeOf(record.review.rating) === "medium").length;
+    const bad = inRange.filter((record) => gradeOf(record.review.rating) === "bad").length;
+    const unreplied = inRange.filter(
+      (record) => gradeOf(record.review.rating) !== "good" && !replies[record.orderId],
+    ).length;
+    const avg = total ? inRange.reduce((sum, record) => sum + record.review.rating, 0) / total : 0;
     return { total, good, medium, bad, avg, unreplied, goodRate: total ? Math.round((good / total) * 100) : 0 };
-  }, [reviews, replies]);
+  }, [inRange, replies]);
 
-  const filtered = filter === "all" ? reviews : reviews.filter((entry) => entry.grade === filter);
+  const filtered = filter === "all" ? inRange : inRange.filter((record) => gradeOf(record.review.rating) === filter);
 
   return (
     <div className="page">
       <PageHeader
         eyebrow="REVIEWS"
         title="评价管理"
-        description="集中查看本店铺全部买家评价并回复买家，回复时可使用 AI 辅助生成参考话术。"
+        description="集中查看本店铺累计买家评价并回复买家，支持按时间与等级筛选；回复时可使用 AI 辅助。"
       />
       {notice ? <p className="form-notice" role="status">{notice}</p> : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
 
       <div className="rv-stats">
         <div className="rv-stat">
-          <span>评价总数</span>
+          <span>{rangeLabel}评价数</span>
           <strong>{stats.total}</strong>
-          <small>平均 {stats.avg ? stats.avg.toFixed(1) : "—"} 星</small>
+          <small>平均 {stats.avg ? stats.avg.toFixed(1) : "—"} 星 · 累计 {records.length} 条</small>
         </div>
         <div className="rv-stat">
-          <span>好评率</span>
+          <span>{rangeLabel}好评率</span>
           <strong className="good">{stats.total ? `${stats.goodRate}%` : "—"}</strong>
           <small>好评 {stats.good} 条</small>
         </div>
         <div className="rv-stat">
-          <span>中评</span>
+          <span>{rangeLabel}中评</span>
           <strong className="medium">{stats.medium}</strong>
           <small>3 星评价</small>
         </div>
@@ -147,36 +148,55 @@ export function LiveReviews({
               {value === "bad" ? (stats.bad ? <span>{stats.bad}</span> : null) : null}
             </button>
           ))}
+          <select
+            className="rv-range-select"
+            value={rangeKey}
+            onChange={(event) => { setRangeKey(event.target.value); setExpandedId(null); }}
+            aria-label="按时间筛选评价"
+          >
+            {TIME_RANGES.map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </select>
         </div>
 
-        {filtered.map((entry) => {
-          const info = entry.order.detail;
-          const meta = GRADE_META[entry.grade];
-          const replied = replies[entry.order.id];
-          const expanded = expandedId === entry.order.id;
+        {filtered.map((record) => {
+          const review = record.review;
+          const grade = gradeOf(review.rating);
+          const meta = GRADE_META[grade];
+          const replied = replies[record.orderId];
+          const expanded = expandedId === record.orderId;
           return (
-            <article key={entry.order.id} className="rv-row">
+            <article key={record.orderId} className="rv-row">
               <div className="rv-row-main">
-                <BuyerAvatar buyer={entry.order.buyer} />
+                <BuyerAvatar buyer={record.buyer} />
                 <div className="rv-row-body">
                   <div className="rv-row-top">
-                    <strong>{entry.order.buyer.name}</strong>
-                    <small>{entry.order.buyer.nationality}</small>
+                    <strong>{record.buyer.name}</strong>
+                    <small>{record.buyer.nationality}</small>
                     <span className="review-stars">
                       {[1, 2, 3, 4, 5].map((value) => (
                         <Star
                           key={value}
                           size={14}
-                          fill={value <= entry.rating ? "#f2b01e" : "none"}
-                          color={value <= entry.rating ? "#f2b01e" : "#c6d2d8"}
+                          fill={value <= review.rating ? "#f2b01e" : "none"}
+                          color={value <= review.rating ? "#f2b01e" : "#c6d2d8"}
                         />
                       ))}
                     </span>
                     <em className={`${meta.pill} rv-grade`}>{meta.label}</em>
+                    {review.revised ? (
+                      <em className="status-pill rv-grade" title={review.original?.content ?? undefined}>
+                        已改评{typeof review.original?.rating === "number" ? ` · 原 ${review.original.rating} 星` : ""}
+                      </em>
+                    ) : null}
                     {replied ? <em className="status-pill green rv-grade">已回复</em> : null}
-                    <small className="rv-time">{fmtDateTime(entry.at)}</small>
+                    <small className="rv-time">{fmtDateTime(review.at)}</small>
                   </div>
-                  <p className="rv-content">{entry.content}</p>
+                  <p className="rv-content">{review.content}</p>
+                  {review.revised && review.original?.content ? (
+                    <p className="rv-original muted">原评价：{review.original.content}</p>
+                  ) : null}
                   {replied ? (
                     <div className="rv-replied">
                       <strong>商家回复</strong><small>{fmtDateTime(replied.at)}</small>
@@ -184,15 +204,15 @@ export function LiveReviews({
                     </div>
                   ) : null}
                   <div className="rv-product">
-                    {info.productImage ? (
-                      <img src={assetUrl(info.productImage) ?? undefined} alt={info.productName} />
+                    {record.productImage ? (
+                      <img src={assetUrl(record.productImage) ?? undefined} alt={record.productName} />
                     ) : (
                       <span className="rv-product-fallback"><Package2 size={14} /></span>
                     )}
-                    <span>{info.productName}</span>
-                    <small>订单号 {info.orderNo}</small>
+                    <span>{record.productName}</span>
+                    <small>订单号 {record.orderNo}</small>
                     {onOpenOrder ? (
-                      <button className="text-button" onClick={() => onOpenOrder(entry.order.id)}>
+                      <button className="text-button" onClick={() => onOpenOrder(record.orderId)}>
                         <ExternalLink size={12} /> 查看订单
                       </button>
                     ) : null}
@@ -203,11 +223,11 @@ export function LiveReviews({
                     className={
                       expanded
                         ? "secondary-button compact"
-                        : !replied && entry.grade !== "good"
+                        : !replied && grade !== "good"
                           ? "primary-button compact"
                           : "secondary-button compact"
                     }
-                    onClick={() => setExpandedId(expanded ? null : entry.order.id)}
+                    onClick={() => setExpandedId(expanded ? null : record.orderId)}
                   >
                     <Reply size={13} /> {expanded ? "收起" : replied ? "再次回复" : "回复"}
                   </button>
@@ -217,11 +237,11 @@ export function LiveReviews({
                 <div className="rv-composer">
                   <ReviewReply
                     session={session}
-                    orderId={entry.order.id}
-                    conversationId={entry.order.conversationId}
-                    conversationOpen={entry.order.conversationStatus === "active"}
+                    orderId={record.orderId}
+                    conversationId={record.conversationId}
+                    conversationOpen={record.conversationStatus === "active"}
                     onSent={(text) => {
-                      setReplies(saveReviewReply(session.user.id, entry.order.id, text));
+                      setReplies(saveReviewReply(session.user.id, record.orderId, text));
                       setExpandedId(null);
                       setNotice("回复已发送给买家，可到客服工作台查看买家回应。");
                     }}
@@ -235,8 +255,8 @@ export function LiveReviews({
         {filtered.length === 0 ? (
           <div className="order-empty">
             <Star size={26} />
-            <strong>{reviews.length === 0 ? "暂无评价" : "该等级下暂无评价"}</strong>
-            <p>{reviews.length === 0 ? "买家完成交易后留下的评价会集中展示在这里。" : "切换其他等级页签查看。"}</p>
+            <strong>{inRange.length === 0 ? (records.length === 0 ? "暂无评价" : "该时间范围内暂无评价") : "该等级下暂无评价"}</strong>
+            <p>{records.length === 0 ? "买家完成交易或结束服务对话后留下的评价会累计展示在这里。" : "调整时间范围或等级页签查看。"}</p>
           </div>
         ) : null}
       </section>

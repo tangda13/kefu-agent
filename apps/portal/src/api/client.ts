@@ -28,11 +28,35 @@ export interface StudentTask {
   name: string;
   businessStage: "pre_sale" | "in_sale" | "after_sale" | "customer_care";
   scenarioIds: string[];
+  scenarioNames: string[];
+  /** 场景 id→name 明细（与 scenarioIds 对应，用于工作台按场景接入） */
+  scenarios: Array<{ id: string; name: string }>;
   interactionMode: string;
   timeLimitMinutes: number | null;
+  startAt: string | null;
   deadline: string | null;
+  scoringWeights: Record<string, number>;
   progressStatus: "todo" | "in_progress" | "done";
   score: number | null;
+  /** 完成标准：all_scenarios 每场景至少一次 / conversation_count 完成 N 次会话 */
+  completionRule: "all_scenarios" | "conversation_count";
+  requiredCount: number | null;
+  /** 达标分数线（空 = 不设线，完成即达标） */
+  passScore: number | null;
+  /** 接待节奏：sequential 依次进线 / interval 每 N 分钟进线一位 / all_at_once 全部同时进线 */
+  arrivalMode: "sequential" | "interval" | "all_at_once";
+  arrivalIntervalMinutes: number | null;
+  /** 完成进度：已完成 progressDone / 需完成 requiredTotal */
+  progressDone: number;
+  requiredTotal: number;
+  /** 该任务下已创建的会话总数（含进行中/已结束；自动进线的止流依据） */
+  conversationCount: number;
+  /** 已开过会话的场景 id（工作台据此列出待接入的场景） */
+  startedScenarioIds: Array<string | null>;
+  /** 完成后按分数线判定；未完成为 null */
+  qualified: boolean | null;
+  /** 定时开放：未到开始时间，学生可见但不可进入 */
+  locked: boolean;
   createdAt: string;
 }
 
@@ -220,9 +244,17 @@ export interface TeacherTask {
   scenarioIds: string[];
   interactionMode: string;
   timeLimitMinutes: number | null;
+  startAt: string | null;
   deadline: string | null;
   scoringWeights: Record<string, number>;
   status: string;
+  /** 完成标准：all_scenarios 每场景至少一次 / conversation_count 完成 N 次会话；passScore 空 = 不设线 */
+  completionRule: "all_scenarios" | "conversation_count";
+  requiredCount: number | null;
+  passScore: number | null;
+  /** 接待节奏（买家自动进线策略） */
+  arrivalMode: "sequential" | "interval" | "all_at_once";
+  arrivalIntervalMinutes: number | null;
   classes: Array<{ id: string; name: string }>;
   studentTotal: number;
   studentDone: number;
@@ -237,8 +269,14 @@ export interface CreateTaskPayload {
   personaRule?: Record<string, unknown>;
   interactionMode: string;
   timeLimitMinutes?: number;
+  startAt?: string;
   deadline?: string;
   scoringWeights: Record<string, number>;
+  completionRule?: "all_scenarios" | "conversation_count";
+  requiredCount?: number | null;
+  passScore?: number | null;
+  arrivalMode?: "sequential" | "interval" | "all_at_once";
+  arrivalIntervalMinutes?: number | null;
 }
 
 export const fetchClasses = (session: Session) =>
@@ -304,7 +342,14 @@ export interface OrderInfo {
   statusLabel: string;
   placedAt: string;
   logistics: { carrier: string; trackingNo: string; nodes: OrderLogisticsNode[] } | null;
-  review: { rating: number; content: string; at: string } | null;
+  review: {
+    rating: number;
+    content: string;
+    at: string;
+    /** 闭环改评：买家在服务挽回成功后修改过评价 */
+    revised?: boolean;
+    original?: { rating?: number; content?: string; at?: string };
+  } | null;
   address?: OrderAddress | null;
   remark?: string | null;
   returnStatus?: "requested" | "returning" | "refunded" | null;
@@ -438,6 +483,16 @@ export const fetchWorkbenchStats = (session: Session) =>
   apiGet<WorkbenchStats>("/v1/student/workbench-stats", session);
 export const fetchPhrases = (session: Session) =>
   apiGet<string[]>("/v1/catalog/phrases", session);
+export interface MyPhrase {
+  id: string;
+  text: string;
+}
+export const fetchMyPhrases = (session: Session) =>
+  apiGet<MyPhrase[]>("/v1/catalog/my-phrases", session);
+export const createMyPhrase = (session: Session, text: string) =>
+  apiPost<MyPhrase>("/v1/catalog/my-phrases", session, { text });
+export const deleteMyPhrase = (session: Session, phraseId: string) =>
+  apiRequestDelete(`/v1/catalog/my-phrases/${phraseId}`, session);
 export interface StudentOrder {
   id: string;
   conversationId: string;
@@ -517,6 +572,27 @@ export const fetchMailSubmissions = (session: Session) =>
 
 export const fetchStudentOrders = (session: Session) =>
   apiGet<StudentOrder[]>("/v1/student/orders", session);
+
+export interface StudentReview {
+  orderId: string;
+  conversationId: string;
+  conversationStatus: string;
+  orderNo: string;
+  productName: string;
+  productImage: string | null;
+  buyer: BuyerPublicView;
+  review: {
+    rating: number;
+    content: string;
+    at: string;
+    revised?: boolean;
+    original?: { rating?: number; content?: string; at?: string };
+  };
+}
+
+/** 全店评价累计（评价管理页数据源，按评价时间倒序，最多 500 条） */
+export const fetchStudentReviews = (session: Session) =>
+  apiGet<StudentReview[]>("/v1/student/reviews", session);
 export const fetchOrderSuggestions = (
   session: Session,
   orderId: string,
@@ -722,3 +798,110 @@ export const fetchTeacherTasks = (session: Session) =>
   apiGet<TeacherTask[]>("/v1/tasks", session);
 export const createTask = (session: Session, payload: CreateTaskPayload) =>
   apiPost<TeacherTask>("/v1/tasks", session, payload);
+
+/* ---------- 初始能力测评（独立评测引擎） ---------- */
+
+export type BaselineQuestionKind = "single" | "multi" | "judge" | "practical";
+
+export interface BaselineOption {
+  id: string;
+  text: string;
+  translation?: string;
+}
+
+export interface BaselineQuestion {
+  id: string;
+  kind: BaselineQuestionKind;
+  dimension: string;
+  title: string;
+  scenario?: string;
+  scenarioTranslation?: string;
+  options?: BaselineOption[];
+}
+
+export interface BaselineResult {
+  scores: Record<string, number>;
+  total: number;
+  createdAt: string;
+}
+
+export interface BaselineStatus {
+  completed: boolean;
+  result: BaselineResult | null;
+}
+
+export const fetchBaselineStatus = (session: Session) =>
+  apiGet<BaselineStatus>("/v1/student/baseline", session);
+export const fetchBaselineQuestions = (session: Session) =>
+  apiGet<{ questions: BaselineQuestion[] }>("/v1/student/baseline/questions", session);
+export const submitBaseline = (session: Session, answers: Record<string, string | string[]>) =>
+  apiPost<BaselineResult>("/v1/student/baseline/submit", session, { answers });
+
+/* ---------- 公告（教师发布 → 学生端顶栏展示） ---------- */
+
+export interface TeacherAnnouncement {
+  id: string;
+  title: string;
+  content: string;
+  className: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+  expired: boolean;
+}
+
+export interface StudentAnnouncement {
+  id: string;
+  title: string;
+  content: string;
+  publisherName: string;
+  createdAt: string;
+}
+
+export const fetchTeacherAnnouncements = (session: Session) =>
+  apiGet<TeacherAnnouncement[]>("/v1/announcements", session);
+export const publishAnnouncement = (
+  session: Session,
+  payload: { title: string; content: string; classIds?: string[]; days?: number | null },
+) => apiPost<{ created: unknown[] }>("/v1/announcements", session, payload);
+export const deleteAnnouncement = (session: Session, id: string) =>
+  apiRequestDelete(`/v1/announcements/${id}`, session);
+export const fetchStudentAnnouncements = (session: Session) =>
+  apiGet<StudentAnnouncement[]>("/v1/student/announcements", session);
+
+/* ---------- 教师端：任务/班级/学生管理、买家画像模板 ---------- */
+
+export const updateTask = (
+  session: Session,
+  taskId: string,
+  payload: { name?: string; startAt?: string | null; deadline?: string | null; timeLimitMinutes?: number | null; status?: "published" | "closed"; completionRule?: "all_scenarios" | "conversation_count"; requiredCount?: number | null; passScore?: number | null; arrivalMode?: "sequential" | "interval" | "all_at_once"; arrivalIntervalMinutes?: number | null },
+) => apiRequestPatch(`/v1/tasks/${taskId}`, session, payload);
+export const deleteTask = (session: Session, taskId: string) =>
+  apiRequestDelete(`/v1/tasks/${taskId}`, session);
+export const renameClass = (session: Session, classId: string, name: string) =>
+  apiRequestPatch(`/v1/classes/${classId}`, session, { name });
+export const deleteClass = (session: Session, classId: string) =>
+  apiRequestDelete(`/v1/classes/${classId}`, session);
+export const setStudentStatus = (session: Session, studentId: string, status: "active" | "disabled") =>
+  apiRequestPatch(`/v1/students/${studentId}`, session, { status });
+
+export interface PersonaTemplate {
+  id: string;
+  name: string;
+  nationality: string;
+  identity: string;
+  personality: string;
+  emotion: string;
+  language: string;
+  preference: string;
+  customerType: string;
+  enabled: boolean;
+}
+
+export const fetchPersonas = (session: Session) =>
+  apiGet<PersonaTemplate[]>("/v1/catalog/personas", session);
+export const createPersona = (session: Session, payload: Partial<PersonaTemplate>) =>
+  apiPost<PersonaTemplate>("/v1/catalog/personas", session, payload);
+export const updatePersona = (session: Session, personaId: string, payload: Partial<PersonaTemplate>) =>
+  apiRequestPatch<PersonaTemplate>(`/v1/catalog/personas/${personaId}`, session, payload);
+export const deletePersona = (session: Session, personaId: string) =>
+  apiRequestDelete(`/v1/catalog/personas/${personaId}`, session);

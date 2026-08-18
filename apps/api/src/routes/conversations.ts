@@ -216,6 +216,11 @@ async function streamBuyerTurn(options: {
       void assessConversation(db, provider, conversation.id).catch((error) =>
         request.log.error(error, "assessment failed"),
       );
+      // 闭环评价：买家按本次服务结果留评/改评（异步，不阻塞）
+      const { generateBuyerReview } = await import("../review-gen");
+      void generateBuyerReview(db, provider, conversation.id, request.log).catch((error) =>
+        request.log.error(error, "buyer review failed"),
+      );
     }
   }
 
@@ -260,7 +265,7 @@ export function registerConversationRoutes(
       let personaRule: Record<string, unknown> = {};
       if (taskId) {
         const progress = await db.query(
-          `select t.scenario_ids, t.persona_rule from task_progress tp
+          `select t.scenario_ids, t.persona_rule, t.start_at from task_progress tp
            join tasks t on t.id = tp.task_id
            where tp.task_id = $1 and tp.student_id = $2`,
           [taskId, user.sub],
@@ -269,6 +274,12 @@ export function registerConversationRoutes(
         if (!row) {
           reply.code(403);
           return { code: "FORBIDDEN", message: "该任务未下发给你。" };
+        }
+        /* 定时开放：未到开始时间不可进入（前端置灰 + 服务端双重拦截）。
+           不在消息里拼具体时间：服务器时区未必与学生一致，开放时间由前端本地化展示 */
+        if (row.start_at && new Date(row.start_at).getTime() > Date.now()) {
+          reply.code(403);
+          return { code: "TASK_NOT_STARTED", message: "该任务还未到开放时间，请在任务列表标注的开放时间后进入。" };
         }
         personaRule = (row.persona_rule ?? {}) as Record<string, unknown>;
         const ids = row.scenario_ids as string[];
@@ -580,6 +591,11 @@ export function registerConversationRoutes(
       const { assessConversation } = await import("../assessment");
       void assessConversation(db, provider, request.params.conversationId).catch((error) =>
         request.log.error(error, "assessment failed"),
+      );
+      // 闭环评价：买家按本次服务结果留评/改评（异步，不阻塞）
+      const { generateBuyerReview } = await import("../review-gen");
+      void generateBuyerReview(db, provider, request.params.conversationId, request.log).catch((error) =>
+        request.log.error(error, "buyer review failed"),
       );
       return { ok: true };
     },

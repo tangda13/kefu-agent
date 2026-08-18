@@ -12,11 +12,48 @@ interface CreateTaskBody {
   personaRule?: Record<string, unknown>;
   interactionMode?: string;
   timeLimitMinutes?: number;
+  startAt?: string;
   deadline?: string;
   scoringWeights?: Record<string, number>;
+  completionRule?: string;
+  requiredCount?: number | null;
+  passScore?: number | null;
+  arrivalMode?: string;
+  arrivalIntervalMinutes?: number | null;
 }
 
 const INTERACTION_MODES = ["text", "voice", "text_voice"] as const;
+const COMPLETION_RULES = ["all_scenarios", "conversation_count"] as const;
+const ARRIVAL_MODES = ["sequential", "interval", "all_at_once"] as const;
+
+/* 接待节奏校验：interval 模式必须给 1-120 分钟的间隔 */
+function validateArrivalPolicy(mode: string, intervalMinutes: number | null | undefined): string | null {
+  if (!ARRIVAL_MODES.includes(mode as never)) return "接待节奏无效";
+  if (mode === "interval") {
+    if (!Number.isInteger(intervalMinutes) || (intervalMinutes as number) < 1 || (intervalMinutes as number) > 120) {
+      return "进线间隔须为 1-120 的整数分钟";
+    }
+  }
+  return null;
+}
+
+/* 完成标准校验：规则枚举 + 按次数时次数 1-50 + 达标线 0-100（空 = 不设线） */
+function validateCompletionRule(
+  rule: string,
+  requiredCount: number | null | undefined,
+  passScore: number | null | undefined,
+): string | null {
+  if (!COMPLETION_RULES.includes(rule as never)) return "完成规则无效";
+  if (rule === "conversation_count") {
+    if (!Number.isInteger(requiredCount) || (requiredCount as number) < 1 || (requiredCount as number) > 50) {
+      return "完成会话次数须为 1-50 的整数";
+    }
+  }
+  if (passScore !== undefined && passScore !== null) {
+    if (!Number.isInteger(passScore) || passScore < 0 || passScore > 100) return "达标分数线须为 0-100 的整数";
+  }
+  return null;
+}
 const DIMENSION_IDS: readonly string[] = ASSESSMENT_DIMENSIONS.map(
   (item) => item.id,
 );
@@ -111,6 +148,30 @@ export function registerTaskRoutes(
         reply.code(400);
         return { code: "INVALID_INPUT", message: "限时必须为正整数分钟。" };
       }
+      /* 定时开放：start_at 之前学生不可进入；须早于截止时间 */
+      if (
+        body.startAt &&
+        body.deadline &&
+        new Date(body.startAt).getTime() >= new Date(body.deadline).getTime()
+      ) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "开始时间必须早于截止时间。" };
+      }
+      const completionRule = body.completionRule ?? "all_scenarios";
+      const requiredCount = completionRule === "conversation_count" ? body.requiredCount ?? 1 : null;
+      const passScore = body.passScore ?? null;
+      const ruleProblem = validateCompletionRule(completionRule, requiredCount, passScore);
+      if (ruleProblem) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: ruleProblem };
+      }
+      const arrivalMode = body.arrivalMode ?? "sequential";
+      const arrivalIntervalMinutes = arrivalMode === "interval" ? body.arrivalIntervalMinutes ?? 5 : null;
+      const arrivalProblem = validateArrivalPolicy(arrivalMode, arrivalIntervalMinutes);
+      if (arrivalProblem) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: arrivalProblem };
+      }
 
       const client = await db.connect();
       try {
@@ -118,8 +179,9 @@ export function registerTaskRoutes(
         const taskResult = await client.query(
           `insert into tasks
              (name, business_stage, scenario_ids, persona_rule, interaction_mode,
-              time_limit_minutes, deadline, scoring_weights, created_by)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              time_limit_minutes, start_at, deadline, scoring_weights, created_by,
+              completion_rule, required_count, pass_score, arrival_mode, arrival_interval_minutes)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
            returning id, created_at`,
           [
             name,
@@ -128,9 +190,15 @@ export function registerTaskRoutes(
             JSON.stringify(body.personaRule ?? {}),
             interactionMode,
             timeLimit ?? null,
+            body.startAt ?? null,
             body.deadline ?? null,
             JSON.stringify(scoringWeights),
             user.sub,
+            completionRule,
+            requiredCount,
+            passScore,
+            arrivalMode,
+            arrivalIntervalMinutes,
           ],
         );
         const taskId = taskResult.rows[0].id as string;
@@ -160,8 +228,14 @@ export function registerTaskRoutes(
           classIds,
           interactionMode,
           timeLimitMinutes: timeLimit ?? null,
+          startAt: body.startAt ?? null,
           deadline: body.deadline ?? null,
           scoringWeights,
+          completionRule,
+          requiredCount,
+          passScore,
+          arrivalMode,
+          arrivalIntervalMinutes,
           createdAt: taskResult.rows[0].created_at,
         };
       } catch (error) {
@@ -170,6 +244,135 @@ export function registerTaskRoutes(
       } finally {
         client.release();
       }
+    },
+  );
+
+  /* 编辑任务：名称/开始时间/截止/限时/状态/完成标准/接待节奏。仅创建者或管理员 */
+  app.patch<{ Params: { taskId: string }; Body: { name?: string; startAt?: string | null; deadline?: string | null; timeLimitMinutes?: number | null; status?: string; completionRule?: string; requiredCount?: number | null; passScore?: number | null; arrivalMode?: string; arrivalIntervalMinutes?: number | null } }>(
+    "/v1/tasks/:taskId",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request, reply) => {
+      const user = request.user!;
+      const { taskId } = request.params;
+      const existing = await db.query("select * from tasks where id = $1", [taskId]);
+      const current = existing.rows[0];
+      if (!current) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "任务不存在。" };
+      }
+      if (user.role !== "admin" && current.created_by !== user.sub) {
+        reply.code(403);
+        return { code: "FORBIDDEN", message: "只有任务创建者可以修改该任务。" };
+      }
+      const body = request.body ?? {};
+      if (body.name !== undefined && !body.name.trim()) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "任务名称不能为空。" };
+      }
+      if (body.status !== undefined && !["published", "closed"].includes(body.status)) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "任务状态无效。" };
+      }
+      if (
+        body.timeLimitMinutes !== undefined &&
+        body.timeLimitMinutes !== null &&
+        (!Number.isInteger(body.timeLimitMinutes) || body.timeLimitMinutes <= 0)
+      ) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "限时必须为正整数分钟。" };
+      }
+      const merged = {
+        name: body.name?.trim() ?? current.name,
+        startAt: body.startAt === undefined ? current.start_at : body.startAt,
+        deadline: body.deadline === undefined ? current.deadline : body.deadline,
+        timeLimit: body.timeLimitMinutes === undefined ? current.time_limit_minutes : body.timeLimitMinutes,
+        status: body.status ?? current.status,
+        completionRule: body.completionRule ?? current.completion_rule ?? "all_scenarios",
+        requiredCount: body.requiredCount === undefined ? current.required_count : body.requiredCount,
+        passScore: body.passScore === undefined ? current.pass_score : body.passScore,
+        arrivalMode: body.arrivalMode ?? current.arrival_mode ?? "sequential",
+        arrivalIntervalMinutes:
+          body.arrivalIntervalMinutes === undefined ? current.arrival_interval_minutes : body.arrivalIntervalMinutes,
+      };
+      if (merged.completionRule === "conversation_count" && merged.requiredCount == null) merged.requiredCount = 1;
+      if (merged.completionRule === "all_scenarios") merged.requiredCount = null;
+      const ruleProblem = validateCompletionRule(merged.completionRule, merged.requiredCount, merged.passScore);
+      if (ruleProblem) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: ruleProblem };
+      }
+      if (merged.arrivalMode === "interval" && merged.arrivalIntervalMinutes == null) merged.arrivalIntervalMinutes = 5;
+      if (merged.arrivalMode !== "interval") merged.arrivalIntervalMinutes = null;
+      const arrivalProblem = validateArrivalPolicy(merged.arrivalMode, merged.arrivalIntervalMinutes);
+      if (arrivalProblem) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: arrivalProblem };
+      }
+      if (
+        merged.startAt &&
+        merged.deadline &&
+        new Date(merged.startAt).getTime() >= new Date(merged.deadline).getTime()
+      ) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "开始时间必须早于截止时间。" };
+      }
+      const result = await db.query(
+        `update tasks set name = $1, start_at = $2, deadline = $3, time_limit_minutes = $4, status = $5,
+           completion_rule = $6, required_count = $7, pass_score = $8, arrival_mode = $9, arrival_interval_minutes = $10
+         where id = $11
+         returning id, name, start_at, deadline, time_limit_minutes, status, completion_rule, required_count, pass_score, arrival_mode, arrival_interval_minutes`,
+        [merged.name, merged.startAt, merged.deadline, merged.timeLimit, merged.status, merged.completionRule, merged.requiredCount, merged.passScore, merged.arrivalMode, merged.arrivalIntervalMinutes, taskId],
+      );
+      await writeAudit(db, user.sub, "task.update", taskId, { status: merged.status });
+      const row = result.rows[0];
+      return {
+        id: row.id,
+        name: row.name,
+        startAt: row.start_at,
+        deadline: row.deadline,
+        timeLimitMinutes: row.time_limit_minutes,
+        status: row.status,
+        completionRule: row.completion_rule,
+        requiredCount: row.required_count,
+        passScore: row.pass_score,
+        arrivalMode: row.arrival_mode,
+        arrivalIntervalMinutes: row.arrival_interval_minutes,
+      };
+    },
+  );
+
+  /* 删除任务：连带清理下发关系与学生进度。仅创建者或管理员 */
+  app.delete<{ Params: { taskId: string } }>(
+    "/v1/tasks/:taskId",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request, reply) => {
+      const user = request.user!;
+      const { taskId } = request.params;
+      const existing = await db.query("select created_by from tasks where id = $1", [taskId]);
+      const current = existing.rows[0];
+      if (!current) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "任务不存在。" };
+      }
+      if (user.role !== "admin" && current.created_by !== user.sub) {
+        reply.code(403);
+        return { code: "FORBIDDEN", message: "只有任务创建者可以删除该任务。" };
+      }
+      const client = await db.connect();
+      try {
+        await client.query("begin");
+        await client.query("delete from task_progress where task_id = $1", [taskId]);
+        await client.query("delete from task_classes where task_id = $1", [taskId]);
+        await client.query("delete from tasks where id = $1", [taskId]);
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release();
+      }
+      await writeAudit(db, user.sub, "task.delete", taskId);
+      return { ok: true };
     },
   );
 
@@ -206,9 +409,15 @@ export function registerTaskRoutes(
         personaRule: row.persona_rule,
         interactionMode: row.interaction_mode,
         timeLimitMinutes: row.time_limit_minutes,
+        startAt: row.start_at,
         deadline: row.deadline,
         scoringWeights: row.scoring_weights,
         status: row.status,
+        completionRule: row.completion_rule ?? "all_scenarios",
+        requiredCount: row.required_count,
+        passScore: row.pass_score,
+        arrivalMode: row.arrival_mode ?? "sequential",
+        arrivalIntervalMinutes: row.arrival_interval_minutes,
         classes: row.classes,
         studentTotal: Number(row.student_total),
         studentDone: Number(row.student_done),
@@ -224,26 +433,80 @@ export function registerTaskRoutes(
       const user = request.user!;
       const result = await db.query(
         `select t.id, t.name, t.business_stage, t.scenario_ids, t.interaction_mode,
-                t.time_limit_minutes, t.deadline, t.created_at,
-                tp.status as progress_status, tp.score
+                t.time_limit_minutes, t.start_at, t.deadline, t.scoring_weights, t.created_at,
+                t.completion_rule, t.required_count, t.pass_score, t.arrival_mode, t.arrival_interval_minutes,
+                tp.status as progress_status, tp.score,
+                coalesce((
+                  select json_agg(s.name order by s.name)
+                  from scenarios s
+                  where s.id::text in (select jsonb_array_elements_text(t.scenario_ids))
+                ), '[]'::json) as scenario_names,
+                coalesce((
+                  select json_agg(json_build_object('id', s.id, 'name', s.name))
+                  from scenarios s
+                  where s.id::text in (select jsonb_array_elements_text(t.scenario_ids))
+                ), '[]'::json) as scenarios,
+                coalesce((
+                  select json_agg(distinct c.scenario_id)
+                  from conversations c
+                  where c.task_id = t.id and c.student_id = $1 and c.scenario_id is not null
+                ), '[]'::json) as started_scenario_ids,
+                (select count(*)::int from conversations c
+                 where c.task_id = t.id and c.student_id = $1) as conversation_count,
+                (select count(*)::int from assessments a join conversations c on c.id = a.conversation_id
+                 where c.task_id = t.id and a.student_id = $1) as assessed_count,
+                (select count(distinct c.scenario_id)::int from assessments a join conversations c on c.id = a.conversation_id
+                 where c.task_id = t.id and a.student_id = $1
+                   and c.scenario_id::text in (select jsonb_array_elements_text(t.scenario_ids))) as covered_scenarios
          from task_progress tp
          join tasks t on t.id = tp.task_id
          where tp.student_id = $1 and t.status = 'published'
          order by t.created_at desc`,
         [user.sub],
       );
-      return result.rows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        businessStage: row.business_stage,
-        scenarioIds: row.scenario_ids,
-        interactionMode: row.interaction_mode,
-        timeLimitMinutes: row.time_limit_minutes,
-        deadline: row.deadline,
-        progressStatus: row.progress_status,
-        score: row.score === null ? null : Number(row.score),
-        createdAt: row.created_at,
-      }));
+      const now = Date.now();
+      return result.rows.map((row) => {
+        const completionRule = (row.completion_rule ?? "all_scenarios") as string;
+        const scenarioIds = (row.scenario_ids ?? []) as string[];
+        /* 进度：按规则给出「已完成/需完成」，前端直接展示 n/m */
+        const requiredTotal =
+          completionRule === "conversation_count" ? Math.max(1, Number(row.required_count) || 1) : scenarioIds.length;
+        const progressDone =
+          completionRule === "conversation_count" ? Number(row.assessed_count) : Number(row.covered_scenarios);
+        const score = row.score === null ? null : Number(row.score);
+        return {
+          id: row.id,
+          name: row.name,
+          businessStage: row.business_stage,
+          scenarioIds,
+          scenarioNames: row.scenario_names,
+          scenarios: row.scenarios,
+          interactionMode: row.interaction_mode,
+          timeLimitMinutes: row.time_limit_minutes,
+          startAt: row.start_at,
+          deadline: row.deadline,
+          scoringWeights: row.scoring_weights,
+          progressStatus: row.progress_status,
+          score,
+          completionRule,
+          requiredCount: row.required_count,
+          passScore: row.pass_score,
+          arrivalMode: row.arrival_mode ?? "sequential",
+          arrivalIntervalMinutes: row.arrival_interval_minutes,
+          progressDone: Math.min(progressDone, requiredTotal),
+          requiredTotal,
+          conversationCount: Number(row.conversation_count),
+          startedScenarioIds: row.started_scenario_ids,
+          /* 达标：任务完成后，无分数线 = 达标；有分数线按成绩判定。未完成为 null */
+          qualified:
+            row.progress_status === "done"
+              ? row.pass_score == null || (score !== null && score >= Number(row.pass_score))
+              : null,
+          /* 定时开放：未到开始时间的任务学生可见但不可进入（服务端在创建会话时同样拦截） */
+          locked: row.start_at != null && new Date(row.start_at).getTime() > now,
+          createdAt: row.created_at,
+        };
+      });
     },
   );
 }
