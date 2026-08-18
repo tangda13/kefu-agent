@@ -1,0 +1,60 @@
+# 跨境电商客服 AI 实训智能体 —— 生产部署（db + api + web）
+# 使用：cp .env.example .env（改密钥）→ docker compose up -d --build
+# 固定项目名：避免中文目录名导致 compose project name 为空
+name: cecs
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cecs
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cecs_dev_2026}
+      POSTGRES_DB: cecs
+    volumes:
+      - cecs_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cecs -d cecs"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://cecs:${POSTGRES_PASSWORD:-cecs_dev_2026}@db:5432/cecs
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 设置 JWT_SECRET（长随机串）}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-Admin#2026}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      PORT: 8787
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.keliagent.cn}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-pro}
+      TTS_API_KEY: ${TTS_API_KEY:-}
+      TTS_RESOURCE_ID: ${TTS_RESOURCE_ID:-seed-tts-2.0}
+      TTS_SPEAKER: ${TTS_SPEAKER:-zh_female_vv_uranus_bigtts}
+      TTS_SPEAKER_MALE: ${TTS_SPEAKER_MALE:-zh_male_dayi_uranus_bigtts}
+      ASR_RESOURCE_ID: ${ASR_RESOURCE_ID:-volc.seedasr.sauc.duration}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - cecs_uploads:/app/apps/api/uploads
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+
+volumes:
+  cecs_pg_data:
+  cecs_uploads:

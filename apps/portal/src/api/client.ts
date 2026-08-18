@@ -1,6 +1,8 @@
+// 生产部署走 nginx 同域反代时设 VITE_API_URL 为空字符串（API_BASE="" → 相对路径 /v1/...）；
+// 未设置则回退本地开发地址。显式空串不等于 undefined，故不用 ?? 而显式判 undefined。
+const apiUrl = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL;
 export const API_BASE =
-  (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL ??
-  "http://127.0.0.1:8787";
+  apiUrl === undefined ? "http://127.0.0.1:8787" : apiUrl.replace(/\/+$/, "");
 
 /** 拼接服务端相对资源地址（如商品主图 /uploads/...） */
 export function assetUrl(pathname: string | null | undefined): string | null {

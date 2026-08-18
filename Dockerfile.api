@@ -1,0 +1,23 @@
+# 跨境电商客服 AI 实训智能体 —— 后端 API（Fastify + tsx 运行时转译）
+FROM node:22-alpine
+RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
+WORKDIR /app
+
+# 依赖清单先行，利用 Docker 层缓存（只装 api 子图，不拉 electron/react）
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY apps/api/package.json apps/api/
+COPY apps/portal/package.json apps/portal/
+COPY apps/desktop/package.json apps/desktop/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/domain/package.json packages/domain/
+RUN pnpm install --frozen-lockfile --filter @cecs/api...
+
+# 复制源码（contracts/domain 为源码 exports，运行时由 tsx 转译）
+COPY apps/api apps/api
+COPY packages/contracts packages/contracts
+COPY packages/domain packages/domain
+
+WORKDIR /app/apps/api
+ENV NODE_ENV=production
+EXPOSE 8787
+CMD ["pnpm", "start"]
