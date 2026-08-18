@@ -36,6 +36,27 @@ git clone https://github.com/tangda13/kefu-agent.git
 
 > 备注：git clone 直连 github 443 会超时，需在服务器上配 `git config --global http.proxy http://<你的代理>`；无代理环境建议用方式 B。
 
+## 一·五、配置 Docker 镜像加速器（国内服务器必须）
+
+直连 `docker.io` 会超时拉不动镜像，先配加速器（任选其一，配完 `sudo systemctl restart docker`）：
+
+```bash
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://dockerproxy.net",
+    "https://mirror.ccs.tencentyun.com"
+  ]
+}
+EOF
+sudo systemctl daemon-reload && sudo systemctl restart docker
+docker pull node:22-alpine   # 验证能拉，再继续
+```
+
+> 阿里云/腾讯云服务器可在各自控制台「容器镜像服务」一键开启官方加速器，地址更稳。
+
 ## 二、配置环境变量
 
 ```bash
