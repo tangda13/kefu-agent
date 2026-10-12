@@ -32,7 +32,7 @@
 - 共用组件已抽出：components/{BuyerAvatar,SuggestionComposer,ReviewReply}.tsx；邮箱派生在 domain（stableHash/deriveBuyerEmail，前后端共用勿改算法）。
 
 ## 环境速查
-- 一键启动：根目录 `启动开发环境.cmd`（或 `scripts/start-dev.ps1`，`-Stop` 停止，含关闭客户端）；启动后自动拉起**单一桌面客户端**（Electron，学生/教师在登录页内切「学生登录/教师登录」页签，账号角色与页签不符会提示切换），单独启动用根目录 `客户端.cmd`（或 `scripts/start-client.ps1`，`-Role teacher` 预选教师页签）；管理端仍走浏览器 `?role=admin`
+- 一键启动（2026-10-12 起）：根目录 `dev.cmd`（学生/教师客户端调试，默认同时开学生、教师两个独立登录的客户端；`dev.cmd stop|status|restart api|logs|client teacher 2|test`）和 `admin.cmd`（浏览器打开管理端）。旧的 `启动开发环境.cmd` / `客户端.cmd` / `start-dev.ps1` / `start-client.ps1` 已删除
 - 端口：API 8787 / 前端 **5288**（5173/5174 属智慧物流项目勿动）/ Postgres 容器 cecs-pg:5434（库 cecs、cecs_test）
 - 密钥在 `apps/api/.env`（gitignore）：LLM=keliagent deepseek-v4-pro；语音=豆包（TTS seed-tts-2.0 音色 vv_uranus/dayi_uranus；ASR volc.seedasr.sauc.duration）
 - 测试账号：admin/Admin#Prod2026 · wang.teacher/Teach#2026 · s2601001/Student#01 · s2601002/Student#02（班级：跨境电商2601班）

@@ -21,22 +21,28 @@
 
 ### 快速启动（推荐）
 
-双击根目录的 `启动开发环境.cmd`，或在 PowerShell 中执行：
+根目录两个入口，双击即可：
+
+| 入口 | 用途 |
+|---|---|
+| `dev.cmd` | 学生端 / 教师端调试：起数据库、API、前端，并同时打开学生、教师两个客户端（各自独立登录） |
+| `admin.cmd` | 管理端调试：确保服务已起，在浏览器打开管理端 |
 
 ```powershell
-.\scripts\start-dev.ps1            # 启动数据库 + API + 前端，并拉起桌面客户端
-.\scripts\start-dev.ps1 -NoClient  # 启动服务但不拉起桌面客户端
-.\scripts\start-dev.ps1 -Stop      # 停止 API、前端与桌面客户端（数据库容器保留）
+.\dev.cmd                     # 起服务 + 打开学生、教师客户端
+.\dev.cmd start student       # 只开学生客户端（teacher 同理；none = 只起服务）
+.\dev.cmd client teacher 2    # 再开一个教师客户端（第 2 个调试档案，可登录另一个账号）
+.\dev.cmd restart api         # 只重启 API（restart portal 同理；不带参数重启全部）
+.\dev.cmd status              # 各服务状态 + 当前 LLM 配置
+.\dev.cmd logs api            # 新窗口实时看日志（日志文件在 .devrun\logs）
+.\dev.cmd test                # 构建 + 全部测试
+.\dev.cmd stop                # 停止 API、前端、客户端（数据库容器保留）
+.\admin.cmd                   # 打开管理端；admin.cmd status / stop
 ```
 
-脚本会自动：检查 node/pnpm/docker → 创建或启动数据库容器（含测试库）→
-首次运行时安装依赖 → 在独立窗口启动 API（8787）与前端（5288）→ 健康检查
-→ 拉起桌面客户端（Electron）。
-
-学生与教师共用同一个桌面客户端，在登录页内切换「学生登录 / 教师登录」页签。
-单独启动客户端：双击根目录 `客户端.cmd`，或执行 `.\scripts\start-client.ps1`
-（`-Role teacher` 预选教师页签，`-Demo` 进入界面演示模式）。
-管理端仍通过浏览器访问 `http://127.0.0.1:5288/?role=admin`。
+API 和前端各开一个带标题的窗口实时输出日志（改后端代码自动重启、改前端热更新），
+同时写入 `.devrun\logs\*.log`，上一次的日志保留为 `*.prev.log`。
+客户端里 `Ctrl+R` 刷新、`Ctrl+Shift+I` 打开开发者工具。
 以下为手动分步方式。
 
 ### 1. 数据库（Docker）
@@ -78,7 +84,7 @@ LLM_MODEL=deepseek-v4-pro
 
 界面预览（不连服务端的演示模式）：
 
-- 客户端：`.\scripts\start-client.ps1 -Demo`（`-Role teacher` 预选教师页签）
+- 客户端：`.\dev.cmd start student -Demo`（teacher 同理）
 - 管理端（浏览器）：`http://127.0.0.1:5288/?role=admin&demo=1`
 
 去掉 `-Demo` / `demo=1` 即为真实登录（走 `/v1/auth/*`，角色由服务端返回，
