@@ -8,17 +8,20 @@
     "start": "tsx src/server.ts",
     "build": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "reset-password": "tsx src/scripts/reset-password.ts"
+    "reset-password": "tsx src/scripts/reset-password.ts",
+    "agent-eval": "tsx src/scripts/agent-eval.ts"
   },
   "dependencies": {
     "@cecs/contracts": "workspace:*",
     "@cecs/domain": "workspace:*",
+    "@earendil-works/pi-ai": "0.82.1",
     "@fastify/cors": "11.3.0",
     "@fastify/multipart": "^10.1.0",
     "@fastify/static": "^10.1.0",
     "fastify": "5.10.0",
     "pg": "^8.22.0",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/pg": "^8.20.0",

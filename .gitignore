@@ -15,6 +15,7 @@ uploads/
 
 # 数据库备份（含账号哈希/会话数据/服务密钥，严禁入库）
 apps/api/backups/
+apps/api/eval-reports/
 
 # 本地个人配置
 .claude/settings.local.json

@@ -723,3 +723,4 @@ export function generateBuyerOrderHistory(
   return orders.sort((a, b) => (a.placedAt < b.placedAt ? 1 : -1));
 }
 
+export { scenarioScripts } from "./scenario-scripts";

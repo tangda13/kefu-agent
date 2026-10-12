@@ -55,7 +55,12 @@ export function AdminSystem({ session }: { session: Session }) {
 function AcceptanceSection({ session }: { session: Session }) {
   const { notice, error, setNotice, setError } = useNotices();
   const [report, setReport] = useState<{
-    llm: { totalRequests: number; validRequests: number; sampleEnough: boolean; ttftP50: number | null; ttftP95: number | null; ttftP99: number | null; ttftRate3s: number | null; ttftRate10s: number | null; charsPerSecond: number | null; passTtft: boolean; passSpeed: boolean };
+    llm: {
+      totalRequests: number; validRequests: number; errorRequests: number; timeoutRequests: number; sampleEnough: boolean;
+      ttftP50: number | null; ttftP95: number | null; ttftP99: number | null; ttftMax: number | null;
+      ttftRate3s: number | null; ttftRate10s: number | null; charsPerSecond: number | null; passTtft: boolean; passSpeed: boolean;
+      recentFailures: Array<{ at: string; model: string; outcome: string }>;
+    };
     voice: Record<string, { total: number; avgMs: number; maxMs: number; within5sRate: number | null }>;
     run?: { running: boolean; done: number; total: number } | null;
   } | null>(null);
@@ -75,14 +80,33 @@ function AcceptanceSection({ session }: { session: Session }) {
       load();
     } catch (cause) { setError(errorText(cause)); }
   }
+  async function exportCsv() {
+    try {
+      const response = await fetch(`${API_BASE}/v1/admin/acceptance.csv`, { headers: { authorization: `Bearer ${session.accessToken}` } });
+      if (!response.ok) throw new ApiError(response.status, "EXPORT", "导出失败");
+      const blob = await response.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `验收明细-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (cause) { setError(errorText(cause)); }
+  }
   const pct = (v: number | null) => (v === null ? "—" : `${Math.round(v * 1000) / 10}%`);
   const badge = (ok: boolean | null | undefined) => (ok == null ? "—" : ok ? "✅ 达标" : "❌ 未达标");
   const L = report?.llm;
   return (
     <section className="panel data-panel">
       <div className="panel-heading">
-        <div><h2>验收指标报表</h2><p>基于全部真实调用日志 · 样本 {L?.validRequests ?? 0} 次{L?.sampleEnough ? "（≥100 满足验收样本量）" : "（验收需 ≥100 次）"}</p></div>
         <div>
+          <h2>验收指标报表</h2>
+          <p>
+            基于全部真实调用日志 · 共 {L?.totalRequests ?? 0} 次请求（成功 {L?.validRequests ?? 0} · 失败 {L?.errorRequests ?? 0} · 超时 {L?.timeoutRequests ?? 0}）
+            {L?.sampleEnough ? " · 满足 ≥100 次样本量" : " · 验收需 ≥100 次"}。首字从服务端收到请求时算起，失败和超时计入分母。
+          </p>
+        </div>
+        <div className="form-actions">
+          <button className="secondary-button compact" onClick={() => void exportCsv()}><Download size={14} /> 导出明细 CSV</button>
           {report?.run?.running ? <span className="status-pill">测试中 {report.run.done}/{report.run.total}</span> : (
             <button className="primary-button compact" onClick={() => void run(100)}>运行验收测试（100次）</button>
           )}
@@ -93,13 +117,18 @@ function AcceptanceSection({ session }: { session: Session }) {
       <table>
         <thead><tr><th>指标</th><th>红线</th><th>实测</th><th>判定</th></tr></thead>
         <tbody>
-          <tr><td>首字响应 ≤3 秒占比</td><td>≥99%</td><td>{pct(L?.ttftRate3s ?? null)}（P50 {L?.ttftP50 ?? "—"}ms / P95 {L?.ttftP95 ?? "—"}ms / P99 {L?.ttftP99 ?? "—"}ms）</td><td>{badge(L?.passTtft)}</td></tr>
+          <tr><td>首字响应 ≤3 秒占比</td><td>≥99%</td><td>{pct(L?.ttftRate3s ?? null)}（P50 {L?.ttftP50 ?? "—"}ms / P95 {L?.ttftP95 ?? "—"}ms / P99 {L?.ttftP99 ?? "—"}ms / 最大 {L?.ttftMax ?? "—"}ms）</td><td>{badge(L?.passTtft)}</td></tr>
           <tr><td>首字响应 ≤10 秒占比</td><td>100%</td><td>{pct(L?.ttftRate10s ?? null)}</td><td>{badge(L ? L.ttftRate10s === 1 : null)}</td></tr>
           <tr><td>平均输出速度</td><td>≥20 字符/秒</td><td>{L?.charsPerSecond ?? "—"} 字符/秒</td><td>{badge(L?.passSpeed)}</td></tr>
           <tr><td>TTS 单次合成</td><td>≤5 秒</td><td>均值 {report?.voice?.tts?.avgMs ?? "—"}ms · 最大 {report?.voice?.tts?.maxMs ?? "—"}ms</td><td>{badge(report?.voice?.tts ? (report.voice.tts.within5sRate ?? 0) >= 1 : null)}</td></tr>
           <tr><td>ASR 单次识别</td><td>≤5 秒</td><td>均值 {report?.voice?.asr?.avgMs ?? "—"}ms · 最大 {report?.voice?.asr?.maxMs ?? "—"}ms</td><td>{badge(report?.voice?.asr ? (report.voice.asr.within5sRate ?? 0) >= 1 : null)}</td></tr>
         </tbody>
       </table>
+      {L?.recentFailures.length ? (
+        <p className="form-error">
+          最近失败：{L.recentFailures.slice(0, 5).map((item) => `${new Date(item.at).toLocaleString("zh-CN")} ${item.model} ${item.outcome === "timeout" ? "超时" : "出错"}`).join("；")}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -121,83 +150,6 @@ function AdminAudit({ session }: { session: Session }) {
         </tbody>
       </table>
     </section>
-  );
-}
-
-// ---------- AI 与语音服务 ----------
-export function AdminProviders({ session }: { session: Session }) {
-  const { notice, error, setNotice, setError } = useNotices();
-  const [data, setData] = useState<{
-    llm: { baseUrl: string; model: string; apiKeyMasked: string };
-    voice: { apiKeyMasked: string; ttsSpeaker: string; ttsSpeakerMale: string; ttsResourceId: string; asrResourceId: string };
-    usage: { llmCalls: number; llmChars: number; ttsCalls: number; asrCalls: number };
-    quota: { monthlyLlmCalls: number; warnPercent: number; usedPercent: number; alert: boolean };
-  } | null>(null);
-  const [form, setForm] = useState({ baseUrl: "", model: "", apiKey: "", voiceKey: "", quota: "", warn: "" });
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback(() => {
-    apiGet<never>("/v1/admin/providers", session).then((d) => {
-      setData(d as never);
-      const dd = d as never as { llm: { baseUrl: string; model: string }; quota: { monthlyLlmCalls: number; warnPercent: number } };
-      setForm((f) => ({ ...f, baseUrl: dd.llm.baseUrl, model: dd.llm.model, quota: String(dd.quota.monthlyLlmCalls), warn: String(dd.quota.warnPercent) }));
-    }).catch((cause) => setError(errorText(cause)));
-  }, [session, setError]);
-  useEffect(() => { load(); }, [load]);
-
-  async function save() {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      await fetch(`${API_BASE}/v1/admin/providers`, {
-        method: "PUT",
-        headers: { "content-type": "application/json", authorization: `Bearer ${session.accessToken}` },
-        body: JSON.stringify({
-          llm: { baseUrl: form.baseUrl, model: form.model, ...(form.apiKey ? { apiKey: form.apiKey } : {}) },
-          ...(form.voiceKey ? { voice: { apiKey: form.voiceKey } } : {}),
-          quota: { monthlyLlmCalls: Number(form.quota) || 10000, warnPercent: Number(form.warn) || 80 },
-        }),
-      }).then(async (r) => { if (!r.ok) throw new ApiError(r.status, "SAVE", (await r.json()).message ?? "保存失败"); });
-      setNotice("配置已保存并即时生效（无需重启）。");
-      setForm((f) => ({ ...f, apiKey: "", voiceKey: "" }));
-      load();
-    } catch (cause) { setError(errorText(cause)); } finally { setBusy(false); }
-  }
-
-  return (
-    <div className="page">
-      <PageHeader eyebrow="PROVIDERS" title="AI 与语音服务" description="配置并热切换 LLM 对话与语音服务，监控调用量与额度。" />
-      {notice ? <p className="form-notice">{notice}</p> : null}
-      {error ? <p className="form-error">{error}</p> : null}
-      {data?.quota.alert ? <p className="form-error">⚠ 本月 LLM 调用已达额度的 {data.quota.usedPercent}%（阈值 {data.quota.warnPercent}%），请关注余量或提升额度。</p> : null}
-      <div className="classes-layout">
-        <section className="panel">
-          <div className="panel-heading"><div><h2>LLM 对话服务</h2><p>当前密钥 {data?.llm.apiKeyMasked ?? "—"}</p></div></div>
-          <div className="form-grid">
-            <label>接口地址<input value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="https://api.example.cn" /></label>
-            <label>模型<input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} placeholder="deepseek-v4-pro" /></label>
-            <label>新密钥（留空不改）<input type="password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder="sk-..." /></label>
-          </div>
-          <div className="panel-heading"><div><h2>语音服务</h2><p>当前密钥 {data?.voice.apiKeyMasked ?? "—"} · 女声 {data?.voice.ttsSpeaker} · 男声 {data?.voice.ttsSpeakerMale}</p></div></div>
-          <div className="form-grid">
-            <label>新语音密钥（留空不改）<input type="password" value={form.voiceKey} onChange={(e) => setForm({ ...form, voiceKey: e.target.value })} /></label>
-            <label>月度 LLM 调用额度<input type="number" value={form.quota} onChange={(e) => setForm({ ...form, quota: e.target.value })} /></label>
-            <label>告警阈值（%）<input type="number" value={form.warn} onChange={(e) => setForm({ ...form, warn: e.target.value })} /></label>
-          </div>
-          <div className="form-actions"><button className="primary-button" disabled={busy} onClick={() => void save()}><Save size={15} /> 保存并生效</button></div>
-        </section>
-        <section className="panel">
-          <div className="panel-heading"><div><h2>本月调用量</h2><p>自然月统计 · 达 {data?.quota.warnPercent ?? 80}% 自动告警</p></div></div>
-          <div className="dimension-list">
-            <div><span>LLM 调用</span><i><b style={{ width: `${Math.min(100, data?.quota.usedPercent ?? 0)}%` }} /></i><strong>{data?.usage.llmCalls ?? 0}/{data?.quota.monthlyLlmCalls ?? 0}</strong></div>
-            <div><span>输出字符</span><i><b style={{ width: "30%" }} /></i><strong>{data?.usage.llmChars ?? 0}</strong></div>
-            <div><span>TTS 合成</span><i><b style={{ width: "20%" }} /></i><strong>{data?.usage.ttsCalls ?? 0}</strong></div>
-            <div><span>ASR 识别</span><i><b style={{ width: "20%" }} /></i><strong>{data?.usage.asrCalls ?? 0}</strong></div>
-          </div>
-        </section>
-      </div>
-    </div>
   );
 }
 

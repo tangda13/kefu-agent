@@ -6,6 +6,7 @@ import {
   EMOTIONS,
   NATIONALITIES,
   PERSONALITIES,
+  SCENARIO_SCRIPT_FIELDS,
   SUPPORTED_LANGUAGES,
 } from "@cecs/contracts";
 import { PageHeader } from "../../components/AppShell";
@@ -90,6 +91,8 @@ export function LiveScenarioConfig({ session }: { session: Session }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [tab, setTab] = useState<"products" | "scenarios" | "personas">("products");
+  const [scriptEditing, setScriptEditing] = useState<ScenarioSummary | null>(null);
+  const [scriptForm, setScriptForm] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [dialogError, setDialogError] = useState("");
   const packInputRef = useRef<HTMLInputElement>(null);
@@ -130,6 +133,28 @@ export function LiveScenarioConfig({ session }: { session: Session }) {
       await apiRequestPatch(`/v1/catalog/scenarios/${item.id}`, session, { enabled: !item.enabled });
       await load();
     } catch (cause) { setError(errorText(cause)); }
+  }
+
+  function openScript(item: ScenarioSummary) {
+    setDialogError("");
+    setScriptForm(Object.fromEntries(SCENARIO_SCRIPT_FIELDS.map(({ key }) => [key, item.script?.[key] ?? ""])));
+    setScriptEditing(item);
+  }
+
+  async function saveScript() {
+    if (!scriptEditing) return;
+    setBusy(true);
+    setDialogError("");
+    try {
+      await apiRequestPatch(`/v1/catalog/scenarios/${scriptEditing.id}`, session, { script: scriptForm });
+      setNotice(`「${scriptEditing.name}」的剧本已保存，新开始的会话立即使用。`);
+      setScriptEditing(null);
+      await load();
+    } catch (cause) {
+      setDialogError(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function toggleProduct(item: StoreProduct) {
@@ -397,13 +422,18 @@ export function LiveScenarioConfig({ session }: { session: Session }) {
           </div>
         </div>
         <table>
-          <thead><tr><th>编号</th><th>场景</th><th>业务环节</th><th>启用</th></tr></thead>
+          <thead><tr><th>编号</th><th>场景</th><th>业务环节</th><th>剧本</th><th>启用</th></tr></thead>
           <tbody>
             {scenarios.map((item) => (
               <tr key={item.id} className={item.enabled ? undefined : "tch-row-muted"}>
                 <td>{item.id}</td>
                 <td className="tt-obj-cell"><strong>{item.name}</strong><small>{item.objective}</small></td>
                 <td><span className="status-pill">{BUSINESS_STAGE_LABELS[item.stage]}</span></td>
+                <td>
+                  <button className="text-button" onClick={() => openScript(item)}>
+                    {item.script?.buyerGoal ? "查看 / 修改" : "未设置，去填写"}
+                  </button>
+                </td>
                 <td>
                   <span className="tt-switch-cell">
                     <button
@@ -470,6 +500,27 @@ export function LiveScenarioConfig({ session }: { session: Session }) {
       </section>
       )}
 
+      {scriptEditing ? (
+        <TeacherDialog
+          title={`场景剧本 · ${scriptEditing.name}`}
+          subtitle="剧本决定 AI 买家想要什么、隐瞒了什么、什么会让买家更不满、最多接受到哪一步、什么时候离开。学生看不到剧本。"
+          size="wide"
+          onClose={() => setScriptEditing(null)}
+          footer={
+            <>
+              <button className="secondary-button" onClick={() => setScriptEditing(null)}>取消</button>
+              <button className="primary-button" onClick={() => void saveScript()} disabled={busy}>{busy ? "保存中…" : "保存剧本"}</button>
+            </>
+          }
+        >
+          {dialogError ? <p className="form-error" role="alert">{dialogError}</p> : null}
+          {SCENARIO_SCRIPT_FIELDS.map(({ key, label }) => (
+            <label key={key}>{label}
+              <textarea rows={2} maxLength={500} value={scriptForm[key] ?? ""} onChange={(event) => setScriptForm({ ...scriptForm, [key]: event.target.value })} />
+            </label>
+          ))}
+        </TeacherDialog>
+      ) : null}
       {productCreating ? (
         <TeacherDialog
           title="添加商品"

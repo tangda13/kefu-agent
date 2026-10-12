@@ -1,3 +1,5 @@
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { createPool, resetDatabase, type Db } from "./db";
@@ -39,6 +41,11 @@ beforeAll(async () => {
     env: {
       jwtSecret: "test-secret",
       adminInitialPassword: "Admin#Test1",
+      // 测试不读 .env 里的真实厂商配置，模型调用全部打到本地假上游
+      llmBaseUrl: "",
+      llmApiKey: "",
+      llmModel: "",
+      ttsApiKey: "",
     },
   });
 });
@@ -613,5 +620,311 @@ describe("登录页签校验（I7）与学生编辑/转班/删除（I8）", () =
     const blocked = await app.inject({ method: "DELETE", url: `/v1/students/${studentId}`, headers: auth(teacher1) });
     expect(blocked.statusCode).toBe(409);
     expect(blocked.json().code).toBe("STUDENT_HAS_DATA");
+  });
+});
+
+describe("模型网关管理（G1–G7）+ 验收统计口径（B2）", () => {
+  let admin: Session;
+  let upstream: Server;
+  let upstreamBase = "";
+  const bodies: Array<{ url: string; auth: string; body: Record<string, unknown> }> = [];
+  let profileId = "";
+  let badProfileId = "";
+
+  beforeAll(async () => {
+    upstream = createServer((req, res) => {
+      let raw = "";
+      req.on("data", (chunk) => (raw += chunk));
+      req.on("end", () => {
+        bodies.push({ url: req.url ?? "", auth: String(req.headers.authorization ?? ""), body: raw ? JSON.parse(raw) : {} });
+        if ((req.url ?? "").startsWith("/bad")) {
+          res.writeHead(401, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: { message: "Authentication Fails" } }));
+          return;
+        }
+        const chunk = (delta: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+          `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", choices: [{ index: 0, delta, ...extra }] })}\n\n`;
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.end(
+          chunk({ content: "hey, my order " }) +
+            chunk({ content: "arrived broken" }) +
+            chunk({}, { finish_reason: "stop" }) +
+            `data: ${JSON.stringify({ id: "x", choices: [], usage: { prompt_tokens: 900, completion_tokens: 20, total_tokens: 920 } })}\n\n` +
+            "data: [DONE]\n\n",
+        );
+      });
+    });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    upstreamBase = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`;
+    admin = await login("admin", "Admin#Prod9");
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => upstream.close(() => resolve()));
+  });
+
+  const profilePayload = (overrides: Record<string, unknown> = {}) => ({
+    name: "DeepSeek 官方",
+    presetKey: "deepseek",
+    baseUrl: `${upstreamBase}/ok/v1/`,
+    apiKey: "sk-abcd12345678",
+    model: "deepseek-flash",
+    extraBody: { thinking: { type: "disabled" } },
+    jsonMode: true,
+    priceInput: 2,
+    priceOutput: 8,
+    ...overrides,
+  });
+
+  it("G1：新建档案，Key 加密存储、界面打码，地址去尾斜杠", async () => {
+    const empty = await app.inject({ method: "GET", url: "/v1/admin/llm", headers: auth(admin) });
+    expect(empty.json().profiles).toEqual([]);
+
+    const reserved = await app.inject({
+      method: "POST",
+      url: "/v1/admin/llm/profiles",
+      headers: auth(admin),
+      payload: profilePayload({ extraBody: { model: "x" } }),
+    });
+    expect(reserved.statusCode).toBe(400);
+
+    const created = await app.inject({ method: "POST", url: "/v1/admin/llm/profiles", headers: auth(admin), payload: profilePayload() });
+    expect(created.statusCode).toBe(200);
+    profileId = created.json().id;
+    const list = await app.inject({ method: "GET", url: "/v1/admin/llm", headers: auth(admin) });
+    const view = list.json().profiles[0];
+    expect(view).toMatchObject({ apiKeyMasked: "sk-a****5678", baseUrl: `${upstreamBase}/ok/v1`, testStatus: "untested", isDefault: false });
+    const stored = await db.query("select api_key_enc from llm_profiles where id = $1", [profileId]);
+    expect(stored.rows[0].api_key_enc).not.toContain("abcd1234");
+  });
+
+  it("G4：未测试不能设为默认；测试通过后可以，请求体带上 extraBody", async () => {
+    const early = await app.inject({ method: "PUT", url: "/v1/admin/llm/default", headers: auth(admin), payload: { profileId } });
+    expect(early.statusCode).toBe(409);
+
+    const tested = await app.inject({ method: "POST", url: `/v1/admin/llm/profiles/${profileId}/test`, headers: auth(admin) });
+    expect(tested.json()).toMatchObject({ ok: true, sample: "hey, my order arrived broken" });
+    expect(typeof tested.json().ttftMs).toBe("number");
+    const sent = bodies.at(-1)!;
+    expect(sent.url).toBe("/ok/v1/chat/completions");
+    expect(sent.auth).toBe("Bearer sk-abcd12345678");
+    expect(sent.body.thinking).toEqual({ type: "disabled" });
+
+    const ok = await app.inject({ method: "PUT", url: "/v1/admin/llm/default", headers: auth(admin), payload: { profileId } });
+    expect(ok.statusCode).toBe(200);
+    const system = await app.inject({ method: "GET", url: "/v1/admin/system", headers: auth(admin) });
+    expect(system.json()).toMatchObject({ llmProvider: "DeepSeek 官方", llmModel: "deepseek-flash" });
+  });
+
+  it("G4：改了模型后测试状态重置；草稿测试沿用已存 Key", async () => {
+    const updated = await app.inject({
+      method: "PUT",
+      url: `/v1/admin/llm/profiles/${profileId}`,
+      headers: auth(admin),
+      payload: profilePayload({ apiKey: "", model: "deepseek-v4-pro" }),
+    });
+    expect(updated.statusCode).toBe(200);
+    const list = await app.inject({ method: "GET", url: "/v1/admin/llm", headers: auth(admin) });
+    expect(list.json().profiles[0]).toMatchObject({ model: "deepseek-v4-pro", testStatus: "untested", apiKeyMasked: "sk-a****5678" });
+
+    const draft = await app.inject({
+      method: "POST",
+      url: "/v1/admin/llm/test",
+      headers: auth(admin),
+      payload: { ...profilePayload({ apiKey: "" }), id: profileId },
+    });
+    expect(draft.json().ok).toBe(true);
+    expect(bodies.at(-1)!.auth).toBe("Bearer sk-abcd12345678");
+    await app.inject({ method: "POST", url: `/v1/admin/llm/profiles/${profileId}/test`, headers: auth(admin) });
+  });
+
+  it("G3/G5：测试失败的档案不能分配给用途；用途路由与导演频率可保存", async () => {
+    const bad = await app.inject({
+      method: "POST",
+      url: "/v1/admin/llm/profiles",
+      headers: auth(admin),
+      payload: profilePayload({ name: "坏网关", baseUrl: `${upstreamBase}/bad/v1`, extraBody: {} }),
+    });
+    badProfileId = bad.json().id;
+    const failed = await app.inject({ method: "POST", url: `/v1/admin/llm/profiles/${badProfileId}/test`, headers: auth(admin) });
+    expect(failed.json().ok).toBe(false);
+    expect(failed.json().error).toContain("Authentication Fails");
+
+    const rejected = await app.inject({
+      method: "PUT",
+      url: "/v1/admin/llm/routing",
+      headers: auth(admin),
+      payload: { routes: { dialogue: { profileId, fallbackProfileId: badProfileId, temperature: 0.8, maxTokens: 400 } } },
+    });
+    expect(rejected.statusCode).toBe(409);
+
+    const saved = await app.inject({
+      method: "PUT",
+      url: "/v1/admin/llm/routing",
+      headers: auth(admin),
+      payload: { routes: { director: { profileId, fallbackProfileId: null, temperature: 0.3, maxTokens: 500 } }, directorEveryNTurns: 3 },
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().directorEveryNTurns).toBe(3);
+    expect(saved.json().routes.director.profileId).toBe(profileId);
+    expect(saved.json().routes.assessment.profileId).toBeNull();
+
+    const removeDefault = await app.inject({ method: "DELETE", url: `/v1/admin/llm/profiles/${profileId}`, headers: auth(admin) });
+    expect(removeDefault.statusCode).toBe(409);
+    const removeBad = await app.inject({ method: "DELETE", url: `/v1/admin/llm/profiles/${badProfileId}`, headers: auth(admin) });
+    expect(removeBad.statusCode).toBe(200);
+  });
+
+  it("B2/G6：验收测试计入全部请求，失败算进分母；可导出 CSV；用量按用途计费", async () => {
+    const started = await app.inject({ method: "POST", url: "/v1/admin/acceptance/run", headers: auth(admin), payload: { samples: 2 } });
+    expect(started.statusCode).toBe(200);
+    let report: { run?: { running: boolean }; llm: Record<string, unknown> } | null = null;
+    for (let i = 0; i < 50; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const response = await app.inject({ method: "GET", url: "/v1/admin/acceptance", headers: auth(admin) });
+      report = response.json();
+      if (report && report.run && !report.run.running) break;
+    }
+    expect(report!.llm).toMatchObject({ totalRequests: 2, validRequests: 2, errorRequests: 0 });
+    // 买家提示词带上了场景剧本
+    const acceptanceBody = bodies.at(-1)!.body as { messages: Array<{ content: string }> };
+    expect(acceptanceBody.messages[0]!.content).toContain("Hidden information");
+
+    const conversationId = (await db.query("select conversation_id from conversation_metrics limit 1")).rows[0].conversation_id;
+    await db.query(
+      "insert into conversation_metrics (conversation_id, received_at, provider, model, outcome) values ($1, now(), 'x', 'x', 'timeout')",
+      [conversationId],
+    );
+    const withFailure = await app.inject({ method: "GET", url: "/v1/admin/acceptance", headers: auth(admin) });
+    expect(withFailure.json().llm).toMatchObject({ totalRequests: 3, timeoutRequests: 1 });
+    expect(withFailure.json().llm.ttftRate3s).toBeCloseTo(2 / 3);
+    expect(withFailure.json().llm.recentFailures[0].outcome).toBe("timeout");
+
+    const csv = await app.inject({ method: "GET", url: "/v1/admin/acceptance.csv", headers: auth(admin) });
+    expect(csv.headers["content-type"]).toContain("text/csv");
+    expect(csv.body.startsWith("﻿请求ID,")).toBe(true);
+    expect(csv.body.trim().split("\r\n")).toHaveLength(4);
+
+    const usage = await app.inject({ method: "GET", url: "/v1/admin/llm/usage", headers: auth(admin) });
+    const dialogue = usage.json().byPurpose.find((row: { purpose: string }) => row.purpose === "dialogue");
+    expect(dialogue.calls).toBe(2);
+    expect(dialogue.cost).toBeCloseTo(((900 * 2 + 20 * 8) / 1_000_000) * 2);
+  });
+
+  it("G7/G6：语音 Key 加密存储；额度按金额计算", async () => {
+    const saved = await app.inject({
+      method: "PUT",
+      url: "/v1/admin/providers",
+      headers: auth(admin),
+      payload: { voice: { apiKey: "volc-key-123456", ttsPricePer10kChars: 3 }, quota: { monthlyBudgetYuan: 100, warnPercent: 80 } },
+    });
+    expect(saved.statusCode).toBe(200);
+    const stored = await db.query("select value from app_settings where key = 'voice'");
+    expect(JSON.stringify(stored.rows[0].value)).not.toContain("volc-key");
+    const view = await app.inject({ method: "GET", url: "/v1/admin/providers", headers: auth(admin) });
+    expect(view.json().voice).toMatchObject({ vendor: "doubao", apiKeyMasked: "volc****3456", ttsPricePer10kChars: 3 });
+    expect(view.json().quota).toMatchObject({ monthlyBudgetYuan: 100, alert: false });
+    expect(view.json().usage.llmCost).toBeGreaterThan(0);
+  });
+
+  it("J5：内置场景已种子化剧本", async () => {
+    const result = await db.query("select count(*)::int as n from scenarios where script is not null");
+    expect(result.rows[0].n).toBe(8);
+  });
+});
+
+describe("实训对话走模型网关（J1/J4/J5/J6 + B2）", () => {
+  let upstream: Server;
+  let student: Session;
+  const requests: Array<Record<string, unknown>> = [];
+
+  beforeAll(async () => {
+    upstream = createServer((req, res) => {
+      let raw = "";
+      req.on("data", (chunk) => (raw += chunk));
+      req.on("end", () => {
+        const body = JSON.parse(raw) as Record<string, unknown>;
+        requests.push(body);
+        // 结构化输出请求（导演）返回 JSON，其余返回买家台词
+        const text = body.response_format
+          ? JSON.stringify({ turnScore: 82, satisfaction: 71, emotion: "平静", stage: "方案协商", directive: "追问退款到账时间", memory: "客服同意补发配件", resolved: false })
+          : "hmm ok ||| when will it arrive?";
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.end(
+          `data: ${JSON.stringify({ id: "x", choices: [{ index: 0, delta: { content: text } }] })}\n\n` +
+            `data: ${JSON.stringify({ id: "x", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n` +
+            "data: [DONE]\n\n",
+        );
+      });
+    });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    const upstreamBase = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`;
+    // 默认档案指向本地假上游（直接写库，绕过管理端测试流程）
+    const { createSecretSealer } = await import("./llm/secret");
+    const sealer = createSecretSealer("test-secret");
+    await db.query("update llm_profiles set is_default = false");
+    await db.query(
+      `insert into llm_profiles (name, base_url, api_key_enc, model, json_mode, is_default, test_status)
+       values ('对话测试', $1, $2, 'fake-model', true, true, 'ok')`,
+      [`${upstreamBase}/v1`, sealer.seal("sk-conv")],
+    );
+    await db.query("delete from app_settings where key = 'llm_routing'");
+    const admin = await login("admin", "Admin#Prod9");
+    // 触发网关 reload：保存一次路由（导演每轮运行）
+    const routed = await app.inject({ method: "PUT", url: "/v1/admin/llm/routing", headers: auth(admin), payload: { directorEveryNTurns: 1 } });
+    expect(routed.statusCode).toBe(200);
+
+    const { hashPassword } = await import("./security");
+    await db.query(
+      `insert into users (username, display_name, role, password_hash, must_change_password)
+       values ('s-conv', '对话测试学生', 'student', $1, false) on conflict (username) do nothing`,
+      [await hashPassword("Student#Conv1")],
+    );
+    student = await login("s-conv", "Student#Conv1");
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => upstream.close(() => resolve()));
+  });
+
+  async function waitFor(check: () => Promise<boolean>) {
+    for (let i = 0; i < 40; i += 1) {
+      if (await check()) return;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+
+  it("售前会话：买家拿到在售商品；开场与回复按 ||| 拆条落库；导演 JSON 更新会话状态", async () => {
+    const created = await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { scenarioId: "PRE-001" } });
+    expect(created.statusCode).toBe(200);
+    const conversationId = created.json().id ?? created.json().conversation?.id;
+    const persona = (await db.query("select persona from conversations where id = $1", [conversationId])).rows[0].persona;
+    expect(persona.interestedProduct?.name).toBeTruthy();
+
+    const opening = await app.inject({ method: "POST", url: `/v1/conversations/${conversationId}/opening`, headers: auth(student) });
+    expect(opening.body).toContain('"type":"done"');
+    const firstRequest = requests.at(-1) as { messages: Array<{ role: string; content: string }> };
+    expect(firstRequest.messages[0]!.content).toContain("The product you are interested in");
+    expect(firstRequest.messages[0]!.content).toContain("Hidden information");
+
+    const replied = await app.inject({
+      method: "POST",
+      url: `/v1/conversations/${conversationId}/messages`,
+      headers: auth(student),
+      payload: { content: "Hi! It is our foldable yoga mat, 6mm TPE." },
+    });
+    expect(replied.body).toContain('"type":"split"');
+    const buyerRows = await db.query("select content from conversation_messages where conversation_id = $1 and sender = 'buyer' order by created_at", [conversationId]);
+    expect(buyerRows.rows.map((row) => row.content)).toEqual(["hmm ok", "when will it arrive?", "hmm ok", "when will it arrive?"]);
+
+    await waitFor(async () => (await db.query("select state from conversations where id = $1", [conversationId])).rows[0].state.stage === "方案协商");
+    const state = (await db.query("select state from conversations where id = $1", [conversationId])).rows[0].state;
+    expect(state).toMatchObject({ satisfaction: 71, emotion: "平静", stage: "方案协商", memory: "客服同意补发配件", studentTurns: 1 });
+
+    const metric = (await db.query("select provider, model, outcome, first_char_at >= received_at as ordered from conversation_metrics where conversation_id = $1", [conversationId])).rows;
+    expect(metric).toHaveLength(2);
+    expect(metric.every((row) => row.provider === "对话测试" && row.model === "fake-model" && row.outcome === "success" && row.ordered)).toBe(true);
+    const usage = (await db.query("select purpose, count(*)::int as n from llm_usage where conversation_id = $1 group by purpose order by purpose", [conversationId])).rows;
+    expect(usage).toEqual([{ purpose: "dialogue", n: 2 }, { purpose: "director", n: 1 }]);
   });
 });

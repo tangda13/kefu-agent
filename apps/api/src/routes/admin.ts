@@ -6,8 +6,10 @@ import type { FastifyInstance } from "fastify";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import { writeAudit } from "../auth-context";
-import { getSetting, setSetting, type LlmSettings, type QuotaSettings, type VoiceSettings } from "../settings";
-import { createConversationProvider, type SwappableConversationProvider } from "../conversation-provider";
+import { getSetting, setSetting, type QuotaSettings } from "../settings";
+import type { LlmGateway } from "../llm/gateway";
+import { maskSecret } from "../llm/secret";
+import { VOICE_VENDORS, type VoiceProfile, type VoiceService } from "../voice/service";
 import { loadEnv } from "../env";
 import { generateTemporaryPassword, hashPassword } from "../security";
 import { clearLoginFailures } from "../login-throttle";
@@ -16,10 +18,7 @@ const execFileAsync = promisify(execFile);
 const STARTED_AT = Date.now();
 const BACKUP_DIR = path.resolve(process.cwd(), "backups");
 
-function maskKey(key: string | undefined): string {
-  if (!key) return "";
-  return key.length <= 8 ? "****" : `${key.slice(0, 4)}****${key.slice(-4)}`;
-}
+const DEFAULT_QUOTA: QuotaSettings = { monthlyBudgetYuan: 0, monthlyTokens: 0, warnPercent: 80 };
 
 /** 执行数据库备份（路由与定时调度共用） */
 export async function performBackup(db: Db): Promise<{ fileName: string; size: number }> {
@@ -48,7 +47,8 @@ export function registerAdminRoutes(
   app: FastifyInstance,
   db: Db,
   guard: AuthGuard,
-  provider: SwappableConversationProvider,
+  gateway: LlmGateway,
+  voice: VoiceService,
 ): void {
   const adminOnly = guard.requireRole("admin");
 
@@ -71,8 +71,8 @@ export function registerAdminRoutes(
       version: "0.4.0",
       uptimeSeconds: Math.round((Date.now() - STARTED_AT) / 1000),
       database: "ok",
-      llmProvider: provider.providerId,
-      llmModel: provider.modelId,
+      llmProvider: gateway.describe("dialogue")?.profileName ?? "unconfigured",
+      llmModel: gateway.describe("dialogue")?.model ?? "",
       counts: {
         students: Number(row.students),
         teachers: Number(row.teachers),
@@ -84,74 +84,84 @@ export function registerAdminRoutes(
     };
   });
 
-  // ---------- AI 与语音服务配置 + 计量告警 ----------
+  // ---------- 语音服务配置 + 本月用量与费用额度（模型档案见 admin-llm.ts） ----------
   app.get("/v1/admin/providers", { preHandler: adminOnly }, async () => {
-    const env = loadEnv();
-    const llm = (await getSetting<LlmSettings>(db, "llm")) ?? {
-      baseUrl: env.llmBaseUrl, apiKey: env.llmApiKey, model: env.llmModel,
-    };
-    const voice = (await getSetting<Partial<VoiceSettings>>(db, "voice")) ?? {};
-    const quota = (await getSetting<QuotaSettings>(db, "quota")) ?? { monthlyLlmCalls: 10000, warnPercent: 80 };
+    const profile = await voice.profile();
+    const quota = { ...DEFAULT_QUOTA, ...((await getSetting<Partial<QuotaSettings>>(db, "quota")) ?? {}) };
     const usage = await db.query(`select
-      (select count(*) from conversation_metrics where received_at > date_trunc('month', now())) as llm_calls,
-      (select coalesce(sum(valid_chars),0) from conversation_metrics where received_at > date_trunc('month', now())) as llm_chars,
+      (select count(*) from llm_usage where created_at > date_trunc('month', now())) as llm_calls,
+      (select coalesce(sum(input_tokens + output_tokens), 0) from llm_usage where created_at > date_trunc('month', now())) as llm_tokens,
+      (select coalesce(sum(cost), 0) from llm_usage where created_at > date_trunc('month', now())) as llm_cost,
       (select count(*) from voice_metrics where kind='tts' and created_at > date_trunc('month', now())) as tts_calls,
-      (select count(*) from voice_metrics where kind='asr' and created_at > date_trunc('month', now())) as asr_calls`);
+      (select coalesce(sum(chars), 0) from voice_metrics where kind='tts' and outcome='success' and created_at > date_trunc('month', now())) as tts_chars,
+      (select count(*) from voice_metrics where kind='asr' and created_at > date_trunc('month', now())) as asr_calls,
+      (select coalesce(sum(audio_ms), 0) from voice_metrics where kind='asr' and outcome='success' and created_at > date_trunc('month', now())) as asr_ms`);
     const u = usage.rows[0];
-    const llmCalls = Number(u.llm_calls);
-    const usedPercent = quota.monthlyLlmCalls > 0 ? Math.round((llmCalls / quota.monthlyLlmCalls) * 100) : 0;
+    const llmTokens = Number(u.llm_tokens);
+    const llmCost = Number(u.llm_cost);
+    const ttsCost = (Number(u.tts_chars) / 10_000) * profile.ttsPricePer10kChars;
+    const asrCost = (Number(u.asr_ms) / 3_600_000) * profile.asrPricePerHour;
+    const totalCost = llmCost + ttsCost + asrCost;
+    // 额度按金额或 tokens 计算（G6），任一项达到提醒比例即告警；0 表示不限
+    const budgetPercent = quota.monthlyBudgetYuan > 0 ? Math.round((totalCost / quota.monthlyBudgetYuan) * 100) : 0;
+    const tokenPercent = quota.monthlyTokens > 0 ? Math.round((llmTokens / quota.monthlyTokens) * 100) : 0;
+    const usedPercent = Math.max(budgetPercent, tokenPercent);
     return {
-      llm: { baseUrl: llm.baseUrl, model: llm.model, apiKeyMasked: maskKey(llm.apiKey) },
       voice: {
-        apiKeyMasked: maskKey(voice.apiKey || env.ttsApiKey),
-        ttsResourceId: voice.ttsResourceId || env.ttsResourceId,
-        ttsSpeaker: voice.ttsSpeaker || env.ttsSpeaker,
-        ttsSpeakerMale: voice.ttsSpeakerMale || env.ttsSpeakerMale,
-        asrResourceId: voice.asrResourceId || env.asrResourceId,
+        vendor: profile.vendor,
+        vendors: Object.entries(VOICE_VENDORS).map(([key, item]) => ({ key, label: item.label })),
+        apiKeyMasked: maskSecret(profile.apiKey),
+        ttsResourceId: profile.ttsResourceId,
+        ttsSpeaker: profile.ttsSpeaker,
+        ttsSpeakerMale: profile.ttsSpeakerMale,
+        asrResourceId: profile.asrResourceId,
+        ttsPricePer10kChars: profile.ttsPricePer10kChars,
+        asrPricePerHour: profile.asrPricePerHour,
       },
       usage: {
-        llmCalls, llmChars: Number(u.llm_chars),
-        ttsCalls: Number(u.tts_calls), asrCalls: Number(u.asr_calls),
+        llmCalls: Number(u.llm_calls),
+        llmTokens,
+        llmCost,
+        ttsCalls: Number(u.tts_calls),
+        ttsChars: Number(u.tts_chars),
+        ttsCost,
+        asrCalls: Number(u.asr_calls),
+        asrMinutes: Math.round(Number(u.asr_ms) / 60_000),
+        asrCost,
+        totalCost,
       },
-      quota: { ...quota, usedPercent, alert: usedPercent >= quota.warnPercent },
+      quota: { ...quota, budgetPercent, tokenPercent, usedPercent, alert: usedPercent >= quota.warnPercent },
     };
   });
 
-  app.put<{ Body: { llm?: Partial<LlmSettings>; voice?: Partial<VoiceSettings>; quota?: Partial<QuotaSettings> } }>(
+  app.put<{ Body: { voice?: Partial<VoiceProfile>; quota?: Partial<QuotaSettings> } }>(
     "/v1/admin/providers",
     { preHandler: adminOnly },
     async (request, reply) => {
-      const { llm, voice, quota } = request.body ?? {};
-      const env = loadEnv();
-      if (llm) {
-        const current = (await getSetting<LlmSettings>(db, "llm")) ?? {
-          baseUrl: env.llmBaseUrl, apiKey: env.llmApiKey, model: env.llmModel,
-        };
-        const next: LlmSettings = {
-          baseUrl: (llm.baseUrl ?? current.baseUrl).replace(/\/+$/, ""),
-          apiKey: llm.apiKey?.trim() || current.apiKey,
-          model: llm.model ?? current.model,
-        };
-        if (!next.baseUrl || !next.apiKey || !next.model) {
+      const { voice: voiceInput, quota } = request.body ?? {};
+      if (voiceInput) {
+        if (voiceInput.vendor && !VOICE_VENDORS[voiceInput.vendor]) {
           reply.code(400);
-          return { code: "INVALID_INPUT", message: "LLM 配置需包含地址、密钥与模型。" };
+          return { code: "INVALID_INPUT", message: "不支持的语音厂商。" };
         }
-        await setSetting(db, "llm", next);
-        // 热切换：新配置即时生效，无需重启
-        provider.swap(createConversationProvider({
-          llmBaseUrl: next.baseUrl, llmApiKey: next.apiKey, llmModel: next.model,
-        }));
-      }
-      if (voice) {
-        const current = (await getSetting<Partial<VoiceSettings>>(db, "voice")) ?? {};
-        await setSetting(db, "voice", { ...current, ...Object.fromEntries(Object.entries(voice).filter(([, v]) => v)) });
+        const price = (value: unknown) => (value === undefined || value === "" ? undefined : Math.max(0, Number(value) || 0));
+        await voice.save({
+          ...voiceInput,
+          ttsPricePer10kChars: price(voiceInput.ttsPricePer10kChars),
+          asrPricePerHour: price(voiceInput.asrPricePerHour),
+        });
       }
       if (quota) {
-        const current = (await getSetting<QuotaSettings>(db, "quota")) ?? { monthlyLlmCalls: 10000, warnPercent: 80 };
-        await setSetting(db, "quota", { ...current, ...quota });
+        const current = { ...DEFAULT_QUOTA, ...((await getSetting<Partial<QuotaSettings>>(db, "quota")) ?? {}) };
+        const num = (value: unknown, fallback: number) => (value === undefined ? fallback : Math.max(0, Number(value) || 0));
+        await setSetting(db, "quota", {
+          monthlyBudgetYuan: num(quota.monthlyBudgetYuan, current.monthlyBudgetYuan),
+          monthlyTokens: Math.round(num(quota.monthlyTokens, current.monthlyTokens)),
+          warnPercent: Math.min(100, Math.max(1, Math.round(num(quota.warnPercent, current.warnPercent)))),
+        });
       }
       await writeAudit(db, request.user!.sub, "admin.providers_update", undefined, {
-        llm: Boolean(llm), voice: Boolean(voice), quota: Boolean(quota),
+        voice: Boolean(voiceInput), voiceKeyChanged: Boolean(voiceInput?.apiKey), quota: Boolean(quota),
       });
       return { ok: true };
     },
@@ -315,10 +325,20 @@ export function registerAdminRoutes(
   );
 
   // 验收指标报表 + 一键验收测试
-  app.get("/v1/admin/acceptance", { preHandler: adminOnly }, async () => {
+  const sinceParam = (value: string | undefined) => (value && !Number.isNaN(Date.parse(value)) ? new Date(value).toISOString() : undefined);
+  app.get<{ Querystring: { since?: string } }>("/v1/admin/acceptance", { preHandler: adminOnly }, async (request) => {
     const { buildAcceptanceReport, getAcceptanceRunState } = await import("../acceptance");
-    const [report, run] = await Promise.all([buildAcceptanceReport(db), getAcceptanceRunState(db)]);
+    const [report, run] = await Promise.all([buildAcceptanceReport(db, sinceParam(request.query.since)), getAcceptanceRunState(db)]);
     return { ...report, run };
+  });
+  // 验收证据：逐条请求明细 CSV
+  app.get<{ Querystring: { since?: string } }>("/v1/admin/acceptance.csv", { preHandler: adminOnly }, async (request, reply) => {
+    const { exportAcceptanceCsv } = await import("../acceptance");
+    const csv = await exportAcceptanceCsv(db, sinceParam(request.query.since));
+    const stamp = new Date().toISOString().slice(0, 10);
+    reply.header("content-type", "text/csv; charset=utf-8");
+    reply.header("content-disposition", `attachment; filename="acceptance-${stamp}.csv"`);
+    return csv;
   });
   app.post<{ Body: { samples?: number } }>(
     "/v1/admin/acceptance/run",
@@ -332,7 +352,7 @@ export function registerAdminRoutes(
         return { code: "ALREADY_RUNNING", message: "验收测试正在进行中。" };
       }
       await writeAudit(db, request.user!.sub, "admin.acceptance_run", undefined, { samples });
-      void runAcceptanceTest(db, provider, samples).catch((error) => request.log.error(error, "acceptance failed"));
+      void runAcceptanceTest(db, gateway, samples).catch((error) => request.log.error(error, "acceptance failed"));
       return { ok: true, samples };
     },
   );

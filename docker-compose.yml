@@ -32,9 +32,13 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       TRUST_PROXY: "true"
       PORT: 8787
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.keliagent.cn}
+      # 加密存储厂商 API Key 的密钥（P2 模型网关）；未设置时由 JWT_SECRET 派生
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
+      # 仅首次启动时导入为默认模型档案，之后在管理端「AI 与语音服务」维护
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-pro}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_EXTRA_BODY: ${LLM_EXTRA_BODY:-}
       TTS_API_KEY: ${TTS_API_KEY:-}
       TTS_RESOURCE_ID: ${TTS_RESOURCE_ID:-seed-tts-2.0}
       TTS_SPEAKER: ${TTS_SPEAKER:-zh_female_vv_uranus_bigtts}

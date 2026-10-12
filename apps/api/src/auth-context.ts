@@ -6,6 +6,8 @@ import { verifyAccessToken, type AccessTokenPayload } from "./security";
 declare module "fastify" {
   interface FastifyRequest {
     user: AccessTokenPayload | null;
+    /** 收到请求的时刻（毫秒），验收统计首字耗时的起点（B2），server.ts onRequest 钩子写入 */
+    receivedAt: number;
   }
 }
 

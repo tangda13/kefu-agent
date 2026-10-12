@@ -4,12 +4,14 @@ import {
   EMOTIONS,
   NATIONALITIES,
   PERSONALITIES,
+  SCENARIO_SCRIPT_FIELDS,
   SUPPORTED_LANGUAGES,
 } from "@cecs/contracts";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import { writeAudit } from "../auth-context";
-import type { ConversationProvider } from "../conversation-provider";
+import type { LlmGateway } from "../llm/gateway";
+import { buildMailComposeDraftMessages, buildMailReplyDraftMessages, mailDraftsSchema } from "../prompts/assist";
 import { generateBuyerMailReply } from "../mail-reply";
 
 interface PersonaBody {
@@ -56,14 +58,14 @@ export function registerCatalogRoutes(
   app: FastifyInstance,
   db: Db,
   guard: AuthGuard,
-  provider: ConversationProvider,
+  gateway: LlmGateway,
 ): void {
   app.get(
     "/v1/catalog/scenarios",
     { preHandler: guard.requireRole() },
     async () => {
       const result = await db.query(
-        "select id, name, stage, objective, default_language, enabled from scenarios order by id",
+        "select id, name, stage, objective, default_language, enabled, script from scenarios order by id",
       );
       return result.rows.map((row) => ({
         id: row.id,
@@ -72,29 +74,55 @@ export function registerCatalogRoutes(
         objective: row.objective,
         defaultLanguage: row.default_language,
         enabled: row.enabled,
+        script: row.script ?? null,
       }));
     },
   );
 
-  app.patch<{ Params: { scenarioId: string }; Body: { enabled?: boolean } }>(
+  // 启停场景 / 修改场景剧本（J5）。两项可分别提交
+  app.patch<{ Params: { scenarioId: string }; Body: { enabled?: boolean; script?: Record<string, unknown> } }>(
     "/v1/catalog/scenarios/:scenarioId",
     { preHandler: guard.requireRole("teacher", "admin") },
     async (request, reply) => {
       const { scenarioId } = request.params;
-      const { enabled } = request.body ?? {};
-      if (typeof enabled !== "boolean") {
+      const { enabled, script } = request.body ?? {};
+      if (typeof enabled !== "boolean" && script === undefined) {
         reply.code(400);
-        return { code: "INVALID_INPUT", message: "缺少启用状态。" };
+        return { code: "INVALID_INPUT", message: "缺少启用状态或剧本。" };
+      }
+      let cleanScript: Record<string, string> | null = null;
+      if (script !== undefined) {
+        if (!script || typeof script !== "object") {
+          reply.code(400);
+          return { code: "INVALID_INPUT", message: "剧本格式不正确。" };
+        }
+        cleanScript = {};
+        for (const { key, label } of SCENARIO_SCRIPT_FIELDS) {
+          const value = script[key];
+          if (value !== undefined && typeof value !== "string") {
+            reply.code(400);
+            return { code: "INVALID_INPUT", message: `「${label}」必须是文字。` };
+          }
+          if (typeof value === "string" && value.length > 500) {
+            reply.code(400);
+            return { code: "INVALID_INPUT", message: `「${label}」不能超过 500 字。` };
+          }
+          cleanScript[key] = (value ?? "").trim();
+        }
       }
       const result = await db.query(
-        "update scenarios set enabled = $1 where id = $2 returning id",
-        [enabled, scenarioId],
+        `update scenarios set
+           enabled = coalesce($1, enabled),
+           script = case when $3 then $2::jsonb else script end
+         where id = $4 returning id`,
+        [typeof enabled === "boolean" ? enabled : null, cleanScript ? JSON.stringify(cleanScript) : null, cleanScript !== null, scenarioId],
       );
       if (!result.rowCount) {
         reply.code(404);
         return { code: "NOT_FOUND", message: "场景不存在。" };
       }
-      await writeAudit(db, request.user!.sub, "scenario.toggle", scenarioId, { enabled });
+      if (typeof enabled === "boolean") await writeAudit(db, request.user!.sub, "scenario.toggle", scenarioId, { enabled });
+      if (cleanScript) await writeAudit(db, request.user!.sub, "scenario.script_update", scenarioId);
       return { ok: true };
     },
   );
@@ -335,7 +363,7 @@ export function registerCatalogRoutes(
       );
       void generateBuyerMailReply(
         db,
-        provider,
+        gateway,
         {
           submissionId: saved.rows[0].id,
           orderId: typeof orderId === "string" && orderId.trim() ? orderId.trim() : null,
@@ -367,7 +395,7 @@ export function registerCatalogRoutes(
         reply.code(400);
         return { code: "INVALID_INPUT", message: "辅助模式无效。" };
       }
-      if (provider.providerId === "unconfigured") {
+      if (!gateway.isConfigured("assist")) {
         reply.code(503);
         return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "请由管理员配置 LLM 服务。" };
       }
@@ -391,52 +419,34 @@ export function registerCatalogRoutes(
       const orderBrief = order
         ? JSON.stringify({ orderNo: order.orderNo, product: order.productName, status: order.statusLabel, total: order.totalAmount })
         : "no linked order";
-      let system: string;
-      let user: string;
+      const language = String(persona?.language ?? "en-US");
+      let messages;
       if (mode === "reply") {
-        system =
-          "You are a cross-border e-commerce customer service coach. Draft exactly 3 alternative reply EMAILS the agent can send to the buyer, " +
-          "with distinct strategies: (1) solution-focused, (2) empathy-first, (3) brief and efficient. " +
-          `Write in the buyer's language (${persona?.language ?? "en-US"}). Each 2-5 sentences plus a short sign-off, professional, ` +
-          "no absolute marketing claims (e.g. 'best', '100% guaranteed'). " +
-          'Return ONLY a JSON array of 3 objects: [{"body":"..."},{"body":"..."},{"body":"..."}].';
-        user = `Buyer profile: ${buyerBrief}\nOrder: ${orderBrief}\nBuyer's email:\nSubject: ${originalSubject ?? ""}\n\n${originalBody ?? ""}`;
+        messages = buildMailReplyDraftMessages({
+          language,
+          buyerBrief,
+          orderBrief,
+          originalSubject: originalSubject ?? "",
+          originalBody: originalBody ?? "",
+        });
       } else {
         const { emailTemplates } = await import("@cecs/domain");
         const template = emailTemplates.find((item) => item.id === templateId);
-        system =
-          "You are a cross-border e-commerce customer service coach. Draft exactly 3 alternative outreach EMAILS (subject + body) " +
-          `for the purpose: ${template ? `${template.name} - ${template.purpose}` : "customer outreach"}. ` +
-          `Personalize for the recipient. Write in the buyer's language (${persona?.language ?? "en-US"}). ` +
-          "Each body 3-6 sentences with greeting and sign-off, professional, no absolute marketing claims. " +
-          'Return ONLY a JSON array of 3 objects: [{"subject":"...","body":"..."}, ...].';
-        user = `Buyer profile: ${buyerBrief}\nOrder history: ${orderBrief}\nReference template:\n${template ? template.body : "(none)"}`;
+        messages = buildMailComposeDraftMessages({
+          language,
+          purpose: template ? `${template.name} - ${template.purpose}` : "customer outreach",
+          buyerBrief,
+          orderBrief,
+          templateBody: template ? template.body : "(none)",
+        });
       }
       try {
-        const raw = await provider.complete(system, user);
-        let versions: Array<{ subject: string | null; body: string }> = [];
-        try {
-          const match = raw.match(/\[[\s\S]*\]/);
-          const parsed = match ? (JSON.parse(match[0]) as Array<{ subject?: string; body?: string }>) : [];
-          versions = parsed
-            .filter((item) => typeof item?.body === "string" && item.body.trim().length > 0)
-            .map((item) => ({ subject: mode === "compose" ? item.subject?.trim() || null : null, body: item.body!.trim() }));
-        } catch {
-          versions = [];
-        }
-        if (versions.length < 3) {
-          versions = raw
-            .split(/\n{2,}/)
-            .map((block) => block.replace(/^\s*[\d\-.、)]+\s*/, "").trim())
-            .filter((block) => block.length > 30)
-            .slice(0, 3)
-            .map((body) => ({ subject: null, body }));
-        }
-        if (versions.length < 3) {
-          reply.code(502);
-          return { code: "ASSIST_FAILED", message: "草稿生成不完整，请重试。" };
-        }
-        return { versions: versions.slice(0, 3) };
+        const { data } = await gateway.completeJson("assist", messages, mailDraftsSchema);
+        const versions = data.items.slice(0, 3).map((item) => ({
+          subject: mode === "compose" ? item.subject?.trim() || null : null,
+          body: item.body.trim(),
+        }));
+        return { versions };
       } catch (error) {
         request.log.error(error, "mail assist failed");
         reply.code(502);

@@ -1,428 +1,441 @@
-<!doctype html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>客服智能体架构</title>
-<style>
-:root {
-  --bg: #f6f6f4;
-  --surface: #ffffff;
-  --surface-2: #efefec;
-  --text: #1d1d1b;
-  --muted: #62625e;
-  --line: #d9d9d4;
-  --accent: #1f5fbf;
-  --accent-soft: #e4ecf8;
-  --ok: #2f7d4f;
-  --ok-soft: #e3f1e8;
-  --warn: #9a6200;
-  --warn-soft: #f8eedb;
-  --bad: #b3261e;
-  --bad-soft: #f9e3e1;
-  --plan: #6b4fa8;
-  --plan-soft: #ece6f6;
-  --mono: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #161615; --surface: #1f1f1e; --surface-2: #2a2a28; --text: #ecece8; --muted: #a3a39d;
-    --line: #3a3a37; --accent: #7aa7ec; --accent-soft: #1e2a3d; --ok: #7cc79a; --ok-soft: #1d2f24;
-    --warn: #e0b25c; --warn-soft: #33291a; --bad: #f08a82; --bad-soft: #3a201e; --plan: #b9a2ea; --plan-soft: #2b2540;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #161615; --surface: #1f1f1e; --surface-2: #2a2a28; --text: #ecece8; --muted: #a3a39d;
-  --line: #3a3a37; --accent: #7aa7ec; --accent-soft: #1e2a3d; --ok: #7cc79a; --ok-soft: #1d2f24;
-  --warn: #e0b25c; --warn-soft: #33291a; --bad: #f08a82; --bad-soft: #3a201e; --plan: #b9a2ea; --plan-soft: #2b2540;
-}
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body {
-  margin: 0; background: var(--bg); color: var(--text);
-  font: 14px/1.65 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-}
-.layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); max-width: 1280px; margin: 0 auto; }
-nav.toc {
-  position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 28px 16px 28px 20px;
-  border-right: 1px solid var(--line); font-size: 13px;
-}
-nav.toc .brand { font-weight: 600; margin-bottom: 4px; }
-nav.toc .meta { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
-nav.toc a { display: block; color: var(--muted); text-decoration: none; padding: 3px 0; }
-nav.toc a:hover { color: var(--accent); }
-main { padding: 28px 36px 80px; min-width: 0; }
-header.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 8px; }
-h1 { font-size: 22px; margin: 0 0 4px; font-weight: 600; }
-h2 { font-size: 17px; margin: 40px 0 12px; padding-top: 8px; font-weight: 600; border-top: 1px solid var(--line); padding-top: 24px; }
-h3 { font-size: 14px; margin: 22px 0 8px; font-weight: 600; }
-p { margin: 8px 0; }
-.sub { color: var(--muted); margin: 0; }
-code, .mono { font-family: var(--mono); font-size: 12.5px; }
-code { background: var(--surface-2); padding: 1px 5px; border-radius: 3px; }
-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); margin: 10px 0; font-size: 13px; }
-th, td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--line); }
-th { background: var(--surface-2); font-weight: 600; white-space: nowrap; }
-tr:last-child td { border-bottom: none; }
-.table-wrap { overflow-x: auto; }
-.tag { display: inline-block; font-size: 11.5px; line-height: 18px; padding: 0 6px; border-radius: 3px; white-space: nowrap; font-weight: 500; }
-.t-ok { background: var(--ok-soft); color: var(--ok); }
-.t-warn { background: var(--warn-soft); color: var(--warn); }
-.t-bad { background: var(--bad-soft); color: var(--bad); }
-.t-plan { background: var(--plan-soft); color: var(--plan); }
-.t-info { background: var(--accent-soft); color: var(--accent); }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 10px 0; }
-.card { background: var(--surface); border: 1px solid var(--line); padding: 12px 14px; }
-.card .k { color: var(--muted); font-size: 12px; }
-.card .v { font-weight: 600; margin-top: 2px; }
-.note { border-left: 3px solid var(--accent); background: var(--surface); padding: 8px 12px; margin: 10px 0; }
-.note.warn { border-color: var(--warn); }
-.diagram { background: var(--surface); border: 1px solid var(--line); padding: 12px; margin: 10px 0; overflow-x: auto; }
-.diagram svg { display: block; width: 100%; min-width: 760px; height: auto; }
-svg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
-svg .box-a { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
-svg .box-p { fill: var(--plan-soft); stroke: var(--plan); stroke-width: 1.2; stroke-dasharray: 4 3; }
-svg .zone { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 5 4; }
-svg text { fill: var(--text); font: 12.5px -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
-svg .small { font-size: 11px; fill: var(--muted); }
-svg .title { font-weight: 600; }
-svg .arrow { stroke: var(--muted); stroke-width: 1.3; fill: none; marker-end: url(#ah); }
-svg #ah path { fill: var(--muted); }
-ol.flow { counter-reset: s; list-style: none; padding: 0; margin: 10px 0; }
-ol.flow li { counter-increment: s; position: relative; padding: 8px 12px 8px 44px; background: var(--surface); border: 1px solid var(--line); border-bottom: none; }
-ol.flow li:last-child { border-bottom: 1px solid var(--line); }
-ol.flow li::before { content: counter(s); position: absolute; left: 12px; top: 8px; width: 22px; height: 22px; line-height: 22px; text-align: center; font-size: 12px; font-weight: 600; background: var(--accent-soft); color: var(--accent); border-radius: 50%; }
-ol.flow li.async::before { background: var(--plan-soft); color: var(--plan); }
-pre.tree { background: var(--surface); border: 1px solid var(--line); padding: 12px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto; margin: 10px 0; }
-.legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); margin: 6px 0; }
-button.theme { background: var(--surface); color: var(--text); border: 1px solid var(--line); padding: 4px 10px; font-size: 12px; cursor: pointer; border-radius: 3px; }
-@media (max-width: 860px) {
-  .layout { grid-template-columns: 1fr; }
-  nav.toc { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line); padding: 16px; }
-  main { padding: 20px 16px 60px; }
-  header.top { flex-direction: column; }
-}
-@media print { nav.toc, button.theme { display: none; } .layout { display: block; } }
-</style>
-</head>
-<body>
-<div class="layout">
-<nav class="toc">
-  <div class="brand">跨境客服智能体</div>
-  <div class="meta">架构文档 · 更新于 2026-10-12</div>
-  <a href="#overview">1. 概览</a>
-  <a href="#topology">2. 部署拓扑</a>
-  <a href="#repo">3. 代码结构</a>
-  <a href="#api">4. 后端模块与接口</a>
-  <a href="#flows">5. 核心业务链路</a>
-  <a href="#data">6. 数据模型</a>
-  <a href="#auth">7. 账号与权限</a>
-  <a href="#ai">8. AI 与语音服务</a>
-  <a href="#ops">9. 配置、后台任务与运维</a>
-  <a href="#frontend">10. 前端</a>
-  <a href="#status">11. 现状与待办</a>
-  <a href="#changelog">12. 变更记录</a>
-</nav>
-<main>
-<header class="top">
-  <div>
-    <h1>跨境电商客服 AI 实训智能体 · 系统架构</h1>
-    <p class="sub">基线：<code>docs/客服参数.txt</code>（客户参数）· 开发方案：<code>docs/重启开发方案-2026-10.md</code> · 维护手册：skill <code>kefu-weihu</code></p>
-  </div>
-  <button class="theme" id="themeBtn" type="button">切换深浅色</button>
-</header>
-<div class="legend">
-  <span><span class="tag t-ok">已实现</span> 代码中已可用</span>
-  <span><span class="tag t-warn">部分</span> 已有但不完整</span>
-  <span><span class="tag t-bad">缺失</span> 参数要求但未做</span>
-  <span><span class="tag t-plan">规划</span> 已定方案，待开发</span>
-</div>
-
-<!-- 1 -->
-<h2 id="overview">1. 概览</h2>
-<div class="grid">
-  <div class="card"><div class="k">交付形态</div><div class="v">Windows 客户端（学生/教师）+ 云端管理端（浏览器）</div></div>
-  <div class="card"><div class="k">规模与服务期</div><div class="v">200 账号 · 3 年服务期</div></div>
-  <div class="card"><div class="k">技术栈</div><div class="v">React + Vite · Fastify + TypeScript · PostgreSQL 16 · Electron</div></div>
-  <div class="card"><div class="k">AI 服务</div><div class="v">LLM：DeepSeek 默认，可多厂商切换 · 语音：豆包 TTS/ASR</div></div>
-  <div class="card"><div class="k">代码仓库</div><div class="v mono">github.com/tangda13/kefu-agent（main）</div></div>
-  <div class="card"><div class="k">规模</div><div class="v">28 张表 · 23 个迁移 · 约 80 个接口</div></div>
-</div>
-<p>三端共用一套 React 前端代码，按登录角色渲染不同导航；学生端/教师端由 Electron 打包为 Windows 安装包，管理端由云端 nginx 以网页形式提供。所有业务数据、AI 调用和密钥都在云端 API，客户端不持有任何密钥。</p>
-<div class="note"><b>核心产品原则：</b>实训是幕后逻辑。学生端的沉浸层（客服工作台、订单、评价、邮件）必须像真实的客服软件，不出现“实训、轮次、画像”等字样；任务大厅和我的记录属于学习管理层，可以直呼任务和成绩。</div>
-
-<!-- 2 -->
-<h2 id="topology">2. 部署拓扑（目标形态）</h2>
-<p>正式服务器待功能完成后购买（独立服务器、单独部署）。在此之前用本机或临时环境联调；客户端里的服务地址和更新源地址都做成可配置。</p>
-<div class="diagram">
-<svg viewBox="0 0 960 470" role="img" aria-label="部署拓扑图">
-  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
-  <!-- clients -->
-  <rect class="box-a" x="20" y="40" width="220" height="110" rx="4"/>
-  <text x="34" y="64" class="title">Windows 客户端（Electron）</text>
-  <text x="34" y="86">学生端 / 教师端（同一安装包）</text>
-  <text x="34" y="106" class="small">登录页切换页签 · 前端打包在本地</text>
-  <text x="34" y="124" class="small">electron-updater 自动更新</text>
-  <rect class="box" x="20" y="200" width="220" height="70" rx="4"/>
-  <text x="34" y="224" class="title">浏览器</text>
-  <text x="34" y="246">管理端（?role=admin）</text>
-
-  <!-- server zone -->
-  <rect class="zone" x="300" y="20" width="420" height="430" rx="6"/>
-  <text x="316" y="42" class="small">国内云服务器 · Docker Compose（项目名 cecs）</text>
-  <rect class="box" x="320" y="60" width="380" height="96" rx="4"/>
-  <text x="334" y="82" class="title">web：nginx（443 / HTTPS）</text>
-  <text x="334" y="102" class="small">/  → 管理端静态页面</text>
-  <text x="334" y="118" class="small">/v1/*、/uploads/*、/health → api:8787（SSE 关缓冲）</text>
-  <text x="334" y="134" class="small">/updates/* → 客户端安装包与 latest.yml</text>
-  <rect class="box-p" x="560" y="68" width="128" height="22" rx="3"/>
-  <text x="570" y="84" class="small">/updates 为规划项</text>
-
-  <rect class="box-a" x="320" y="190" width="380" height="120" rx="4"/>
-  <text x="334" y="212" class="title">api：Fastify + TypeScript（:8787）</text>
-  <text x="334" y="232" class="small">auth · classes · tasks · conversations(SSE) · orders</text>
-  <text x="334" y="248" class="small">catalog · teacher · admin · announcements · baseline</text>
-  <text x="334" y="268" class="small">后台：导演 Agent · 六维评分 · 买家回信 · 定时备份</text>
-  <text x="334" y="288" class="small">启动时自动执行迁移和种子数据</text>
-
-  <rect class="box" x="320" y="340" width="180" height="90" rx="4"/>
-  <text x="334" y="362" class="title">db：PostgreSQL 16</text>
-  <text x="334" y="382" class="small">卷 cecs_pg_data</text>
-  <rect class="box" x="520" y="340" width="180" height="90" rx="4"/>
-  <text x="534" y="362" class="title">文件卷</text>
-  <text x="534" y="382" class="small">cecs_uploads（商品图/语音/TTS）</text>
-  <text x="534" y="400" class="small">backups（待挂卷，见待办）</text>
-
-  <!-- external -->
-  <rect class="box" x="760" y="150" width="180" height="96" rx="4"/>
-  <text x="774" y="174" class="title">LLM 厂商</text>
-  <text x="774" y="194" class="small">DeepSeek（默认）</text>
-  <text x="774" y="210" class="small">通义 / 智谱 / 豆包方舟 / Kimi…</text>
-  <text x="774" y="226" class="small">兼容 OpenAI 接口，可热切换</text>
-  <rect class="box" x="760" y="280" width="180" height="76" rx="4"/>
-  <text x="774" y="304" class="title">豆包语音</text>
-  <text x="774" y="324" class="small">TTS 单向流式 WebSocket</text>
-  <text x="774" y="340" class="small">ASR 大模型识别 WebSocket</text>
-
-  <!-- arrows -->
-  <path class="arrow" d="M240 95 L318 105"/>
-  <text x="246" y="88" class="small">HTTPS + JWT</text>
-  <path class="arrow" d="M240 235 L318 140"/>
-  <path class="arrow" d="M510 156 L510 188"/>
-  <path class="arrow" d="M410 310 L410 338"/>
-  <path class="arrow" d="M610 310 L610 338"/>
-  <path class="arrow" d="M700 230 L758 200"/>
-  <path class="arrow" d="M700 280 L758 310"/>
-</svg>
-</div>
-<div class="note warn">现状差异：当前 <code>DEPLOY.md</code> 仍是“纯 Web”版本（学生/教师也走浏览器），客户端无安装包、API 地址默认 127.0.0.1。P1 期改造，详见第 11 节。</div>
-
-<!-- 3 -->
-<h2 id="repo">3. 代码结构</h2>
-<pre class="tree">kefu-agent/                      pnpm 单仓（Node 22.12+ / pnpm 11）
-├─ apps/
-│  ├─ api/          云端 API：Fastify + pg
-│  │  └─ src/
-│  │     ├─ server.ts               启动、CORS、multipart、静态 uploads、路由注册、定时备份
-│  │     ├─ routes/                 11 个路由模块（见第 4 节）
-│  │     ├─ migrations.ts / seed.ts 23 个迁移 · 种子（场景/画像/商品/词库/管理员）
-│  │     ├─ auth-context.ts         鉴权守卫 requireRole（查账号状态/待改密）· 班级授权 teacherOwnsClass · 审计
-│  │     ├─ login-throttle.ts       登录失败限流与锁定
-│  │     ├─ scripts/reset-password.ts 服务器命令行重置任意账号密码（pnpm reset-password admin）
-│  │     ├─ security.ts             scrypt 密码 · HS256 JWT · refresh token
-│  │     ├─ conversation-provider.ts LLM 适配器（OpenAI 兼容流式）+ 热切换包装
-│  │     ├─ director.ts             导演 Agent：每轮评估情绪/阶段/记忆
-│  │     ├─ assessment.ts           会话结束后六维评分
-│  │     ├─ voice-provider.ts       豆包 TTS/ASR 二进制协议
-│  │     ├─ mail-reply.ts / review-gen.ts  买家回信 · 买家评价生成
-│  │     ├─ acceptance.ts / metrics.ts     验收报表（TTFT/速度/语音耗时）
-│  │     └─ settings.ts             app_settings 读写（DB 配置优先于 env）
-│  ├─ portal/       React + Vite 前端（三端共用）
-│  │  └─ src/  App.tsx · api/client.ts · components/ · pages/{student,teacher,admin}/ · styles.css
-│  └─ desktop/      Electron 外壳（main.cjs / preload.cjs，已安全加固，待打包）
-├─ packages/
-│  ├─ contracts/    共享类型与常量（业务环节、客户类型、性格、情绪、语言、国籍、评分维度、验收阈值）
-│  └─ domain/       纯业务逻辑（画像组合、订单/物流/地址生成、邮件模板、词库种子、邮箱派生）
-├─ docker-compose.yml · Dockerfile.api · Dockerfile.web · nginx.conf · .env.example
-├─ scripts/  dev.ps1 · admin.ps1 · dev-common.ps1   根目录 dev.cmd（学生/教师客户端调试）/ admin.cmd（管理端）
-└─ docs/     本文档 · 重启开发方案 · 客服参数.txt · PRODUCT_BASELINE · REQUIREMENTS_TRACEABILITY · HANDOVER · DEPLOY</pre>
-
-<!-- 4 -->
-<h2 id="api">4. 后端模块与接口</h2>
-<p>所有接口前缀 <code>/v1</code>，鉴权用 <code>Authorization: Bearer &lt;JWT&gt;</code>；对话类接口用 SSE 流式返回。</p>
-<div class="table-wrap"><table>
-<tr><th>模块</th><th>角色</th><th>主要接口</th><th>职责</th></tr>
-<tr><td>auth</td><td>全部</td><td class="mono">auth/login · refresh · logout · change-password · me</td><td>登录、令牌轮换、改密</td></tr>
-<tr><td>classes</td><td>教师 / 管理员</td><td class="mono">classes · classes/:id/students(/import) · students/:id(PATCH/DELETE · /reset-password) · admin/teachers(POST) · admin/classes/:id/teachers(PUT)</td><td>班级、学生导入/启停/改名/转班/删除/重置密码、新建教师、指定班主任与任课教师</td></tr>
-<tr><td>tasks</td><td>教师 / 学生</td><td class="mono">tasks · tasks/:id · student/tasks</td><td>任务新建下发、开放时间、学生任务列表</td></tr>
-<tr><td>conversations</td><td>学生</td><td class="mono">conversations · :id/opening · :id/reply · :id/messages · :id/close · :id/voice-messages · :id/asr · messages/:mid/tts · messages/:mid/translate · :id/cards · :id/attachment-messages · :id/orders · student/workbench-stats · student/guidance</td><td>买家对话主链路、语音、卡片、附件、翻译、工作台 KPI、教师指导通知</td></tr>
-<tr><td>orders</td><td>学生</td><td class="mono">student/orders · orders/:id · orders/:id/suggestions · student/reviews · student/assessments</td><td>订单与评价、AI 三版话术、成绩记录</td></tr>
-<tr><td>catalog</td><td>全部（按角色）</td><td class="mono">catalog/scenarios · personas(/import) · phrases · my-phrases · forbidden-terms · mail-templates · store/products · store/coupons · mail/submissions · mail/assist · mail/replies</td><td>场景库、画像库、商品库、词库与话术、邮件实训</td></tr>
-<tr><td>teacher</td><td>教师 / 管理员</td><td class="mono">teacher/overview · tracking · conversations/:id/messages · conversations/:id/intervene · reports · assessments(/:id)</td><td>数据总览、实时监控与介入、回放复核、考核报表</td></tr>
-<tr><td>admin</td><td>管理员</td><td class="mono">admin/system · providers · teachers(/:id/reset-password) · content · backups · backup-schedule · export/:kind · audit · acceptance(/run)</td><td>系统总览、模型与语音配置、计量告警、内容库、备份导出、审计、验收测试</td></tr>
-<tr><td>announcements</td><td>教师 / 学生</td><td class="mono">announcements · student/announcements</td><td>班级公告</td></tr>
-<tr><td>baseline</td><td>学生</td><td class="mono">student/baseline(/questions /submit)</td><td>入学基线测评</td></tr>
-<tr><td>student-state</td><td>学生（教师只读）</td><td class="mono">student/review-replies · student/mail-drafts(/:id) · me/read-marks · students/:id/review-replies</td><td>评价回复记录、邮件草稿、已读标记（原存客户端本机，K1–K4 已迁云端）</td></tr>
-</table></div>
-
-<!-- 5 -->
-<h2 id="flows">5. 核心业务链路</h2>
-<h3>5.1 任务到会话</h3>
-<ol class="flow">
-  <li>教师新建任务：班级、业务环节、场景、画像随机规则（persona_rule）、交互模式、限时、开放/截止时间、评分权重 → <code>tasks</code> + <code>task_classes</code>。</li>
-  <li>学生的任务进度 <code>task_progress</code> 置为待办；工作台把任务伪装成“未分配新客进线”。</li>
-  <li>学生接入：<code>POST /v1/conversations</code> 校验开放时间 → 按 persona_rule 从启用的画像模板中组合画像（domain <code>composePersonaWithRule</code>）→ 按场景生成订单、物流、评价（<code>generateOrderForScenario</code>）。</li>
-  <li>买家主动开场：<code>POST :id/opening</code>（SSE），开场会引用订单号和物流状态。</li>
-</ol>
-<h3>5.2 一轮买家对话</h3>
-<ol class="flow">
-  <li>学生发送消息（可连发；2 秒打字检测窗口结束后统一触发）→ <code>POST :id/reply</code>。</li>
-  <li>组装提示词：买家人设（每轮重注入防漂移）+ 订单 + 场景 + 导演状态（情绪、阶段、记忆、下一轮指令）+ 最近历史。</li>
-  <li>调用 LLM 流式输出，SSE 推给客户端；服务端解析 <code>|||</code> 拆成 1–3 条短消息，识别 <code>[END_OF_SERVICE]</code> 结束标记。</li>
-  <li>消息落库 <code>conversation_messages</code>；首字耗时、输出速度落库 <code>conversation_metrics</code>（验收依据）。</li>
-  <li class="async">异步：导演 Agent（director.ts）再调一次 LLM，更新本轮得分、满意度、情绪、剧情阶段、事实记忆 → <code>conversations.state</code>，供教师实时监控和下一轮使用。</li>
-  <li class="async">买家输出结束标记 → 服务端关闭会话 → 六维评分（assessment.ts）→ <code>assessments</code>；任务成绩 = 该任务下所有已评会话的加权均分 → <code>task_progress.score</code>。自由练习会话不评分。</li>
-</ol>
-<div class="note"><span class="tag t-plan">规划</span> P2 期重构 Agent 底座（方案 J 节）：统一按用途路由的调用层、提示词模板化并带版本、结构化输出 + 校验重试、按轮/token 预算管理上下文、场景剧本化、导演降本、评分引入词库客观依据、Agent 评测集。保留“演员 + 导演 + 评分”三角色编排；底层 LLM 调用改用 pi（@earendil-works/pi-ai，锁 0.82.1，与 AIGC 平台共用）。</div>
-<h3>5.3 订单、邮件、评价中的 AI 辅助</h3>
-<p>订单页的催付、物流同步、差评回复，以及邮件页的 AI 辅助写信，都由 LLM 实时生成三个版本，学生选择、二次编辑后发送到关联会话或邮件。邮件提交时服务端用 <code>content_terms</code> 词库复核违规用语；营销邮件按客户类型概率触发买家 AI 回信（<code>mail_replies</code>）。</p>
-<h3>5.4 教师监控与介入</h3>
-<p>实训跟踪页每 8 秒轮询 <code>teacher/tracking</code>（参数要求 ≤10 秒），买家消息超过 3 分钟未回会预警；教师可对任意会话发送指导，学生端通过 <code>student/guidance</code> 轮询，在顶栏铃铛里收到通知。</p>
-
-<!-- 6 -->
-<h2 id="data">6. 数据模型</h2>
-<div class="table-wrap"><table>
-<tr><th>领域</th><th>表</th><th>说明</th></tr>
-<tr><td>账号</td><td class="mono">users · classes · teacher_classes · refresh_tokens · login_failures · audit_log</td><td>users.role ∈ student/teacher/admin；学生 users.class_id 归属一个班；<b>班主任只记 classes.head_teacher_id，teacher_classes 只放任课教师</b>（两边不重复）；login_failures 记登录失败计数与锁定</td></tr>
-<tr><td>教学</td><td class="mono">tasks · task_classes · task_progress · scenarios · persona_templates · announcements · baseline_assessments</td><td>任务含 persona_rule、scoring_weights、time_limit_minutes、start_at、deadline</td></tr>
-<tr><td>实训</td><td class="mono">conversations · conversation_messages · orders · store_products · mail_submissions · mail_replies · student_phrases · review_replies · mail_drafts · read_marks</td><td>conversations.state（jsonb）存导演状态与画像快照；消息 kind 支持 text/voice/image/video/file/card</td></tr>
-<tr><td>评估与计量</td><td class="mono">assessments · conversation_metrics · voice_metrics</td><td>六维评分与评语；首字耗时、输出速度、语音耗时，用于验收报表</td></tr>
-<tr><td>配置</td><td class="mono">app_settings · content_terms</td><td>app_settings 存 llm/voice/quota/备份计划（DB 优先于 env）；content_terms 存违规词与标准话术</td></tr>
-</table></div>
-<p>迁移在 <code>apps/api/src/migrations.ts</code> 中按编号追加，API 启动时自动执行；种子数据在 <code>seed.ts</code>，每次启动 <code>on conflict do nothing</code>（已知问题：删掉的种子会在重启后恢复）。</p>
-
-<h3>数据存放位置</h3>
-<div class="table-wrap"><table>
-<tr><th>位置</th><th>内容</th><th>状态</th></tr>
-<tr><td>云端 PostgreSQL</td><td>账号、班级、任务、会话与消息、订单、评分、邮件、配置、审计、验收指标</td><td><span class="tag t-ok">已实现</span></td></tr>
-<tr><td>云端文件卷</td><td>商品图、语音消息、附件、TTS 缓存（uploads）；备份文件</td><td><span class="tag t-warn">部分</span> 备份目录未挂卷，未推送对象存储</td></tr>
-<tr><td>云端（2026-10-12 迁入）</td><td>差评回复记录、邮件草稿、邮件已读、指导通知已读</td><td><span class="tag t-ok">已实现</span> 旧版本存在本机的数据，学生首次进入页面时自动上传并删除本机副本</td></tr>
-<tr><td>客户端本机（保留）</td><td>栏宽、自动翻译开关等界面偏好；登录令牌（改用 safeStorage）</td><td>—</td></tr>
-</table></div>
-
-<!-- 7 -->
-<h2 id="auth">7. 账号与权限</h2>
-<div class="table-wrap"><table>
-<tr><th>角色</th><th>入口</th><th>数据范围</th><th>实现</th></tr>
-<tr><td>学生</td><td>客户端 · 学生登录页签</td><td>仅本人数据</td><td>所有学生接口查询都带 <code>student_id = 本人</code></td></tr>
-<tr><td>教师</td><td>客户端 · 教师登录页签</td><td>自己是班主任或被授权任课的班级</td><td><code>teacherOwnsClass</code> / <code>scopedStudentsSql</code></td></tr>
-<tr><td>管理员</td><td>浏览器 · 管理端</td><td>全部</td><td>也可调用所有教师接口</td></tr>
-</table></div>
-<p><b>登录态：</b>access token 为 HS256 JWT，有效期 15 分钟（<code>ACCESS_TOKEN_TTL</code>）；refresh token 14 天，数据库只存哈希，每次刷新轮换。密码用 scrypt 加盐。改密、重置、停用（学生和教师）时吊销该用户全部 refresh token。页签与账号角色不符时拒绝登录并提示。</p>
-<p><b>鉴权守卫：</b>令牌只证明身份；每次请求再查一次账号状态和待改密标记（10 秒缓存，停用/改密/重置时立即失效）。停用的账号立即 401 <code>ACCOUNT_DISABLED</code>；待改密账号除改密和 <code>/me</code> 外一律 403 <code>PASSWORD_CHANGE_REQUIRED</code>。</p>
-<p><b>登录限流：</b>同一账号 15 分钟内连续输错 5 次锁 15 分钟；同一 IP 15 分钟内失败 100 次锁 15 分钟（机房共用出口 IP，阈值放宽）。返回 429 <code>LOGIN_LOCKED</code>，写审计 <code>auth.locked</code>。教师/管理员重置密码会解锁。部署在 nginx 后需 <code>TRUST_PROXY=true</code>，nginx 用 <code>$remote_addr</code> 覆盖 X-Forwarded-For。</p>
-<p><b>找回密码：</b>学生 → 教师重置；教师 → 管理员在「账号与权限」重置；管理员 → 服务器执行 <code>pnpm reset-password admin</code>（容器内 <code>docker compose exec api pnpm reset-password admin</code>）。</p>
-<h3>用户管理整改进度（开发方案 I 节）</h3>
-<div class="table-wrap"><table>
-<tr><th>#</th><th>状态</th><th>问题</th></tr>
-<tr><td>I1</td><td><span class="tag t-ok">已修复</span></td><td>登录限流与失败锁定（账号 5 次 / IP 100 次，锁 15 分钟）</td></tr>
-<tr><td>I2</td><td><span class="tag t-ok">已修复</span></td><td>服务端强制改密：待改密账号只放行改密和 /me</td></tr>
-<tr><td>I3</td><td><span class="tag t-ok">已修复</span></td><td>管理端重置教师密码；服务器命令行重置管理员密码</td></tr>
-<tr><td>I4</td><td><span class="tag t-ok">已修复</span></td><td>管理端「班级与授权」：建班时指定班主任，随时更换班主任、授权任课教师</td></tr>
-<tr><td>I5</td><td><span class="tag t-ok">已修复</span></td><td>班级数去重统计；迁移 022 清理了班主任在 teacher_classes 里的重复行</td></tr>
-<tr><td>I6</td><td><span class="tag t-ok">已修复</span></td><td>停用即时生效：吊销 refresh token，鉴权查账号状态</td></tr>
-<tr><td>I7</td><td><span class="tag t-ok">已修复</span></td><td>登录接口带期望角色，不符时不签发令牌（ROLE_MISMATCH），登录页可一键切换页签</td></tr>
-<tr><td>I8</td><td><span class="tag t-ok">已修复</span></td><td>学生改名、转班（自动同步任务）、删除（仅无实训记录）；导入密码执行密码策略</td></tr>
-</table></div>
-
-<!-- 8 -->
-<h2 id="ai">8. AI 与语音服务</h2>
-<div class="table-wrap"><table>
-<tr><th>能力</th><th>现状</th><th>规划</th></tr>
-<tr><td>LLM 适配</td><td><span class="tag t-warn">部分</span> 自研 fetch 适配器，单一配置（地址/密钥/模型），路径写死 <code>/v1/chat/completions</code>，管理端可热切换</td><td><span class="tag t-plan">规划</span> 调用层换成 pi；多配置档案 + 厂商预置模板 + 自定义路径/请求头/请求体 + 连通性测试 + 备用档案自动回退（方案 G 节）</td></tr>
-<tr><td>按用途选模型</td><td>对话、导演、评分、话术共用一个模型</td><td><span class="tag t-plan">规划</span> 四种用途各自指定档案、模型、temperature</td></tr>
-<tr><td>当前模型</td><td>keliagent 网关 deepseek-v4-pro（首字 P50≈5.9s，不达标）；DeepSeek 官方 flash 关思考实测 P99 1.18s（待 P2 接入）</td><td><span class="tag t-plan">规划</span> DeepSeek 官方，非思考模型用于买家对话</td></tr>
-<tr><td>TTS</td><td><span class="tag t-ok">已实现</span> 豆包 seed-tts-2.0，按画像性别选音色、按语言指定语种，缓存 mp3</td><td>长文本分句合成，保证 ≤5 秒</td></tr>
-<tr><td>ASR</td><td><span class="tag t-ok">已实现</span> 豆包大模型识别；按住说话 → 转文字或直接发语音</td><td>—</td></tr>
-<tr><td>计量</td><td><span class="tag t-warn">部分</span> 按 LLM 调用次数计额度</td><td><span class="tag t-plan">规划</span> 按 tokens/金额计，覆盖语音</td></tr>
-</table></div>
-<p>没有配置 LLM 时，对话接口直接返回 503，不提供任何固定话术降级（参数明确禁止固定话术或关键词树）。</p>
-
-<!-- 9 -->
-<h2 id="ops">9. 配置、后台任务与运维</h2>
-<h3>环境变量（<code>.env</code>，不入库）</h3>
-<div class="table-wrap"><table>
-<tr><th>变量</th><th>说明</th></tr>
-<tr><td class="mono">DATABASE_URL · POSTGRES_PASSWORD</td><td>数据库连接</td></tr>
-<tr><td class="mono">JWT_SECRET · ACCESS_TOKEN_TTL · REFRESH_TOKEN_TTL</td><td>令牌签名与有效期（迁移服务器时 JWT_SECRET 必须原样保留）</td></tr>
-<tr><td class="mono">ADMIN_INITIAL_PASSWORD</td><td>首次启动创建 admin 的初始密码</td></tr>
-<tr><td class="mono">CORS_ORIGINS</td><td>允许的来源；留空等于放行全部（待收紧）</td></tr>
-<tr><td class="mono">LLM_BASE_URL · LLM_API_KEY · LLM_MODEL</td><td>LLM 兜底配置；管理端保存的配置优先</td></tr>
-<tr><td class="mono">TTS_API_KEY · TTS_RESOURCE_ID · TTS_SPEAKER(_MALE) · ASR_RESOURCE_ID</td><td>豆包语音</td></tr>
-</table></div>
-<h3>后台任务</h3>
-<ul>
-  <li>导演 Agent：每轮买家回复后异步执行。</li>
-  <li>六维评分：会话关闭后异步执行。</li>
-  <li>买家邮件回信：邮件提交后异步执行。</li>
-  <li>定时备份：<code>server.ts</code> 每 10 分钟检查一次备份计划（按容器时区；Docker 中缺 pg_dump，待修复）。</li>
-</ul>
-<h3>本地开发</h3>
-<p>端口：API <code>8787</code> · 前端 <code>5288</code>（strictPort）· 数据库容器 <code>cecs-pg:5434</code>。启动：根目录 <code>dev.cmd</code>（服务 + 学生/教师两个独立登录的客户端）、<code>admin.cmd</code>（浏览器管理端）；<code>dev.cmd status / restart api / logs / stop / test</code>。日志在 <code>.devrun/logs</code>。验证：<code>pnpm build &amp;&amp; pnpm test</code>，前端类型检查用 <code>cd apps/portal &amp;&amp; npx tsc -b --force</code>。详细运维见 skill <code>kefu-weihu</code>。</p>
-
-<!-- 10 -->
-<h2 id="frontend">10. 前端</h2>
-<div class="table-wrap"><table>
-<tr><th>端</th><th>页面</th></tr>
-<tr><td>学生端</td><td>任务大厅（TaskHall）· 客服工作台（LiveWorkbench）· 订单（LiveOrders）· 评价（LiveReviews）· 邮件（LiveMail）· 我的记录（LiveRecords）· 基线测评（BaselineQuiz）</td></tr>
-<tr><td>教师端</td><td>数据总览 · 实训任务 · 班级与学生 · 实训跟踪 · 考核报表 · 场景配置 · 公告</td></tr>
-<tr><td>管理端</td><td>系统总览 · AI 与语音服务 · 账号与权限 · 内容资源库 · 数据与备份（AdminLive）</td></tr>
-</table></div>
-<p>样式集中在 <code>apps/portal/src/styles.css</code>，现行规范是根目录 <code>DESIGN.md</code>（苹果风）。<span class="tag t-plan">规划</span> P3 期整体重做设计（去 AI 味，向真实客服软件/电商后台靠拢），届时重写 DESIGN.md 与组件库。<code>Workbench/Orders/Records/MailStudio.tsx</code> 是早期演示页，待清理。</p>
-
-<!-- 11 -->
-<h2 id="status">11. 现状与待办</h2>
-<div class="table-wrap"><table>
-<tr><th>阶段</th><th>内容</th><th>状态</th></tr>
-<tr><td>0–4</td><td>基础、学生端闭环、教师端闭环、管理端</td><td><span class="tag t-ok">主体完成</span>，参数细项有差距</td></tr>
-<tr><td>P0</td><td>build/test 流程补齐，DeepSeek 首字实测</td><td><span class="tag t-ok">已完成</span> 25 项测试通过；DeepSeek 首字 P99 1.18s</td></tr>
-<tr><td>P1</td><td>用户管理整改 + 本机数据迁云端</td><td><span class="tag t-ok">已完成</span> I1–I8、K1–K4；37 项测试通过</td></tr>
-<tr><td>P1b</td><td>开发调试环境：dev.cmd / admin.cmd、多窗口调试、日志、状态检查</td><td><span class="tag t-ok">已完成</span></td></tr>
-<tr><td>P2</td><td>模型网关 + Agent 底座重构</td><td><span class="tag t-plan">待开始</span></td></tr>
-<tr><td>P3</td><td>设计定向与组件库</td><td><span class="tag t-plan">待开始</span></td></tr>
-<tr><td>P4</td><td>逐页按新设计重做 + 参数细项补齐</td><td><span class="tag t-plan">待开始</span></td></tr>
-<tr><td>P5</td><td>性能验收与 200 账号压测</td><td><span class="tag t-plan">待开始</span></td></tr>
-<tr><td>R</td><td>发版上线：客户端打包、自动更新、CORS/nginx、备份修复、DEPLOY.md</td><td><span class="tag t-plan">用户明确发版时启动</span></td></tr>
-<tr><td>P6</td><td>购买服务器、部署、交付资料</td><td><span class="tag t-plan">待开始</span></td></tr>
-</table></div>
-<p>完整差距清单（A–I 节）与排期见 <code>docs/重启开发方案-2026-10.md</code>。</p>
-
-<!-- 12 -->
-<h2 id="changelog">12. 变更记录</h2>
-<div class="table-wrap"><table>
-<tr><th>日期</th><th>变更</th></tr>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>客服智能体架构</title>
+<style>
+:root {
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --surface-2: #efefec;
+  --text: #1d1d1b;
+  --muted: #62625e;
+  --line: #d9d9d4;
+  --accent: #1f5fbf;
+  --accent-soft: #e4ecf8;
+  --ok: #2f7d4f;
+  --ok-soft: #e3f1e8;
+  --warn: #9a6200;
+  --warn-soft: #f8eedb;
+  --bad: #b3261e;
+  --bad-soft: #f9e3e1;
+  --plan: #6b4fa8;
+  --plan-soft: #ece6f6;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161615; --surface: #1f1f1e; --surface-2: #2a2a28; --text: #ecece8; --muted: #a3a39d;
+    --line: #3a3a37; --accent: #7aa7ec; --accent-soft: #1e2a3d; --ok: #7cc79a; --ok-soft: #1d2f24;
+    --warn: #e0b25c; --warn-soft: #33291a; --bad: #f08a82; --bad-soft: #3a201e; --plan: #b9a2ea; --plan-soft: #2b2540;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161615; --surface: #1f1f1e; --surface-2: #2a2a28; --text: #ecece8; --muted: #a3a39d;
+  --line: #3a3a37; --accent: #7aa7ec; --accent-soft: #1e2a3d; --ok: #7cc79a; --ok-soft: #1d2f24;
+  --warn: #e0b25c; --warn-soft: #33291a; --bad: #f08a82; --bad-soft: #3a201e; --plan: #b9a2ea; --plan-soft: #2b2540;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.65 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); max-width: 1280px; margin: 0 auto; }
+nav.toc {
+  position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 28px 16px 28px 20px;
+  border-right: 1px solid var(--line); font-size: 13px;
+}
+nav.toc .brand { font-weight: 600; margin-bottom: 4px; }
+nav.toc .meta { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+nav.toc a { display: block; color: var(--muted); text-decoration: none; padding: 3px 0; }
+nav.toc a:hover { color: var(--accent); }
+main { padding: 28px 36px 80px; min-width: 0; }
+header.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 8px; }
+h1 { font-size: 22px; margin: 0 0 4px; font-weight: 600; }
+h2 { font-size: 17px; margin: 40px 0 12px; padding-top: 8px; font-weight: 600; border-top: 1px solid var(--line); padding-top: 24px; }
+h3 { font-size: 14px; margin: 22px 0 8px; font-weight: 600; }
+p { margin: 8px 0; }
+.sub { color: var(--muted); margin: 0; }
+code, .mono { font-family: var(--mono); font-size: 12.5px; }
+code { background: var(--surface-2); padding: 1px 5px; border-radius: 3px; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); margin: 10px 0; font-size: 13px; }
+th, td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+th { background: var(--surface-2); font-weight: 600; white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+.table-wrap { overflow-x: auto; }
+.tag { display: inline-block; font-size: 11.5px; line-height: 18px; padding: 0 6px; border-radius: 3px; white-space: nowrap; font-weight: 500; }
+.t-ok { background: var(--ok-soft); color: var(--ok); }
+.t-warn { background: var(--warn-soft); color: var(--warn); }
+.t-bad { background: var(--bad-soft); color: var(--bad); }
+.t-plan { background: var(--plan-soft); color: var(--plan); }
+.t-info { background: var(--accent-soft); color: var(--accent); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 10px 0; }
+.card { background: var(--surface); border: 1px solid var(--line); padding: 12px 14px; }
+.card .k { color: var(--muted); font-size: 12px; }
+.card .v { font-weight: 600; margin-top: 2px; }
+.note { border-left: 3px solid var(--accent); background: var(--surface); padding: 8px 12px; margin: 10px 0; }
+.note.warn { border-color: var(--warn); }
+.diagram { background: var(--surface); border: 1px solid var(--line); padding: 12px; margin: 10px 0; overflow-x: auto; }
+.diagram svg { display: block; width: 100%; min-width: 760px; height: auto; }
+svg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+svg .box-a { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
+svg .box-p { fill: var(--plan-soft); stroke: var(--plan); stroke-width: 1.2; stroke-dasharray: 4 3; }
+svg .zone { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 5 4; }
+svg text { fill: var(--text); font: 12.5px -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+svg .small { font-size: 11px; fill: var(--muted); }
+svg .title { font-weight: 600; }
+svg .arrow { stroke: var(--muted); stroke-width: 1.3; fill: none; marker-end: url(#ah); }
+svg #ah path { fill: var(--muted); }
+ol.flow { counter-reset: s; list-style: none; padding: 0; margin: 10px 0; }
+ol.flow li { counter-increment: s; position: relative; padding: 8px 12px 8px 44px; background: var(--surface); border: 1px solid var(--line); border-bottom: none; }
+ol.flow li:last-child { border-bottom: 1px solid var(--line); }
+ol.flow li::before { content: counter(s); position: absolute; left: 12px; top: 8px; width: 22px; height: 22px; line-height: 22px; text-align: center; font-size: 12px; font-weight: 600; background: var(--accent-soft); color: var(--accent); border-radius: 50%; }
+ol.flow li.async::before { background: var(--plan-soft); color: var(--plan); }
+pre.tree { background: var(--surface); border: 1px solid var(--line); padding: 12px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto; margin: 10px 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); margin: 6px 0; }
+button.theme { background: var(--surface); color: var(--text); border: 1px solid var(--line); padding: 4px 10px; font-size: 12px; cursor: pointer; border-radius: 3px; }
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.toc { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line); padding: 16px; }
+  main { padding: 20px 16px 60px; }
+  header.top { flex-direction: column; }
+}
+@media print { nav.toc, button.theme { display: none; } .layout { display: block; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+  <div class="brand">跨境客服智能体</div>
+  <div class="meta">架构文档 · 更新于 2026-10-12</div>
+  <a href="#overview">1. 概览</a>
+  <a href="#topology">2. 部署拓扑</a>
+  <a href="#repo">3. 代码结构</a>
+  <a href="#api">4. 后端模块与接口</a>
+  <a href="#flows">5. 核心业务链路</a>
+  <a href="#data">6. 数据模型</a>
+  <a href="#auth">7. 账号与权限</a>
+  <a href="#ai">8. AI 与语音服务</a>
+  <a href="#ops">9. 配置、后台任务与运维</a>
+  <a href="#frontend">10. 前端</a>
+  <a href="#status">11. 现状与待办</a>
+  <a href="#changelog">12. 变更记录</a>
+</nav>
+<main>
+<header class="top">
+  <div>
+    <h1>跨境电商客服 AI 实训智能体 · 系统架构</h1>
+    <p class="sub">基线：<code>docs/客服参数.txt</code>（客户参数）· 开发方案：<code>docs/重启开发方案-2026-10.md</code> · 维护手册：skill <code>kefu-weihu</code></p>
+  </div>
+  <button class="theme" id="themeBtn" type="button">切换深浅色</button>
+</header>
+<div class="legend">
+  <span><span class="tag t-ok">已实现</span> 代码中已可用</span>
+  <span><span class="tag t-warn">部分</span> 已有但不完整</span>
+  <span><span class="tag t-bad">缺失</span> 参数要求但未做</span>
+  <span><span class="tag t-plan">规划</span> 已定方案，待开发</span>
+</div>
+
+<!-- 1 -->
+<h2 id="overview">1. 概览</h2>
+<div class="grid">
+  <div class="card"><div class="k">交付形态</div><div class="v">Windows 客户端（学生/教师）+ 云端管理端（浏览器）</div></div>
+  <div class="card"><div class="k">规模与服务期</div><div class="v">200 账号 · 3 年服务期</div></div>
+  <div class="card"><div class="k">技术栈</div><div class="v">React + Vite · Fastify + TypeScript · PostgreSQL 16 · Electron</div></div>
+  <div class="card"><div class="k">AI 服务</div><div class="v">LLM：DeepSeek 默认，可多厂商切换 · 语音：豆包 TTS/ASR</div></div>
+  <div class="card"><div class="k">代码仓库</div><div class="v mono">github.com/tangda13/kefu-agent（main）</div></div>
+  <div class="card"><div class="k">规模</div><div class="v">28 张表 · 23 个迁移 · 约 80 个接口</div></div>
+</div>
+<p>三端共用一套 React 前端代码，按登录角色渲染不同导航；学生端/教师端由 Electron 打包为 Windows 安装包，管理端由云端 nginx 以网页形式提供。所有业务数据、AI 调用和密钥都在云端 API，客户端不持有任何密钥。</p>
+<div class="note"><b>核心产品原则：</b>实训是幕后逻辑。学生端的沉浸层（客服工作台、订单、评价、邮件）必须像真实的客服软件，不出现“实训、轮次、画像”等字样；任务大厅和我的记录属于学习管理层，可以直呼任务和成绩。</div>
+
+<!-- 2 -->
+<h2 id="topology">2. 部署拓扑（目标形态）</h2>
+<p>正式服务器待功能完成后购买（独立服务器、单独部署）。在此之前用本机或临时环境联调；客户端里的服务地址和更新源地址都做成可配置。</p>
+<div class="diagram">
+<svg viewBox="0 0 960 470" role="img" aria-label="部署拓扑图">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
+  <!-- clients -->
+  <rect class="box-a" x="20" y="40" width="220" height="110" rx="4"/>
+  <text x="34" y="64" class="title">Windows 客户端（Electron）</text>
+  <text x="34" y="86">学生端 / 教师端（同一安装包）</text>
+  <text x="34" y="106" class="small">登录页切换页签 · 前端打包在本地</text>
+  <text x="34" y="124" class="small">electron-updater 自动更新</text>
+  <rect class="box" x="20" y="200" width="220" height="70" rx="4"/>
+  <text x="34" y="224" class="title">浏览器</text>
+  <text x="34" y="246">管理端（?role=admin）</text>
+
+  <!-- server zone -->
+  <rect class="zone" x="300" y="20" width="420" height="430" rx="6"/>
+  <text x="316" y="42" class="small">国内云服务器 · Docker Compose（项目名 cecs）</text>
+  <rect class="box" x="320" y="60" width="380" height="96" rx="4"/>
+  <text x="334" y="82" class="title">web：nginx（443 / HTTPS）</text>
+  <text x="334" y="102" class="small">/  → 管理端静态页面</text>
+  <text x="334" y="118" class="small">/v1/*、/uploads/*、/health → api:8787（SSE 关缓冲）</text>
+  <text x="334" y="134" class="small">/updates/* → 客户端安装包与 latest.yml</text>
+  <rect class="box-p" x="560" y="68" width="128" height="22" rx="3"/>
+  <text x="570" y="84" class="small">/updates 为规划项</text>
+
+  <rect class="box-a" x="320" y="190" width="380" height="120" rx="4"/>
+  <text x="334" y="212" class="title">api：Fastify + TypeScript（:8787）</text>
+  <text x="334" y="232" class="small">auth · classes · tasks · conversations(SSE) · orders</text>
+  <text x="334" y="248" class="small">catalog · teacher · admin · announcements · baseline</text>
+  <text x="334" y="268" class="small">后台：导演 Agent · 六维评分 · 买家回信 · 定时备份</text>
+  <text x="334" y="288" class="small">启动时自动执行迁移和种子数据</text>
+
+  <rect class="box" x="320" y="340" width="180" height="90" rx="4"/>
+  <text x="334" y="362" class="title">db：PostgreSQL 16</text>
+  <text x="334" y="382" class="small">卷 cecs_pg_data</text>
+  <rect class="box" x="520" y="340" width="180" height="90" rx="4"/>
+  <text x="534" y="362" class="title">文件卷</text>
+  <text x="534" y="382" class="small">cecs_uploads（商品图/语音/TTS）</text>
+  <text x="534" y="400" class="small">backups（待挂卷，见待办）</text>
+
+  <!-- external -->
+  <rect class="box" x="760" y="150" width="180" height="96" rx="4"/>
+  <text x="774" y="174" class="title">LLM 厂商</text>
+  <text x="774" y="194" class="small">DeepSeek（默认）</text>
+  <text x="774" y="210" class="small">通义 / 智谱 / 豆包方舟 / Kimi…</text>
+  <text x="774" y="226" class="small">兼容 OpenAI 接口，可热切换</text>
+  <rect class="box" x="760" y="280" width="180" height="76" rx="4"/>
+  <text x="774" y="304" class="title">豆包语音</text>
+  <text x="774" y="324" class="small">TTS 单向流式 WebSocket</text>
+  <text x="774" y="340" class="small">ASR 大模型识别 WebSocket</text>
+
+  <!-- arrows -->
+  <path class="arrow" d="M240 95 L318 105"/>
+  <text x="246" y="88" class="small">HTTPS + JWT</text>
+  <path class="arrow" d="M240 235 L318 140"/>
+  <path class="arrow" d="M510 156 L510 188"/>
+  <path class="arrow" d="M410 310 L410 338"/>
+  <path class="arrow" d="M610 310 L610 338"/>
+  <path class="arrow" d="M700 230 L758 200"/>
+  <path class="arrow" d="M700 280 L758 310"/>
+</svg>
+</div>
+<div class="note warn">现状差异：当前 <code>DEPLOY.md</code> 仍是“纯 Web”版本（学生/教师也走浏览器），客户端无安装包、API 地址默认 127.0.0.1。P1 期改造，详见第 11 节。</div>
+
+<!-- 3 -->
+<h2 id="repo">3. 代码结构</h2>
+<pre class="tree">kefu-agent/                      pnpm 单仓（Node 22.12+ / pnpm 11）
+├─ apps/
+│  ├─ api/          云端 API：Fastify + pg
+│  │  └─ src/
+│  │     ├─ server.ts               启动、CORS、multipart、静态 uploads、路由注册、定时备份
+│  │     ├─ routes/                 12 个路由模块（见第 4 节）
+│  │     ├─ migrations.ts / seed.ts 25 个迁移 · 种子（场景及剧本/画像/商品/词库/管理员）
+│  │     ├─ auth-context.ts         鉴权守卫 requireRole（查账号状态/待改密）· 班级授权 teacherOwnsClass · 审计
+│  │     ├─ login-throttle.ts       登录失败限流与锁定
+│  │     ├─ scripts/reset-password.ts 服务器命令行重置任意账号密码（pnpm reset-password admin）
+│  │     ├─ scripts/agent-eval.ts   Agent 评测集（dev.cmd eval），报告输出到 eval-reports/
+│  │     ├─ security.ts             scrypt 密码 · HS256 JWT · refresh token
+│  │     ├─ llm/                    模型网关：gateway.ts（按用途路由、备用切换、熔断、计量、结构化输出）
+│  │     │                          · pi-adapter.ts（档案 → pi Model，extraBody 经 onPayload 注入）
+│  │     │                          · profiles.ts（档案增改、旧配置导入）· secret.ts（AES-256-GCM 加密 Key）
+│  │     ├─ prompts/                提示词模板（带版本号）：buyer · director · assessment · assist
+│  │     ├─ director.ts             导演 Agent：directTurn 纯逻辑 + runDirector（每 N 轮）
+│  │     ├─ assessment.ts           会话结束后六维评分（全量对话、超长分段摘要、词库与逐轮得分作客观依据）
+│  │     ├─ voice/service.ts        语音档案与厂商接口（目前豆包）· voice-provider.ts 豆包 TTS/ASR 二进制协议
+│  │     ├─ mail-reply.ts / review-gen.ts  买家回信 · 买家评价生成
+│  │     ├─ acceptance.ts / metrics.ts     验收报表（TTFT/速度/语音耗时）
+│  │     └─ settings.ts             app_settings 读写（DB 配置优先于 env）
+│  ├─ portal/       React + Vite 前端（三端共用）
+│  │  └─ src/  App.tsx · api/client.ts · components/ · pages/{student,teacher,admin}/ · styles.css
+│  └─ desktop/      Electron 外壳（main.cjs / preload.cjs，已安全加固，待打包）
+├─ packages/
+│  ├─ contracts/    共享类型与常量（业务环节、客户类型、性格、情绪、语言、国籍、评分维度、验收阈值、
+│  │                模型用途与厂商预置模板 llm.ts、场景剧本字段）
+│  └─ domain/       纯业务逻辑（画像组合、订单/物流/地址生成、邮件模板、词库种子、邮箱派生、内置场景剧本）
+├─ docker-compose.yml · Dockerfile.api · Dockerfile.web · nginx.conf · .env.example
+├─ scripts/  dev.mjs（开发启动器：托管窗口 + 控制端口 18787）  根目录 dev.cmd（学生/教师客户端调试）/ admin.cmd（管理端）
+└─ docs/     本文档 · 重启开发方案 · 客服参数.txt · PRODUCT_BASELINE · REQUIREMENTS_TRACEABILITY · HANDOVER · DEPLOY</pre>
+
+<!-- 4 -->
+<h2 id="api">4. 后端模块与接口</h2>
+<p>所有接口前缀 <code>/v1</code>，鉴权用 <code>Authorization: Bearer &lt;JWT&gt;</code>；对话类接口用 SSE 流式返回。</p>
+<div class="table-wrap"><table>
+<tr><th>模块</th><th>角色</th><th>主要接口</th><th>职责</th></tr>
+<tr><td>auth</td><td>全部</td><td class="mono">auth/login · refresh · logout · change-password · me</td><td>登录、令牌轮换、改密</td></tr>
+<tr><td>classes</td><td>教师 / 管理员</td><td class="mono">classes · classes/:id/students(/import) · students/:id(PATCH/DELETE · /reset-password) · admin/teachers(POST) · admin/classes/:id/teachers(PUT)</td><td>班级、学生导入/启停/改名/转班/删除/重置密码、新建教师、指定班主任与任课教师</td></tr>
+<tr><td>tasks</td><td>教师 / 学生</td><td class="mono">tasks · tasks/:id · student/tasks</td><td>任务新建下发、开放时间、学生任务列表</td></tr>
+<tr><td>conversations</td><td>学生</td><td class="mono">conversations · :id/opening · :id/reply · :id/messages · :id/close · :id/voice-messages · :id/asr · messages/:mid/tts · messages/:mid/translate · :id/cards · :id/attachment-messages · :id/orders · student/workbench-stats · student/guidance</td><td>买家对话主链路、语音、卡片、附件、翻译、工作台 KPI、教师指导通知</td></tr>
+<tr><td>orders</td><td>学生</td><td class="mono">student/orders · orders/:id · orders/:id/suggestions · student/reviews · student/assessments</td><td>订单与评价、AI 三版话术、成绩记录</td></tr>
+<tr><td>catalog</td><td>全部（按角色）</td><td class="mono">catalog/scenarios(PATCH 启停/剧本) · personas(/import) · phrases · my-phrases · forbidden-terms · mail-templates · store/products · store/coupons · mail/submissions · mail/assist · mail/replies</td><td>场景库、画像库、商品库、词库与话术、邮件实训</td></tr>
+<tr><td>teacher</td><td>教师 / 管理员</td><td class="mono">teacher/overview · tracking · conversations/:id/messages · conversations/:id/intervene · reports · assessments(/:id)</td><td>数据总览、实时监控与介入、回放复核、考核报表</td></tr>
+<tr><td>admin</td><td>管理员</td><td class="mono">admin/system · providers · teachers(/:id/reset-password) · content · backups · backup-schedule · export/:kind · audit · acceptance(/run · .csv)</td><td>系统总览、语音配置与月度额度（金额/tokens）、内容库、备份导出、审计、验收测试与明细导出</td></tr>
+<tr><td>admin-llm</td><td>管理员</td><td class="mono">admin/llm · llm/profiles(/:id · /:id/test) · llm/test · llm/default · llm/routing · llm/usage</td><td>模型档案增删改、连通性测试（草稿/已保存）、默认档案、按用途分配主/备用档案与参数、用量与费用</td></tr>
+<tr><td>announcements</td><td>教师 / 学生</td><td class="mono">announcements · student/announcements</td><td>班级公告</td></tr>
+<tr><td>baseline</td><td>学生</td><td class="mono">student/baseline(/questions /submit)</td><td>入学基线测评</td></tr>
+<tr><td>student-state</td><td>学生（教师只读）</td><td class="mono">student/review-replies · student/mail-drafts(/:id) · me/read-marks · students/:id/review-replies</td><td>评价回复记录、邮件草稿、已读标记（原存客户端本机，K1–K4 已迁云端）</td></tr>
+</table></div>
+
+<!-- 5 -->
+<h2 id="flows">5. 核心业务链路</h2>
+<h3>5.1 任务到会话</h3>
+<ol class="flow">
+  <li>教师新建任务：班级、业务环节、场景、画像随机规则（persona_rule）、交互模式、限时、开放/截止时间、评分权重 → <code>tasks</code> + <code>task_classes</code>。</li>
+  <li>学生的任务进度 <code>task_progress</code> 置为待办；工作台把任务伪装成“未分配新客进线”。</li>
+  <li>学生接入：<code>POST /v1/conversations</code> 校验开放时间 → 按 persona_rule 从启用的画像模板中组合画像（domain <code>composePersonaWithRule</code>）→ 按场景生成订单、物流、评价（<code>generateOrderForScenario</code>）；售前场景没有订单，改为从在售商品里给买家挑一个“感兴趣的商品”写进画像快照。</li>
+  <li>买家主动开场：<code>POST :id/opening</code>（SSE），开场会引用订单号和物流状态。</li>
+</ol>
+<h3>5.2 一轮买家对话</h3>
+<ol class="flow">
+  <li>学生发送消息（可连发；2 秒打字检测窗口结束后统一触发）→ <code>POST :id/reply</code>。</li>
+  <li>组装提示词（<code>prompts/buyer.ts</code>）：买家人设（每轮重注入防漂移）+ <b>场景剧本</b>（目标、隐藏信息、情绪触发点、让步底线、结束条件）+ 订单或感兴趣商品 + 导演状态（情绪、阶段、记忆、下一轮指令）+ 历史（按约 12000 字符预算从最近往前截取，至少保留 6 条；更早的事实由导演备忘录承接）。</li>
+  <li>经模型网关按“买家对话”用途调用（<code>gateway.stream("dialogue")</code>），主档案出错且尚未出字时自动换备用档案；SSE 推给客户端；服务端解析 <code>|||</code> 拆成 1–3 条短消息，识别 <code>[END_OF_SERVICE]</code> 结束标记。</li>
+  <li>消息落库 <code>conversation_messages</code>；首字耗时（<b>从服务端收到请求时算起</b>）、输出速度落库 <code>conversation_metrics</code>（验收依据）；tokens 与费用落库 <code>llm_usage</code>。</li>
+  <li class="async">异步：导演（director.ts）按“导演评估”用途调用，JSON 模式 + zod 校验（不合格带错误重试 1 次，仍失败保留上一轮状态），更新本轮得分、满意度、情绪、剧情阶段、事实记忆 → <code>conversations.state</code>。可设置每 N 轮学生发言运行一次以降本。</li>
+  <li class="async">买家输出结束标记 → 服务端关闭会话 → 六维评分（assessment.ts，“六维评分”用途）：读全量对话（超过 24000 字符先分段摘要），把违规词命中和导演逐轮得分作为客观依据一起交给模型 → <code>assessments</code>（记录提示词版本、所用模型和依据）；任务成绩 = 该任务下所有已评会话的加权均分 → <code>task_progress.score</code>。自由练习会话不评分。</li>
+</ol>
+<div class="note"><span class="tag t-ok">P2 已完成</span> Agent 底座（方案 J 节）：所有 LLM 调用经 <code>llm/gateway.ts</code>，按四种用途（买家对话 / 导演评估 / 六维评分 / 话术与生成）路由；提示词集中在 <code>prompts/</code> 并带版本号；结构化输出统一 <code>completeJson</code>；场景剧本可由教师在「场景配置 → 场景库」编辑；Agent 评测集 <code>dev.cmd eval</code>。保留“演员 + 导演 + 评分”三角色编排，不引入编排框架；底层调用用 pi（@earendil-works/pi-ai 0.82.1）。</div>
+<h3>5.3 订单、邮件、评价中的 AI 辅助</h3>
+<p>订单页的催付、物流同步、差评回复，以及邮件页的 AI 辅助写信，都由“话术与生成”用途的模型实时生成三个版本（JSON 模式 + 校验），学生选择、二次编辑后发送到关联会话或邮件。邮件提交时服务端用 <code>content_terms</code> 词库复核违规用语；营销邮件按客户类型概率触发买家 AI 回信（<code>mail_replies</code>）。</p>
+<h3>5.4 教师监控与介入</h3>
+<p>实训跟踪页每 8 秒轮询 <code>teacher/tracking</code>（参数要求 ≤10 秒），买家消息超过 3 分钟未回会预警；教师可对任意会话发送指导，学生端通过 <code>student/guidance</code> 轮询，在顶栏铃铛里收到通知。</p>
+
+<!-- 6 -->
+<h2 id="data">6. 数据模型</h2>
+<div class="table-wrap"><table>
+<tr><th>领域</th><th>表</th><th>说明</th></tr>
+<tr><td>账号</td><td class="mono">users · classes · teacher_classes · refresh_tokens · login_failures · audit_log</td><td>users.role ∈ student/teacher/admin；学生 users.class_id 归属一个班；<b>班主任只记 classes.head_teacher_id，teacher_classes 只放任课教师</b>（两边不重复）；login_failures 记登录失败计数与锁定</td></tr>
+<tr><td>教学</td><td class="mono">tasks · task_classes · task_progress · scenarios · persona_templates · announcements · baseline_assessments</td><td>任务含 persona_rule、scoring_weights、time_limit_minutes、start_at、deadline</td></tr>
+<tr><td>实训</td><td class="mono">conversations · conversation_messages · orders · store_products · mail_submissions · mail_replies · student_phrases · review_replies · mail_drafts · read_marks</td><td>conversations.state（jsonb）存导演状态（含 studentTurns 计数）；conversations.persona 存画像快照（售前含 interestedProduct）；scenarios.script 存场景剧本；消息 kind 支持 text/voice/image/video/file/card</td></tr>
+<tr><td>评估与计量</td><td class="mono">assessments · conversation_metrics · voice_metrics · llm_usage</td><td>六维评分与评语（含 prompt_version、model、evidence）；首字耗时、输出速度、语音耗时（ASR 记音频时长 audio_ms）用于验收报表；llm_usage 记每次模型调用的用途、档案、tokens、费用、结果、是否走备用</td></tr>
+<tr><td>配置</td><td class="mono">llm_profiles · app_settings · content_terms</td><td>llm_profiles 存模型档案（地址、加密 Key、模型、请求头/请求体、单价、测试结果、是否默认）；app_settings 存 llm_routing（用途分配、导演频率）、voice（语音档案，Key 加密）、quota（月度金额/tokens 额度）、备份计划；content_terms 存违规词与标准话术</td></tr>
+</table></div>
+<p>迁移在 <code>apps/api/src/migrations.ts</code> 中按编号追加，API 启动时自动执行；种子数据在 <code>seed.ts</code>，每次启动 <code>on conflict do nothing</code>（已知问题：删掉的种子会在重启后恢复）。</p>
+
+<h3>数据存放位置</h3>
+<div class="table-wrap"><table>
+<tr><th>位置</th><th>内容</th><th>状态</th></tr>
+<tr><td>云端 PostgreSQL</td><td>账号、班级、任务、会话与消息、订单、评分、邮件、配置、审计、验收指标</td><td><span class="tag t-ok">已实现</span></td></tr>
+<tr><td>云端文件卷</td><td>商品图、语音消息、附件、TTS 缓存（uploads）；备份文件</td><td><span class="tag t-warn">部分</span> 备份目录未挂卷，未推送对象存储</td></tr>
+<tr><td>云端（2026-10-12 迁入）</td><td>差评回复记录、邮件草稿、邮件已读、指导通知已读</td><td><span class="tag t-ok">已实现</span> 旧版本存在本机的数据，学生首次进入页面时自动上传并删除本机副本</td></tr>
+<tr><td>客户端本机（保留）</td><td>栏宽、自动翻译开关等界面偏好；登录令牌（改用 safeStorage）</td><td>—</td></tr>
+</table></div>
+
+<!-- 7 -->
+<h2 id="auth">7. 账号与权限</h2>
+<div class="table-wrap"><table>
+<tr><th>角色</th><th>入口</th><th>数据范围</th><th>实现</th></tr>
+<tr><td>学生</td><td>客户端 · 学生登录页签</td><td>仅本人数据</td><td>所有学生接口查询都带 <code>student_id = 本人</code></td></tr>
+<tr><td>教师</td><td>客户端 · 教师登录页签</td><td>自己是班主任或被授权任课的班级</td><td><code>teacherOwnsClass</code> / <code>scopedStudentsSql</code></td></tr>
+<tr><td>管理员</td><td>浏览器 · 管理端</td><td>全部</td><td>也可调用所有教师接口</td></tr>
+</table></div>
+<p><b>登录态：</b>access token 为 HS256 JWT，有效期 15 分钟（<code>ACCESS_TOKEN_TTL</code>）；refresh token 14 天，数据库只存哈希，每次刷新轮换。密码用 scrypt 加盐。改密、重置、停用（学生和教师）时吊销该用户全部 refresh token。页签与账号角色不符时拒绝登录并提示。</p>
+<p><b>鉴权守卫：</b>令牌只证明身份；每次请求再查一次账号状态和待改密标记（10 秒缓存，停用/改密/重置时立即失效）。停用的账号立即 401 <code>ACCOUNT_DISABLED</code>；待改密账号除改密和 <code>/me</code> 外一律 403 <code>PASSWORD_CHANGE_REQUIRED</code>。</p>
+<p><b>登录限流：</b>同一账号 15 分钟内连续输错 5 次锁 15 分钟；同一 IP 15 分钟内失败 100 次锁 15 分钟（机房共用出口 IP，阈值放宽）。返回 429 <code>LOGIN_LOCKED</code>，写审计 <code>auth.locked</code>。教师/管理员重置密码会解锁。部署在 nginx 后需 <code>TRUST_PROXY=true</code>，nginx 用 <code>$remote_addr</code> 覆盖 X-Forwarded-For。</p>
+<p><b>找回密码：</b>学生 → 教师重置；教师 → 管理员在「账号与权限」重置；管理员 → 服务器执行 <code>pnpm reset-password admin</code>（容器内 <code>docker compose exec api pnpm reset-password admin</code>）。</p>
+<h3>用户管理整改进度（开发方案 I 节）</h3>
+<div class="table-wrap"><table>
+<tr><th>#</th><th>状态</th><th>问题</th></tr>
+<tr><td>I1</td><td><span class="tag t-ok">已修复</span></td><td>登录限流与失败锁定（账号 5 次 / IP 100 次，锁 15 分钟）</td></tr>
+<tr><td>I2</td><td><span class="tag t-ok">已修复</span></td><td>服务端强制改密：待改密账号只放行改密和 /me</td></tr>
+<tr><td>I3</td><td><span class="tag t-ok">已修复</span></td><td>管理端重置教师密码；服务器命令行重置管理员密码</td></tr>
+<tr><td>I4</td><td><span class="tag t-ok">已修复</span></td><td>管理端「班级与授权」：建班时指定班主任，随时更换班主任、授权任课教师</td></tr>
+<tr><td>I5</td><td><span class="tag t-ok">已修复</span></td><td>班级数去重统计；迁移 022 清理了班主任在 teacher_classes 里的重复行</td></tr>
+<tr><td>I6</td><td><span class="tag t-ok">已修复</span></td><td>停用即时生效：吊销 refresh token，鉴权查账号状态</td></tr>
+<tr><td>I7</td><td><span class="tag t-ok">已修复</span></td><td>登录接口带期望角色，不符时不签发令牌（ROLE_MISMATCH），登录页可一键切换页签</td></tr>
+<tr><td>I8</td><td><span class="tag t-ok">已修复</span></td><td>学生改名、转班（自动同步任务）、删除（仅无实训记录）；导入密码执行密码策略</td></tr>
+</table></div>
+
+<!-- 8 -->
+<h2 id="ai">8. AI 与语音服务</h2>
+<div class="table-wrap"><table>
+<tr><th>能力</th><th>现状</th><th>说明</th></tr>
+<tr><td>模型网关</td><td><span class="tag t-ok">已实现</span> pi 0.82.1 调用层 + 多配置档案</td><td>一个档案 = 地址 + 加密 Key + 模型 + 自定义请求头 + 额外请求体 + 单价。厂商预置模板（DeepSeek、通义、智谱、豆包方舟、Kimi、硅基流动、自建 NewAPI、自定义）只是表单默认值；代码里没有任何厂商判断（D-17）：pi 的 reasoning 关闭、compat 全部显式覆盖，厂商专有参数只经 extraBody 注入</td></tr>
+<tr><td>连通性测试</td><td><span class="tag t-ok">已实现</span></td><td>返回首字、输出速度、tokens、样例或上游报错原文；未测试或未通过的档案不能设为默认或分配给用途；改了地址/Key/模型/参数后测试状态自动重置</td></tr>
+<tr><td>按用途选模型</td><td><span class="tag t-ok">已实现</span></td><td>买家对话 / 导演评估 / 六维评分 / 话术与生成，各自指定主档案、备用档案、temperature、max_tokens；未指定走默认档案；导演可设每 N 轮运行一次</td></tr>
+<tr><td>回退与告警</td><td><span class="tag t-ok">已实现</span></td><td>主档案出错且未出字 → 当次立即换备用；连续失败 3 次熔断 5 分钟（备用优先），写审计 <code>llm.failover</code></td></tr>
+<tr><td>当前模型（开发库）</td><td>默认「DeepSeek Flash」（deepseek-flash，关思考）首字约 0.5s；评分用「DeepSeek V4 Pro」约 1.1s；旧 keliagent 档案保留（约 4.9s）</td><td>通义、智谱等待拿到 Key 后在管理端新增档案实测</td></tr>
+<tr><td>TTS</td><td><span class="tag t-ok">已实现</span> 豆包 seed-tts-2.0，按画像性别选音色、按语言指定语种，缓存 mp3</td><td>语音也做成档案（G7）：厂商接口 VoiceProvider，Key 加密；长文本分句合成待做</td></tr>
+<tr><td>ASR</td><td><span class="tag t-ok">已实现</span> 豆包大模型识别；按住说话 → 转文字或直接发语音</td><td>记录音频时长用于计费</td></tr>
+<tr><td>计量与额度</td><td><span class="tag t-ok">已实现</span></td><td>模型按档案单价折算费用（元/百万 tokens），语音按元/万字符、元/小时；月度额度按金额或 tokens，任一达到提醒线告警</td></tr>
+<tr><td>Agent 评测集</td><td><span class="tag t-ok">已实现</span> <code>dev.cmd eval [full]</code></td><td>脚本扮演学生（积极/敷衍）跑典型场景，检查不暴露 AI 身份、结束标记、语种、聊天口吻、情绪走向、主动结束、20 轮一致性；报告在 <code>apps/api/eval-reports/</code></td></tr>
+</table></div>
+<p>没有可用档案时，对话接口直接返回 503，不提供任何固定话术降级（参数明确禁止固定话术或关键词树）。首次启动若档案表为空，会把旧配置（管理端旧版保存的 llm 设置，其次 <code>.env</code> 的 <code>LLM_*</code>）导入为默认档案。</p>
+
+<!-- 9 -->
+<h2 id="ops">9. 配置、后台任务与运维</h2>
+<h3>环境变量（<code>.env</code>，不入库）</h3>
+<div class="table-wrap"><table>
+<tr><th>变量</th><th>说明</th></tr>
+<tr><td class="mono">DATABASE_URL · POSTGRES_PASSWORD</td><td>数据库连接</td></tr>
+<tr><td class="mono">JWT_SECRET · ACCESS_TOKEN_TTL · REFRESH_TOKEN_TTL</td><td>令牌签名与有效期（迁移服务器时 JWT_SECRET 必须原样保留）</td></tr>
+<tr><td class="mono">ADMIN_INITIAL_PASSWORD</td><td>首次启动创建 admin 的初始密码</td></tr>
+<tr><td class="mono">CORS_ORIGINS</td><td>允许的来源；留空等于放行全部（待收紧）</td></tr>
+<tr><td class="mono">SETTINGS_ENCRYPTION_KEY</td><td>加密存储厂商 API Key 的密钥；未设置时由 JWT_SECRET 派生（生产应单独设置，换了它需要重新填写各档案的 Key）</td></tr>
+<tr><td class="mono">LLM_BASE_URL · LLM_API_KEY · LLM_MODEL · LLM_EXTRA_BODY</td><td>只在模型档案表为空时导入一次作为默认档案；之后以管理端档案为准</td></tr>
+<tr><td class="mono">TTS_API_KEY · TTS_RESOURCE_ID · TTS_SPEAKER(_MALE) · ASR_RESOURCE_ID</td><td>豆包语音</td></tr>
+</table></div>
+<h3>后台任务</h3>
+<ul>
+  <li>导演 Agent：买家回复后异步执行（每 N 轮学生发言一次，管理端可调）。</li>
+  <li>六维评分：会话关闭后异步执行。</li>
+  <li>买家邮件回信：邮件提交后异步执行。</li>
+  <li>定时备份：<code>server.ts</code> 每 10 分钟检查一次备份计划（按容器时区；Docker 中缺 pg_dump，待修复）。</li>
+</ul>
+<h3>本地开发</h3>
+<p>端口：API <code>8787</code> · 前端 <code>5288</code>（strictPort）· 数据库容器 <code>cecs-pg:5434</code>。启动：根目录 <code>dev.cmd</code>（服务 + 学生/教师两个独立登录的客户端）、<code>admin.cmd</code>（浏览器管理端）。第一个启动服务的窗口是托管窗口，API 与前端日志合并显示，Ctrl+C 或关窗即全部停止；之后的入口只开客户端/浏览器后退出。<code>dev.cmd status / restart api / logs / stop / test / eval</code>。日志在 <code>.devrun/logs</code>。验证：<code>pnpm build &amp;&amp; pnpm test</code>，前端类型检查用 <code>cd apps/portal &amp;&amp; npx tsc -b --force</code>。详细运维见 skill <code>kefu-weihu</code>。</p>
+
+<!-- 10 -->
+<h2 id="frontend">10. 前端</h2>
+<div class="table-wrap"><table>
+<tr><th>端</th><th>页面</th></tr>
+<tr><td>学生端</td><td>任务大厅（TaskHall）· 客服工作台（LiveWorkbench）· 订单（LiveOrders）· 评价（LiveReviews）· 邮件（LiveMail）· 我的记录（LiveRecords）· 基线测评（BaselineQuiz）</td></tr>
+<tr><td>教师端</td><td>数据总览 · 实训任务 · 班级与学生 · 实训跟踪 · 考核报表 · 场景配置（含场景剧本编辑）· 公告</td></tr>
+<tr><td>管理端</td><td>系统总览（含验收报表与明细 CSV）· AI 与语音服务（AdminModels：模型档案、用途分配、用量费用、语音、额度）· 账号与权限 · 内容资源库 · 数据与备份（AdminLive）</td></tr>
+</table></div>
+<p>样式集中在 <code>apps/portal/src/styles.css</code>，现行规范是根目录 <code>DESIGN.md</code>（苹果风）。<span class="tag t-plan">规划</span> P3 期整体重做设计（去 AI 味，向真实客服软件/电商后台靠拢），届时重写 DESIGN.md 与组件库。<code>Workbench/Orders/Records/MailStudio.tsx</code> 是早期演示页，待清理。</p>
+
+<!-- 11 -->
+<h2 id="status">11. 现状与待办</h2>
+<div class="table-wrap"><table>
+<tr><th>阶段</th><th>内容</th><th>状态</th></tr>
+<tr><td>0–4</td><td>基础、学生端闭环、教师端闭环、管理端</td><td><span class="tag t-ok">主体完成</span>，参数细项有差距</td></tr>
+<tr><td>P0</td><td>build/test 流程补齐，DeepSeek 首字实测</td><td><span class="tag t-ok">已完成</span> 25 项测试通过；DeepSeek 首字 P99 1.18s</td></tr>
+<tr><td>P1</td><td>用户管理整改 + 本机数据迁云端</td><td><span class="tag t-ok">已完成</span> I1–I8、K1–K4；37 项测试通过</td></tr>
+<tr><td>P1b</td><td>开发调试环境：dev.cmd / admin.cmd、多窗口调试、日志、状态检查</td><td><span class="tag t-ok">已完成</span></td></tr>
+<tr><td>P2</td><td>模型网关 + Agent 底座重构</td><td><span class="tag t-ok">已完成</span> G1–G7、J1–J8、B2；57 项测试通过；DeepSeek 设为默认档案。通义/智谱真实对话待拿到 Key 后验证</td></tr>
+<tr><td>P3</td><td>设计定向与组件库</td><td><span class="tag t-plan">待开始</span></td></tr>
+<tr><td>P4</td><td>逐页按新设计重做 + 参数细项补齐</td><td><span class="tag t-plan">待开始</span></td></tr>
+<tr><td>P5</td><td>性能验收与 200 账号压测</td><td><span class="tag t-plan">待开始</span></td></tr>
+<tr><td>R</td><td>发版上线：客户端打包、自动更新、CORS/nginx、备份修复、DEPLOY.md</td><td><span class="tag t-plan">用户明确发版时启动</span></td></tr>
+<tr><td>P6</td><td>购买服务器、部署、交付资料</td><td><span class="tag t-plan">待开始</span></td></tr>
+</table></div>
+<p>完整差距清单（A–I 节）与排期见 <code>docs/重启开发方案-2026-10.md</code>。</p>
+
+<!-- 12 -->
+<h2 id="changelog">12. 变更记录</h2>
+<div class="table-wrap"><table>
+<tr><th>日期</th><th>变更</th></tr>
+<tr><td>2026-10-12</td><td>启动脚本改为托管窗口模式（scripts/dev.mjs）：首个启动窗口托管 API/前端并合并日志，控制端口 18787 做互斥与 stop/restart 通道，后续入口只开客户端/浏览器；删除三个 PowerShell 脚本。</td></tr>
+<tr><td>2026-10-12</td><td>启动脚本改为托管窗口模式（scripts/dev.mjs）：首个启动窗口托管 API/前端并合并日志，控制端口 18787 做互斥与 stop/restart 通道，后续入口只开客户端/浏览器后退出；删除三个 PowerShell 脚本。</td></tr>
+<tr><td>2026-10-12</td><td>P2 完成：模型网关（llm_profiles 多档案、Key 加密、厂商模板、连通性测试、按用途分配主/备用档案、熔断回退与审计告警、按金额/tokens 计量）；调用层换成 pi 0.82.1，删除自研 conversation-provider.ts；Agent 底座（提示词模板带版本、JSON 模式 + zod 校验重试、按字符预算截取历史、评分读全量对话并引入违规词与逐轮得分、场景剧本、导演每 N 轮、Agent 评测集）；验收口径修正（首字从收到请求算起、失败计入分母、明细 CSV）；语音做成档案；售前买家拿到在售商品。迁移 024/025。</td></tr>
 <tr><td>2026-10-12</td><td>P1b 完成：启动入口改为 dev.cmd（学生/教师客户端调试，可同时开多个独立登录窗口）和 admin.cmd（管理端）；修复前端只听 IPv6 导致脚本/客户端连不上；补装 Electron 运行时；开发日志改为可读格式并落盘 .devrun/logs。</td></tr>
-<tr><td>2026-10-12</td><td>P1 完成：I7（页签不符不签发令牌）、I8（学生改名/转班/删除、导入密码策略、新导入学生补齐班级任务）。排期调整：打包/自动更新/上线归入 R 阶段，用户明确发版时才做；下一步 P1b 开发调试环境。</td></tr>
-<tr><td>2026-10-12</td><td>P1 第一批：用户管理整改 I1–I6（登录限流、服务端强制改密、重置教师/管理员密码、班级授权、班级数去重、停用即时生效）；学生端本机数据迁云端 K1–K4（迁移 022/023，新增 student-state 路由）。</td></tr>
-<tr><td>2026-10-11</td><td>P0 完成；依赖布局改为 hoisted（pnpm-workspace.yaml）。</td></tr>
-<tr><td>2026-10-11</td><td>决策：LLM 调用层采用 pi（D-18）。</td></tr>
-<tr><td>2026-10-11</td><td>补充：Agent 底座重构规划（方案 J 节）；数据存放位置与本机数据迁云端（方案 K 节）。</td></tr>
-<tr><td>2026-10-11</td><td>首版：按代码现状梳理架构；交付形态回归“Windows 客户端 + 云端管理端”；记录用户管理检查结果与模型厂商管理、设计升级规划。</td></tr>
-</table></div>
-</main>
-</div>
-<script>
-(function () {
-  var root = document.documentElement;
-  try { var saved = localStorage.getItem("arch-theme"); if (saved) root.setAttribute("data-theme", saved); } catch (e) {}
-  document.getElementById("themeBtn").addEventListener("click", function () {
-    var dark = root.getAttribute("data-theme") === "dark" ||
-      (!root.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    var next = dark ? "light" : "dark";
-    root.setAttribute("data-theme", next);
-    try { localStorage.setItem("arch-theme", next); } catch (e) {}
-  });
-})();
-</script>
-</body>
-</html>
+<tr><td>2026-10-12</td><td>P1 完成：I7（页签不符不签发令牌）、I8（学生改名/转班/删除、导入密码策略、新导入学生补齐班级任务）。排期调整：打包/自动更新/上线归入 R 阶段，用户明确发版时才做；下一步 P1b 开发调试环境。</td></tr>
+<tr><td>2026-10-12</td><td>P1 第一批：用户管理整改 I1–I6（登录限流、服务端强制改密、重置教师/管理员密码、班级授权、班级数去重、停用即时生效）；学生端本机数据迁云端 K1–K4（迁移 022/023，新增 student-state 路由）。</td></tr>
+<tr><td>2026-10-11</td><td>P0 完成；依赖布局改为 hoisted（pnpm-workspace.yaml）。</td></tr>
+<tr><td>2026-10-11</td><td>决策：LLM 调用层采用 pi（D-18）。</td></tr>
+<tr><td>2026-10-11</td><td>补充：Agent 底座重构规划（方案 J 节）；数据存放位置与本机数据迁云端（方案 K 节）。</td></tr>
+<tr><td>2026-10-11</td><td>首版：按代码现状梳理架构；交付形态回归“Windows 客户端 + 云端管理端”；记录用户管理检查结果与模型厂商管理、设计升级规划。</td></tr>
+</table></div>
+</main>
+</div>
+<script>
+(function () {
+  var root = document.documentElement;
+  try { var saved = localStorage.getItem("arch-theme"); if (saved) root.setAttribute("data-theme", saved); } catch (e) {}
+  document.getElementById("themeBtn").addEventListener("click", function () {
+    var dark = root.getAttribute("data-theme") === "dark" ||
+      (!root.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    var next = dark ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("arch-theme", next); } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>

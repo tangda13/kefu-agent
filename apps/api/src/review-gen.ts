@@ -1,6 +1,7 @@
 import { NEGATIVE_REVIEW_POOL, POSITIVE_REVIEW_POOL } from "@cecs/domain";
 import type { Db } from "./db";
-import type { ConversationProvider } from "./conversation-provider";
+import type { LlmGateway } from "./llm/gateway";
+import { buildBuyerReviewMessages, buyerReviewSchema } from "./prompts/assist";
 import type { SessionState } from "./director";
 
 /** 满意度(0-100) → 星级 */
@@ -30,11 +31,11 @@ interface LogLike {
  */
 export async function generateBuyerReview(
   db: Db,
-  provider: ConversationProvider,
+  gateway: LlmGateway,
   conversationId: string,
   log: LogLike,
 ): Promise<void> {
-  if (provider.providerId === "unconfigured") return;
+  if (!gateway.isConfigured("assist")) return;
   const result = await db.query(
     `select o.id as order_id, o.payload, o.order_no, c.persona, c.state
      from conversations c
@@ -74,28 +75,23 @@ export async function generateBuyerReview(
     : ratingFromSatisfaction(satisfaction);
   const cappedRating = Math.min(5, rating);
 
-  const system =
-    `You are ${persona.name ?? "a buyer"}, a cross-border e-commerce buyer from ${persona.nationality ?? "abroad"}. ` +
-    `You just finished a customer service conversation about your order (product: ${order.productName}). ` +
-    `Final satisfaction with the service: ${satisfaction}/100. ` +
-    (mode === "revise"
-      ? `You previously left a ${existing?.rating}-star review: "${existing?.content}". The support agent resolved your issue, so you are UPDATING your review to ${cappedRating} stars. Mention that the seller followed up and resolved the problem.`
-      : `Now you are leaving a ${cappedRating}-star review for this order, reflecting both the product and the service experience.`) +
-    ` Key facts from the conversation: ${state.memory ?? "(none)"}. ` +
-    `Write the review in English, 1-3 natural sentences, first person, no absolute marketing phrases. ` +
-    'Return ONLY JSON: {"content":"..."}.';
-
   let content = "";
   try {
-    const raw = await provider.complete(system, "Write the review now.");
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (match) {
-      const parsed = JSON.parse(match[0]) as { content?: string };
-      if (parsed.content?.trim()) content = parsed.content.trim().slice(0, 600);
-    }
-    if (!content && raw.trim().length >= 15 && !raw.trim().startsWith("{")) {
-      content = raw.trim().slice(0, 600);
-    }
+    const { data } = await gateway.completeJson(
+      "assist",
+      buildBuyerReviewMessages({
+        persona,
+        productName: order.productName,
+        satisfaction,
+        mode,
+        rating: cappedRating,
+        existing,
+        memory: state.memory,
+      }),
+      buyerReviewSchema,
+      { conversationId },
+    );
+    content = data.content.slice(0, 600);
   } catch (error) {
     log.warn(`review-gen llm failed for ${row.order_no}: ${(error as Error).message}`);
   }

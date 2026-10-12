@@ -13,36 +13,9 @@ export async function setSetting(db: Db, key: string, value: unknown): Promise<v
   );
 }
 
-export interface LlmSettings {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-}
-
-export interface VoiceSettings {
-  apiKey: string;
-  ttsResourceId: string;
-  ttsSpeaker: string;
-  ttsSpeakerMale: string;
-  asrResourceId: string;
-}
-
+/** 月度额度：按金额（元，含语音）或 tokens 计算，0 表示不限（G6） */
 export interface QuotaSettings {
-  monthlyLlmCalls: number;
+  monthlyBudgetYuan: number;
+  monthlyTokens: number;
   warnPercent: number;
-}
-
-/** 语音配置：DB 设置优先，回退 env */
-export async function getVoiceSettings(
-  db: Db,
-  env: { ttsApiKey: string; ttsResourceId: string; ttsSpeaker: string; ttsSpeakerMale: string; asrResourceId: string },
-): Promise<VoiceSettings> {
-  const saved = await getSetting<Partial<VoiceSettings>>(db, "voice");
-  return {
-    apiKey: saved?.apiKey || env.ttsApiKey,
-    ttsResourceId: saved?.ttsResourceId || env.ttsResourceId,
-    ttsSpeaker: saved?.ttsSpeaker || env.ttsSpeaker,
-    ttsSpeakerMale: saved?.ttsSpeakerMale || env.ttsSpeakerMale,
-    asrResourceId: saved?.asrResourceId || env.asrResourceId,
-  };
 }

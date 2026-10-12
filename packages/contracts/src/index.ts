@@ -61,7 +61,30 @@ export interface TrainingScenario {
   objective: string;
   defaultLanguage: (typeof SUPPORTED_LANGUAGES)[number];
   enabled: boolean;
+  script?: ScenarioScript;
 }
+
+/** 场景剧本（J5）：让买家有明确目标和底线，而不是只凭一句场景描述即兴发挥 */
+export interface ScenarioScript {
+  /** 买家这次想达成什么 */
+  buyerGoal: string;
+  /** 隐藏信息：客服问到点子上才透露（如真实损坏程度） */
+  hiddenInfo: string;
+  /** 情绪触发点：哪些做法让买家更不满、哪些让买家缓和 */
+  emotionTriggers: string;
+  /** 让步底线：买家最多接受到什么程度 */
+  bottomLine: string;
+  /** 结束条件：满意离开 / 失望离开的判定 */
+  endConditions: string;
+}
+
+export const SCENARIO_SCRIPT_FIELDS: Array<{ key: keyof ScenarioScript; label: string }> = [
+  { key: "buyerGoal", label: "买家目标" },
+  { key: "hiddenInfo", label: "隐藏信息" },
+  { key: "emotionTriggers", label: "情绪触发点" },
+  { key: "bottomLine", label: "让步底线" },
+  { key: "endConditions", label: "结束条件" },
+];
 
 export interface PersonaTemplate {
   id: string;
@@ -88,3 +111,4 @@ export interface ConversationMetric {
   outcome: "success" | "timeout" | "error";
 }
 
+export * from "./llm";

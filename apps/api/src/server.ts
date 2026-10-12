@@ -12,8 +12,11 @@ import {
   standardPhrases,
   trainingScenarios,
 } from "@cecs/domain";
-import { createConversationProvider, SwappableConversationProvider } from "./conversation-provider";
-import { getSetting, type LlmSettings } from "./settings";
+import { getSetting } from "./settings";
+import { LlmGateway } from "./llm/gateway";
+import { bootstrapProfiles } from "./llm/profiles";
+import { createSecretSealer } from "./llm/secret";
+import { VoiceService } from "./voice/service";
 import { loadEnv, type ApiEnv } from "./env";
 import { createPool, migrate, type Db } from "./db";
 import { seedAdmin, seedCatalog, seedContentTerms, seedStoreProducts } from "./seed";
@@ -28,6 +31,7 @@ import { registerBaselineRoutes } from "./routes/baseline";
 import { registerAnnouncementRoutes } from "./routes/announcements";
 import { registerTeacherRoutes } from "./routes/teacher";
 import { registerAdminRoutes } from "./routes/admin";
+import { registerAdminLlmRoutes } from "./routes/admin-llm";
 import { registerStudentStateRoutes } from "./routes/student-state";
 
 export interface BuildServerOptions {
@@ -53,15 +57,20 @@ export async function buildServer(options: BuildServerOptions = {}) {
       : true);
   const app = Fastify({ logger, trustProxy: env.trustProxy });
   const guard = createAuthGuard(env.jwtSecret, db);
-  // LLM 配置：DB 设置优先（管理端可热切换），回退 env
-  const savedLlm = await getSetting<LlmSettings>(db, "llm").catch(() => null);
-  const conversationProvider = new SwappableConversationProvider(
-    createConversationProvider(
-      savedLlm
-        ? { llmBaseUrl: savedLlm.baseUrl, llmApiKey: savedLlm.apiKey, llmModel: savedLlm.model }
-        : env,
-    ),
-  );
+  // 模型网关：档案与用途路由存 DB，管理端修改后 reload() 热生效；首次启动把旧配置导入为默认档案
+  if (!env.settingsEncryptionKey && process.env.NODE_ENV === "production") {
+    app.log.warn("SETTINGS_ENCRYPTION_KEY 未设置，厂商 API Key 用 JWT_SECRET 派生的密钥加密；轮换 JWT_SECRET 后需重新填写 Key");
+  }
+  const sealer = createSecretSealer(env.settingsEncryptionKey || env.jwtSecret);
+  await bootstrapProfiles(db, sealer, env, app.log);
+  const gateway = new LlmGateway(db, sealer, app.log);
+  await gateway.reload();
+  const voice = new VoiceService(db, sealer, env);
+
+  app.decorateRequest("receivedAt", 0);
+  app.addHook("onRequest", async (request) => {
+    request.receivedAt = Date.now();
+  });
 
   // 允许无请求体的 POST（如重置密码），空 body 按 {} 处理
   app.addContentTypeParser(
@@ -120,14 +129,15 @@ export async function buildServer(options: BuildServerOptions = {}) {
 
   registerAuthRoutes(app, db, env, guard);
   registerClassRoutes(app, db, guard);
-  registerCatalogRoutes(app, db, guard, conversationProvider);
+  registerCatalogRoutes(app, db, guard, gateway);
   registerTaskRoutes(app, db, guard);
-  registerConversationRoutes(app, db, guard, conversationProvider);
-  registerOrderRoutes(app, db, guard, conversationProvider);
+  registerConversationRoutes(app, db, guard, gateway, voice);
+  registerOrderRoutes(app, db, guard, gateway);
   registerBaselineRoutes(app, db, guard);
   registerAnnouncementRoutes(app, db, guard);
   registerTeacherRoutes(app, db, guard);
-  registerAdminRoutes(app, db, guard, conversationProvider);
+  registerAdminRoutes(app, db, guard, gateway, voice);
+  registerAdminLlmRoutes(app, db, guard, gateway, sealer);
   registerStudentStateRoutes(app, db, guard);
 
   // 定时备份调度：每 10 分钟检查一次（到达设定小时且当日未备份则执行）

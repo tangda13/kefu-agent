@@ -2,10 +2,11 @@ import { Activity, AlertTriangle, Bot, CheckCircle2, Cloud, DatabaseBackup, Down
 import { forbiddenTerms, standardPhrases } from "@cecs/domain";
 import { MetricCard, PageHeader } from "../../components/AppShell";
 import type { Session } from "../../api/client";
-import { AdminAccounts, AdminBackup, AdminContent, AdminProviders, AdminSystem } from "./AdminLive";
+import { AdminAccounts, AdminBackup, AdminContent, AdminSystem } from "./AdminLive";
+import { AdminModels } from "./AdminModels";
 
 export function AdminPages({ page, session }: { page: string; session?: Session | null }) {
-  if (page === "providers") return session ? <AdminProviders session={session} /> : <Providers />;
+  if (page === "providers") return session ? <AdminModels session={session} /> : <Providers />;
   if (page === "accounts") return session ? <AdminAccounts session={session} /> : <Accounts />;
   if (page === "content") return session ? <AdminContent session={session} /> : <ContentLibrary />;
   if (page === "backup") return session ? <AdminBackup session={session} /> : <Backup />;

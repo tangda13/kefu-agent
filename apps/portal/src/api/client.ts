@@ -245,6 +245,8 @@ export interface ScenarioSummary {
   objective: string;
   defaultLanguage: string;
   enabled: boolean;
+  /** 场景剧本（J5）：买家目标、隐藏信息、情绪触发点、让步底线、结束条件 */
+  script: Partial<Record<"buyerGoal" | "hiddenInfo" | "emotionTriggers" | "bottomLine" | "endConditions", string>> | null;
 }
 
 export interface TeacherTask {

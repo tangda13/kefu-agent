@@ -1,6 +1,7 @@
 import { deriveBuyerEmail } from "@cecs/domain";
 import type { Db } from "./db";
-import type { ConversationProvider } from "./conversation-provider";
+import type { LlmGateway } from "./llm/gateway";
+import { buildBuyerMailMessages, buyerMailSchema } from "./prompts/assist";
 
 /** 营销邮件按客户类型的回信概率（回复类邮件必回） */
 const MARKETING_REPLY_RATE: Record<string, number> = {
@@ -31,7 +32,7 @@ export interface BuyerMailReplyInput {
  */
 export async function generateBuyerMailReply(
   db: Db,
-  provider: ConversationProvider,
+  gateway: LlmGateway,
   input: BuyerMailReplyInput,
   log: { info: (msg: string) => void; warn: (msg: string) => void },
 ): Promise<void> {
@@ -39,7 +40,7 @@ export async function generateBuyerMailReply(
     log.info(`mail-reply skip: submission ${input.submissionId} has no linked order`);
     return;
   }
-  if (provider.providerId === "unconfigured") {
+  if (!gateway.isConfigured("assist")) {
     log.warn("mail-reply skip: AI provider not configured");
     return;
   }
@@ -68,35 +69,26 @@ export async function generateBuyerMailReply(
     moodDirective = MARKETING_MOODS[Math.floor(Math.random() * MARKETING_MOODS.length)]!;
   }
 
-  const system =
-    `You are ${persona.name ?? "a buyer"}, a cross-border e-commerce buyer from ${persona.nationality ?? "abroad"} ` +
-    `(customer type: ${customerType || "regular"}). You write emails in your own language (${persona.language ?? "en-US"}), ` +
-    `in a natural, everyday customer tone.\n` +
-    `Your related order: ${JSON.stringify({ orderNo: row.order_no, product: order.productName, status: order.statusLabel, total: order.totalAmount })}.\n` +
-    `You just received an email from the store's customer support. Write your reply email: 2-5 sentences, sign with your name. ` +
-    `${moodDirective}\n` +
-    'Return ONLY a JSON object like {"subject":"...","body":"..."} with no extra text.';
-
-  const raw = await provider.complete(system, `Subject: ${input.subject}\n\n${input.body}`);
   let subject = `Re: ${input.subject.replace(/^Re:\s*/i, "")}`;
   let body = "";
   try {
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (match) {
-      const parsed = JSON.parse(match[0]) as { subject?: string; body?: string };
-      if (parsed.subject?.trim()) subject = parsed.subject.trim();
-      if (parsed.body?.trim()) body = parsed.body.trim();
-    }
-  } catch {
-    // 解析失败走兜底
-  }
-  if (!body) {
-    const plain = raw.trim();
-    if (plain.length < 20 || plain.startsWith("{")) {
-      log.warn(`mail-reply skip: unusable LLM output for submission ${input.submissionId}`);
-      return;
-    }
-    body = plain;
+    const { data } = await gateway.completeJson(
+      "assist",
+      buildBuyerMailMessages({
+        persona,
+        customerType,
+        orderBrief: JSON.stringify({ orderNo: row.order_no, product: order.productName, status: order.statusLabel, total: order.totalAmount }),
+        moodDirective,
+        subject: input.subject,
+        body: input.body,
+      }),
+      buyerMailSchema,
+    );
+    if (data.subject?.trim()) subject = data.subject.trim();
+    body = data.body.trim();
+  } catch (error) {
+    log.warn(`mail-reply skip: unusable LLM output for submission ${input.submissionId}: ${(error as Error).message}`);
+    return;
   }
   await db.query(
     `insert into mail_replies (student_id, order_id, submission_id, from_name, from_email, subject, body)

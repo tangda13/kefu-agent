@@ -425,4 +425,66 @@ create table if not exists read_marks (
 );
 `,
   },
+  {
+    /* 模型网关（G1–G6）：llm_profiles 每行一个可用的“厂商地址 + 模型 + 参数”档案，Key 加密存储；
+       用途路由与导演频率存 app_settings.llm_routing；llm_usage 记录每次调用的 tokens、费用与结果 */
+    id: "024_llm_gateway",
+    sql: `
+create table if not exists llm_profiles (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  preset_key text not null default 'custom',
+  protocol text not null default 'openai-completions',
+  base_url text not null,
+  api_key_enc text not null default '',
+  model text not null,
+  extra_headers jsonb not null default '{}'::jsonb,
+  extra_body jsonb not null default '{}'::jsonb,
+  max_tokens_field text not null default 'max_tokens' check (max_tokens_field in ('max_tokens','max_completion_tokens')),
+  json_mode boolean not null default false,
+  timeout_ms int not null default 60000,
+  price_input numeric not null default 0,
+  price_output numeric not null default 0,
+  enabled boolean not null default true,
+  is_default boolean not null default false,
+  test_status text not null default 'untested' check (test_status in ('untested','ok','failed')),
+  test_result jsonb,
+  tested_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists llm_profiles_one_default on llm_profiles(is_default) where is_default;
+
+create table if not exists llm_usage (
+  id bigserial primary key,
+  created_at timestamptz not null default now(),
+  profile_id uuid references llm_profiles(id) on delete set null,
+  profile_name text not null,
+  model text not null,
+  purpose text not null,
+  outcome text not null check (outcome in ('success','error','timeout','parse_error')),
+  input_tokens int not null default 0,
+  output_tokens int not null default 0,
+  cost numeric not null default 0,
+  ttft_ms int,
+  duration_ms int not null default 0,
+  fallback boolean not null default false,
+  conversation_id uuid,
+  error text
+);
+create index if not exists llm_usage_created_idx on llm_usage(created_at);
+
+alter table voice_metrics add column if not exists audio_ms int not null default 0;
+`,
+  },
+  {
+    /* Agent 底座（J2/J5/J7）：场景剧本、评分追溯（提示词版本 + 模型 + 客观依据） */
+    id: "025_agent_foundation",
+    sql: `
+alter table scenarios add column if not exists script jsonb;
+alter table assessments add column if not exists prompt_version text;
+alter table assessments add column if not exists model text;
+alter table assessments add column if not exists evidence jsonb not null default '{}'::jsonb;
+`,
+  },
 ];

@@ -2,7 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { toStudentPersonaView, ensurePersonaAvatar } from "@cecs/domain";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
-import type { ConversationProvider } from "../conversation-provider";
+import type { LlmGateway } from "../llm/gateway";
+import { buildSuggestionMessages, suggestionsSchema } from "../prompts/assist";
 
 const SUGGESTION_TYPES = {
   payment_reminder: "礼貌催付：提醒买家完成付款，说明库存保留时间，不施压",
@@ -17,7 +18,7 @@ export function registerOrderRoutes(
   app: FastifyInstance,
   db: Db,
   guard: AuthGuard,
-  provider: ConversationProvider,
+  gateway: LlmGateway,
 ): void {
   // 学生订单列表（来自实训会话生成的订单）
   app.get(
@@ -191,38 +192,19 @@ export function registerOrderRoutes(
         reply.code(404);
         return { code: "NOT_FOUND", message: "订单不存在。" };
       }
-      if (provider.providerId === "unconfigured") {
+      if (!gateway.isConfigured("assist")) {
         reply.code(503);
         return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "请由管理员配置 LLM 服务。" };
       }
       const persona = row.persona as Record<string, unknown>;
       const order = row.payload as Record<string, unknown>;
       try {
-        const raw = await provider.complete(
-          "You are a cross-border e-commerce customer service coach. Generate exactly 3 alternative reply drafts the agent can send to the buyer. " +
-            `Task: ${SUGGESTION_TYPES[type]}. Write in the buyer's language (${persona.language ?? "en-US"}). ` +
-            "Each draft: 1-3 sentences, professional, no forbidden absolute claims (e.g. 'best', '100% guaranteed'). " +
-            'Return ONLY a JSON array of 3 strings, e.g. ["...","...","..."].',
-          `Buyer profile: ${JSON.stringify({ name: persona.name, nationality: persona.nationality, customerType: persona.customerType })}\nOrder: ${JSON.stringify(order)}`,
+        const { data } = await gateway.completeJson(
+          "assist",
+          buildSuggestionMessages({ task: SUGGESTION_TYPES[type], persona, order }),
+          suggestionsSchema,
         );
-        let suggestions: string[] = [];
-        try {
-          const match = raw.match(/\[[\s\S]*\]/);
-          suggestions = match ? JSON.parse(match[0]) : [];
-        } catch {
-          suggestions = [];
-        }
-        if (!Array.isArray(suggestions) || suggestions.length < 3) {
-          suggestions = raw
-            .split(/\n+/)
-            .map((line) => line.replace(/^\s*[\d\-.、)]+\s*/, "").trim())
-            .filter((line) => line.length > 15)
-            .slice(0, 3);
-        }
-        if (suggestions.length < 3) {
-          reply.code(502);
-          return { code: "SUGGESTION_FAILED", message: "话术生成不完整，请重试。" };
-        }
+        const suggestions = data.items;
         return { type, suggestions: suggestions.slice(0, 3) };
       } catch (error) {
         request.log.error(error, "suggestion failed");

@@ -4,6 +4,9 @@ packages:
 allowBuilds:
   esbuild: true
   electron: true
+  # pi-ai 的间接依赖，只用 openai-completions，不需要构建脚本
+  '@google/genai': false
+  protobufjs: false
 minimumReleaseAgeExclude:
   - tsx@4.23.1
 # Windows 上 pnpm 11.7 默认 isolated 布局导入 esbuild 时稳定报 EPERM（2026-10-11 实测），改用 hoisted 布局

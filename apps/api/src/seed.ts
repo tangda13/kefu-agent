@@ -1,4 +1,4 @@
-import { forbiddenTerms, personaTemplates, standardPhrases, storeProducts, trainingScenarios } from "@cecs/domain";
+import { forbiddenTerms, personaTemplates, scenarioScripts, standardPhrases, storeProducts, trainingScenarios } from "@cecs/domain";
 import type { Db } from "./db";
 import { hashPassword } from "./security";
 
@@ -17,6 +17,11 @@ export async function seedCatalog(db: Db): Promise<void> {
         scenario.enabled,
       ],
     );
+    // 剧本只在为空时写入，管理员改过的剧本不会被覆盖
+    const script = scenarioScripts[scenario.id];
+    if (script) {
+      await db.query("update scenarios set script = $2 where id = $1 and script is null", [scenario.id, JSON.stringify(script)]);
+    }
   }
   for (const persona of personaTemplates) {
     await db.query(

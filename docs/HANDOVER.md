@@ -15,12 +15,12 @@
 | 2 | 学生端全闭环（LLM对话/高仿真工作台/订单AI话术/邮件违规检测/六维评分/TTS播报/ASR语音输入/语音消息直发） | ✅ 完成 |
 | 3 | 教师端（总览/任务/班级/实时监控+介入/回放复核/考核报表Excel-PDF/场景商品配置） | ✅ 完成 |
 | 4 | 管理端（系统总览/Provider热切换/计量告警/账号/内容库DB化/备份/审计/定时备份） | ✅ 完成 |
-| 5 | 验收工具（TTFT报表+一键100次测试）✅；**换正式LLM Provider ⏸**；并发压测 ⏸ | 部分 |
+| 5 | 验收工具（TTFT报表+一键100次测试+明细CSV）✅；模型网关 + DeepSeek 默认（P2，2026-10-12）✅；并发压测 ⏸ | 部分 |
 | 6 | Electron 打包（electron-builder+签名）、部署文档、操作手册 | ⏸ 待做 |
 
 ## 关键待办（按优先级）
 1. 提交工作区未提交改动（买家闭环评价 review-gen 等，见上方 Git 段落）。
-2. **换正式 LLM Provider**：keliagent 实测 TTFT P50=5.9s、≤3s率仅7%（红线99%）❌。拿到正式服务后在管理端「AI与语音服务」填地址+密钥+模型，保存即热切换，再点「运行验收测试(100次)」复验。输出速度/TTS/ASR 均已达标。
+2. ~~换正式 LLM Provider~~（P2 已完成，2026-10-12）：管理端「AI 与语音服务」改为多档案模型网关，开发库默认「DeepSeek Flash」首字约 0.5s。剩余：通义、智谱拿到 Key 后新增档案实测；在系统总览跑一次 100 次验收测试留证。
 3. 阶段6：electron-builder 打包安装包（现为单客户端）+ 部署说明 + 操作手册。
 4. 并发压测（200账号/100并发目标）。
 5. 零散债：任务限时未强制执行；侧边栏品牌"AI 实训平台"含"实训"字样待用户拍板是否改名。
@@ -32,9 +32,9 @@
 - 共用组件已抽出：components/{BuyerAvatar,SuggestionComposer,ReviewReply}.tsx；邮箱派生在 domain（stableHash/deriveBuyerEmail，前后端共用勿改算法）。
 
 ## 环境速查
-- 一键启动（2026-10-12 起）：根目录 `dev.cmd`（学生/教师客户端调试，默认同时开学生、教师两个独立登录的客户端；`dev.cmd stop|status|restart api|logs|client teacher 2|test`）和 `admin.cmd`（浏览器打开管理端）。旧的 `启动开发环境.cmd` / `客户端.cmd` / `start-dev.ps1` / `start-client.ps1` 已删除
+- 一键启动（2026-10-12 起；同日改为“托管窗口”模式：第一个启动的窗口合并显示 API/前端日志，Ctrl+C 或关窗即全停，后续入口只开客户端/浏览器后自动退出，实现 `scripts/dev.mjs`）：根目录 `dev.cmd`（学生/教师客户端调试，默认同时开学生、教师两个独立登录的客户端；`dev.cmd stop|status|restart api|logs|client teacher 2|test`）和 `admin.cmd`（浏览器打开管理端）。旧的 `启动开发环境.cmd` / `客户端.cmd` / `start-dev.ps1` / `start-client.ps1` 已删除
 - 端口：API 8787 / 前端 **5288**（5173/5174 属智慧物流项目勿动）/ Postgres 容器 cecs-pg:5434（库 cecs、cecs_test）
-- 密钥在 `apps/api/.env`（gitignore）：LLM=keliagent deepseek-v4-pro；语音=豆包（TTS seed-tts-2.0 音色 vv_uranus/dayi_uranus；ASR volc.seedasr.sauc.duration）
+- 模型配置在数据库 `llm_profiles`（管理端维护，Key 加密）；`apps/api/.env`（gitignore）里的 LLM_* 只在档案表为空时导入一次，DeepSeek Key 也在其中；语音=豆包（TTS seed-tts-2.0 音色 vv_uranus/dayi_uranus；ASR volc.seedasr.sauc.duration）
 - 测试账号：admin/Admin#Prod2026 · wang.teacher/Teach#2026 · s2601001/Student#01 · s2601002/Student#02（班级：跨境电商2601班）
 - 验证方式：`pnpm build && pnpm test`（19项）；Playwright 脚本模式见 scratchpad 历史
 

@@ -1,10 +1,13 @@
 @echo off
-rem admin launcher: see scripts\admin.ps1 for usage
-where pwsh >nul 2>nul
-if %errorlevel%==0 (
-    pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\admin.ps1" %*
+setlocal
+rem ASCII only: cmd.exe parses batch files in the OEM code page.
+rem admin.cmd = open the admin portal in the browser; admin.cmd status|stop|help = same as dev.cmd
+chcp 65001 >nul
+if "%~1"=="" (
+    node "%~dp0scripts\dev.mjs" admin
 ) else (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\admin.ps1" %*
+    node "%~dp0scripts\dev.mjs" %*
 )
-rem double-click: keep the window open so the summary stays visible
-echo %cmdcmdline% | find /i "%~0" >nul && pause
+set "CODE=%errorlevel%"
+if not "%CODE%"=="0" (echo %cmdcmdline% | find /i "%~0" >nul && pause)
+exit /b %CODE%

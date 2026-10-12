@@ -1,0 +1,155 @@
+import { z } from "zod";
+import type { ChatMessage } from "../llm/gateway";
+
+/** 辅助生成类提示词（用途 assist）：翻译、话术建议、写信辅助、买家回信、买家评价 */
+export const ASSIST_PROMPT_VERSION = "assist@2026-10-12";
+
+const nonEmpty = z.string().trim().min(1);
+
+// ---------- 翻译 ----------
+export function buildTranslationMessages(text: string): ChatMessage[] {
+  return [
+    {
+      role: "system",
+      content:
+        "You are a professional translator for cross-border e-commerce customer service. Translate the buyer's message into Simplified Chinese. Output ONLY the translation, no explanations.",
+    },
+    { role: "user", content: text },
+  ];
+}
+
+// ---------- 订单话术建议（3 版） ----------
+export const suggestionsSchema = z.object({ items: z.array(nonEmpty).min(3) });
+
+export function buildSuggestionMessages(input: {
+  task: string;
+  persona: Record<string, unknown>;
+  order: Record<string, unknown>;
+}): ChatMessage[] {
+  return [
+    {
+      role: "system",
+      content:
+        "You are a cross-border e-commerce customer service coach. Generate exactly 3 alternative reply drafts the agent can send to the buyer. " +
+        `Task: ${input.task}. Write in the buyer's language (${input.persona.language ?? "en-US"}). ` +
+        "Each draft: 1-3 sentences, professional, no forbidden absolute claims (e.g. 'best', '100% guaranteed'). " +
+        'Return ONLY a JSON object: {"items":["...","...","..."]}.',
+    },
+    {
+      role: "user",
+      content: `Buyer profile: ${JSON.stringify({ name: input.persona.name, nationality: input.persona.nationality, customerType: input.persona.customerType })}\nOrder: ${JSON.stringify(input.order)}`,
+    },
+  ];
+}
+
+// ---------- 写信辅助（3 版草稿） ----------
+export const mailDraftsSchema = z.object({
+  items: z.array(z.object({ subject: z.string().optional(), body: nonEmpty })).min(3),
+});
+
+export function buildMailReplyDraftMessages(input: {
+  language: string;
+  buyerBrief: string;
+  orderBrief: string;
+  originalSubject: string;
+  originalBody: string;
+}): ChatMessage[] {
+  return [
+    {
+      role: "system",
+      content:
+        "You are a cross-border e-commerce customer service coach. Draft exactly 3 alternative reply EMAILS the agent can send to the buyer, " +
+        "with distinct strategies: (1) solution-focused, (2) empathy-first, (3) brief and efficient. " +
+        `Write in the buyer's language (${input.language}). Each 2-5 sentences plus a short sign-off, professional, ` +
+        "no absolute marketing claims (e.g. 'best', '100% guaranteed'). " +
+        'Return ONLY a JSON object: {"items":[{"body":"..."},{"body":"..."},{"body":"..."}]}.',
+    },
+    {
+      role: "user",
+      content: `Buyer profile: ${input.buyerBrief}\nOrder: ${input.orderBrief}\nBuyer's email:\nSubject: ${input.originalSubject}\n\n${input.originalBody}`,
+    },
+  ];
+}
+
+export function buildMailComposeDraftMessages(input: {
+  language: string;
+  purpose: string;
+  buyerBrief: string;
+  orderBrief: string;
+  templateBody: string;
+}): ChatMessage[] {
+  return [
+    {
+      role: "system",
+      content:
+        "You are a cross-border e-commerce customer service coach. Draft exactly 3 alternative outreach EMAILS (subject + body) " +
+        `for the purpose: ${input.purpose}. ` +
+        `Personalize for the recipient. Write in the buyer's language (${input.language}). ` +
+        "Each body 3-6 sentences with greeting and sign-off, professional, no absolute marketing claims. " +
+        'Return ONLY a JSON object: {"items":[{"subject":"...","body":"..."}, ...]}.',
+    },
+    {
+      role: "user",
+      content: `Buyer profile: ${input.buyerBrief}\nOrder history: ${input.orderBrief}\nReference template:\n${input.templateBody}`,
+    },
+  ];
+}
+
+// ---------- 买家回信 ----------
+export const buyerMailSchema = z.object({ subject: z.string().optional(), body: nonEmpty });
+
+export function buildBuyerMailMessages(input: {
+  persona: Record<string, unknown>;
+  customerType: string;
+  orderBrief: string;
+  moodDirective: string;
+  subject: string;
+  body: string;
+}): ChatMessage[] {
+  const persona = input.persona;
+  return [
+    {
+      role: "system",
+      content:
+        `You are ${persona.name ?? "a buyer"}, a cross-border e-commerce buyer from ${persona.nationality ?? "abroad"} ` +
+        `(customer type: ${input.customerType || "regular"}). You write emails in your own language (${persona.language ?? "en-US"}), ` +
+        "in a natural, everyday customer tone.\n" +
+        `Your related order: ${input.orderBrief}.\n` +
+        "You just received an email from the store's customer support. Write your reply email: 2-5 sentences, sign with your name. " +
+        `${input.moodDirective}\n` +
+        'Return ONLY a JSON object like {"subject":"...","body":"..."} with no extra text.',
+    },
+    { role: "user", content: `Subject: ${input.subject}\n\n${input.body}` },
+  ];
+}
+
+// ---------- 买家评价 ----------
+export const buyerReviewSchema = z.object({ content: nonEmpty });
+
+export function buildBuyerReviewMessages(input: {
+  persona: Record<string, unknown>;
+  productName: unknown;
+  satisfaction: number;
+  mode: "create" | "revise";
+  rating: number;
+  existing: { rating?: number; content?: string } | null;
+  memory: string | undefined;
+}): ChatMessage[] {
+  const persona = input.persona;
+  return [
+    {
+      role: "system",
+      content:
+        `You are ${persona.name ?? "a buyer"}, a cross-border e-commerce buyer from ${persona.nationality ?? "abroad"}. ` +
+        `You just finished a customer service conversation about your order (product: ${input.productName}). ` +
+        `Final satisfaction with the service: ${input.satisfaction}/100. ` +
+        (input.mode === "revise"
+          ? `You previously left a ${input.existing?.rating}-star review: "${input.existing?.content}". The support agent resolved your issue, so you are UPDATING your review to ${input.rating} stars. Mention that the seller followed up and resolved the problem.`
+          : `Now you are leaving a ${input.rating}-star review for this order, reflecting both the product and the service experience.`) +
+        ` Key facts from the conversation: ${input.memory ?? "(none)"}. ` +
+        "Write the review in English, 1-3 natural sentences, first person, no absolute marketing phrases. " +
+        'Return ONLY a JSON object: {"content":"..."}.',
+    },
+    { role: "user", content: "Write the review now." },
+  ];
+}

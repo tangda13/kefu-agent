@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { BusinessStage } from "@cecs/contracts";
+import type { BusinessStage, ScenarioScript } from "@cecs/contracts";
 import {
   buyerHistoryOrderCount,
   composePersonaWithRule,
@@ -12,7 +12,10 @@ import {
 } from "@cecs/domain";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
-import type { ConversationProvider } from "../conversation-provider";
+import type { CallInfo, LlmGateway } from "../llm/gateway";
+import type { VoiceService } from "../voice/service";
+import { buildBuyerMessages } from "../prompts/buyer";
+import { buildTranslationMessages } from "../prompts/assist";
 
 interface ConversationRow {
   id: string;
@@ -40,27 +43,32 @@ async function loadOrder(db: Db, conversationId: string): Promise<OrderInfo | nu
   return (result.rows[0]?.payload as OrderInfo | undefined) ?? null;
 }
 
-async function loadScenePrompt(db: Db, scenarioId: string | null): Promise<string> {
-  if (!scenarioId) return "General customer service conversation.";
+async function loadScene(db: Db, scenarioId: string | null): Promise<{ prompt: string; script: ScenarioScript | null }> {
+  const fallback = { prompt: "General customer service conversation.", script: null };
+  if (!scenarioId) return fallback;
   const result = await db.query(
-    "select name, objective from scenarios where id = $1",
+    "select name, objective, script from scenarios where id = $1",
     [scenarioId],
   );
   const scenario = result.rows[0];
-  return scenario ? `${scenario.name}：${scenario.objective}` : "General customer service conversation.";
+  return scenario
+    ? { prompt: `${scenario.name}：${scenario.objective}`, script: (scenario.script as ScenarioScript | null) ?? null }
+    : fallback;
 }
 
 /** 以 SSE 流式输出一轮买家回复，落库消息与验收指标 */
 async function streamBuyerTurn(options: {
   db: Db;
-  provider: ConversationProvider;
+  gateway: LlmGateway;
   request: FastifyRequest;
   reply: FastifyReply;
   conversation: ConversationRow;
   history: Array<{ role: "buyer" | "student" | "teacher"; content: string }>;
 }): Promise<void> {
-  const { db, provider, request, reply, conversation, history } = options;
-  const scenePrompt = await loadScenePrompt(db, conversation.scenario_id);
+  const { db, gateway, request, reply, conversation, history } = options;
+  // B2：首字耗时从收到请求那一刻算起（含查库、组装上下文），不是从调用模型时算
+  const receivedAt = new Date(request.receivedAt);
+  const scene = await loadScene(db, conversation.scenario_id);
   const order = await loadOrder(db, conversation.id);
 
   reply.hijack();
@@ -76,7 +84,6 @@ async function streamBuyerTurn(options: {
     raw.write(`data: ${JSON.stringify(payload)}\n\n`);
   };
 
-  const receivedAt = new Date();
   let firstCharAt: Date | null = null;
   let buyerReply = "";
   let emittedChars = 0;
@@ -124,30 +131,32 @@ async function streamBuyerTurn(options: {
     }
   };
 
-  // 网关瞬时故障容错：尚未输出任何字符时允许重试一次
+  // 网关容错：尚未输出正文时，网关会自动改用备用档案；这里再兜底重试一次（应对瞬时故障）
+  let callInfo: CallInfo | null = null;
+  const messages = buildBuyerMessages({
+    scenePrompt: scene.prompt,
+    script: scene.script,
+    personaSnapshot: conversation.persona,
+    orderSnapshot: order ? (order as unknown as Record<string, unknown>) : {},
+    sessionState: (conversation.state ?? {}) as never,
+    history,
+  });
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
-      const stream = provider.streamReply(
-        {
-          conversationId: conversation.id,
-          scenePrompt,
-          personaSnapshot: conversation.persona,
-          orderSnapshot: order ? (order as unknown as Record<string, unknown>) : {},
-          sessionState: (conversation.state ?? {}) as never,
-          history,
+      const stream = gateway.stream("dialogue", messages, {
+        signal: abort.signal,
+        conversationId: conversation.id,
+        onInfo: (info) => {
+          callInfo = info;
         },
-        abort.signal,
-      );
-      for await (const chunk of stream) {
-        if (chunk.text) {
-          if (!firstCharAt) {
-            firstCharAt = new Date();
-            send({ type: "start", ttftMs: firstCharAt.getTime() - receivedAt.getTime() });
-          }
-          buyerReply += chunk.text;
-          emitSafeDelta();
+      });
+      for await (const text of stream) {
+        if (!firstCharAt) {
+          firstCharAt = new Date();
+          send({ type: "start", ttftMs: firstCharAt.getTime() - receivedAt.getTime() });
         }
-        if (chunk.done) break;
+        buyerReply += text;
+        emitSafeDelta();
       }
       outcome = "success";
       break;
@@ -197,8 +206,8 @@ async function streamBuyerTurn(options: {
       firstCharAt,
       completedAt,
       totalChars,
-      provider.providerId,
-      provider.modelId,
+      (callInfo as CallInfo | null)?.profileName ?? gateway.describe("dialogue")?.profileName ?? "unconfigured",
+      (callInfo as CallInfo | null)?.model ?? gateway.describe("dialogue")?.model ?? "unconfigured",
       outcome,
     ],
   );
@@ -213,12 +222,12 @@ async function streamBuyerTurn(options: {
     if (closed.rowCount) {
       conversationClosed = true;
       const { assessConversation } = await import("../assessment");
-      void assessConversation(db, provider, conversation.id).catch((error) =>
+      void assessConversation(db, gateway, conversation.id).catch((error) =>
         request.log.error(error, "assessment failed"),
       );
       // 闭环评价：买家按本次服务结果留评/改评（异步，不阻塞）
       const { generateBuyerReview } = await import("../review-gen");
-      void generateBuyerReview(db, provider, conversation.id, request.log).catch((error) =>
+      void generateBuyerReview(db, gateway, conversation.id, request.log).catch((error) =>
         request.log.error(error, "buyer review failed"),
       );
     }
@@ -227,7 +236,7 @@ async function streamBuyerTurn(options: {
   // 轻量Agent导演：异步评估学生表现、推演买家状态并更新记忆（不阻塞响应）
   if (outcome === "success" && !conversationClosed && history.some((item) => item.role === "student")) {
     void import("../director")
-      .then(({ runDirector }) => runDirector(db, provider, conversation.id))
+      .then(({ runDirector }) => runDirector(db, gateway, conversation.id))
       .catch((error) => request.log.error(error, "director failed"));
   }
 
@@ -252,7 +261,8 @@ export function registerConversationRoutes(
   app: FastifyInstance,
   db: Db,
   guard: AuthGuard,
-  provider: ConversationProvider,
+  gateway: LlmGateway,
+  voice: VoiceService,
 ): void {
   app.post<{ Body: { taskId?: string; scenarioId?: string } }>(
     "/v1/conversations",
@@ -321,6 +331,17 @@ export function registerConversationRoutes(
         })),
         personaRule,
       );
+      // 售前场景没有订单：给买家一个店铺里真实在售的“感兴趣商品”，否则买家只能泛泛地问“那个新品”
+      if (scenario?.stage === "pre_sale") {
+        const product = await db.query("select name, spec, price from store_products where enabled order by random() limit 1");
+        if (product.rows[0]) {
+          (persona as unknown as Record<string, unknown>).interestedProduct = {
+            name: product.rows[0].name,
+            spec: product.rows[0].spec,
+            price: Number(product.rows[0].price),
+          };
+        }
+      }
       const created = await db.query<ConversationRow>(
         `insert into conversations (task_id, student_id, scenario_id, persona)
          values ($1, $2, $3, $4) returning *`,
@@ -589,12 +610,12 @@ export function registerConversationRoutes(
       }
       // 后台异步六维评分，不阻塞关闭
       const { assessConversation } = await import("../assessment");
-      void assessConversation(db, provider, request.params.conversationId).catch((error) =>
+      void assessConversation(db, gateway, request.params.conversationId).catch((error) =>
         request.log.error(error, "assessment failed"),
       );
       // 闭环评价：买家按本次服务结果留评/改评（异步，不阻塞）
       const { generateBuyerReview } = await import("../review-gen");
-      void generateBuyerReview(db, provider, request.params.conversationId, request.log).catch((error) =>
+      void generateBuyerReview(db, gateway, request.params.conversationId, request.log).catch((error) =>
         request.log.error(error, "buyer review failed"),
       );
       return { ok: true };
@@ -621,15 +642,12 @@ export function registerConversationRoutes(
       if (message.translated_content) {
         return { translation: message.translated_content, cached: true };
       }
-      if (provider.providerId === "unconfigured") {
+      if (!gateway.isConfigured()) {
         reply.code(503);
         return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "翻译服务未配置。" };
       }
       try {
-        const translation = await provider.complete(
-          "You are a professional translator for cross-border e-commerce customer service. Translate the buyer's message into Simplified Chinese. Output ONLY the translation, no explanations.",
-          message.content,
-        );
+        const { text: translation } = await gateway.complete("assist", buildTranslationMessages(message.content));
         await db.query(
           "update conversation_messages set translated_content = $1 where id = $2",
           [translation, message.id],
@@ -675,27 +693,17 @@ export function registerConversationRoutes(
       const target = path.resolve(process.cwd(), "uploads", "tts", fileName);
       const audioUrl = `/uploads/tts/${fileName}`;
       if (fs.existsSync(target)) return { audioUrl, cached: true };
-      const { loadEnv } = await import("../env");
-      const { getVoiceSettings } = await import("../settings");
-      const voiceCfg = await getVoiceSettings(db, loadEnv());
-      if (!voiceCfg.apiKey) {
+      if (!(await voice.configured())) {
         reply.code(503);
         return { code: "TTS_NOT_CONFIGURED", message: "语音服务未配置。" };
       }
       try {
-        const { synthesizeSpeech, mapExplicitLanguage } = await import("../voice-provider");
         // 按买家画像选择音色（男/女）与朗读语种
-        const speaker = gender === "male" ? voiceCfg.ttsSpeakerMale : voiceCfg.ttsSpeaker;
-        const config = { apiKey: voiceCfg.apiKey, resourceId: voiceCfg.ttsResourceId, speaker };
-        const text = message.content.slice(0, 500);
-        let synthesized;
-        try {
-          synthesized = await synthesizeSpeech(config, text, 20_000, mapExplicitLanguage(persona.language));
-        } catch {
-          // 指定语种失败（如混合语言文本）时回退自动检测
-          synthesized = await synthesizeSpeech(config, text);
-        }
-        const { audio, elapsedMs } = synthesized;
+        const { audio, elapsedMs } = await voice.synthesize(
+          message.content.slice(0, 500),
+          gender === "male" ? "male" : "female",
+          persona.language,
+        );
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.writeFileSync(target, audio);
         await db.query(
@@ -742,26 +750,17 @@ export function registerConversationRoutes(
         reply.code(400);
         return { code: "INVALID_INPUT", message: "录音过短，请重试。" };
       }
-      const { loadEnv } = await import("../env");
-      const { getVoiceSettings } = await import("../settings");
-      const voiceCfg = await getVoiceSettings(db, loadEnv());
-      if (!voiceCfg.apiKey) {
+      if (!(await voice.configured())) {
         reply.code(503);
         return { code: "ASR_NOT_CONFIGURED", message: "语音识别服务未配置。" };
       }
       const persona = (conversation.persona ?? {}) as { language?: string };
       try {
-        const { recognizeSpeech, mapAsrLanguage } = await import("../voice-provider");
         const format = file.mimetype.includes("wav") || file.mimetype.includes("octet") ? "wav" : "mp3";
-        const { text, elapsedMs } = await recognizeSpeech(
-          { apiKey: voiceCfg.apiKey, resourceId: voiceCfg.asrResourceId },
-          audio,
-          format,
-          mapAsrLanguage(persona.language),
-        );
+        const { text, elapsedMs, audioMs } = await voice.recognize(audio, format, persona.language);
         await db.query(
-          "insert into voice_metrics (kind, elapsed_ms, chars, outcome) values ('asr', $1, $2, 'success')",
-          [elapsedMs, text.length],
+          "insert into voice_metrics (kind, elapsed_ms, chars, outcome, audio_ms) values ('asr', $1, $2, 'success', $3)",
+          [elapsedMs, text.length, audioMs],
         );
         return { text, elapsedMs };
       } catch (error) {
@@ -790,7 +789,7 @@ export function registerConversationRoutes(
         reply.code(403);
         return { code: "FORBIDDEN", message: "会话不存在或无权访问。" };
       }
-      if (provider.providerId === "unconfigured") {
+      if (!gateway.isConfigured()) {
         reply.code(503);
         return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "请由管理员配置 LLM 对话服务。" };
       }
@@ -806,24 +805,15 @@ export function registerConversationRoutes(
         reply.code(400);
         return { code: "INVALID_INPUT", message: "录音过短，请重试。" };
       }
-      const { loadEnv } = await import("../env");
-      const { getVoiceSettings } = await import("../settings");
-      const voiceCfg = await getVoiceSettings(db, loadEnv());
       const persona = (conversation.persona ?? {}) as { language?: string };
       const voiceFormat = file.mimetype.includes("mp") && !file.mimetype.includes("wav") ? "mp3" : "wav";
       let transcript = "";
       try {
-        const { recognizeSpeech, mapAsrLanguage } = await import("../voice-provider");
-        const result = await recognizeSpeech(
-          { apiKey: voiceCfg.apiKey, resourceId: voiceCfg.asrResourceId },
-          audio,
-          voiceFormat,
-          mapAsrLanguage(persona.language),
-        );
+        const result = await voice.recognize(audio, voiceFormat, persona.language);
         transcript = result.text.trim();
         await db.query(
-          "insert into voice_metrics (kind, elapsed_ms, chars, outcome) values ('asr', $1, $2, 'success')",
-          [result.elapsedMs, transcript.length],
+          "insert into voice_metrics (kind, elapsed_ms, chars, outcome, audio_ms) values ('asr', $1, $2, 'success', $3)",
+          [result.elapsedMs, transcript.length, result.audioMs],
         );
       } catch (error) {
         request.log.error(error, "voice message asr failed");
@@ -844,7 +834,7 @@ export function registerConversationRoutes(
 
       const historyResult = await db.query(
         `select sender, content from conversation_messages
-         where conversation_id = $1 order by created_at desc limit 40`,
+         where conversation_id = $1 order by created_at desc limit 300`,
         [conversation.id],
       );
       const history = historyResult.rows
@@ -861,7 +851,7 @@ export function registerConversationRoutes(
       );
       await streamBuyerTurn({
         db,
-        provider,
+        gateway,
         request,
         reply,
         conversation,
@@ -885,7 +875,7 @@ export function registerConversationRoutes(
         reply.code(403);
         return { code: "FORBIDDEN", message: "会话不存在或无权访问。" };
       }
-      if (provider.providerId === "unconfigured") {
+      if (!gateway.isConfigured()) {
         reply.code(503);
         return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "请由管理员配置 LLM 对话服务。" };
       }
@@ -941,7 +931,7 @@ export function registerConversationRoutes(
 
       const historyResult = await db.query(
         `select sender, content from conversation_messages
-         where conversation_id = $1 order by created_at desc limit 40`,
+         where conversation_id = $1 order by created_at desc limit 300`,
         [conversation.id],
       );
       const history = historyResult.rows
@@ -954,7 +944,7 @@ export function registerConversationRoutes(
       );
       await streamBuyerTurn({
         db,
-        provider,
+        gateway,
         request,
         reply,
         conversation,
@@ -1038,14 +1028,14 @@ export function registerConversationRoutes(
         reply.code(400);
         return { code: "INVALID_INPUT", message: "卡片类型无效。" };
       }
-      if (provider.providerId === "unconfigured") {
+      if (!gateway.isConfigured()) {
         reply.code(503);
         return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "请由管理员配置 LLM 对话服务。" };
       }
 
       const historyResult = await db.query(
         `select sender, content from conversation_messages
-         where conversation_id = $1 order by created_at desc limit 40`,
+         where conversation_id = $1 order by created_at desc limit 300`,
         [conversation.id],
       );
       const history = historyResult.rows
@@ -1058,7 +1048,7 @@ export function registerConversationRoutes(
       );
       await streamBuyerTurn({
         db,
-        provider,
+        gateway,
         request,
         reply,
         conversation,
@@ -1112,7 +1102,7 @@ export function registerConversationRoutes(
         reply.code(403);
         return { code: "FORBIDDEN", message: "会话不存在或无权访问。" };
       }
-      if (provider.providerId === "unconfigured") {
+      if (!gateway.isConfigured()) {
         reply.code(503);
         return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "请由管理员配置 LLM 对话服务后再开始实训。" };
       }
@@ -1124,7 +1114,7 @@ export function registerConversationRoutes(
         reply.code(409);
         return { code: "ALREADY_OPENED", message: "会话已有消息。" };
       }
-      await streamBuyerTurn({ db, provider, request, reply, conversation, history: [] });
+      await streamBuyerTurn({ db, gateway, request, reply, conversation, history: [] });
     },
   );
 
@@ -1156,7 +1146,7 @@ export function registerConversationRoutes(
         );
         return { ok: true };
       }
-      if (provider.providerId === "unconfigured") {
+      if (!gateway.isConfigured()) {
         reply.code(503);
         return {
           code: "AI_PROVIDER_NOT_CONFIGURED",
@@ -1166,7 +1156,7 @@ export function registerConversationRoutes(
 
       const historyResult = await db.query(
         `select sender, content from conversation_messages
-         where conversation_id = $1 order by created_at desc limit 40`,
+         where conversation_id = $1 order by created_at desc limit 300`,
         [conversation.id],
       );
       const history = historyResult.rows
@@ -1181,7 +1171,7 @@ export function registerConversationRoutes(
 
       await streamBuyerTurn({
         db,
-        provider,
+        gateway,
         request,
         reply,
         conversation,
@@ -1205,13 +1195,13 @@ export function registerConversationRoutes(
         reply.code(403);
         return { code: "FORBIDDEN", message: "会话不存在或无权访问。" };
       }
-      if (provider.providerId === "unconfigured") {
+      if (!gateway.isConfigured()) {
         reply.code(503);
         return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "请由管理员配置 LLM 对话服务。" };
       }
       const historyResult = await db.query(
         `select sender, content from conversation_messages
-         where conversation_id = $1 order by created_at desc limit 40`,
+         where conversation_id = $1 order by created_at desc limit 300`,
         [conversation.id],
       );
       const history = historyResult.rows
@@ -1222,7 +1212,7 @@ export function registerConversationRoutes(
         reply.code(409);
         return { code: "NO_PENDING_MESSAGE", message: "暂无待回复的消息。" };
       }
-      await streamBuyerTurn({ db, provider, request, reply, conversation, history });
+      await streamBuyerTurn({ db, gateway, request, reply, conversation, history });
     },
   );
 }

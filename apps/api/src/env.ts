@@ -18,6 +18,10 @@ export interface ApiEnv {
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
+  /** 首次启动导入档案时附带的额外请求体（JSON），例如 {"thinking":{"type":"disabled"}} */
+  llmExtraBody: string;
+  /** 加密存储厂商 API Key 的密钥；未设置时由 jwtSecret 派生 */
+  settingsEncryptionKey: string;
   ttsApiKey: string;
   ttsResourceId: string;
   ttsSpeaker: string;
@@ -41,6 +45,8 @@ export function loadEnv(overrides: Partial<ApiEnv> = {}): ApiEnv {
     llmBaseUrl: (process.env.LLM_BASE_URL ?? "").replace(/\/+$/, ""),
     llmApiKey: process.env.LLM_API_KEY ?? "",
     llmModel: process.env.LLM_MODEL ?? "",
+    llmExtraBody: process.env.LLM_EXTRA_BODY ?? "",
+    settingsEncryptionKey: process.env.SETTINGS_ENCRYPTION_KEY ?? "",
     ttsApiKey: process.env.TTS_API_KEY ?? "",
     ttsResourceId: process.env.TTS_RESOURCE_ID ?? "seed-tts-2.0",
     ttsSpeaker: process.env.TTS_SPEAKER ?? "zh_female_vv_uranus_bigtts",
