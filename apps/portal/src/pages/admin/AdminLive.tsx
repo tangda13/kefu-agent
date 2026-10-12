@@ -2,7 +2,9 @@ import { Activity, Database, Download, KeyRound, Plus, Save, ShieldCheck, Trash2
 import { useCallback, useEffect, useState } from "react";
 import { MetricCard, PageHeader } from "../../components/AppShell";
 import {
-  API_BASE, ApiError, apiGet, apiPost, apiRequestDelete, apiRequestPatch, type Session,
+  API_BASE, ApiError, apiGet, apiPost, apiRequestDelete, apiRequestPatch,
+  assignClassTeachers, createClassAsAdmin, fetchAdminTeachers, fetchClasses, resetTeacherPassword,
+  type AdminTeacher, type ClassSummary, type Session,
 } from "../../api/client";
 
 function errorText(cause: unknown): string {
@@ -202,10 +204,13 @@ export function AdminProviders({ session }: { session: Session }) {
 // ---------- 账号与权限 ----------
 export function AdminAccounts({ session }: { session: Session }) {
   const { notice, error, setNotice, setError } = useNotices();
-  const [teachers, setTeachers] = useState<Array<{ id: string; username: string; displayName: string; status: string; classCount: number }>>([]);
+  const [teachers, setTeachers] = useState<AdminTeacher[]>([]);
+  const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [form, setForm] = useState({ username: "", displayName: "" });
   const load = useCallback(() => {
-    apiGet<never>("/v1/admin/teachers", session).then(setTeachers as never).catch((c) => setError(errorText(c)));
+    Promise.all([fetchAdminTeachers(session), fetchClasses(session)])
+      .then(([teacherList, classList]) => { setTeachers(teacherList); setClasses(classList); })
+      .catch((c) => setError(errorText(c)));
   }, [session, setError]);
   useEffect(() => { load(); }, [load]);
 
@@ -219,16 +224,26 @@ export function AdminAccounts({ session }: { session: Session }) {
     } catch (cause) { setError(errorText(cause)); }
   }
 
-  async function toggle(t: { id: string; status: string }) {
+  async function toggle(t: AdminTeacher) {
     try {
       await apiRequestPatch(`/v1/admin/teachers/${t.id}`, session, { status: t.status === "active" ? "disabled" : "active" });
       load();
     } catch (cause) { setError(errorText(cause)); }
   }
 
+  async function resetPassword(t: AdminTeacher) {
+    if (!window.confirm(`确定重置 ${t.displayName}（${t.username}）的密码？原密码立即失效。`)) return;
+    try {
+      const { temporaryPassword } = await resetTeacherPassword(session, t.id);
+      setError("");
+      setNotice(`${t.displayName} 的临时密码：${temporaryPassword}（仅显示一次，首次登录需修改）`);
+      load();
+    } catch (cause) { setError(errorText(cause)); }
+  }
+
   return (
     <div className="page">
-      <PageHeader eyebrow="ACCOUNTS" title="账号与权限" description="教师账号管理；学生批量导入与密码重置在教师端班级页操作。" />
+      <PageHeader eyebrow="ACCOUNTS" title="账号与权限" description="教师账号、班主任与任课授权；学生批量导入与密码重置在教师端班级页操作。管理员忘记密码时在服务器执行 pnpm reset-password admin。" />
       {notice ? <p className="form-notice">{notice}</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
       <section className="panel data-panel">
@@ -239,19 +254,130 @@ export function AdminAccounts({ session }: { session: Session }) {
         </div>
         <div className="form-actions"><button className="primary-button compact" onClick={() => void createTeacher()}><Plus size={14} /> 新增教师</button></div>
         <table>
-          <thead><tr><th>姓名</th><th>账号</th><th>授权班级</th><th>状态</th><th>操作</th></tr></thead>
+          <thead><tr><th>姓名</th><th>账号</th><th>关联班级</th><th>状态</th><th>操作</th></tr></thead>
           <tbody>
             {teachers.map((t) => (
               <tr key={t.id}>
-                <td><strong>{t.displayName}</strong></td><td>{t.username}</td><td>{t.classCount}</td>
-                <td><em className={t.status === "active" ? "state-done" : "state-warning"}>{t.status === "active" ? "启用" : "停用"}</em></td>
-                <td><button className="text-button" onClick={() => void toggle(t)}>{t.status === "active" ? "停用" : "启用"}</button></td>
+                <td><strong>{t.displayName}</strong></td><td>{t.username}</td>
+                <td>{t.classCount}{t.headClassCount ? <small className="muted">（班主任 {t.headClassCount}）</small> : null}</td>
+                <td>
+                  <em className={t.status === "active" ? "state-done" : "state-warning"}>{t.status === "active" ? "启用" : "停用"}</em>
+                  {t.mustChangePassword ? <small className="muted"> 待改密</small> : null}
+                </td>
+                <td>
+                  <button className="text-button" onClick={() => void toggle(t)}>{t.status === "active" ? "停用" : "启用"}</button>
+                  <button className="text-button" onClick={() => void resetPassword(t)}><KeyRound size={13} /> 重置密码</button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </section>
+      <ClassAuthorization session={session} teachers={teachers} classes={classes} reload={load} setNotice={setNotice} setError={setError} />
     </div>
+  );
+}
+
+/** 班级与授权（I4）：班主任只有一位（classes.head_teacher_id），任课教师可多位（teacher_classes） */
+function ClassAuthorization({ session, teachers, classes, reload, setNotice, setError }: {
+  session: Session;
+  teachers: AdminTeacher[];
+  classes: ClassSummary[];
+  reload: () => void;
+  setNotice: (v: string) => void;
+  setError: (v: string) => void;
+}) {
+  const [newClass, setNewClass] = useState({ name: "", headTeacherId: "" });
+  const [editing, setEditing] = useState<{ classId: string; headTeacherId: string; teacherIds: string[] } | null>(null);
+  const activeTeachers = teachers.filter((t) => t.status === "active");
+
+  async function create() {
+    if (!newClass.name.trim()) { setError("请填写班级名称。"); return; }
+    try {
+      await createClassAsAdmin(session, newClass.name.trim(), newClass.headTeacherId || null);
+      setNotice(`班级「${newClass.name.trim()}」已创建。`);
+      setNewClass({ name: "", headTeacherId: "" });
+      reload();
+    } catch (cause) { setError(errorText(cause)); }
+  }
+
+  async function save() {
+    if (!editing) return;
+    try {
+      await assignClassTeachers(session, editing.classId, editing.headTeacherId || null, editing.teacherIds);
+      setNotice("授权已保存，教师刷新后即可看到该班级。");
+      setEditing(null);
+      reload();
+    } catch (cause) { setError(errorText(cause)); }
+  }
+
+  function toggleTeacher(id: string) {
+    if (!editing) return;
+    const has = editing.teacherIds.includes(id);
+    setEditing({ ...editing, teacherIds: has ? editing.teacherIds.filter((x) => x !== id) : [...editing.teacherIds, id] });
+  }
+
+  return (
+    <section className="panel data-panel">
+      <div className="panel-heading"><div><h2>班级与授权</h2><p>{classes.length} 个班级 · 班主任和任课教师都能管理该班学生、给该班下发任务</p></div></div>
+      <div className="form-grid compact-form">
+        <label>班级名称<input value={newClass.name} onChange={(e) => setNewClass({ ...newClass, name: e.target.value })} placeholder="如 跨境电商2603班" /></label>
+        <label>班主任
+          <select value={newClass.headTeacherId} onChange={(e) => setNewClass({ ...newClass, headTeacherId: e.target.value })}>
+            <option value="">暂不指定</option>
+            {activeTeachers.map((t) => <option key={t.id} value={t.id}>{t.displayName}（{t.username}）</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="form-actions"><button className="primary-button compact" onClick={() => void create()}><Plus size={14} /> 新建班级</button></div>
+      <table>
+        <thead><tr><th>班级</th><th>学生</th><th>班主任</th><th>任课教师</th><th>操作</th></tr></thead>
+        <tbody>
+          {classes.map((c) => (
+            <tr key={c.id}>
+              <td><strong>{c.name}</strong></td>
+              <td>{c.studentCount}</td>
+              <td>{c.headTeacherName ?? <em className="state-warning">未指定</em>}</td>
+              <td>{c.teachers.length ? c.teachers.map((t) => t.displayName).join("、") : <span className="muted">—</span>}</td>
+              <td>
+                <button
+                  className="text-button"
+                  onClick={() => setEditing({ classId: c.id, headTeacherId: c.headTeacherId ?? "", teacherIds: c.teachers.map((t) => t.id) })}
+                >修改授权</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {editing ? (
+        <div className="panel" style={{ marginTop: 12 }}>
+          <div className="panel-heading"><div><h2>修改授权 · {classes.find((c) => c.id === editing.classId)?.name}</h2><p>点选任课教师；班主任无需重复勾选</p></div></div>
+          <div className="form-grid compact-form">
+            <label>班主任
+              <select
+                value={editing.headTeacherId}
+                onChange={(e) => setEditing({ ...editing, headTeacherId: e.target.value, teacherIds: editing.teacherIds.filter((x) => x !== e.target.value) })}
+              >
+                <option value="">暂不指定</option>
+                {activeTeachers.map((t) => <option key={t.id} value={t.id}>{t.displayName}（{t.username}）</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="chip-row" style={{ margin: "8px 0 12px" }}>
+            {activeTeachers.filter((t) => t.id !== editing.headTeacherId).map((t) => (
+              <button key={t.id} className={editing.teacherIds.includes(t.id) ? "chip active" : "chip"} onClick={() => toggleTeacher(t.id)}>
+                {t.displayName}
+              </button>
+            ))}
+            {activeTeachers.length === 0 ? <span className="muted">暂无启用的教师账号</span> : null}
+          </div>
+          <div className="form-actions">
+            <button className="primary-button compact" onClick={() => void save()}><Save size={14} /> 保存授权</button>
+            <button className="secondary-button compact" onClick={() => setEditing(null)}>取消</button>
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

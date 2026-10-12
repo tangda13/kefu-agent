@@ -99,6 +99,13 @@ export function hashRefreshToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+/** 密码策略：8–128 位。改密、导入自带密码都走这里；不合规返回提示文案 */
+export function passwordPolicyError(password: string): string | null {
+  if (password.length < 8) return "密码不少于 8 位";
+  if (password.length > 128) return "密码不超过 128 位";
+  return null;
+}
+
 export function generateTemporaryPassword(): string {
   // 8 位可读临时密码，避免易混淆字符
   const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";

@@ -7,9 +7,13 @@ import {
   generateRefreshToken,
   hashPassword,
   hashRefreshToken,
+  passwordPolicyError,
   signAccessToken,
   verifyPassword,
 } from "../security";
+import { clearLoginFailures, lockedMinutes, recordLoginFailure } from "../login-throttle";
+
+const ROLE_LABEL: Record<DbUser["role"], string> = { student: "学生", teacher: "教师", admin: "管理员" };
 
 interface DbUser {
   id: string;
@@ -60,13 +64,21 @@ export function registerAuthRoutes(
   env: ApiEnv,
   guard: AuthGuard,
 ): void {
-  app.post<{ Body: { username?: string; password?: string } }>(
+  app.post<{ Body: { username?: string; password?: string; expectedRole?: string } }>(
     "/v1/auth/login",
     async (request, reply) => {
-      const { username, password } = request.body ?? {};
+      const { username, password, expectedRole } = request.body ?? {};
       if (!username || !password) {
         reply.code(400);
         return { code: "INVALID_INPUT", message: "请输入账号和密码。" };
+      }
+      const minutes = await lockedMinutes(db, username, request.ip);
+      if (minutes > 0) {
+        reply.code(429);
+        return {
+          code: "LOGIN_LOCKED",
+          message: `登录失败次数过多，请 ${minutes} 分钟后再试；忘记密码请联系教师或管理员重置。`,
+        };
       }
       const result = await db.query<DbUser>(
         "select * from users where username = $1",
@@ -74,13 +86,29 @@ export function registerAuthRoutes(
       );
       const user = result.rows[0];
       if (!user || !(await verifyPassword(password, user.password_hash))) {
-        await writeAudit(db, user?.id ?? null, "auth.login_failed", username);
+        await writeAudit(db, user?.id ?? null, "auth.login_failed", username, { ip: request.ip });
+        if (await recordLoginFailure(db, username, request.ip)) {
+          await writeAudit(db, user?.id ?? null, "auth.locked", username, { ip: request.ip });
+        }
         reply.code(401);
         return { code: "INVALID_CREDENTIALS", message: "账号或密码错误。" };
       }
+      await clearLoginFailures(db, username);
       if (user.status !== "active") {
         reply.code(403);
         return { code: "ACCOUNT_DISABLED", message: "账号已停用，请联系教师或管理员。" };
+      }
+      // 登录页签与账号角色不符（I7）：密码校验通过后才告知真实角色，且不签发任何令牌
+      if (expectedRole && expectedRole !== user.role) {
+        await writeAudit(db, user.id, "auth.role_mismatch", username, { expectedRole });
+        reply.code(403);
+        return {
+          code: "ROLE_MISMATCH",
+          actualRole: user.role,
+          message: user.role === "admin"
+            ? "管理员账号请通过浏览器管理端登录。"
+            : `该账号是${ROLE_LABEL[user.role]}账号，请切换到「${ROLE_LABEL[user.role]}登录」。`,
+        };
       }
       await writeAudit(db, user.id, "auth.login", username);
       return issueSession(db, env, user);
@@ -140,9 +168,10 @@ export function registerAuthRoutes(
     async (request, reply) => {
       const user = request.user!;
       const { currentPassword, newPassword } = request.body ?? {};
-      if (!currentPassword || !newPassword || newPassword.length < 8) {
+      const policyError = newPassword ? passwordPolicyError(newPassword) : "请输入新密码";
+      if (!currentPassword || !newPassword || policyError) {
         reply.code(400);
-        return { code: "INVALID_INPUT", message: "新密码长度不得少于 8 位。" };
+        return { code: "INVALID_INPUT", message: `${policyError ?? "请输入当前密码"}。` };
       }
       const result = await db.query<DbUser>(
         "select * from users where id = $1",
@@ -152,6 +181,10 @@ export function registerAuthRoutes(
       if (!dbUser || !(await verifyPassword(currentPassword, dbUser.password_hash))) {
         reply.code(401);
         return { code: "INVALID_CREDENTIALS", message: "当前密码错误。" };
+      }
+      if (newPassword === currentPassword) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "新密码不能与当前密码相同。" };
       }
       const newHash = await hashPassword(newPassword);
       await db.query(
@@ -163,6 +196,7 @@ export function registerAuthRoutes(
         "update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null",
         [user.sub],
       );
+      guard.invalidateAccount(user.sub);
       await writeAudit(db, user.sub, "auth.change_password");
       return { ok: true };
     },

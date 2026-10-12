@@ -17,28 +17,20 @@ import { TeacherPages } from "./pages/teacher/TeacherPages";
 import {
   clearSession,
   fetchStudentAnnouncements,
+  fetchReadMarks,
   fetchStudentGuidance,
+  migrateLocalOnce,
+  saveReadMarks,
   loadSession,
   type GuidanceItem,
   type Session,
   type StudentAnnouncement,
 } from "./api/client";
 
-const GUIDANCE_READ_KEY = "cecs.guidance.read";
+/** 旧版本的指导已读状态存在本机（且不分账号），首次进入时迁到云端（K4） */
+const LEGACY_GUIDANCE_READ_KEY = "cecs.guidance.read";
 export const OPEN_CONVERSATION_KEY = "cecs.openConversation";
 export const OPEN_CONVERSATION_EVENT = "cecs:open-conversation";
-
-function loadReadIds(): Set<string> {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(GUIDANCE_READ_KEY) ?? "[]") as string[]);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveReadIds(ids: Set<string>): void {
-  localStorage.setItem(GUIDANCE_READ_KEY, JSON.stringify([...ids].slice(-200)));
-}
 
 // role 参数仅用于管理端入口（?role=admin）与登录页签预选；
 // 学生/教师共用同一客户端，缺省进入「学生登录/教师登录」页签（学生优先）。
@@ -66,8 +58,15 @@ export function App() {
 
   // 教师指导通知：学生端顶栏「消息」轮询（不进入会话消息流）
   const [guidance, setGuidance] = useState<GuidanceItem[]>([]);
-  const [readIds, setReadIds] = useState<Set<string>>(loadReadIds);
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const studentLive = !demo && signedIn && session !== null && role === "student";
+  useEffect(() => {
+    if (!studentLive || !session) return;
+    void migrateLocalOnce<string[]>(LEGACY_GUIDANCE_READ_KEY, (ids) => saveReadMarks(session, "guidance", ids.slice(-500)))
+      .then(() => fetchReadMarks(session, "guidance"))
+      .then((ids) => setReadIds(new Set(ids)))
+      .catch(() => undefined);
+  }, [studentLive, session]);
   useEffect(() => {
     if (!studentLive || !session) return;
     const load = () => fetchStudentGuidance(session).then(setGuidance).catch(() => undefined);
@@ -119,12 +118,8 @@ export function App() {
         unread: !readIds.has(item.id),
       })),
       onOpen: (id) => {
-        setReadIds((prev) => {
-          const next = new Set(prev);
-          next.add(id);
-          saveReadIds(next);
-          return next;
-        });
+        setReadIds((prev) => new Set(prev).add(id));
+        if (session) void saveReadMarks(session, "guidance", [id]).catch(() => undefined);
         const item = guidance.find((entry) => entry.id === id);
         if (item) {
           sessionStorage.setItem(OPEN_CONVERSATION_KEY, item.conversationId);
@@ -133,14 +128,12 @@ export function App() {
         }
       },
       onReadAll: () => {
-        setReadIds(() => {
-          const next = new Set(guidance.map((entry) => entry.id));
-          saveReadIds(next);
-          return next;
-        });
+        const ids = guidance.map((entry) => entry.id);
+        setReadIds((prev) => new Set([...prev, ...ids]));
+        if (session) void saveReadMarks(session, "guidance", ids).catch(() => undefined);
       },
     };
-  }, [studentLive, guidance, readIds]);
+  }, [studentLive, session, guidance, readIds]);
 
   if (!signedIn) {
     return (

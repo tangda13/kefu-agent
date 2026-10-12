@@ -375,4 +375,54 @@ alter table tasks add column if not exists arrival_mode text not null default 's
 alter table tasks add column if not exists arrival_interval_minutes int;
 `,
   },
+  {
+    /* 账号安全（I1/I5）：
+       login_failures 记录登录失败次数，key = user:<账号> | ip:<地址>，超限后 locked_until 内拒绝登录；
+       班主任只记在 classes.head_teacher_id，teacher_classes 只放授权任课教师，清掉历史上两边重复写入的行 */
+    id: "022_account_security",
+    sql: `
+create table if not exists login_failures (
+  key text primary key,
+  fail_count int not null default 0,
+  window_started_at timestamptz not null default now(),
+  locked_until timestamptz
+);
+delete from teacher_classes tc using classes c
+  where c.id = tc.class_id and c.head_teacher_id = tc.teacher_id;
+`,
+  },
+  {
+    /* 学生端状态上云（K1–K4）：原先存在客户端 localStorage，换机器即丢失、教师也看不到
+       review_replies 评价回复记录 | mail_drafts 邮件草稿（id 由客户端生成）| read_marks 已读标记（邮件 / 教师指导） */
+    id: "023_student_cloud_state",
+    sql: `
+create table if not exists review_replies (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references users(id) on delete cascade,
+  order_id uuid not null references orders(id) on delete cascade,
+  text text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists review_replies_student_idx on review_replies(student_id, order_id);
+
+create table if not exists mail_drafts (
+  student_id uuid not null references users(id) on delete cascade,
+  id text not null,
+  recipient text not null default '',
+  subject text not null default '',
+  body text not null default '',
+  template_id text,
+  saved_at timestamptz not null default now(),
+  primary key (student_id, id)
+);
+
+create table if not exists read_marks (
+  user_id uuid not null references users(id) on delete cascade,
+  kind text not null check (kind in ('mail','guidance')),
+  item_id text not null,
+  read_at timestamptz not null default now(),
+  primary key (user_id, kind, item_id)
+);
+`,
+  },
 ];

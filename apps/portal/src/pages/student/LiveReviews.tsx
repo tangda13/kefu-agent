@@ -2,7 +2,7 @@ import { ExternalLink, Package2, Reply, Star } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../../components/AppShell";
 import { BuyerAvatar } from "../../components/BuyerAvatar";
-import { ReviewReply, loadReviewReplies, saveReviewReply, type StoredReply } from "../../components/ReviewReply";
+import { ReviewReply, loadReviewReplies, type StoredReply } from "../../components/ReviewReply";
 import {
   ApiError,
   assetUrl,
@@ -64,7 +64,7 @@ export function LiveReviews({
 
   const load = useCallback(async () => {
     try {
-      setReplies(loadReviewReplies(session.user.id));
+      loadReviewReplies(session).then(setReplies).catch(() => undefined);
       setRecords(await fetchStudentReviews(session));
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
@@ -241,7 +241,7 @@ export function LiveReviews({
                     conversationId={record.conversationId}
                     conversationOpen={record.conversationStatus === "active"}
                     onSent={(text) => {
-                      setReplies(saveReviewReply(session.user.id, record.orderId, text));
+                      setReplies((prev) => ({ ...prev, [record.orderId]: { text, at: new Date().toISOString() } }));
                       setExpandedId(null);
                       setNotice("回复已发送给买家，可到客服工作台查看买家回应。");
                     }}

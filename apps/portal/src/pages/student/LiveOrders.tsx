@@ -20,7 +20,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../../components/AppShell";
 import { BuyerAvatar } from "../../components/BuyerAvatar";
 import { SuggestionComposer } from "../../components/SuggestionComposer";
-import { ReviewReply, loadReviewReplies, saveReviewReply, type StoredReply } from "../../components/ReviewReply";
+import { ReviewReply, loadReviewReplies, type StoredReply } from "../../components/ReviewReply";
 import {
   ApiError,
   assetUrl,
@@ -389,7 +389,7 @@ export function LiveOrders({ session }: { session: Session }) {
 
   const load = useCallback(async () => {
     try {
-      setReplies(loadReviewReplies(session.user.id));
+      loadReviewReplies(session).then(setReplies).catch(() => undefined);
       const list = await fetchStudentOrders(session);
       list.sort((a, b) => new Date(b.detail.placedAt).getTime() - new Date(a.detail.placedAt).getTime());
       setOrders(list);
@@ -802,7 +802,7 @@ export function LiveOrders({ session }: { session: Session }) {
             conversationId={current.conversationId}
             conversationOpen={conversationOpen}
             onSent={(text) => {
-              setReplies(saveReviewReply(session.user.id, current.id, text));
+              setReplies((prev) => ({ ...prev, [current.id]: { text, at: new Date().toISOString() } }));
               setNotice("回复已发送给买家，可到客服工作台查看买家回应。");
             }}
           />

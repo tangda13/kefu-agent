@@ -9,8 +9,10 @@ import {
   fetchClassStudents,
   importStudents,
   renameClass,
+  deleteStudent,
   resetStudentPassword,
   setStudentStatus,
+  updateStudent,
   type ClassStudent,
   type ClassSummary,
   type ImportResult,
@@ -40,6 +42,7 @@ export function LiveClasses({ session }: { session: Session }) {
   const [dialogError, setDialogError] = useState("");
   const [passwordReset, setPasswordReset] = useState<{ name: string; username: string; password: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<{ id: string; username: string; displayName: string; classId: string } | null>(null);
 
   const loadClasses = useCallback(async () => {
     try {
@@ -107,11 +110,11 @@ export function LiveClasses({ session }: { session: Session }) {
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => {
-        const [username = "", displayName = ""] = line.split(/[,，\t]/).map((part) => part.trim());
-        return { username, displayName };
+        const [username = "", displayName = "", password = ""] = line.split(/[,，\t]/).map((part) => part.trim());
+        return password ? { username, displayName, password } : { username, displayName };
       });
     if (rows.length === 0) {
-      setDialogError("请按每行「账号,姓名」填写导入名单。");
+      setDialogError("请按每行「账号,姓名」或「账号,姓名,初始密码」填写导入名单。");
       return;
     }
     setBusy(true);
@@ -203,6 +206,52 @@ export function LiveClasses({ session }: { session: Session }) {
     try {
       await setStudentStatus(session, student.id, next);
       setNotice(`${student.displayName} 已${next === "active" ? "启用" : "停用"}`);
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitStudentEdit() {
+    if (!editingStudent || busy) return;
+    const original = students.find((row) => row.id === editingStudent.id);
+    const displayName = editingStudent.displayName.trim();
+    if (!displayName) {
+      setDialogError("姓名不能为空。");
+      return;
+    }
+    const patch: { displayName?: string; classId?: string } = {};
+    if (original && displayName !== original.displayName) patch.displayName = displayName;
+    if (editingStudent.classId !== selectedId) patch.classId = editingStudent.classId;
+    if (!patch.displayName && !patch.classId) {
+      setEditingStudent(null);
+      return;
+    }
+    setBusy(true);
+    setDialogError("");
+    try {
+      await updateStudent(session, editingStudent.id, patch);
+      const target = classes.find((item) => item.id === patch.classId);
+      setNotice(target ? `${displayName} 已转到「${target.name}」` : `已更新 ${displayName} 的姓名`);
+      setEditingStudent(null);
+      await loadClasses();
+    } catch (cause) {
+      setDialogError(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeStudent(student: ClassStudent) {
+    if (busy) return;
+    if (!window.confirm(`确定删除 ${student.displayName}（${student.username}）吗？仅没有任何实训记录的账号可以删除，删除后不可恢复。`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await deleteStudent(session, student.id);
+      setNotice(`已删除 ${student.displayName}`);
+      await loadClasses();
     } catch (cause) {
       setError(errorText(cause));
     } finally {
@@ -346,6 +395,13 @@ export function LiveClasses({ session }: { session: Session }) {
                     </td>
                     <td>{row.mustChangePassword ? "是" : "否"}</td>
                     <td className="tch-actions">
+                      <button
+                        className="text-button"
+                        onClick={() => { setDialogError(""); setEditingStudent({ id: row.id, username: row.username, displayName: row.displayName, classId: selectedId ?? "" }); }}
+                        disabled={busy}
+                      >
+                        <Pencil size={14} /> 编辑
+                      </button>
                       <button className="text-button" onClick={() => resetPassword(row)} disabled={busy}>
                         <KeyRound size={14} /> 重置密码
                       </button>
@@ -355,6 +411,9 @@ export function LiveClasses({ session }: { session: Session }) {
                         disabled={busy}
                       >
                         {row.status === "active" ? "停用" : "启用"}
+                      </button>
+                      <button className="text-button tch-danger" onClick={() => removeStudent(row)} disabled={busy}>
+                        <Trash2 size={14} /> 删除
                       </button>
                     </td>
                   </tr>
@@ -418,7 +477,7 @@ export function LiveClasses({ session }: { session: Session }) {
       {importing && selected ? (
         <TeacherDialog
           title={`批量导入学生 · ${selected.name}`}
-          subtitle={importResult ? "导入完成，初始密码仅本次显示，请立即复制保存" : "每行一名学生，格式：账号,姓名（支持逗号或制表符分隔）"}
+          subtitle={importResult ? "导入完成，初始密码仅本次显示，请立即复制保存" : "每行一名学生，格式：账号,姓名[,初始密码]（逗号或制表符分隔；不填密码则自动生成，自填密码不少于 8 位）"}
           size="xl"
           onClose={closeImport}
           footer={
@@ -479,6 +538,41 @@ export function LiveClasses({ session }: { session: Session }) {
               autoFocus
             />
           )}
+        </TeacherDialog>
+      ) : null}
+
+      {editingStudent ? (
+        <TeacherDialog
+          title={`编辑学生 · ${editingStudent.username}`}
+          subtitle="可修改姓名，或转到您有权限管理的其他班级；转班后自动获得新班级已下发的任务"
+          onClose={() => setEditingStudent(null)}
+          footer={
+            <>
+              <button className="secondary-button" onClick={() => setEditingStudent(null)}>取消</button>
+              <button className="primary-button" onClick={submitStudentEdit} disabled={busy}>
+                {busy ? "保存中…" : "保存"}
+              </button>
+            </>
+          }
+        >
+          {dialogError ? <p className="form-error" role="alert">{dialogError}</p> : null}
+          <label>
+            姓名
+            <input
+              value={editingStudent.displayName}
+              onChange={(event) => setEditingStudent({ ...editingStudent, displayName: event.target.value })}
+              autoFocus
+            />
+          </label>
+          <label>
+            所在班级
+            <select
+              value={editingStudent.classId}
+              onChange={(event) => setEditingStudent({ ...editingStudent, classId: event.target.value })}
+            >
+              {classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
         </TeacherDialog>
       ) : null}
 

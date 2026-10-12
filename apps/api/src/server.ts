@@ -28,6 +28,7 @@ import { registerBaselineRoutes } from "./routes/baseline";
 import { registerAnnouncementRoutes } from "./routes/announcements";
 import { registerTeacherRoutes } from "./routes/teacher";
 import { registerAdminRoutes } from "./routes/admin";
+import { registerStudentStateRoutes } from "./routes/student-state";
 
 export interface BuildServerOptions {
   env?: Partial<ApiEnv>;
@@ -44,8 +45,14 @@ export async function buildServer(options: BuildServerOptions = {}) {
   await seedContentTerms(db);
   await seedAdmin(db, env.adminInitialPassword);
 
-  const app = Fastify({ logger: options.logger ?? true });
-  const guard = createAuthGuard(env.jwtSecret);
+  // 开发脚本（dev.cmd / admin.cmd）设置 LOG_PRETTY=1：日志转成一行一条的可读格式；生产保持 JSON 便于采集
+  const logger =
+    options.logger ??
+    (process.env.LOG_PRETTY === "1"
+      ? { transport: { target: "pino-pretty", options: { translateTime: "SYS:HH:MM:ss", ignore: "pid,hostname", singleLine: true } } }
+      : true);
+  const app = Fastify({ logger, trustProxy: env.trustProxy });
+  const guard = createAuthGuard(env.jwtSecret, db);
   // LLM 配置：DB 设置优先（管理端可热切换），回退 env
   const savedLlm = await getSetting<LlmSettings>(db, "llm").catch(() => null);
   const conversationProvider = new SwappableConversationProvider(
@@ -121,6 +128,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   registerAnnouncementRoutes(app, db, guard);
   registerTeacherRoutes(app, db, guard);
   registerAdminRoutes(app, db, guard, conversationProvider);
+  registerStudentStateRoutes(app, db, guard);
 
   // 定时备份调度：每 10 分钟检查一次（到达设定小时且当日未备份则执行）
   if (process.env.NODE_ENV !== "test") {

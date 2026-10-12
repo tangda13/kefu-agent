@@ -24,6 +24,13 @@ import {
   assistMail,
   fetchForbiddenTerms,
   fetchMailReplies,
+  fetchMailDrafts,
+  fetchReadMarks,
+  saveMailDraft,
+  deleteMailDraft,
+  saveReadMarks,
+  migrateLocalOnce,
+  type MailDraft,
   fetchMailSubmissions,
   fetchMailTemplates,
   fetchPhrases,
@@ -154,25 +161,8 @@ function buildInboundMail(order: StudentOrder): InboundMail | null {
   };
 }
 
-interface DraftMail {
-  id: string;
-  to: string;
-  subject: string;
-  body: string;
-  templateId: string | null;
-  savedAt: string;
-}
-
-const readKey = (userId: string) => `cecs.mailRead.${userId}`;
-const draftKey = (userId: string) => `cecs.mailDrafts.${userId}`;
-
-function loadJson<T>(key: string, fallback: T): T {
-  try {
-    return JSON.parse(localStorage.getItem(key) ?? "") as T;
-  } catch {
-    return fallback;
-  }
-}
+/** 草稿与已读状态都存云端（K2/K3），换机器登录可接着写 */
+type DraftMail = MailDraft;
 
 interface ComposeState {
   draftId: string | null;
@@ -217,8 +207,21 @@ export function LiveMail({
 
   const load = useCallback(async () => {
     try {
-      setReadIds(new Set(loadJson<string[]>(readKey(session.user.id), [])));
-      setDrafts(loadJson<DraftMail[]>(draftKey(session.user.id), []));
+      // 旧版本存在本机的已读/草稿一次性迁到云端
+      await Promise.all([
+        migrateLocalOnce<string[]>(`cecs.mailRead.${session.user.id}`, (ids) =>
+          saveReadMarks(session, "mail", ids.slice(-500)),
+        ),
+        migrateLocalOnce<DraftMail[]>(`cecs.mailDrafts.${session.user.id}`, async (list) => {
+          for (const draft of list.slice(0, 50)) await saveMailDraft(session, draft);
+        }),
+      ]);
+      const [readList, draftList] = await Promise.all([
+        fetchReadMarks(session, "mail"),
+        fetchMailDrafts(session),
+      ]);
+      setReadIds(new Set(readList));
+      setDrafts(draftList);
       const [orderList, templateList, termList, phraseList, sentList, replyList] = await Promise.all([
         fetchStudentOrders(session),
         fetchMailTemplates(session),
@@ -296,18 +299,19 @@ export function LiveMail({
   /* ---------------- 读写状态 ---------------- */
 
   function markRead(id: string) {
-    setReadIds((prev) => {
-      if (prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.add(id);
-      localStorage.setItem(readKey(session.user.id), JSON.stringify([...next].slice(-500)));
-      return next;
-    });
+    if (readIds.has(id)) return;
+    setReadIds((prev) => new Set(prev).add(id));
+    void saveReadMarks(session, "mail", [id]).catch(() => undefined);
   }
 
-  function persistDrafts(next: DraftMail[]) {
-    setDrafts(next);
-    localStorage.setItem(draftKey(session.user.id), JSON.stringify(next.slice(0, 50)));
+  function upsertDraft(draft: DraftMail) {
+    setDrafts((prev) => [draft, ...prev.filter((item) => item.id !== draft.id)].slice(0, 50));
+    void saveMailDraft(session, draft).catch(() => setError("草稿未能保存到云端，请检查网络后再保存一次。"));
+  }
+
+  function removeDraft(id: string) {
+    setDrafts((prev) => prev.filter((item) => item.id !== id));
+    void deleteMailDraft(session, id).catch(() => undefined);
   }
 
   /* ---------------- 撰写 ---------------- */
@@ -386,7 +390,7 @@ export function LiveMail({
       templateId: compose.templateId,
       savedAt: new Date().toISOString(),
     };
-    persistDrafts([next, ...drafts.filter((draft) => draft.id !== id)]);
+    upsertDraft(next);
     if (!silent) {
       setCompose({ ...compose, draftId: id });
       setNotice("草稿已保存。");
@@ -395,7 +399,7 @@ export function LiveMail({
 
   function closeCompose(saveAsDraft: boolean) {
     if (saveAsDraft) saveDraft(true);
-    else if (compose?.draftId) persistDrafts(drafts.filter((draft) => draft.id !== compose.draftId));
+    else if (compose?.draftId) removeDraft(compose.draftId);
     setCompose(null);
     setAssist("closed");
     setAssistVersions([]);
@@ -467,7 +471,7 @@ export function LiveMail({
         recipient: compose.to.trim(),
         orderId: linkedOrderId(compose),
       });
-      if (compose.draftId) persistDrafts(drafts.filter((draft) => draft.id !== compose.draftId));
+      if (compose.draftId) removeDraft(compose.draftId);
       setNotice(
         result.compliant
           ? "邮件已发送，合规检测通过（0 个违规词）。"

@@ -24,3 +24,6 @@ apps/api/backups/
 __MACOSX/
 .DS_Store
 
+
+# 开发调试脚本运行时（日志、进程记录）
+.devrun/

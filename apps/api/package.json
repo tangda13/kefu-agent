@@ -7,7 +7,8 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "build": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "reset-password": "tsx src/scripts/reset-password.ts"
   },
   "dependencies": {
     "@cecs/contracts": "workspace:*",
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@types/pg": "^8.20.0",
     "@types/ws": "^8.18.1",
+    "pino-pretty": "^13.2.0",
     "tsx": "4.23.1",
     "typescript": "7.0.2",
     "vitest": "4.1.10"

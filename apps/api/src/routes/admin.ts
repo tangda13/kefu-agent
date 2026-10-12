@@ -9,6 +9,8 @@ import { writeAudit } from "../auth-context";
 import { getSetting, setSetting, type LlmSettings, type QuotaSettings, type VoiceSettings } from "../settings";
 import { createConversationProvider, type SwappableConversationProvider } from "../conversation-provider";
 import { loadEnv } from "../env";
+import { generateTemporaryPassword, hashPassword } from "../security";
+import { clearLoginFailures } from "../login-throttle";
 
 const execFileAsync = promisify(execFile);
 const STARTED_AT = Date.now();
@@ -158,14 +160,19 @@ export function registerAdminRoutes(
   // ---------- 教师账号管理（新增接口已有，这里补列表/启停/重置） ----------
   app.get("/v1/admin/teachers", { preHandler: adminOnly }, async () => {
     const result = await db.query(
-      `select u.id, u.username, u.display_name, u.status, u.created_at,
-        (select count(*) from teacher_classes tc where tc.teacher_id = u.id) +
-        (select count(*) from classes c where c.head_teacher_id = u.id) as class_count
+      `select u.id, u.username, u.display_name, u.status, u.must_change_password, u.created_at,
+        (select count(*) from classes c where c.head_teacher_id = u.id) as head_count,
+        (select count(*) from (
+           select class_id from teacher_classes tc where tc.teacher_id = u.id
+           union
+           select id from classes c where c.head_teacher_id = u.id
+         ) x) as class_count
        from users u where u.role = 'teacher' order by u.created_at`,
     );
     return result.rows.map((row) => ({
       id: row.id, username: row.username, displayName: row.display_name,
-      status: row.status, classCount: Number(row.class_count), createdAt: row.created_at,
+      status: row.status, mustChangePassword: row.must_change_password,
+      classCount: Number(row.class_count), headClassCount: Number(row.head_count), createdAt: row.created_at,
     }));
   });
 
@@ -187,8 +194,43 @@ export function registerAdminRoutes(
         reply.code(404);
         return { code: "NOT_FOUND", message: "教师不存在。" };
       }
+      // 停用即时生效（I6）：吊销刷新令牌，鉴权缓存失效后已签发的访问令牌也随即被拒
+      if (status === "disabled") {
+        await db.query(
+          "update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null",
+          [request.params.teacherId],
+        );
+      }
+      guard.invalidateAccount(request.params.teacherId);
       await writeAudit(db, request.user!.sub, "admin.teacher_update", request.params.teacherId, { status, displayName });
       return { ok: true };
+    },
+  );
+
+  // 重置教师密码（I3）：生成临时密码，首次登录强制修改；同时解除登录锁定、吊销原有会话
+  app.post<{ Params: { teacherId: string } }>(
+    "/v1/admin/teachers/:teacherId/reset-password",
+    { preHandler: adminOnly },
+    async (request, reply) => {
+      const temporaryPassword = generateTemporaryPassword();
+      const result = await db.query<{ username: string }>(
+        `update users set password_hash = $1, must_change_password = true, updated_at = now()
+         where id = $2 and role = 'teacher' returning username`,
+        [await hashPassword(temporaryPassword), request.params.teacherId],
+      );
+      const teacher = result.rows[0];
+      if (!teacher) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "教师不存在。" };
+      }
+      await db.query(
+        "update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null",
+        [request.params.teacherId],
+      );
+      await clearLoginFailures(db, teacher.username);
+      guard.invalidateAccount(request.params.teacherId);
+      await writeAudit(db, request.user!.sub, "admin.teacher_reset_password", request.params.teacherId);
+      return { temporaryPassword };
     },
   );
 

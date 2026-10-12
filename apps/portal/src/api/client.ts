@@ -86,6 +86,8 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    /** 服务端返回的完整错误体（如 ROLE_MISMATCH 带 actualRole） */
+    readonly body: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -94,24 +96,27 @@ export class ApiError extends Error {
 async function parseError(response: Response): Promise<never> {
   let code = "UNKNOWN";
   let message = `请求失败（${response.status}）`;
+  let body: Record<string, unknown> = {};
   try {
-    const body = await response.json();
-    if (body?.code) code = body.code;
-    if (body?.message) message = body.message;
+    body = (await response.json()) ?? {};
+    if (typeof body.code === "string") code = body.code;
+    if (typeof body.message === "string") message = body.message;
   } catch {
     /* keep defaults */
   }
-  throw new ApiError(response.status, code, message);
+  throw new ApiError(response.status, code, message, body);
 }
 
+/** expectedRole：登录页签对应的角色，与账号不符时服务端拒绝并返回 ROLE_MISMATCH（不签发令牌） */
 export async function login(
   username: string,
   password: string,
+  expectedRole?: SessionUser["role"],
 ): Promise<Session> {
   const response = await fetch(`${API_BASE}/v1/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, expectedRole }),
   });
   if (!response.ok) await parseError(response);
   const session = (await response.json()) as Session;
@@ -212,6 +217,9 @@ export interface ClassSummary {
   id: string;
   name: string;
   headTeacherId: string | null;
+  headTeacherName: string | null;
+  /** 授权任课教师（不含班主任） */
+  teachers: Array<{ id: string; displayName: string }>;
   studentCount: number;
   createdAt: string;
 }
@@ -290,7 +298,7 @@ export const fetchClassStudents = (session: Session, classId: string) =>
 export const importStudents = (
   session: Session,
   classId: string,
-  students: Array<{ username: string; displayName: string }>,
+  students: Array<{ username: string; displayName: string; password?: string }>,
 ) =>
   apiPost<ImportResult>(`/v1/classes/${classId}/students/import`, session, {
     students,
@@ -885,6 +893,112 @@ export const deleteClass = (session: Session, classId: string) =>
   apiRequestDelete(`/v1/classes/${classId}`, session);
 export const setStudentStatus = (session: Session, studentId: string, status: "active" | "disabled") =>
   apiRequestPatch(`/v1/students/${studentId}`, session, { status });
+/** 改姓名 / 转班（目标班需有授权） */
+export const updateStudent = (session: Session, studentId: string, patch: { displayName?: string; classId?: string }) =>
+  apiRequestPatch(`/v1/students/${studentId}`, session, patch);
+/** 仅无实训记录的学生可删除，否则返回 STUDENT_HAS_DATA */
+export const deleteStudent = (session: Session, studentId: string) =>
+  apiRequestDelete(`/v1/students/${studentId}`, session);
+
+export function apiRequestPut<T = { ok: boolean }>(
+  path: string,
+  session: Session,
+  body?: unknown,
+): Promise<T> {
+  return apiRequest<T>("PUT", path, session, body);
+}
+
+// ---------- 管理端：教师与班级授权 ----------
+
+export interface AdminTeacher {
+  id: string;
+  username: string;
+  displayName: string;
+  status: "active" | "disabled";
+  mustChangePassword: boolean;
+  /** 关联班级数（班主任 + 任课，去重） */
+  classCount: number;
+  headClassCount: number;
+  createdAt: string;
+}
+
+export const fetchAdminTeachers = (session: Session) =>
+  apiGet<AdminTeacher[]>("/v1/admin/teachers", session);
+export const resetTeacherPassword = (session: Session, teacherId: string) =>
+  apiPost<{ temporaryPassword: string }>(`/v1/admin/teachers/${teacherId}/reset-password`, session);
+export const createClassAsAdmin = (session: Session, name: string, headTeacherId: string | null) =>
+  apiPost<ClassSummary>("/v1/classes", session, { name, headTeacherId });
+export const assignClassTeachers = (
+  session: Session,
+  classId: string,
+  headTeacherId: string | null,
+  teacherIds: string[],
+) => apiRequestPut(`/v1/admin/classes/${classId}/teachers`, session, { headTeacherId, teacherIds });
+
+// ---------- 学生端状态（云端保存，K1–K4） ----------
+
+export interface ReviewReplyRecord {
+  text: string;
+  at: string;
+}
+
+export interface MailDraft {
+  id: string;
+  to: string;
+  subject: string;
+  body: string;
+  templateId: string | null;
+  savedAt: string;
+}
+
+export type ReadMarkKind = "mail" | "guidance";
+
+export const fetchReviewReplies = (session: Session) =>
+  apiGet<Record<string, ReviewReplyRecord>>("/v1/student/review-replies", session);
+export const saveReviewReplyRecord = (session: Session, orderId: string, text: string, at?: string) =>
+  apiPost<{ orderId: string; text: string; at: string }>("/v1/student/review-replies", session, { orderId, text, at });
+export const fetchStudentReviewReplies = (session: Session, studentId: string) =>
+  apiGet<Array<{ orderId: string; orderNo: string; text: string; at: string }>>(
+    `/v1/students/${studentId}/review-replies`,
+    session,
+  );
+export const fetchMailDrafts = (session: Session) =>
+  apiGet<MailDraft[]>("/v1/student/mail-drafts", session);
+export const saveMailDraft = (session: Session, draft: MailDraft) =>
+  apiRequestPut<MailDraft>(`/v1/student/mail-drafts/${encodeURIComponent(draft.id)}`, session, draft);
+export const deleteMailDraft = (session: Session, draftId: string) =>
+  apiRequestDelete(`/v1/student/mail-drafts/${encodeURIComponent(draftId)}`, session);
+export const fetchReadMarks = (session: Session, kind: ReadMarkKind) =>
+  apiGet<string[]>(`/v1/me/read-marks?kind=${kind}`, session);
+export const saveReadMarks = (session: Session, kind: ReadMarkKind, ids: string[]) =>
+  apiPost<{ ok: boolean }>("/v1/me/read-marks", session, { kind, ids });
+
+/**
+ * 旧版本存在 localStorage 的数据一次性迁到云端：有数据才上传，上传成功后删除本机副本；
+ * 失败则保留，下次进入页面再试。
+ */
+export async function migrateLocalOnce<T>(key: string, upload: (value: T) => Promise<unknown>): Promise<void> {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(key);
+  } catch {
+    return;
+  }
+  if (!raw) return;
+  let value: T;
+  try {
+    value = JSON.parse(raw) as T;
+  } catch {
+    localStorage.removeItem(key);
+    return;
+  }
+  try {
+    await upload(value);
+    localStorage.removeItem(key);
+  } catch {
+    /* 留待下次 */
+  }
+}
 
 export interface PersonaTemplate {
   id: string;

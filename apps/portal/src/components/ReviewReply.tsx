@@ -3,30 +3,28 @@ import { useState } from "react";
 import {
   ApiError,
   fetchOrderSuggestions,
+  fetchReviewReplies,
+  migrateLocalOnce,
+  saveReviewReplyRecord,
   streamConversationMessage,
+  type ReviewReplyRecord,
   type Session,
 } from "../api/client";
 
-/** 已发送的评价回复（本地留存，供列表展示"商家回复"） */
-export interface StoredReply {
-  text: string;
-  at: string;
-}
+/** 已发送的评价回复（云端保存，供列表展示"商家回复"，教师端可查看） */
+export type StoredReply = ReviewReplyRecord;
 
-const storeKey = (userId: string) => `cecs.reviewReplies.${userId}`;
-
-export function loadReviewReplies(userId: string): Record<string, StoredReply> {
-  try {
-    return JSON.parse(localStorage.getItem(storeKey(userId)) ?? "{}") as Record<string, StoredReply>;
-  } catch {
-    return {};
-  }
-}
-
-export function saveReviewReply(userId: string, orderId: string, text: string): Record<string, StoredReply> {
-  const next = { ...loadReviewReplies(userId), [orderId]: { text, at: new Date().toISOString() } };
-  localStorage.setItem(storeKey(userId), JSON.stringify(next));
-  return next;
+/** 读取各订单最近一次回复；顺带把旧版本存在本机的记录迁到云端 */
+export async function loadReviewReplies(session: Session): Promise<Record<string, StoredReply>> {
+  await migrateLocalOnce<Record<string, StoredReply>>(`cecs.reviewReplies.${session.user.id}`, async (map) => {
+    for (const [orderId, reply] of Object.entries(map)) {
+      await saveReviewReplyRecord(session, orderId, reply.text, reply.at).catch((cause) => {
+        // 订单已不存在的旧记录直接丢弃
+        if (!(cause instanceof ApiError && cause.status === 404)) throw cause;
+      });
+    }
+  });
+  return fetchReviewReplies(session);
 }
 
 function errorText(cause: unknown): string {
@@ -84,6 +82,8 @@ export function ReviewReply({
         onDone: () => undefined,
         onError: (message) => setError(message),
       });
+      // 消息已发出；回复记录写云端失败不影响买家收到，只是列表里暂不显示“商家回复”
+      await saveReviewReplyRecord(session, orderId, text).catch(() => undefined);
       setDraft("");
       setPanel("closed");
       onSent(text);

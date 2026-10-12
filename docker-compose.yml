@@ -30,6 +30,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?请在 .env 设置 JWT_SECRET（长随机串）}
       ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-Admin#2026}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
+      TRUST_PROXY: "true"
       PORT: 8787
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.keliagent.cn}
       LLM_API_KEY: ${LLM_API_KEY:-}

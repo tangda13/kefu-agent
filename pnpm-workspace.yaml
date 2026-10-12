@@ -6,3 +6,5 @@ allowBuilds:
   electron: true
 minimumReleaseAgeExclude:
   - tsx@4.23.1
+# Windows 上 pnpm 11.7 默认 isolated 布局导入 esbuild 时稳定报 EPERM（2026-10-11 实测），改用 hoisted 布局
+nodeLinker: hoisted

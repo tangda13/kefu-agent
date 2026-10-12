@@ -12,6 +12,8 @@ export interface ApiEnv {
   refreshTokenTtlSeconds: number;
   adminInitialPassword: string;
   corsOrigins: string[] | true;
+  /** 部署在 nginx 后面时置真，request.ip 取 X-Forwarded-For（登录限流按 IP 计数依赖它） */
+  trustProxy: boolean;
   port: number;
   llmBaseUrl: string;
   llmApiKey: string;
@@ -34,6 +36,7 @@ export function loadEnv(overrides: Partial<ApiEnv> = {}): ApiEnv {
     refreshTokenTtlSeconds: Number(process.env.REFRESH_TOKEN_TTL ?? 14 * 24 * 3600),
     adminInitialPassword: process.env.ADMIN_INITIAL_PASSWORD ?? "Admin#2026",
     corsOrigins: corsRaw ? corsRaw.split(",").map((item) => item.trim()) : true,
+    trustProxy: process.env.TRUST_PROXY === "true",
     port: Number(process.env.PORT ?? 8787),
     llmBaseUrl: (process.env.LLM_BASE_URL ?? "").replace(/\/+$/, ""),
     llmApiKey: process.env.LLM_API_KEY ?? "",

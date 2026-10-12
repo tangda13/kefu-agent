@@ -1,7 +1,7 @@
 import { ArrowRight, Eye, EyeOff, LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import type { UserRole } from "@cecs/contracts";
-import { ApiError, changePassword, clearSession, login, type Session } from "../api/client";
+import { ApiError, changePassword, login, type Session } from "../api/client";
 
 const roleCopy: Record<UserRole, { eyebrow: string; title: string; subtitle: string; account: string; accountHint: string }> = {
   student: { eyebrow: "STUDENT DESKTOP", title: "把每一次沟通，\n练成真实业务能力", subtitle: "AI 模拟海外买家 · 售前售中售后全流程沉浸式实训", account: "账号 / 学号", accountHint: "请输入账号 / 学号" },
@@ -10,14 +10,6 @@ const roleCopy: Record<UserRole, { eyebrow: string; title: string; subtitle: str
 };
 
 const roleLabel: Record<UserRole, string> = { student: "学生", teacher: "教师", admin: "管理员" };
-
-function roleMismatchMessage(expected: UserRole, actual: UserRole): string {
-  if (actual === "admin") return "管理员账号请通过浏览器管理端登录。";
-  if (expected === "student" || expected === "teacher") {
-    return `该账号为${roleLabel[actual]}账号，请切换到「${roleLabel[actual]}登录」。`;
-  }
-  return `该账号为${roleLabel[actual]}账号，无法登录管理端。`;
-}
 
 export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; onLogin: (session: Session) => void }) {
   // 学生/教师共用同一客户端，登录卡片内切页签；管理端走独立登录（浏览器 ?role=admin）。
@@ -30,6 +22,8 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
   const [confirmPassword, setConfirmPassword] = useState("");
   const [pendingSession, setPendingSession] = useState<Session | null>(null);
   const [error, setError] = useState("");
+  /** 页签与账号角色不符时，可一键切换到的页签（I7） */
+  const [switchTo, setSwitchTo] = useState<UserRole | null>(null);
   const [hint, setHint] = useState("");
   const [busy, setBusy] = useState(false);
   const copy = roleCopy[activeRole];
@@ -38,6 +32,7 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
     if (busy || next === activeRole) return;
     setActiveRole(next);
     setError("");
+    setSwitchTo(null);
     setHint("");
   }
 
@@ -45,21 +40,25 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
     event.preventDefault();
     if (busy) return;
     setError("");
+    setSwitchTo(null);
     setHint("");
     setBusy(true);
     try {
-      const session = await login(username.trim(), password);
-      if (session.user.role !== activeRole) {
-        clearSession();
-        setError(roleMismatchMessage(activeRole, session.user.role));
-        return;
-      }
+      const session = await login(username.trim(), password, activeRole);
       if (session.user.mustChangePassword) {
         setPendingSession(session);
       } else {
         onLogin(session);
       }
     } catch (cause) {
+      if (cause instanceof ApiError && cause.code === "ROLE_MISMATCH") {
+        const actual = cause.body.actualRole;
+        if (tabbed && (actual === "student" || actual === "teacher")) setSwitchTo(actual);
+        else if (!tabbed) {
+          setError(`该账号是${roleLabel[actual as UserRole] ?? "非管理员"}账号，无法登录管理端，请使用客户端登录。`);
+          return;
+        }
+      }
       setError(cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
     } finally {
       setBusy(false);
@@ -81,7 +80,7 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
     setBusy(true);
     try {
       await changePassword(pendingSession, password, newPassword);
-      const session = await login(pendingSession.user.username, newPassword);
+      const session = await login(pendingSession.user.username, newPassword, activeRole);
       onLogin(session);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
@@ -154,7 +153,16 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
                   <span>密码</span>
                   <div className="input-wrap"><LockKeyhole size={18} /><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="请输入密码" aria-label="密码" autoComplete="current-password" /><button type="button" className="icon-button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "隐藏密码" : "显示密码"}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
                 </label>
-                {error ? <p className="form-error" role="alert">{error}</p> : null}
+                {error ? (
+                  <p className="form-error" role="alert">
+                    {error}
+                    {switchTo ? (
+                      <button type="button" className="text-button" onClick={() => switchRole(switchTo)}>
+                        切换到{roleLabel[switchTo]}登录
+                      </button>
+                    ) : null}
+                  </p>
+                ) : null}
                 <button className="primary-button login-submit" type="submit" disabled={busy}>{busy ? "登录中…" : "登 录"}</button>
                 <div className="login-forgot">
                   <button type="button" className="text-button" onClick={() => setHint(activeRole === "student" ? "请联系您的任课教师重置密码。" : "请联系平台管理员重置密码。")}>忘记密码？</button>
