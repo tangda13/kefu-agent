@@ -152,6 +152,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const [railTab, setRailTab] = useState<RailTab>("current");
   /* 任务隔离：会话/进线按任务过滤。"all" 全部 | "practice" 自由练习 | 任务 id 聚焦该任务 */
   const [taskFilter, setTaskFilter] = useState<string>("all");
+  /** 任务条里选中的任务（只影响任务条和倒计时，不筛会话列表）；从任务大厅进入时就是那个任务 */
+  const [taskFocus, setTaskFocus] = useState<string | null>(initialTaskId ?? null);
   /** 客服状态：挂起时暂停进线（不存本机，打开工作台默认在线） */
   const [online, setOnline] = useState(true);
   const onlineRef = useRef(true);
@@ -1086,7 +1088,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
 
   // 本场信息栏：聚焦哪个任务、倒计时从哪场会话开始算
   const activeOpen = active && !isClosed ? active : null;
-  const filterTask = taskFilter !== "all" && taskFilter !== "practice" ? taskById.get(taskFilter) ?? null : null;
+  const filterTask = taskFocus ? taskById.get(taskFocus) ?? null : null;
   const focusTask: StudentTask | null = activeOpen
     ? (activeOpen.taskId ? taskById.get(activeOpen.taskId) ?? null : null)
     : filterTask ?? inProgressTasks[0] ?? null;
@@ -1162,6 +1164,14 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     <div className="wbk">
       <ShiftBar
         task={focusTask}
+        practice={Boolean(activeOpen && !activeOpen.taskId)}
+        switchable={inProgressTasks}
+        onPickTask={(taskId) => {
+          // 切换训练任务的聚焦：倒计时、任务条跟着变，并打开这个任务正在接待的买家（会话列表仍显示全部）
+          setTaskFocus(taskId);
+          const first = conversations.find((item) => item.taskId === taskId && !closedLocal.has(item.id));
+          if (first) pickConversation(first.id);
+        }}
         online={online}
         onToggleOnline={() => setOnline((value) => !value)}
         startedAt={timingConv ? new Date(timingConv.createdAt).getTime() : null}

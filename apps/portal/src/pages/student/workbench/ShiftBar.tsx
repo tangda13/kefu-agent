@@ -4,12 +4,17 @@ import { createPortal } from "react-dom";
 import { type StudentTask, type WorkbenchStats } from "../../../api/client";
 import { ShellSlotContext, toast } from "../../../ui";
 import { clockLabel, durationLabel, useNow } from "./shared";
+import { TaskChip } from "./TaskChip";
 
 /* 工作台顶栏（放进外壳顶栏的槽里）：客服状态（在线 / 挂起）+ 今日指标 + 会话剩余时间。
    仿真：不显示任务名、业务环节、接待进度、交流方式这些训练信息（任务要求在任务大厅看）。 */
 
 
 interface Props {
+  /** 训练信息（任务条）：当前接待是否自由练习、可切换的进行中任务 */
+  practice: boolean;
+  switchable: StudentTask[];
+  onPickTask: (taskId: string) => void;
   /** 客服状态：挂起时不再进线新买家（同千牛 / 飞鸽的“挂起”） */
   online: boolean;
   onToggleOnline: () => void;
@@ -32,7 +37,7 @@ function endsAtOf(task: StudentTask | null, startedAt: number | null): number | 
   return candidates.length ? Math.min(...candidates) : null;
 }
 
-export function ShiftBar({ task, online, onToggleOnline, startedAt, timerKey, stats, onTimeUp }: Props) {
+export function ShiftBar({ task, practice, switchable, onPickTask, online, onToggleOnline, startedAt, timerKey, stats, onTimeUp }: Props) {
   const slot = useContext(ShellSlotContext);
   const now = useNow(1000);
   const endsAt = endsAtOf(task, startedAt);
@@ -97,11 +102,14 @@ export function ShiftBar({ task, online, onToggleOnline, startedAt, timerKey, st
           ) : null}
         </div>
       </div>
+      <span className="wbk-shift-right">
+      <TaskChip task={task} practice={practice} switchable={switchable} onPick={onPickTask} />
       {remaining !== null && task ? (
         <span className={`wbk-clock is-quiet ${clockTone}`} title="当前会话剩余时间">
           <Timer size={14} />剩余 <span className="num">{clockLabel(remaining)}</span>
         </span>
       ) : null}
+      </span>
     </div>
   );
   return createPortal(bar, slot);
