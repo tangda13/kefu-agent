@@ -152,6 +152,10 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const [railTab, setRailTab] = useState<RailTab>("current");
   /* 任务隔离：会话/进线按任务过滤。"all" 全部 | "practice" 自由练习 | 任务 id 聚焦该任务 */
   const [taskFilter, setTaskFilter] = useState<string>("all");
+  /** 客服状态：挂起时暂停进线（不存本机，打开工作台默认在线） */
+  const [online, setOnline] = useState(true);
+  const onlineRef = useRef(true);
+  onlineRef.current = online;
   const [dataReady, setDataReady] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [panelTab, setPanelTab] = useState<PanelTab>("order");
@@ -338,7 +342,6 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   useEffect(() => {
     if (!initialTaskId || !dataReady || startedForTask.current === initialTaskId) return;
     startedForTask.current = initialTaskId;
-    setTaskFilter(initialTaskId);
     void (async () => {
       const existing = conversations.find((item) => item.taskId === initialTaskId);
       if (existing) {
@@ -1014,6 +1017,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       }
     };
     const evaluate = () => {
+      if (!onlineRef.current) return;
       for (const task of tasks) {
         if (task.locked || task.progressStatus !== "in_progress") continue;
         if (closedTasksRef.current.has(task.id)) continue;
@@ -1086,19 +1090,12 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const focusTask: StudentTask | null = activeOpen
     ? (activeOpen.taskId ? taskById.get(activeOpen.taskId) ?? null : null)
     : filterTask ?? inProgressTasks[0] ?? null;
-  const practiceNow = activeOpen ? !activeOpen.taskId : taskFilter === "practice";
   const timingConv = useMemo(() => {
     if (!focusTask) return null;
     if (activeOpen && activeOpen.taskId === focusTask.id) return activeOpen;
     const list = conversations.filter((item) => item.taskId === focusTask.id && !closedLocal.has(item.id));
     return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null;
   }, [focusTask, activeOpen, conversations, closedLocal]);
-
-  const switchable = useMemo(() => {
-    const list = [...inProgressTasks];
-    if (focusTask && !list.some((task) => task.id === focusTask.id)) list.unshift(focusTask);
-    return list;
-  }, [inProgressTasks, focusTask]);
 
   // 当前会话所属任务的交流方式
   const mode = (active?.taskId ? taskById.get(active.taskId)?.interactionMode : null) ?? "text_voice";
@@ -1150,13 +1147,6 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     setJustEnded((list) => list.filter((item) => item.id === id));
   }
 
-  function pickTask(taskId: string) {
-    setTaskFilter(taskId);
-    if (taskId === "all") return;
-    const first = conversations.find((item) => item.taskId === taskId && !closedLocal.has(item.id));
-    if (first) pickConversation(first.id);
-  }
-
   const closedNotice =
     closedReason === "student_ended" ? "会话已结束，不能再发消息。"
     : closedReason === "timeout" ? "会话已超时结束，不能再发消息。"
@@ -1172,10 +1162,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     <div className="wbk">
       <ShiftBar
         task={focusTask}
-        switchable={switchable}
-        taskFilter={taskFilter}
-        onPickTask={pickTask}
-        practice={practiceNow}
+        online={online}
+        onToggleOnline={() => setOnline((value) => !value)}
         startedAt={timingConv ? new Date(timingConv.createdAt).getTime() : null}
         timerKey={timingConv?.id ?? null}
         stats={stats}
@@ -1207,8 +1195,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         <div className="wbk-ch">
           {buyer ? <Av buyer={buyer} size={34} /> : null}
           <div className="wbk-ch-who">
-            <b title={buyer?.name}>{buyer?.name ?? "请选择会话"}</b>
-            <div className="wbk-sub">{buyer ? buyer.nationality : "从左侧选一位买家开始接待"}</div>
+            <b title={buyer?.name}>{buyer?.name ?? ""}</b>
+            <div className="wbk-sub">{buyer ? buyer.nationality : ""}</div>
           </div>
           {active ? (
             <div className="wbk-ch-end">
@@ -1275,7 +1263,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
               />
             </>
           ) : null}
-          {!active && dataReady ? <p className="wbk-chat-empty">{conversations.length === 0 ? "暂无会话" : "选择左侧会话"}</p> : null}
+          {!active && dataReady ? <p className="wbk-chat-empty">暂无会话</p> : null}
         </div>
 
         {isClosed ? (
@@ -1346,6 +1334,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
             <input ref={imageInputRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => onAttachmentChosen("image", event)} />
             <input ref={videoInputRef} type="file" hidden accept="video/mp4,video/webm,video/quicktime" onChange={(event) => onAttachmentChosen("video", event)} />
             <input ref={fileInputRef} type="file" hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.zip,.txt,.csv" onChange={(event) => onAttachmentChosen("file", event)} />
+            {/* 只能语音时不放被禁用的文字框，也不解释：输入区只有“按住说话” */}
+            {canType ? (
             <textarea
               ref={textareaRef}
               className="wbk-ta"
@@ -1361,9 +1351,10 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
                   void send();
                 }
               }}
-              placeholder={!active ? "请先选择会话" : !canType ? "这场只能用语音回复，按住下方按钮说话" : "在此输入你的消息，Enter 发送，Shift + Enter 换行"}
-              disabled={composerDisabled || !canType}
+              placeholder="输入消息，Enter 发送"
+              disabled={composerDisabled}
             />
+            ) : null}
             <div className="wbk-bt">
               {canVoice ? (
                 <button
@@ -1397,7 +1388,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         {active ? (
           <CustomerCard conversation={active} tiers={tiers} onSaveNote={(note) => saveMeta({ buyerNote: note })} />
         ) : (
-          <p className="wbk-empty">选择会话后展示客户资料。</p>
+          null
         )}
         <Tabs items={panelTabs} value={panelTab} onChange={setPanelTab} className="wbk-rtabs" />
         <div className="wbk-rbody">
@@ -1460,8 +1451,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       ) : null}
 
       {endConfirm ? (
-        <Confirm title="结束这次接待？" confirmText="结束接待" danger busy={ending} onConfirm={() => void endConversation()} onClose={() => setEndConfirm(false)}>
-          结束后买家会离开，这位买家的会话不能再发消息。
+        <Confirm title="结束会话？" confirmText="结束会话" danger busy={ending} onConfirm={() => void endConversation()} onClose={() => setEndConfirm(false)}>
+          结束后不能再给这位买家发消息。
         </Confirm>
       ) : null}
 

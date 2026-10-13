@@ -383,3 +383,16 @@
 .wbk-rp .wbk-oc-it > *:nth-child(2) { min-width: 0; }
 .wbk-rp .wbk-oc-it b, .wbk-rp .wbk-pc b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wbk-end-line { margin-top: 4px; }
+
+/* 顶栏：客服状态（在线 / 挂起）+ 指标 + 右侧会话剩余时间 */
+.wbk-status { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--c-line); border-radius: 14px; background: var(--c-surface); color: var(--c-ink); font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.wbk-status i { width: 8px; height: 8px; border-radius: 50%; background: var(--c-ok); }
+.wbk-status.is-off { color: var(--c-ink-2); }
+.wbk-status.is-off i { background: var(--c-warn); }
+.wbk-status svg { color: var(--c-ink-3); }
+.wbk-shift .wbk-stats { margin-left: 0; }
+.wbk-clock.is-quiet { margin-left: auto; height: 28px; padding: 0 10px; background: none; box-shadow: none; font-size: 13px; font-weight: 500; color: var(--c-ink-2); gap: 4px; }
+.wbk-clock.is-quiet .num { font-weight: 700; color: var(--c-ink); }
+.wbk-clock.is-quiet.is-warn, .wbk-clock.is-quiet.is-warn .num { color: var(--c-warn); }
+.wbk-clock.is-quiet.is-bad, .wbk-clock.is-quiet.is-bad .num { color: var(--c-bad, var(--c-danger)); }
+.wbk-rp .wbk-oc-h b, .wbk-rp .wbk-oc-h .num { white-space: nowrap; }

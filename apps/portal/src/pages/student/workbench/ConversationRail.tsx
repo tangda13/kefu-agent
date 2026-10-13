@@ -106,7 +106,7 @@ export function ConversationRail({ tab, onTab, search, onSearch, active, justEnd
             {ended.length > 0 ? <p className="wbk-qg">刚结束 · {ended.length}</p> : null}
             {ended.map((item) => renderItem(item, "ended"))}
             {waiting.length + replied.length + ended.length === 0 ? (
-              <p className="wbk-ql-empty">{query ? "没有找到匹配的会话。" : "现在没有买家在线，新的买家进线后会出现在这里。"}</p>
+              <p className="wbk-ql-empty">{query ? "没有找到匹配的会话" : null}</p>
             ) : null}
           </>
         ) : (

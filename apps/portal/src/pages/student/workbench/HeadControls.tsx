@@ -61,5 +61,5 @@ export function FollowUpToggle({ on, onToggle }: { on: boolean; onToggle: () => 
 }
 
 export function EndButton({ onClick }: { onClick: () => void }) {
-  return <Button size="sm" className="wbk-end-btn" onClick={onClick}>结束接待</Button>;
+  return <Button size="sm" className="wbk-end-btn" onClick={onClick}>结束会话</Button>;
 }
