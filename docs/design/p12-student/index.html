@@ -546,6 +546,19 @@ table.api-t td:first-child { white-space: nowrap; font-weight: 600; }
 .h3-main { display: flex; flex-direction: column; }
 .h3-side .btn { margin-top: auto; }
 
+/* 没有任务时：开始三步 */
+.h3-steps3 { flex: 1; display: grid; align-content: start; padding: 8px 0 16px; }
+.h3-s3h { display: flex; align-items: baseline; gap: 12px; padding: 16px 24px 10px; }
+.h3-s3h b { font-size: 15px; }
+.h3-s3h span { font-size: 12px; color: var(--ink-4); }
+.h3-s3 { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 16px 24px; border-top: 1px solid var(--line); }
+.h3-s3 .no { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--ink-3); box-shadow: inset 0 0 0 1.5px var(--line-2); }
+.h3-s3.cur .no { background: var(--brand); color: #fff; box-shadow: none; }
+.h3-s3 b { display: block; font-size: 14px; font-weight: 600; }
+.h3-s3 small { font-size: 12px; color: var(--ink-3); }
+.h3-s3.wait b { color: var(--ink-3); font-weight: 500; }
+.h3-s3-st { font-size: 12px; color: var(--ink-4); }
+
 /* 没有任务时 */
 .h3-card .v b.dash { color: #c3cad5; }
 .h3-track.empty { background: repeating-linear-gradient(90deg, #e3e8ef 0 6px, transparent 6px 10px); }
@@ -891,7 +904,7 @@ table.api-t td:first-child { white-space: nowrap; font-weight: 600; }
   <div class="frame" data-h="820"><div class="screen s" data-tpl="hall3"></div></div>
   <div class="cap"><b>第三版（二次修订）· 已完成页签</b><span>已完成单独一个页签，不在进行中的列表里拼一段；每行一个成绩块：分数 + 达标 / 未达标 + 达标线</span></div>
   <div class="frame" data-h="820"><div class="screen s" data-tpl="hall3done"></div></div>
-  <div class="cap"><b>第三版 · 没有任务时（第一次登录）</b><span>顶部四张卡照常画骨架（灰色 0 和“—”）；任务板里先放训前测评（做完就消失），再一句话说明任务会出现在哪；自由练习照常可用</span></div>
+  <div class="cap"><b>第三版 · 没有任务时（第一次登录）</b><span>顶部四张卡照常画骨架；任务板空白换成“开始三步”：① 训前测评 ② 自由练习熟悉工作台 ③ 等老师下发。一屏只有一个主按钮：测评没做时是“开始测评”，做完后换成“开始练习”</span></div>
   <div class="frame" data-h="820"><div class="screen s" data-tpl="hall3empty"></div></div>
 
   <h2>任务大厅 × 我的记录：去掉重复的仪表盘 <small>2026-10-13 · 待选</small></h2>
@@ -1421,7 +1434,7 @@ const topCardsEmpty = () => `<div class="h3-cards">
   <section class="h3-card"><div class="lb">本周接待</div><div class="v"><b class="dash">0</b><small>次</small></div>
     <div class="h3-bars">${week.map(() => `<div><i style="height:2px" class="zero"></i></div>`).join("")}</div></section>
   <section class="h3-card"><div class="lb">进行中的任务</div><div class="v"><b class="dash">—</b></div><div class="ft">老师下发后显示</div></section>
-  <section class="h3-card"><div class="lb">最近截止</div><div class="v"><b class="dash">—</b></div><div class="ft">暂时没有要截止的任务</div></section>
+  <section class="h3-card"><div class="lb">最近截止</div><div class="v"><b class="dash">—</b></div><div class="ft">老师下发后显示</div></section>
   <section class="h3-card"><div class="lb">已完成任务</div><div class="v"><b class="dash">—</b></div><div class="h3-track empty"></div></section>
 </div>`;
 const hall3empty = () => shell("任务大厅", "任务大厅", `
@@ -1429,18 +1442,14 @@ const hall3empty = () => shell("任务大厅", "任务大厅", `
   <div class="h3-grid">
     <section class="h3-main">
       <div class="h3-h"><div class="h3-tabs"><span class="on">进行中 <i>0</i></span><span>已完成 <i>0</i></span></div></div>
-      <div class="h3-base">
-        <span class="ic">${I("clipboard-pen-line")}</span>
-        <div><b>先做一次训前测评</b><small>10 道题，约 8 分钟。测出六项能力的起点，以后的成绩都和它比。</small></div>
-        <span class="btn primary">开始测评</span>
-      </div>
-      <div class="h3-empty">
-        <span class="ic">${I("inbox")}</span>
-        <b>老师还没有下发任务</b>
-        <p>任务下发后会出现在这里，右上角的铃铛也会提醒你。<br>在那之前，可以先用右边的自由练习熟悉客服工作台。</p>
+      <div class="h3-steps3">
+        <div class="h3-s3h"><b>开始三步</b><span>做完一步打一个勾，老师下发任务后这里换成任务列表</span></div>
+        <div class="h3-s3 cur"><span class="no">1</span><div><b>做训前测评</b><small>10 道题，约 8 分钟。测出六项能力的起点，以后的成绩都和它比</small></div><span class="btn primary">开始测评</span></div>
+        <div class="h3-s3"><span class="no">2</span><div><b>用自由练习熟悉客服工作台</b><small>接待一位练习买家：回消息、查订单、发商品，不计成绩</small></div><span class="btn">开始练习</span></div>
+        <div class="h3-s3 wait"><span class="no">3</span><div><b>等老师下发任务</b><small>下发后会出现在这里，右上角的铃铛也会提醒你</small></div><span class="h3-s3-st">等待中</span></div>
       </div>
     </section>
-    ${practiceCard}
+    ${practiceCard.replace("开始练习", "开始练习")}
   </div>`, { notice: false });
 const hall3done = () => shell("任务大厅", "任务大厅", `
   ${topCards()}
