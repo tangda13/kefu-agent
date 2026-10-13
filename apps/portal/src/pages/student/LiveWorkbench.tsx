@@ -641,7 +641,11 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     }
   }
 
+  /** 正在生成买家回复的会话：学生照常打字、发文字，只是下一次买家回复要等这一条生成完 */
+  const buyerStreamingRef = useRef<Set<string>>(new Set());
+
   function appendBuyerStream(cid: string) {
+    buyerStreamingRef.current.add(cid);
     let accumulated = "";
     let bubbleSeq = 0;
     const pushBubble = () => {
@@ -665,6 +669,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         if (activeIdRef.current === cid) setStreamingText("");
       },
       onDone: (_metrics: unknown, extra?: { closed?: boolean }) => {
+        buyerStreamingRef.current.delete(cid);
         pushBubble();
         if (activeIdRef.current === cid) setStreamingText(null);
         // 买家离开：会话由客户结束（真实客服无权挂断），刷新列表并保留当前对话展示
@@ -675,7 +680,13 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         void loadConversations();
         if (autoTranslateRef.current) void autoTranslateLatest(cid);
       },
-      onError: (message: string) => {
+      onError: (message: string, code?: string) => {
+        buyerStreamingRef.current.delete(cid);
+        // 学生在买家回复期间发的消息已被那条回复一并答了：没有待回复的，静默结束
+        if (code === "NO_PENDING_MESSAGE") {
+          if (activeIdRef.current === cid) setStreamingText(null);
+          return;
+        }
         if (activeIdRef.current === cid) {
           setNotice(message);
           setStreamingText(null);
@@ -703,6 +714,11 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       armReplyTimer(cid, REPLY_WINDOW_MS);
       return;
     }
+    // 上一条买家回复还在生成：等它结束再回，避免两条回复叠在一起
+    if (buyerStreamingRef.current.has(cid)) {
+      armReplyTimer(cid, 800);
+      return;
+    }
     replyTimers.current.delete(cid);
     replyDeadlines.current.delete(cid);
     if (activeIdRef.current === cid) setStreamingText("");
@@ -722,7 +738,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
 
   async function send() {
     const text = input.trim();
-    if (!text || !activeId || busy || streamingText !== null || !canType) return;
+    if (!text || !activeId || busy || !canType) return;
     setInput("");
     const cid = activeId;
     setMessages((current) => [
@@ -1204,7 +1220,9 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   }, [activeId, products]);
 
   const visibleMessages = (messages ?? []).filter((message) => message.sender !== "teacher");
-  const composerDisabled = !active || isClosed || streamingText !== null || agentState === "offline";
+  // 买家正在输入时学生照常可以打字、发文字（真实客服软件不会锁输入框）；卡片要等买家这条回完
+  const composerDisabled = !active || isClosed || agentState === "offline";
+  const cardDisabled = composerDisabled || streamingText !== null;
 
   const phraseQuery = phraseFilter.trim().toLowerCase();
   const visibleMyPhrases = (myPhrases ?? []).filter((item) => item.text.toLowerCase().includes(phraseQuery));
@@ -1429,9 +1447,9 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
             ) : null}
             <div className="wbk-tools">
               <button ref={emojiButtonRef} type="button" onClick={() => { setShowEmoji((value) => !value); setShowPhrases(false); }} disabled={composerDisabled || !canType} title="发送表情" aria-label="发送表情"><Smile size={18} /></button>
-              <button type="button" onClick={() => imageInputRef.current?.click()} disabled={composerDisabled} title="发送图片" aria-label="发送图片"><ImagePlus size={18} /></button>
-              <button type="button" onClick={() => videoInputRef.current?.click()} disabled={composerDisabled} title="发送视频" aria-label="发送视频"><Film size={18} /></button>
-              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={composerDisabled} title="发送文件" aria-label="发送文件"><Paperclip size={18} /></button>
+              <button type="button" onClick={() => imageInputRef.current?.click()} disabled={cardDisabled} title="发送图片" aria-label="发送图片"><ImagePlus size={18} /></button>
+              <button type="button" onClick={() => videoInputRef.current?.click()} disabled={cardDisabled} title="发送视频" aria-label="发送视频"><Film size={18} /></button>
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={cardDisabled} title="发送文件" aria-label="发送文件"><Paperclip size={18} /></button>
               <button ref={phraseButtonRef} type="button" className="wbk-phrase-btn" onClick={openPhrasePanel} disabled={!active || !canType}><MessageSquareText size={16} />快捷短语</button>
               <div className="wbk-toggles">
                 <label><Languages size={15} />自动翻译<Switch checked={autoTranslate} onChange={toggleAutoTranslate} label="自动翻译" /></label>
@@ -1507,7 +1525,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
                 buyerName={active.buyer.name}
                 orders={orders}
                 setOrders={setOrders}
-                canSend={!composerDisabled}
+                canSend={!cardDisabled}
                 onSend={sendOrderCard}
                 onError={setNotice}
               />
@@ -1517,7 +1535,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
             <ProductsTab
               products={products}
               browsed={browsedProducts}
-              canSend={!composerDisabled}
+              canSend={!cardDisabled}
               canFill={Boolean(active) && !isClosed && canType}
               onSend={(type, id) => void sendCard(type, id)}
               onFill={appendToInput}
@@ -1533,7 +1551,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
                     <b>{coupon.title}</b>
                     <div className="wbk-pc-m">{coupon.rule} · {coupon.scope}</div>
                     <div className="wbk-pc-m">有效期 {coupon.validDays} 天</div>
-                    <div className="wbk-pc-ac"><Button size="sm" disabled={composerDisabled} onClick={() => void sendCard("coupon", coupon.id)}>发送</Button></div>
+                    <div className="wbk-pc-ac"><Button size="sm" disabled={cardDisabled} onClick={() => void sendCard("coupon", coupon.id)}>发送</Button></div>
                   </div>
                 </article>
               ))}
@@ -1546,7 +1564,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       {detailProduct ? (
         <ProductDrawer
           product={detailProduct}
-          canSend={!composerDisabled}
+          canSend={!cardDisabled}
           canFill={Boolean(active) && !isClosed && canType}
           onClose={() => setDetailProduct(null)}
           onQuote={appendToInput}

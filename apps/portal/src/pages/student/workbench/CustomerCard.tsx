@@ -1,18 +1,9 @@
 import { Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { type ConversationSummary, type StoreProfile } from "../../../api/client";
-import { Av, CustomerTagChip, shortDate, timeLabel } from "./shared";
+import { Av, CustomerTagChip, shortDate } from "./shared";
 
 /* 右栏顶部客户资料：头像 + 名字 + 国家·身份·语言；系统标签（只读）；关键数字；客户备注（可编辑） */
-
-function noteStamp(iso: string | null | undefined): string {
-  if (!iso) return "你";
-  const at = new Date(iso);
-  const minutes = (Date.now() - at.getTime()) / 60_000;
-  if (minutes < 1) return "你 · 刚刚";
-  if (at.toDateString() === new Date().toDateString()) return `你 · ${timeLabel(iso)}`;
-  return `你 · ${shortDate(iso)}`;
-}
 
 export function CustomerCard({ conversation, tiers, onSaveNote }: {
   conversation: ConversationSummary;
@@ -95,7 +86,6 @@ export function CustomerCard({ conversation, tiers, onSaveNote }: {
             {conversation.buyerNote ? <p>{conversation.buyerNote}</p> : <p className="is-empty">添加备注</p>}
           </button>
         )}
-        {conversation.buyerNote && !editing ? <small>{noteStamp(conversation.buyerNoteAt)}</small> : null}
       </div>
     </div>
   );

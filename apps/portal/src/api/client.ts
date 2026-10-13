@@ -817,7 +817,8 @@ export interface StreamHandlers {
   onSplit?: () => void;
   /** extra.closed=true 表示买家已结束会话（问题解决或失去耐心离开） */
   onDone: (metrics: StreamMetrics, extra?: { closed?: boolean }) => void;
-  onError: (message: string) => void;
+  /** code：服务端错误码（如 NO_PENDING_MESSAGE），网络错误时为空 */
+  onError: (message: string, code?: string) => void;
 }
 
 export function streamConversationMessage(
@@ -893,7 +894,7 @@ async function readSseResponse(
     try {
       await parseError(response);
     } catch (cause) {
-      handlers.onError(cause instanceof ApiError ? cause.message : "发送失败，请稍后重试。");
+      handlers.onError(cause instanceof ApiError ? cause.message : "发送失败，请稍后重试。", cause instanceof ApiError ? cause.code : undefined);
       return;
     }
   }
