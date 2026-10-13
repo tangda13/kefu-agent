@@ -485,10 +485,20 @@ export function registerTaskRoutes(
           [user.sub],
         ),
         db.query(
-          "select count(*)::int as n from conversations where student_id = $1 and created_at >= date_trunc('week', now())",
+          `select (created_at::date - date_trunc('week', now())::date)::int as d, count(*)::int as n,
+                  count(*) filter (where task_id is null)::int as practice
+           from conversations where student_id = $1 and created_at >= date_trunc('week', now())
+           group by 1`,
           [user.sub],
         ),
       ]);
+      /* 周一到周日每天的接待次数（含自由练习） */
+      const weekDaily = [0, 0, 0, 0, 0, 0, 0];
+      let weekPractice = 0;
+      for (const row of week.rows) {
+        if (row.d >= 0 && row.d < 7) weekDaily[row.d] = Number(row.n);
+        weekPractice += Number(row.practice);
+      }
       const classId = me.rows[0]?.class_id ?? null;
       const classSize = classId
         ? Number((await db.query("select count(*)::int as n from users where class_id = $1 and role = 'student' and status = 'active'", [classId])).rows[0]?.n ?? 0)
@@ -513,7 +523,11 @@ export function registerTaskRoutes(
           change: now.position != null && before.position != null ? before.position - now.position : null,
         },
         pass: { assessed: Number(pass.rows[0]?.assessed ?? 0), passed: Number(pass.rows[0]?.passed ?? 0) },
-        weekConversations: Number(week.rows[0]?.n ?? 0),
+        weekConversations: weekDaily.reduce((sum, n) => sum + n, 0),
+        weekDaily,
+        /* 今天是本周第几天（0 = 周一），和 weekDaily 用同一个时区算，前端高亮用 */
+        todayIndex: Number((await db.query("select (current_date - date_trunc('week', now())::date)::int as d")).rows[0]?.d ?? 0),
+        weekPractice,
         conversations: {
           total: Number(talk.rows[0]?.conversations ?? 0),
           practice: Number(talk.rows[0]?.practice ?? 0),
@@ -550,6 +564,11 @@ export function registerTaskRoutes(
                 ), '[]'::json) as started_scenario_ids,
                 (select count(*)::int from conversations c
                  where c.task_id = t.id and c.student_id = $1) as conversation_count,
+                (select max(a.created_at) from assessments a join conversations c on c.id = a.conversation_id
+                 where c.task_id = t.id and a.student_id = $1) as completed_at,
+                coalesce((select bool_and(a.reviewed_at is not null) from assessments a join conversations c on c.id = a.conversation_id
+                 where c.task_id = t.id and a.student_id = $1), false) as reviewed,
+                (select u.display_name from users u where u.id = t.created_by) as teacher_name,
                 (select count(*)::int from assessments a join conversations c on c.id = a.conversation_id
                  where c.task_id = t.id and a.student_id = $1) as assessed_count,
                 (select count(distinct c.scenario_id)::int from assessments a join conversations c on c.id = a.conversation_id
@@ -599,6 +618,10 @@ export function registerTaskRoutes(
           /* 定时开放：未到开始时间的任务学生可见但不可进入（服务端在创建会话时同样拦截） */
           locked: row.start_at != null && new Date(row.start_at).getTime() > now,
           createdAt: row.created_at,
+          /* 完成时间取该任务最后一次评分时间；reviewed = 评分均经老师复核 */
+          completedAt: row.progress_status === "done" ? row.completed_at : null,
+          reviewed: row.progress_status === "done" && row.reviewed === true,
+          teacherName: row.teacher_name ?? null,
         };
       });
     },

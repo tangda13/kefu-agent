@@ -63,6 +63,11 @@ export interface StudentTask {
   /** 定时开放：未到开始时间，学生可见但不可进入 */
   locked: boolean;
   createdAt: string;
+  /** 已完成任务：最后一次评分时间 */
+  completedAt: string | null;
+  /** 已完成任务：评分均经老师复核 */
+  reviewed: boolean;
+  teacherName: string | null;
 }
 
 const SESSION_KEY = "cecs.session";
@@ -472,6 +477,11 @@ export interface StudentSummary {
   pass: { assessed: number; passed: number };
   /** 本周接待次数（含自由练习） */
   weekConversations: number;
+  /** 本周一到周日每天的接待次数 */
+  weekDaily: number[];
+  todayIndex?: number;
+  /** 本周接待里的自由练习次数 */
+  weekPractice: number;
 }
 
 export const fetchStudentSummary = (session: Session) => apiGet<StudentSummary>("/v1/student/summary", session);

@@ -1303,6 +1303,9 @@ describe("学生端改版：店铺资料、系统客户标签与客服标记（C
     expect(body.tasks.total).toBeGreaterThanOrEqual(0);
     expect(body.rank.classSize).toBeGreaterThan(0);
     expect(body.conversations).toHaveProperty("rounds");
+    expect(body.weekDaily).toHaveLength(7);
+    expect(body.weekDaily.reduce((a: number, b: number) => a + b, 0)).toBe(body.weekConversations);
+    expect(body.weekPractice).toBeLessThanOrEqual(body.weekConversations);
   });
 
   it("译文存库：同一段文字第二次直接读库，不再调用模型", async () => {
