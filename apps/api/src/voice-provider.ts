@@ -76,6 +76,8 @@ export function mapExplicitLanguage(language: string | undefined): string | null
   if (lower.startsWith("es")) return "es-mx";
   if (lower.startsWith("fr")) return "fr";
   if (lower.startsWith("ja")) return "ja";
+  if (lower.startsWith("de")) return "de";
+  if (lower.startsWith("pt")) return "pt-br";
   if (lower.startsWith("zh")) return "zh-cn";
   return null;
 }

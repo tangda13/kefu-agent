@@ -11,6 +11,7 @@ import { getSetting, setSetting, type QuotaSettings } from "../settings";
 import type { LlmGateway } from "../llm/gateway";
 import { maskSecret } from "../llm/secret";
 import { VOICE_VENDORS, type VoiceProfile, type VoiceService } from "../voice/service";
+import { POOL_LANGUAGES } from "../voice/pool";
 import { loadEnv } from "../env";
 import { generateTemporaryPassword, hashPassword } from "../security";
 import { clearLoginFailures } from "../login-throttle";
@@ -92,10 +93,15 @@ export function registerAdminRoutes(
         vendors: Object.entries(VOICE_VENDORS).map(([key, item]) => ({ key, label: item.label, speakers: item.speakers })),
         apiKeyMasked: maskSecret(profile.apiKey),
         ttsResourceId: profile.ttsResourceId,
-        ttsSpeaker: profile.ttsSpeaker,
-        ttsSpeakerMale: profile.ttsSpeakerMale,
         asrResourceId: profile.asrResourceId,
         ttsPricePer10kChars: profile.ttsPricePer10kChars,
+        aliyunApiKeyMasked: maskSecret(profile.aliyunApiKey),
+        aliyunBaseUrl: profile.aliyunBaseUrl,
+        aliyunModel: profile.aliyunModel,
+        aliyunTtsPricePer10kChars: profile.aliyunTtsPricePer10kChars,
+        voicePool: profile.voicePool,
+        poolLanguages: POOL_LANGUAGES,
+        missingVoices: await voice.missingVoices(),
         asrPricePerHour: profile.asrPricePerHour,
       },
       usage,
@@ -118,6 +124,8 @@ export function registerAdminRoutes(
           ...voiceInput,
           ttsPricePer10kChars: price(voiceInput.ttsPricePer10kChars),
           asrPricePerHour: price(voiceInput.asrPricePerHour),
+          aliyunTtsPricePer10kChars: price(voiceInput.aliyunTtsPricePer10kChars),
+          aliyunBaseUrl: typeof voiceInput.aliyunBaseUrl === "string" && /^https:\/\//.test(voiceInput.aliyunBaseUrl.trim()) ? voiceInput.aliyunBaseUrl.trim() : undefined,
         });
       }
       if (quota) {
@@ -130,7 +138,7 @@ export function registerAdminRoutes(
         });
       }
       await writeAudit(db, request.user!.sub, "admin.providers_update", undefined, {
-        voice: Boolean(voiceInput), voiceKeyChanged: Boolean(voiceInput?.apiKey), quota: Boolean(quota),
+        voice: Boolean(voiceInput), voiceKeyChanged: Boolean(voiceInput?.apiKey), aliyunKeyChanged: Boolean(voiceInput?.aliyunApiKey), quota: Boolean(quota),
       });
       return { ok: true };
     },
@@ -304,36 +312,38 @@ export function registerAdminRoutes(
     },
   );
 
-  // 音色试听：用当前密钥合成一句买家口吻的英文，返回 mp3
-  app.post<{ Body: { speaker?: string } }>("/v1/admin/voice/preview", { preHandler: adminOnly }, async (request, reply) => {
+  // 音色试听：用当前密钥合成一句该语种买家口吻的话，返回音频（同一厂商 + 音色 + 语种只合成一次）
+  app.post<{ Body: { speaker?: string; vendor?: string; language?: string } }>("/v1/admin/voice/preview", { preHandler: adminOnly }, async (request, reply) => {
     const speaker = String(request.body?.speaker ?? "").trim();
-    if (!/^[A-Za-z0-9_.-]{3,80}$/.test(speaker)) {
+    const vendor = String(request.body?.vendor ?? "doubao");
+    const language = POOL_LANGUAGES.some((item) => item.key === request.body?.language) ? String(request.body?.language) : "en";
+    if (!/^[A-Za-z0-9_.-]{3,80}$/.test(speaker) || !VOICE_VENDORS[vendor]) {
       reply.code(400);
       return { code: "INVALID_SPEAKER", message: "音色 ID 格式不对。" };
     }
-    if (!(await voice.configured())) {
+    if (!(await voice.availableVendors()).has(vendor)) {
       reply.code(503);
-      return { code: "TTS_NOT_CONFIGURED", message: "还没有配置语音密钥。" };
+      return { code: "TTS_NOT_CONFIGURED", message: vendor === "aliyun" ? "还没有配置阿里云密钥。" : "还没有配置语音密钥。" };
     }
     try {
-      // 试听句固定：同一音色只合成一次，存 uploads/tts/preview-<音色>.mp3 复用
       const path = await import("node:path");
       const fs = await import("node:fs");
-      const target = path.resolve(process.cwd(), "uploads", "tts", `preview-${speaker}.mp3`);
+      const ext = VOICE_VENDORS[vendor]!.audioExt;
+      const target = path.resolve(process.cwd(), "uploads", "tts", `preview-${vendor}-${speaker}-${language}.${ext}`);
       const audio = fs.existsSync(target)
         ? fs.readFileSync(target)
-        : await once(`voice-preview:${speaker}`, async () => {
-            const { audio: fresh } = await voice.preview(speaker);
+        : await once(`voice-preview:${vendor}:${speaker}:${language}`, async () => {
+            const { audio: fresh } = await voice.preview(vendor, speaker, language);
             fs.mkdirSync(path.dirname(target), { recursive: true });
             fs.writeFileSync(target, fresh);
             return fresh;
           });
-      reply.type("audio/mpeg");
+      reply.type(ext === "wav" ? "audio/wav" : "audio/mpeg");
       return reply.send(audio);
     } catch (error) {
       request.log.warn(error, "voice preview failed");
       reply.code(502);
-      return { code: "PREVIEW_FAILED", message: "试听失败：音色 ID 可能不存在，或与朗读资源 ID 不匹配。" };
+      return { code: "PREVIEW_FAILED", message: "试听失败：音色 ID 可能不存在、与朗读资源不匹配，或该厂商不支持此语种。" };
     }
   });
 

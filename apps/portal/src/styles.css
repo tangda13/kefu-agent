@@ -2102,6 +2102,22 @@ button.toggle:focus-visible { outline: 2px solid var(--blue-focus); outline-offs
 .speaker-picker .ui-select { flex: 1; min-width: 0; }
 .speaker-picker .ui-btn { flex: none; }
 .ui-input.speaker-custom { margin-top: 8px; }
+.voice-missing { display: grid; gap: 8px; margin-bottom: 16px; }
+.voice-pool { display: grid; }
+.voice-pool-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 14px 0; border-top: 1px solid var(--c-line); align-items: start; }
+.voice-pool-row:first-child { border-top: 0; }
+.voice-pool-lang { font-weight: 500; padding-top: 6px; }
+.voice-pool-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.voice-pool-cell .ui-select { width: 100%; max-width: 240px; }
+.voice-pool-gender { font-size: 12px; color: var(--c-ink-3); }
+.voice-pool-empty { font-size: 13px; color: var(--c-ink-3); }
+.voice-chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 10px; border: 1px solid var(--c-line); border-radius: 999px; font-size: 13px; max-width: 100%; }
+.voice-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.voice-chip-name em { margin-left: 6px; font-style: normal; font-size: 12px; color: var(--c-ink-3); }
+.voice-chip-btn { display: inline-grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 50%; background: transparent; color: var(--c-ink-2); cursor: pointer; }
+.voice-chip-btn:hover { background: var(--c-line); }
+.voice-custom { display: grid; gap: 6px; width: 100%; max-width: 240px; }
+@media (max-width: 900px) { .voice-pool-row { grid-template-columns: 1fr; } }
 /* 店铺分组标题是按钮，但不吃导航按钮的高度和内边距；收起侧栏时只留店铺标识 */
 .shell-nav .shell-nav-group { height: auto; margin: 18px 0 6px; padding: 4px 12px; font-size: 12px; font-weight: 500; color: var(--c-ink-3); }
 .shell-nav .shell-nav-group:hover:not(:disabled) { background: var(--c-surface-hover); color: var(--c-ink); }

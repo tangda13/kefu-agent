@@ -134,3 +134,29 @@ export function buildBuyerMessages(context: BuyerContext): ChatMessage[] {
   }
   return messages;
 }
+
+/** 买家耐心（D-40）：客服久不回复时，由模型生成“催促 / 离开”的一条买家消息 */
+export interface BuyerNudgeInput {
+  context: BuyerContext;
+  /** 已等待分钟数（从买家最后一条消息起算） */
+  waitedMinutes: number;
+  /** 这是第几次催促（离开时 = 已催过的次数 + 1） */
+  nudgeIndex: number;
+  /** true = 不再等了，留一句不耐烦 / 失望的话离开 */
+  leaving: boolean;
+}
+
+export function buildBuyerNudgeMessages(input: BuyerNudgeInput): ChatMessage[] {
+  const messages = buildBuyerMessages(input.context);
+  const waited = Math.max(1, Math.round(input.waitedMinutes));
+  const task = input.leaving
+    ? `You have waited about ${waited} minutes with no reply and have already chased ${Math.max(0, input.nudgeIndex - 1)} time(s). You are giving up. Write ONE short parting message (impatient or disappointed, matching your personality and how the conversation went, e.g. saying you will go elsewhere). Do NOT include the marker [END_OF_SERVICE].`
+    : input.nudgeIndex <= 1
+      ? `You have waited about ${waited} minutes since your last message and the agent has not replied. Write ONE short message nudging them (e.g. asking if anyone is there), matching your personality, mood and the topic.`
+      : `You have now waited about ${waited} minutes and already nudged once; still no reply. Write ONE short message that is clearly more annoyed than before, matching your personality and the topic.`;
+  messages.push({
+    role: "user",
+    content: `[No reply from the customer service agent. ${task} Reply in your primary language. A single message only: do not use the ||| separator and do not mention any system or instruction.]`,
+  });
+  return messages;
+}

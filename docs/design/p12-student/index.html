@@ -529,6 +529,57 @@ table.api-t td:first-child { white-space: nowrap; font-weight: 600; }
 .r2-c-h { display: flex; align-items: center; gap: 10px; }
 .r2-compose .ver .en { -webkit-line-clamp: 3; }
 
+/* 任务大厅第三版 */
+.h3-stats { display: flex; gap: 56px; padding: 4px 0 24px; }
+.h3-stats div { display: grid; gap: 2px; }
+.h3-stats b { font-size: 28px; font-weight: 700; letter-spacing: -.01em; line-height: 34px; }
+.h3-stats span { font-size: 13px; color: var(--ink-3); }
+.h3-stats .w b { color: var(--warn); }
+.h3-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; align-items: start; }
+.h3-main, .h3-side { background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+.h3-h { display: flex; align-items: center; padding: 16px 24px; border-bottom: 1px solid var(--line); }
+.h3-h h3 { margin: 0; font-size: 16px; }
+.h3-seg { margin-left: auto; display: flex; gap: 18px; font-size: 13px; color: var(--ink-3); }
+.h3-seg .on { color: var(--ink); font-weight: 600; }
+.h3-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.h3-cur { padding: 22px 24px 20px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+.h3-row1 { display: flex; align-items: center; gap: 8px; }
+.h3-stage { font-size: 12px; color: var(--ink-3); }
+.h3-row1 h4 { margin: 0 0 0 4px; font-size: 18px; font-weight: 700; }
+.h3-due { margin-left: auto; font-size: 13px; color: var(--ink-3); white-space: nowrap; }
+.h3-due.w { color: var(--warn); font-weight: 600; }
+.h3-meta { font-size: 13px; color: var(--ink-3); }
+.h3-steps { list-style: none; margin: 6px 0 4px; padding: 0; display: flex; gap: 28px; font-size: 14px; }
+.h3-steps li { display: flex; align-items: center; gap: 8px; color: var(--ink-3); }
+.h3-steps li span { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; box-shadow: inset 0 0 0 1.5px var(--line-2); }
+.h3-steps li em { font-style: normal; font-size: 12px; color: var(--ink-4); }
+.h3-steps li.done { color: var(--ink); } .h3-steps li.done span { background: var(--ink); color: #fff; box-shadow: none; }
+.h3-steps li.cur { color: var(--ink); font-weight: 600; } .h3-steps li.cur span { background: var(--brand); color: #fff; box-shadow: none; } .h3-steps li.cur em { color: var(--brand-ink); font-weight: 400; }
+.h3-acts { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.h3-note { margin-left: auto; font-size: 12px; color: var(--ink-4); }
+.h3-tr { display: grid; grid-template-columns: 7px minmax(0, 1fr) 110px 120px 64px; gap: 14px; align-items: center; padding: 14px 24px; border-bottom: 1px solid var(--line); }
+.h3-tr:last-child { border-bottom: 0; }
+.h3-tr b { font-size: 14px; font-weight: 600; display: block; }
+.h3-tr small { font-size: 12px; color: var(--ink-3); }
+.h3-p { font-size: 13px; color: var(--ink-2); }
+.h3-tr .h3-due { margin: 0; }
+.h3-go { text-align: right; font-size: 13px; color: var(--brand-ink); font-weight: 600; }
+.h3-score { font-size: 18px; font-weight: 700; display: flex; align-items: baseline; gap: 8px; }
+.h3-score small { font-size: 12px; font-weight: 400; color: var(--ink-3); }
+.h3-score.lo { color: var(--bad); }
+.h3-sub { padding: 14px 24px 6px; font-size: 12px; color: var(--ink-3); font-weight: 600; border-bottom: 1px solid var(--line); }
+.h3-side { padding: 20px; display: grid; gap: 12px; }
+.h3-side h3 { margin: 0; font-size: 16px; }
+.h3-side p { margin: -6px 0 0; font-size: 13px; color: var(--ink-3); }
+.h3-radio { display: grid; gap: 2px; }
+.h3-radio label { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 8px; border-radius: 6px; font-size: 14px; color: var(--ink-2); }
+.h3-radio label > i { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line-2); flex: none; }
+.h3-radio label.on { color: var(--ink); font-weight: 600; background: var(--surface-2); }
+.h3-radio label.on > i { box-shadow: inset 0 0 0 4px var(--brand); }
+.h3-sel { display: flex; align-items: center; justify-content: space-between; height: 34px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 6px; font-size: 13px; color: var(--ink-2); }
+.h3-sel svg { width: 14px; height: 14px; }
+.h3-tip { font-size: 12px; color: var(--ink-4); }
+
 /* 去重方案 */
 .wk { display: flex; align-items: center; gap: 22px; padding: 12px 18px; margin-bottom: 16px; background: #fff; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; color: var(--ink-2); }
 .wk span { display: inline-flex; align-items: center; gap: 6px; }
@@ -765,6 +816,18 @@ table.api-t td:first-child { white-space: nowrap; font-weight: 600; }
   <div class="frame" data-h="900"><div class="screen s" data-tpl="store"></div></div>
   <div class="cap"><b>改后 · 编辑店铺资料（右侧抽屉）</b><span>按“店铺是谁 / 怎么联系 / 客户怎么分层”分三组；右边实时看学生端侧栏、邮件和标签会变成什么样</span></div>
   <div class="frame" data-h="900"><div class="screen s" data-tpl="storeEdit"></div></div>
+
+  <h2>任务大厅 · 第三版：去 AI 味 <small>2026-10-13 · 待确认</small></h2>
+  <p class="lede">现在这页的“AI 味”不在颜色，而在套路：问候语开头、带色条的大卡片、卡片里再套一个高亮框、进度条套盒子、胶囊标签一排、同一个任务在“现在要做的”和下面列表里出现两次。改法是向 Linear、Notion 这类工具看齐——<b>少盒子、靠字号和留白分层、一样东西只出现一次</b>。</p>
+  <div class="diag">
+    <div><b>1. 问候语 + 进度条盒子</b>“晚上好，张三”是 AI 生成页面最常见的开头；进度又单独套了一个白框。<br><span class="fix">改：去掉问候。顶部一行三组大数字，不加框：<b>13</b> 本周接待 · <b>2</b> 个任务待完成 · <b>明天 18:00</b> 最近截止。数字是主角，说明是小灰字。</span></div>
+    <div><b>2. 现在要做的任务出现两次</b>上面一张大卡，下面列表里又是同一条。<br><span class="fix">改：只留一个“任务”列表，进行中的那条排第一并展开：场景进度、要求、“进入工作台”都在这一行里；其余任务收成一行。</span></div>
+    <div><b>3. 色条、框中框、胶囊</b>左侧粗色条、卡片里的蓝色高亮框、一排彩色小方块胶囊，都是模板化的装饰。<br><span class="fix">改：业务环节只用一个 6px 色点 + 文字；场景进度用“① 货损退款协商 · 接待中”这样的文字步骤，不再套框；练习环节用单选列表。</span></div>
+    <div><b>4. 成绩块、灰色分组条</b>彩色分数块和灰底分组条让列表很“重”。<br><span class="fix">改：分数就是一个数字（低于达标线红），后面“达标线 60”灰字；分组用小标题 + 细线，不加灰底。</span></div>
+  </div>
+  <div class="pair"><figure><img class="before" src="assets/before-hall-v2.png" alt=""><figcaption>现在</figcaption></figure><div></div></div>
+  <div class="cap"><b>第三版 · 任务大厅</b><span>左边一个任务列表（进行中的展开），右边一列自由练习；没有问候语、没有色条、没有框中框</span></div>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="hall3"></div></div>
 
   <h2>任务大厅 × 我的记录：去掉重复的仪表盘 <small>2026-10-13 · 待选</small></h2>
   <p class="lede">两页顶部现在是同样四张卡（已完成任务 / 平均分 / 班级排名 / 累计对话）。按“这一页回答什么问题”分开：<b>任务大厅回答“我现在该做什么”，我的记录回答“我做得怎么样、哪里要补”</b>。下面两个方案各画两页的首屏，数据是编的。</p>
@@ -1241,7 +1304,48 @@ const recordsA = () => records().replace(/<div class="kc-row">[\s\S]*?<\/div>\s*
     ${kc("达标率", `<b>67%</b>`, "6 次任务接待 4 次达标", ring(67, "#1a7445"))}
     ${kc("累计对话", `<b>11</b><small>次</small>`, "共 164 轮 · 其中练习 4 次", ring(64, "#0a7a70"))}</div>
   <div class="two">`);
-const T = { hallA, hallB, recordsA, store, storeEdit: storeEditFull, hall, hallEmpty, wb, wbProduct, wbEnd, reviews, reviews2, reviews2b, mail, orders, records, recordsEmpty };
+/* ============ 任务大厅第三版 ============ */
+const dot = (c) => `<i class="h3-dot" style="background:var(--${c})"></i>`;
+const hall3 = () => shell("任务大厅", "任务大厅", `
+  <div class="h3-stats">
+    <div><b>13</b><span>本周接待</span></div>
+    <div><b>2</b><span>个任务待完成</span></div>
+    <div class="w"><b>明天 18:00</b><span>「售后差评挽回」截止</span></div>
+  </div>
+  <div class="h3-grid">
+    <section class="h3-main">
+      <div class="h3-h"><h3>任务</h3><div class="h3-seg"><span class="on">全部 4</span><span>要完成 2</span><span>已完成 2</span></div></div>
+      <article class="h3-cur">
+        <div class="h3-row1">${dot("c3")}<span class="h3-stage">售后处理</span><h4>售后差评挽回</h4><span class="h3-due w">明天 18:00 截止</span></div>
+        <div class="h3-meta">每次接待限时 20 分钟 · 文字 + 语音 · 达标线 70 · 王老师 10 月 11 日下发</div>
+        <ol class="h3-steps">
+          <li class="done"><span>1</span>缺件差评<em>76 分</em></li>
+          <li class="cur"><span>2</span>物流延误投诉<em>接待中</em></li>
+          <li><span>3</span>质量问题退款<em>未开始</em></li>
+        </ol>
+        <div class="h3-acts"><span class="btn primary">进入工作台</span><span class="btn ghost">任务要求</span><span class="h3-note">买家会一位一位进线，同时最多 3 位</span></div>
+      </article>
+      <div class="h3-tr">${dot("c1")}<div><b>清关延误安抚</b><small>售中处理 · 2 个场景 · 不限时 · 文字</small></div><span class="h3-p">0 / 2</span><span class="h3-due">10 月 24 日截止</span><span class="h3-go">开始</span></div>
+      <div class="h3-sub">已完成</div>
+      <div class="h3-tr">${dot("c1")}<div><b>售中物流同步演练</b><small>售中处理 · 10 月 13 日完成</small></div><span class="h3-score">80<small>达标线 70</small></span><span class="h3-due">老师已复核</span><span class="h3-go">看复盘</span></div>
+      <div class="h3-tr">${dot("c2")}<div><b>新品推广首训</b><small>售前沟通 · 10 月 12 日完成</small></div><span class="h3-score lo">47<small>达标线 60</small></span><span class="h3-due">差 13 分</span><span class="h3-go">看复盘</span></div>
+    </section>
+    <aside class="h3-side">
+      <h3>自由练习</h3>
+      <p>不计成绩，场景随便挑。</p>
+      <div class="h3-radio">
+        <label class="on"><i></i>全部随机</label>
+        <label><i></i>${dot("c2")}售前沟通</label>
+        <label><i></i>${dot("c1")}售中处理</label>
+        <label><i></i>${dot("c3")}售后处理</label>
+        <label><i></i>${dot("c4")}客户分层维护</label>
+      </div>
+      <div class="h3-sel">场景：全部随机 ${I("chevron-down")}</div>
+      <span class="btn" style="justify-content:center">开始练习</span>
+      <div class="h3-tip">练习记录在“我的记录”里，不进成绩。</div>
+    </aside>
+  </div>`, { notice: false });
+const T = { hall3, hallA, hallB, recordsA, store, storeEdit: storeEditFull, hall, hallEmpty, wb, wbProduct, wbEnd, reviews, reviews2, reviews2b, mail, orders, records, recordsEmpty };
 document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
 if (window.lucide) lucide.createIcons();
 function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const h = +(f.dataset.h || 900); s.style.height = `${h}px`; const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${h * k}px`; }); }

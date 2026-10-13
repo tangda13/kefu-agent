@@ -163,6 +163,12 @@ export async function buildServer(options: BuildServerOptions = {}) {
         .catch((error) => app.log.error(error, "conversation sweep failed"));
     }, 60 * 1000);
     app.addHook("onClose", async () => clearInterval(sweeper));
+    // D-40 买家耐心：每 30 秒扫描一次，客服久不回复时买家催促 / 离开（模型未配置时不动作）
+    const { sweepBuyerPatience } = await import("./nudge");
+    const patience = setInterval(() => {
+      sweepBuyerPatience(db, gateway, app.log).catch((error) => app.log.error(error, "buyer patience sweep failed"));
+    }, 30 * 1000);
+    app.addHook("onClose", async () => clearInterval(patience));
   }
 
   // 定时备份调度：每 10 分钟检查一次（到达设定小时且当日未备份则执行）

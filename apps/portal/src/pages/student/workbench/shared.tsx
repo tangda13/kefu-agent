@@ -1,5 +1,6 @@
 import { Package2, Paperclip, ShoppingCart, TicketPercent } from "lucide-react";
 import { useEffect, useState } from "react";
+import { DefaultSilhouette, buyerInitial, initialTone } from "../../../components/BuyerAvatar";
 import {
   ApiError,
   assetUrl,
@@ -85,9 +86,10 @@ export function mediaUrl(url: string | undefined): string | undefined {
 }
 
 export function Av({ buyer, size = 40 }: { buyer: BuyerPublicView | null; size?: number }) {
+  const tone = !buyer?.avatarUrl && buyer?.avatarKind === "initial" ? initialTone(buyer.name) : undefined;
   return (
-    <span className="wbk-av" style={{ width: size, height: size, fontSize: Math.max(11, Math.round(size * 0.38)) }}>
-      {buyer?.avatarUrl ? <img src={buyer.avatarUrl} alt={`${buyer.name} 头像`} /> : buyer?.name?.slice(0, 1) ?? "?"}
+    <span className="wbk-av" style={{ width: size, height: size, fontSize: Math.max(11, Math.round(size * 0.38)), ...tone }}>
+      {buyer?.avatarUrl ? <img src={buyer.avatarUrl} alt={`${buyer.name} 头像`} /> : buyer?.avatarKind === "default" ? <DefaultSilhouette /> : buyerInitial(buyer)}
     </span>
   );
 }

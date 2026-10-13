@@ -1329,3 +1329,77 @@ describe("学生端改版：店铺资料、系统客户标签与客服标记（C
     expect(blocked.json().code).toBe("TASK_CLOSED");
   });
 });
+
+describe("买家耐心（D-40）", () => {
+  const log = { error: () => undefined, info: () => undefined, warn: () => undefined };
+  const fakeGateway = (configured: boolean) => {
+    let calls = 0;
+    const gateway = {
+      isConfigured: (purpose: string) => configured && purpose === "dialogue",
+      complete: async () => ({ text: `Hello? Anyone there? (${++calls})`, info: {} }),
+    } as unknown as import("./llm/gateway").LlmGateway;
+    return { gateway, calls: () => calls };
+  };
+  const setup = async (lastBuyerMinutesAgo: number, persona: Record<string, unknown> = { personality: "理性谨慎", emotion: "平静", language: "en-US" }) => {
+    const student = (await db.query("select id from users where role = 'student' limit 1")).rows[0].id;
+    const conv = await db.query(
+      `insert into conversations (student_id, scenario_id, status, persona) values ($1, 'AFTER-001', 'active', $2) returning id`,
+      [student, JSON.stringify(persona)],
+    );
+    const id = conv.rows[0].id as string;
+    await db.query(
+      `insert into conversation_messages (conversation_id, sender, content, created_at) values ($1, 'buyer', 'Where is my order?', now() - ($2::float * interval '1 minute'))`,
+      [id, lastBuyerMinutesAgo],
+    );
+    return id;
+  };
+  const messageCount = async (id: string) => Number((await db.query("select count(*) from conversation_messages where conversation_id = $1", [id])).rows[0].count);
+
+  it("模型未配置时不催也不离开", async () => {
+    const { sweepBuyerPatience } = await import("./nudge");
+    const id = await setup(30);
+    const { gateway } = fakeGateway(false);
+    expect(await sweepBuyerPatience(db, gateway, log)).toBe(0);
+    expect(await messageCount(id)).toBe(1);
+    expect((await db.query("select status from conversations where id = $1", [id])).rows[0].status).toBe("active");
+    await db.query("update conversations set status = 'closed' where id = $1", [id]); // 不影响后面的用例
+  });
+
+  it("等待够久才催；催过不重复；客服回复后清零；最后离开并关闭", async () => {
+    const { sweepBuyerPatience } = await import("./nudge");
+    const { gateway, calls } = fakeGateway(true);
+    const fresh = await setup(1);
+    const waiting = await setup(3);
+    await sweepBuyerPatience(db, gateway, log);
+    expect(await messageCount(fresh)).toBe(1);
+    expect(await messageCount(waiting)).toBe(2);
+    const state = (await db.query("select state from conversations where id = $1", [waiting])).rows[0].state;
+    expect(state.nudge.count).toBe(1);
+    expect(state.satisfaction).toBe(52);
+    // 再扫一次：还没到第 2 次，不会重复催
+    const before = calls();
+    await sweepBuyerPatience(db, gateway, log);
+    expect(calls()).toBe(before);
+
+    // 客服回复：最后一条是学生，不再催
+    await db.query("insert into conversation_messages (conversation_id, sender, content) values ($1, 'student', 'Checking now')", [waiting]);
+    await sweepBuyerPatience(db, gateway, log);
+    expect(await messageCount(waiting)).toBe(3);
+
+    // 第 3 阶段：等了很久且已催过 2 次 -> 离开
+    const left = await setup(12);
+    await db.query("update conversations set state = $2 where id = $1", [left, JSON.stringify({ nudge: { baseAt: new Date(Date.now() - 12 * 60_000).toISOString(), count: 2, lastMessageId: (await db.query("select id from conversation_messages where conversation_id = $1", [left])).rows[0].id } })]);
+    await sweepBuyerPatience(db, gateway, log);
+    expect((await db.query("select status, closed_reason from conversations where id = $1", [left])).rows[0]).toMatchObject({ status: "closed", closed_reason: "buyer_left" });
+  });
+
+  it("焦虑买家等待时间减半", async () => {
+    const { sweepBuyerPatience } = await import("./nudge");
+    const { gateway } = fakeGateway(true);
+    const anxious = await setup(1.5, { personality: "直接高效", emotion: "焦虑", language: "en-US" });
+    const easygoing = await setup(1.5, { personality: "友好健谈", emotion: "平静", language: "en-US" });
+    await sweepBuyerPatience(db, gateway, log);
+    expect(await messageCount(anxious)).toBe(2);
+    expect(await messageCount(easygoing)).toBe(1);
+  });
+});

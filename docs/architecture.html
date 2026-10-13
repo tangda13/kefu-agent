@@ -237,7 +237,7 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
 │  │     ├─ prompts/                提示词模板（带版本号）：buyer · director · assessment · assist
 │  │     ├─ director.ts             导演 Agent：directTurn 纯逻辑 + runDirector（每 N 轮）
 │  │     ├─ assessment.ts           会话结束后六维评分（全量对话、超长分段摘要、词库与逐轮得分作客观依据）
-│  │     ├─ voice/service.ts        语音档案与厂商接口（目前豆包）· voice-provider.ts 豆包 TTS/ASR 二进制协议
+│  │     ├─ voice/service.ts        语音档案与厂商接口（豆包 + 阿里云）· voice/pool.ts 音色池· voice-provider.ts 豆包 TTS/ASR 二进制协议
 │  │     ├─ mail-reply.ts / review-gen.ts  买家回信 · 买家评价生成
 │  │     ├─ acceptance.ts / metrics.ts     验收报表（TTFT/速度/语音耗时）
 │  │     └─ settings.ts             app_settings 读写（DB 配置优先于 env）
@@ -413,6 +413,7 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
 <h2 id="changelog">12. 变更记录</h2>
 <div class="table-wrap"><table>
 <tr><th>日期</th><th>变更</th></tr>
+<tr><td>2026-10-13</td><td>买家语音按语种/国籍分音色（D-42）：新增 apps/api/src/voice/pool.ts（音色池、语种判定、稳定分配、缺口提示，纯函数）与 voice/aliyun.ts（阿里云百炼千问3-TTS-Flash，HTTP）；VOICE_VENDORS 增加 aliyun（只做朗读，识别仍走豆包）；app_settings.voice 增加 voicePool、aliyunApiKeyEnc、aliyunBaseUrl、aliyunModel；迁移 035（voice_metrics.vendor）；/tts 缓存文件名带厂商和音色 id；管理端语音页改为“音色池”配置。</td></tr>
 <tr><td>2026-10-13</td><td>翻译与语音成本控制：迁移 034 新增 text_translations（评价、邮件正文译文按原文 sha256 存库，POST /v1/translate 先查库）；新增 apps/api/src/inflight.ts（同一文本 / 消息的翻译、播报、音色试听在途请求合并，只调用一次模型或语音服务）；管理端音色试听按音色缓存到 uploads/tts/preview-*.mp3。原有缓存不变：买家消息译文存 conversation_messages.translated_content，消息播报音频存 uploads/tts/&lt;消息id&gt;-&lt;性别&gt;.mp3（Docker 下在 cecs_uploads 卷里，重启不丢）。</td></tr>
 <tr><td>2026-10-13</td><td>学生端改版（D-37～D-39，对比稿 docs/design/p12-student）：迁移 033（conversations 加 contact_reason、contact_reason_suggested、follow_up、buyer_note、buyer_note_at）。domain 新增 store.ts：店铺资料默认值与清洗、系统客户标签 computeCustomerTags（RFM：粉丝 / 大订单客户 / 普通客户 / 沉睡客户 / 新客，阈值来自店铺资料）、咨询原因列表与按场景推断 suggestContactReason。新增 routes/store.ts：GET/PUT /v1/store/profile（全平台一份，存 app_settings.store_profile，教师和管理员可写）；GET /v1/conversations 每条返回 customerTags、orderStats、咨询原因、待跟进、客户备注；新增 PATCH /v1/conversations/:id/service-meta；新增 GET /v1/student/summary（已完成任务、任务口径平均分、班级排名及较上周变化、累计对话与轮数，C1）；任务已结束或过截止时开会话返回 403 TASK_CLOSED（D1）；未设达标线按 60 分判定；评价回复改为固定 3 版英文 + 中文意思 + 切入角度（C5）；买家 AI 知道店铺名。前端：学生端侧栏分“学习区 / 店铺后台”两组（店铺标识 + 角标），店铺后台四页不显示页名和公告条。</td></tr>
 <tr><td>2026-10-13</td><td>接待生命周期（D-36）：迁移 032（conversations.closed_reason / closed_at）；新增 apps/api/src/lifecycle.ts，API 每分钟扫描并自动结束超时、2 小时无人发言、任务结束或过截止的接待，结束任务时立即扫描该任务；中途放弃不足 3 轮不评分。GET /v1/teacher/tracking 只返回任务内接待，活跃时间不计老师指导；新增 GET /v1/teacher/unfinished；评分列表和待复核计数排除自由练习。</td></tr>

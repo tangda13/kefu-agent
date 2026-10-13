@@ -247,6 +247,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const inputRef = useRef("");
   inputRef.current = input;
   const messagesCidRef = useRef<string | null>(null);
+  const streamingTextRef = useRef<string | null>(null);
+  streamingTextRef.current = streamingText;
 
   useEffect(() => {
     const timers = replyTimers.current;
@@ -358,6 +360,34 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     const timer = window.setInterval(() => void loadConversations(), 20_000);
     return () => window.clearInterval(timer);
   }, [loadConversations]);
+
+  // 当前会话每 15 秒看一次有没有新消息：客服久不回时买家会自己催促 / 离开（D-40），这些消息不是学生触发的。
+  // 只在没有流式生成、没有待发的回复窗口时检查；服务端买家消息比本地多才刷新，不碰正在进行的流式回复
+  const pollingMessagesRef = useRef(false);
+  useEffect(() => {
+    if (!activeId || isClosed) return;
+    const cid = activeId;
+    const timer = window.setInterval(() => {
+      if (pollingMessagesRef.current || streamingTextRef.current !== null) return;
+      if (buyerStreamingRef.current.has(cid) || replyTimers.current.has(cid) || messagesCidRef.current !== cid) return;
+      pollingMessagesRef.current = true;
+      fetchConversationMessages(session, cid)
+        .then((rows) => {
+          if (activeIdRef.current !== cid || streamingTextRef.current !== null || buyerStreamingRef.current.has(cid) || replyTimers.current.has(cid)) return;
+          setMessages((current) => {
+            const localBuyer = (current ?? []).filter((item) => item.sender === "buyer").length;
+            const serverBuyer = rows.filter((item) => item.sender === "buyer").length;
+            if (serverBuyer <= localBuyer) return current;
+            return mergeRows(current, rows);
+          });
+          void loadConversations();
+        })
+        .catch(() => undefined)
+        .finally(() => { pollingMessagesRef.current = false; });
+    }, 15_000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, activeId, isClosed, loadConversations]);
 
   useEffect(() => {
     if (railTab === "recent") void loadClosed();

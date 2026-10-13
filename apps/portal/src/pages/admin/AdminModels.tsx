@@ -1,4 +1,4 @@
-import { FlaskConical, Plus, Square, Volume2 } from "lucide-react";
+import { AlertTriangle, FlaskConical, Plus, Square, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LLM_PRESETS,
@@ -11,7 +11,7 @@ import {
 } from "@cecs/contracts";
 import { ApiError, apiGet, apiPost, apiRequestDelete, apiRequestPut, previewVoice, type Session } from "../../api/client";
 import {
-  Button, Confirm, DataTable, Drawer, Empty, Field, HeaderTabs, Input, ListRow, Monogram, MoreMenu, Select, SettingSection, Sheet,
+  Button, Callout, Confirm, DataTable, Drawer, Empty, Field, HeaderTabs, Input, ListRow, Monogram, MoreMenu, Select, SettingSection, Sheet,
   Status, Switch, Tag, Textarea, toast,
 } from "../../ui";
 
@@ -31,13 +31,17 @@ interface UsageState {
   byPurpose: Array<{ purpose: LlmPurpose; calls: number; failures: number; fallbacks: number; tokens: number; cost: number }>;
 }
 
-interface VoiceSpeaker { id: string; label: string; gender: "male" | "female"; lang: string }
+interface VoiceSpeaker { id: string; label: string; gender: "male" | "female"; lang: string; langs: string[] }
 
 interface ProvidersState {
   voice: {
     vendor: string; vendors: Array<{ key: string; label: string; speakers: VoiceSpeaker[] }>; apiKeyMasked: string;
-    ttsResourceId: string; ttsSpeaker: string; ttsSpeakerMale: string; asrResourceId: string;
+    ttsResourceId: string; asrResourceId: string;
     ttsPricePer10kChars: number; asrPricePerHour: number;
+    aliyunApiKeyMasked: string; aliyunBaseUrl: string; aliyunModel: string; aliyunTtsPricePer10kChars: number;
+    voicePool: Record<string, { female: Array<{ vendor: string; id: string }>; male: Array<{ vendor: string; id: string }> }>;
+    poolLanguages: Array<{ key: string; label: string }>;
+    missingVoices: Array<{ language: string; label: string; gender: string; message: string }>;
   };
   usage: { llmCalls: number; llmTokens: number; llmCost: number; ttsCalls: number; ttsChars: number; ttsCost: number; asrCalls: number; asrMinutes: number; asrCost: number; totalCost: number };
   quota: { monthlyBudgetYuan: number; monthlyTokens: number; warnPercent: number; budgetPercent: number; tokenPercent: number; usedPercent: number; alert: boolean };
@@ -479,8 +483,12 @@ function UsageTile({ label, value, percent, note, alert }: { label: string; valu
 
 // ---------- 语音服务 ----------
 
+type PoolVoice = { vendor: string; id: string };
+type VoicePoolState = Record<string, { female: PoolVoice[]; male: PoolVoice[] }>;
+
 function VoiceSection({ session, data, reload }: { session: Session; data: ProvidersState; reload: () => void }) {
-  const [voice, setVoice] = useState({ ...data.voice, apiKey: "" });
+  const [voice, setVoice] = useState({ ...data.voice, apiKey: "", aliyunApiKey: "" });
+  const [pool, setPool] = useState<VoicePoolState>(data.voice.voicePool);
   const [busy, setBusy] = useState(false);
   const u = data.usage;
 
@@ -491,15 +499,18 @@ function VoiceSection({ session, data, reload }: { session: Session; data: Provi
         voice: {
           vendor: voice.vendor,
           ...(voice.apiKey ? { apiKey: voice.apiKey } : {}),
+          ...(voice.aliyunApiKey ? { aliyunApiKey: voice.aliyunApiKey } : {}),
           ttsResourceId: voice.ttsResourceId,
-          ttsSpeaker: voice.ttsSpeaker,
-          ttsSpeakerMale: voice.ttsSpeakerMale,
           asrResourceId: voice.asrResourceId,
+          aliyunBaseUrl: voice.aliyunBaseUrl,
+          aliyunModel: voice.aliyunModel,
           ttsPricePer10kChars: Number(voice.ttsPricePer10kChars) || 0,
           asrPricePerHour: Number(voice.asrPricePerHour) || 0,
+          aliyunTtsPricePer10kChars: Number(voice.aliyunTtsPricePer10kChars) || 0,
+          voicePool: pool,
         },
       });
-      setVoice((current) => ({ ...current, apiKey: "" }));
+      setVoice((current) => ({ ...current, apiKey: "", aliyunApiKey: "" }));
       toast.ok("语音服务已保存，立即生效");
       reload();
     } catch (cause) {
@@ -510,37 +521,52 @@ function VoiceSection({ session, data, reload }: { session: Session; data: Provi
   }
 
   const set = (key: keyof typeof voice) => (event: { target: { value: string } }) => setVoice({ ...voice, [key]: event.target.value });
-  const speakers = data.voice.vendors.find((item) => item.key === voice.vendor)?.speakers ?? [];
+  const saveButton = <Button variant="primary" loading={busy} onClick={() => void save()}>保存</Button>;
   return (
     <>
       <SettingSection
-        title="服务商与密钥"
-        desc={`学生在工作台里语音输入、朗读买家消息时使用。当前密钥 ${data.voice.apiKeyMasked || "未设置"}。`}
-        actions={<Button variant="primary" loading={busy} onClick={() => void save()}>保存</Button>}
+        title="豆包语音（火山引擎）"
+        desc={`语音识别，以及英语、西班牙语、日语等豆包支持语种的买家朗读。当前密钥 ${data.voice.apiKeyMasked || "未设置"}。`}
+        actions={saveButton}
       >
         <div className="form-grid-2 form-max">
-          <Field label="厂商">
-            <Select value={voice.vendor} onChange={set("vendor")}>
-              {data.voice.vendors.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
-            </Select>
-          </Field>
           <Field label="密钥" hint="不改就留空"><Input type="password" value={voice.apiKey} onChange={set("apiKey")} autoComplete="off" /></Field>
+          <span />
           <Field label="朗读资源 ID"><Input value={voice.ttsResourceId} onChange={set("ttsResourceId")} /></Field>
           <Field label="识别资源 ID"><Input value={voice.asrResourceId} onChange={set("asrResourceId")} /></Field>
         </div>
       </SettingSection>
-      <SettingSection title="音色" desc="朗读买家消息时，按买家性别选用。买家大多说英语，优先选英语音色；点“试听”用一句买家原话听效果。"
-        actions={<Button variant="primary" loading={busy} onClick={() => void save()}>保存</Button>}
+      <SettingSection
+        title="阿里云百炼（补充语种）"
+        desc={`豆包没有的语种（德、法、意、葡、俄、韩，以及部分男声）用千问3-TTS 朗读，只做朗读不做识别。当前密钥 ${data.voice.aliyunApiKeyMasked || "未设置"}。不配置时这些语种的买家退回英语音色。`}
+        actions={saveButton}
       >
         <div className="form-grid-2 form-max">
-          <SpeakerPicker session={session} label="女声" gender="female" speakers={speakers} value={voice.ttsSpeaker} onChange={(id) => setVoice({ ...voice, ttsSpeaker: id })} />
-          <SpeakerPicker session={session} label="男声" gender="male" speakers={speakers} value={voice.ttsSpeakerMale} onChange={(id) => setVoice({ ...voice, ttsSpeakerMale: id })} />
+          <Field label="百炼 API Key" hint="不改就留空；在阿里云百炼控制台“API-KEY”页创建"><Input type="password" value={voice.aliyunApiKey} onChange={set("aliyunApiKey")} autoComplete="off" /></Field>
+          <Field label="模型"><Input value={voice.aliyunModel} onChange={set("aliyunModel")} /></Field>
+          <Field label="接口地址" hint="北京地域；新加坡地域需换成国际站地址和对应 Key"><Input value={voice.aliyunBaseUrl} onChange={set("aliyunBaseUrl")} /></Field>
         </div>
+      </SettingSection>
+      <SettingSection
+        title="买家音色池"
+        desc="每个买家按画像固定分到池里的一个音色，同一买家始终同一个声音。买家用英语写就用英语音色（国籍是英国、澳大利亚时优先对应口音）；该语种豆包有音色就用豆包，没有再用阿里云。点“试听”用一句该语种的买家原话听效果。"
+        actions={saveButton}
+      >
+        {data.voice.missingVoices.length > 0 ? (
+          <div className="voice-missing">
+            {/* 缺口合成一条：逐语种一条会铺满半屏 */}
+            <Callout tone="warn" icon={AlertTriangle} title={`${data.voice.missingVoices.length} 个语种缺少音色，这些买家会改用英语音色朗读`}>
+              {data.voice.missingVoices.map((item) => item.message.replace(/^缺少s*/, "").replace(/，该语种的买家会改用英语音色朗读$/, "")).join("、")}
+            </Callout>
+          </div>
+        ) : null}
+        <VoicePoolEditor session={session} data={data} pool={pool} onChange={setPool} />
       </SettingSection>
       <SettingSection title="计费" desc={`用于统计费用。本月朗读 ${u.ttsChars.toLocaleString()} 字、识别 ${u.asrMinutes} 分钟，合计 ${yuan(u.ttsCost + u.asrCost)}。`}>
         <div className="form-grid-2 form-max">
-          <Field label="朗读单价" hint="元 / 万字"><Input type="number" step="0.01" value={voice.ttsPricePer10kChars} onChange={set("ttsPricePer10kChars")} /></Field>
+          <Field label="豆包朗读单价" hint="元 / 万字"><Input type="number" step="0.01" value={voice.ttsPricePer10kChars} onChange={set("ttsPricePer10kChars")} /></Field>
           <Field label="识别单价" hint="元 / 小时"><Input type="number" step="0.01" value={voice.asrPricePerHour} onChange={set("asrPricePerHour")} /></Field>
+          <Field label="阿里云朗读单价" hint="元 / 万字（千问3-TTS-Flash 官方价 0.8，以控制台为准）"><Input type="number" step="0.01" value={voice.aliyunTtsPricePer10kChars} onChange={set("aliyunTtsPricePer10kChars")} /></Field>
         </div>
       </SettingSection>
     </>
@@ -549,56 +575,125 @@ function VoiceSection({ session, data, reload }: { session: Session; data: Provi
 
 const CUSTOM_SPEAKER = "__custom";
 
-/** 音色选择：常用音色下拉 + 手动填 ID（厂商新出的音色） + 试听 */
-function SpeakerPicker({ session, label, gender, speakers, value, onChange }: {
-  session: Session; label: string; gender: "male" | "female"; speakers: VoiceSpeaker[]; value: string; onChange: (id: string) => void;
-}) {
-  const options = speakers.filter((item) => item.gender === gender);
-  const [custom, setCustom] = useState(() => Boolean(value) && !options.some((item) => item.id === value));
-  const [playing, setPlaying] = useState(false);
-  const [loading, setLoading] = useState(false);
+function VoicePoolEditor({ session, data, pool, onChange }: { session: Session; data: ProvidersState; pool: VoicePoolState; onChange: (pool: VoicePoolState) => void }) {
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [loading, setLoading] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   useEffect(() => () => audio.current?.pause(), []);
+  const vendorLabel = (key: string) => data.voice.vendors.find((item) => item.key === key)?.label.replace(/（.*）/, "") ?? key;
+  const lookup = (voice: PoolVoice) => data.voice.vendors.find((item) => item.key === voice.vendor)?.speakers.find((item) => item.id === voice.id);
 
-  async function play() {
-    if (playing) {
-      audio.current?.pause();
-      setPlaying(false);
+  async function play(language: string, voice: PoolVoice) {
+    const key = `${language}:${voice.vendor}:${voice.id}`;
+    audio.current?.pause();
+    if (playing === key) {
+      setPlaying(null);
       return;
     }
-    setLoading(true);
+    setLoading(key);
     try {
-      const url = await previewVoice(session, value);
+      const url = await previewVoice(session, voice.id, voice.vendor, language);
       const player = new Audio(url);
       audio.current = player;
-      player.onended = () => { setPlaying(false); URL.revokeObjectURL(url); };
+      player.onended = () => { setPlaying(null); URL.revokeObjectURL(url); };
       await player.play();
-      setPlaying(true);
+      setPlaying(key);
     } catch (cause) {
       toast.error(errorText(cause));
     } finally {
-      setLoading(false);
+      setLoading(null);
     }
   }
 
-  const current = options.find((item) => item.id === value);
+  function update(language: string, gender: "female" | "male", list: PoolVoice[]) {
+    const current = pool[language] ?? { female: [], male: [] };
+    onChange({ ...pool, [language]: { ...current, [gender]: list } });
+  }
+
   return (
-    <Field label={label} hint={custom ? "填写厂商控制台里的音色 ID" : current?.lang ? `适用：${current.lang}` : undefined}>
-      <span className="speaker-picker">
-        <Select
-          value={custom ? CUSTOM_SPEAKER : value}
-          onChange={(event) => {
-            if (event.target.value === CUSTOM_SPEAKER) setCustom(true);
-            else { setCustom(false); onChange(event.target.value); }
-          }}
-        >
-          {options.map((item) => <option key={item.id} value={item.id}>{item.label} · {item.lang.replace(/（.*）/, "")}</option>)}
-          <option value={CUSTOM_SPEAKER}>其他音色（手动填写 ID）</option>
-        </Select>
-        <Button icon={playing ? Square : Volume2} loading={loading} disabled={!value} onClick={() => void play()}>{playing ? "停止" : "试听"}</Button>
-      </span>
-      {custom ? <Input className="speaker-custom" value={value} placeholder="例如 en_female_dacey_uranus_bigtts" onChange={(event) => onChange(event.target.value.trim())} /> : null}
-    </Field>
+    <div className="voice-pool">
+      {data.voice.poolLanguages.map((language) => (
+        <div className="voice-pool-row" key={language.key}>
+          <div className="voice-pool-lang">{language.label}</div>
+          {(["female", "male"] as const).map((gender) => (
+            <PoolCell
+              key={gender}
+              gender={gender}
+              language={language.key}
+              list={pool[language.key]?.[gender] ?? []}
+              data={data}
+              playing={playing}
+              loading={loading}
+              lookup={lookup}
+              vendorLabel={vendorLabel}
+              onPlay={(voice) => void play(language.key, voice)}
+              onChange={(next) => update(language.key, gender, next)}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PoolCell({ gender, language, list, data, playing, loading, lookup, vendorLabel, onPlay, onChange }: {
+  gender: "female" | "male"; language: string; list: PoolVoice[]; data: ProvidersState; playing: string | null; loading: string | null;
+  lookup: (voice: PoolVoice) => VoiceSpeaker | undefined; vendorLabel: (key: string) => string;
+  onPlay: (voice: PoolVoice) => void; onChange: (list: PoolVoice[]) => void;
+}) {
+  const [custom, setCustom] = useState(false);
+  const [customVendor, setCustomVendor] = useState("doubao");
+  const [customId, setCustomId] = useState("");
+  const options = data.voice.vendors.flatMap((vendor) =>
+    vendor.speakers
+      .filter((item) => item.gender === gender && (item.langs.includes(language) || (language.startsWith("en-") && item.langs.includes("en"))))
+      .filter((item) => !list.some((entry) => entry.vendor === vendor.key && entry.id === item.id))
+      .map((item) => ({ vendor: vendor.key, speaker: item })),
+  );
+  return (
+    <div className="voice-pool-cell">
+      <span className="voice-pool-gender">{gender === "female" ? "女声" : "男声"}</span>
+      {list.length === 0 ? <span className="voice-pool-empty">未配置</span> : null}
+      {list.map((voice) => {
+        const key = `${language}:${voice.vendor}:${voice.id}`;
+        const info = lookup(voice);
+        return (
+          <span className="voice-chip" key={key}>
+            <span className="voice-chip-name" title={voice.id}>{info?.label ?? voice.id}<em>{vendorLabel(voice.vendor)}</em></span>
+            <button type="button" className="voice-chip-btn" aria-label="试听" disabled={loading === key} onClick={() => onPlay(voice)}>
+              {playing === key ? <Square size={13} /> : <Volume2 size={13} />}
+            </button>
+            <button type="button" className="voice-chip-btn" aria-label="移除" onClick={() => onChange(list.filter((entry) => entry !== voice))}><X size={13} /></button>
+          </span>
+        );
+      })}
+      <Select
+        value=""
+        aria-label="添加音色"
+        onChange={(event) => {
+          const value = event.target.value;
+          if (value === CUSTOM_SPEAKER) { setCustom(true); return; }
+          const [vendor, ...rest] = value.split("|");
+          if (vendor) onChange([...list, { vendor, id: rest.join("|") }]);
+        }}
+      >
+        <option value="">添加音色…</option>
+        {options.map((item) => <option key={`${item.vendor}|${item.speaker.id}`} value={`${item.vendor}|${item.speaker.id}`}>{item.speaker.label} · {vendorLabel(item.vendor)}</option>)}
+        <option value={CUSTOM_SPEAKER}>其他音色（手动填写 ID）</option>
+      </Select>
+      {custom ? (
+        <span className="voice-custom">
+          <Select value={customVendor} onChange={(event) => setCustomVendor(event.target.value)}>
+            {data.voice.vendors.map((item) => <option key={item.key} value={item.key}>{vendorLabel(item.key)}</option>)}
+          </Select>
+          <Input value={customId} placeholder="厂商控制台里的音色 ID" onChange={(event) => setCustomId(event.target.value.trim())} />
+          <Button
+            disabled={!/^[A-Za-z0-9_.-]{2,80}$/.test(customId)}
+            onClick={() => { onChange([...list, { vendor: customVendor, id: customId }]); setCustomId(""); setCustom(false); }}
+          >添加</Button>
+        </span>
+      ) : null}
+    </div>
   );
 }
 

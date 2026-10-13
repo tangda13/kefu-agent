@@ -838,45 +838,45 @@ export function registerConversationRoutes(
       const persona = (message.persona ?? {}) as {
         gender?: string;
         language?: string;
+        nationality?: string;
         sourceTemplateId?: string;
         name?: string;
       };
       const { resolvePersonaGender } = await import("@cecs/domain");
       const gender = resolvePersonaGender(persona);
-      const path = await import("node:path");
-      const fs = await import("node:fs");
-      // 缓存文件名带性别后缀：修正历史女声缓存，且换音色后不串音
-      const fileName = `${message.id}-${gender === "male" ? "m" : "f"}.mp3`;
-      const target = path.resolve(process.cwd(), "uploads", "tts", fileName);
-      const audioUrl = `/uploads/tts/${fileName}`;
-      if (fs.existsSync(target)) return { audioUrl, cached: true };
-      if (!(await voice.configured())) {
+      // 音色池（D-42）：语种 → 厂商 → 音色，同一买家固定同一个声音
+      const selection = await voice.selectVoice({ ...persona, gender }, gender);
+      if (!selection) {
         reply.code(503);
         return { code: "TTS_NOT_CONFIGURED", message: "语音服务未配置。" };
       }
+      const path = await import("node:path");
+      const fs = await import("node:fs");
+      const { VOICE_VENDORS } = await import("../voice/service");
+      // 缓存文件名带厂商和音色 id：换音色不串音
+      const safeVoice = selection.voice.id.replace(/[^A-Za-z0-9_.-]/g, "_");
+      const fileName = `${message.id}-${selection.voice.vendor}-${safeVoice}.${VOICE_VENDORS[selection.voice.vendor]!.audioExt}`;
+      const target = path.resolve(process.cwd(), "uploads", "tts", fileName);
+      const audioUrl = `/uploads/tts/${fileName}`;
+      if (fs.existsSync(target)) return { audioUrl, cached: true };
       try {
-        // 按买家画像选择音色（男/女）与朗读语种
         // 自动播报和手动点击可能同时到：同一条消息只合成一次
         const { elapsedMs, fresh } = await once(`tts:${fileName}`, async () => {
           if (fs.existsSync(target)) return { elapsedMs: 0, fresh: false };
-          const { audio, elapsedMs: ms } = await voice.synthesize(
-            message.content.slice(0, 500),
-            gender === "male" ? "male" : "female",
-            persona.language,
-          );
+          const spoken = await voice.synthesizeWith(selection, message.content.slice(0, 500));
           fs.mkdirSync(path.dirname(target), { recursive: true });
-          fs.writeFileSync(target, audio);
+          fs.writeFileSync(target, spoken.audio);
           await db.query(
-            "insert into voice_metrics (kind, elapsed_ms, chars, outcome) values ('tts', $1, $2, 'success')",
-            [ms, message.content.length],
+            "insert into voice_metrics (kind, elapsed_ms, chars, outcome, vendor) values ('tts', $1, $2, 'success', $3)",
+            [spoken.elapsedMs, message.content.length, spoken.vendor],
           );
-          return { elapsedMs: ms, fresh: true };
+          return { elapsedMs: spoken.elapsedMs, fresh: true };
         });
         return { audioUrl, cached: !fresh, elapsedMs };
       } catch (error) {
         await db.query(
-          "insert into voice_metrics (kind, elapsed_ms, chars, outcome) values ('tts', 0, $1, 'error')",
-          [message.content.length],
+          "insert into voice_metrics (kind, elapsed_ms, chars, outcome, vendor) values ('tts', 0, $1, 'error', $2)",
+          [message.content.length, selection.voice.vendor],
         );
         request.log.error(error, "tts failed");
         reply.code(502);

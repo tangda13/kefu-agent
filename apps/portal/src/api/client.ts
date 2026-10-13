@@ -349,6 +349,8 @@ export interface BuyerPublicView {
   language: string;
   customerType: string;
   avatarUrl: string | null;
+  /** 头像类型：default 灰色剪影 / initial 首字母 / photo 生活照 / object 非人脸；缺省按有无 avatarUrl 判断 */
+  avatarKind?: "default" | "initial" | "photo" | "object";
 }
 
 export interface OrderLogisticsNode {
@@ -1269,11 +1271,11 @@ export const saveBackupSchedule = (session: Session, schedule: Pick<BackupSchedu
   apiRequestPut<BackupSchedule>("/v1/admin/backup-schedule", session, schedule);
 
 /** 音色试听：返回可直接播放的 mp3 地址（用完需 revokeObjectURL） */
-export async function previewVoice(session: Session, speaker: string): Promise<string> {
+export async function previewVoice(session: Session, speaker: string, vendor = "doubao", language = "en"): Promise<string> {
   const response = await fetch(`${API_BASE}/v1/admin/voice/preview`, {
     method: "POST",
     headers: { authorization: `Bearer ${session.accessToken}`, "content-type": "application/json" },
-    body: JSON.stringify({ speaker }),
+    body: JSON.stringify({ speaker, vendor, language }),
   });
   if (!response.ok) await parseError(response);
   return URL.createObjectURL(await response.blob());

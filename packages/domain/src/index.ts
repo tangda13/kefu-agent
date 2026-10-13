@@ -249,10 +249,36 @@ export interface PersonaSnapshot extends PersonaTemplate {
   templateName?: string;
   generatedAt: string;
   avatarUrl: string;
+  /** 头像类型；老快照缺省视为 photo（有 avatarUrl）或回填 */
+  avatarKind?: AvatarKind;
 }
 
-/** 本地真人头像库容量（apps/portal/public/avatars/{m,f}-NN.jpg） */
-export const AVATAR_LIBRARY = { male: 20, female: 20 } as const;
+/** 头像类型：default=平台默认灰色剪影；initial=首字母+底色；photo=生活照；object=非人脸（宠物/风景/动漫等） */
+export type AvatarKind = "default" | "initial" | "photo" | "object";
+
+/**
+ * 头像库容量（apps/portal/public/avatars）：
+ * f-NN/m-NN 写实人像，pf-NN/pm-NN 多样生活照（按性别），o-NN 非人脸（不分性别）。
+ */
+export const AVATAR_LIBRARY = {
+  male: 20,
+  female: 20,
+  lifeMale: 13,
+  lifeFemale: 15,
+  object: 62,
+} as const;
+
+/** 头像类型占比（累计阈值）：默认 30% / 首字母 20% / 生活照 25% / 非人脸 25% */
+export const AVATAR_KIND_WEIGHTS: ReadonlyArray<readonly [AvatarKind, number]> = [
+  ["default", 0.3],
+  ["initial", 0.5],
+  ["photo", 0.75],
+  ["object", 1],
+];
+
+function padIndex(n: number): string {
+  return String(n).padStart(2, "0");
+}
 
 export function pickAvatarUrl(
   gender: "male" | "female",
@@ -260,7 +286,29 @@ export function pickAvatarUrl(
 ): string {
   const count = AVATAR_LIBRARY[gender];
   const index = 1 + Math.min(count - 1, Math.floor(random() * count));
-  return `avatars/${gender === "female" ? "f" : "m"}-${String(index).padStart(2, "0")}.jpg`;
+  return `avatars/${gender === "female" ? "f" : "m"}-${padIndex(index)}.jpg`;
+}
+
+/** 按类型抽头像：先抽类型，再抽图。default/initial 的 avatarUrl 为空字符串；性别只影响生活照 */
+export function pickAvatar(
+  gender: "male" | "female",
+  random: () => number = Math.random,
+): { avatarKind: AvatarKind; avatarUrl: string } {
+  const roll = random();
+  const kind = (AVATAR_KIND_WEIGHTS.find(([, limit]) => roll < limit) ?? AVATAR_KIND_WEIGHTS[AVATAR_KIND_WEIGHTS.length - 1]!)[0];
+  if (kind === "default" || kind === "initial") return { avatarKind: kind, avatarUrl: "" };
+  if (kind === "object") {
+    const index = 1 + Math.min(AVATAR_LIBRARY.object - 1, Math.floor(random() * AVATAR_LIBRARY.object));
+    return { avatarKind: kind, avatarUrl: `avatars/o-${padIndex(index)}.jpg` };
+  }
+  // 生活照：现有写实人像（f/m）与多样生活照（pf/pm）合并成一个池，按容量均匀抽
+  const real = AVATAR_LIBRARY[gender];
+  const life = gender === "female" ? AVATAR_LIBRARY.lifeFemale : AVATAR_LIBRARY.lifeMale;
+  const pickIndex = Math.min(real + life - 1, Math.floor(random() * (real + life)));
+  if (pickIndex < real) {
+    return { avatarKind: kind, avatarUrl: `avatars/${gender === "female" ? "f" : "m"}-${padIndex(pickIndex + 1)}.jpg` };
+  }
+  return { avatarKind: kind, avatarUrl: `avatars/${gender === "female" ? "pf" : "pm"}-${padIndex(pickIndex - real + 1)}.jpg` };
 }
 
 /** 稳定散列：同一输入永远得到同一结果（前后端共用，勿改算法） */
@@ -298,7 +346,7 @@ export function composePersona(random: () => number = Math.random): PersonaSnaps
     emotion: pick(EMOTIONS, random),
     language: pick(SUPPORTED_LANGUAGES, random),
     customerType: pick(CUSTOMER_TYPES, random),
-    avatarUrl: pickAvatarUrl(template.gender, random),
+    ...pickAvatar(template.gender, random),
     generatedAt: new Date().toISOString(),
   };
 }
@@ -477,7 +525,7 @@ export function composePersonaWithRule(
       ? (template.customerType as (typeof CUSTOMER_TYPES)[number])
       : pick(CUSTOMER_TYPES, random),
     enabled: true,
-    avatarUrl: pickAvatarUrl(gender, random),
+    ...pickAvatar(gender, random),
     generatedAt: new Date().toISOString(),
   };
 }
@@ -497,17 +545,19 @@ export function resolvePersonaGender(snapshot: {
 
 /** 历史画像快照缺头像时，按来源模板性别 + 稳定种子补齐（同一会话头像恒定） */
 export function ensurePersonaAvatar<
-  T extends { avatarUrl?: string; sourceTemplateId?: string; name?: string },
->(snapshot: T, seed: string): T & { avatarUrl: string } {
-  if (snapshot.avatarUrl) return snapshot as T & { avatarUrl: string };
+  T extends { avatarUrl?: string; avatarKind?: AvatarKind; sourceTemplateId?: string; name?: string },
+>(snapshot: T, seed: string): T & { avatarUrl: string; avatarKind: AvatarKind } {
+  // 老快照已有头像（或已抽到 default/initial）保持不变
+  if (snapshot.avatarUrl) return { ...snapshot, avatarKind: snapshot.avatarKind ?? "photo" } as T & { avatarUrl: string; avatarKind: AvatarKind };
+  if (snapshot.avatarKind) return snapshot as T & { avatarUrl: string; avatarKind: AvatarKind };
   const gender = resolvePersonaGender(snapshot);
   let hash = 0;
   for (const ch of seed) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
   const random = () => {
     hash = (hash * 1103515245 + 12345) >>> 0;
-    return (hash % 1000) / 1000;
+    return ((hash >>> 8) % 1000) / 1000;
   };
-  return { ...snapshot, avatarUrl: pickAvatarUrl(gender, random) };
+  return { ...snapshot, ...pickAvatar(gender, random) };
 }
 
 export function toStudentPersonaView(snapshot: PersonaSnapshot) {
@@ -518,7 +568,8 @@ export function toStudentPersonaView(snapshot: PersonaSnapshot) {
     identity: snapshot.identity,
     language: snapshot.language,
     customerType: snapshot.customerType,
-    avatarUrl: snapshot.avatarUrl ?? null,
+    avatarUrl: snapshot.avatarUrl || null,
+    avatarKind: snapshot.avatarKind ?? (snapshot.avatarUrl ? "photo" : "initial"),
   };
 }
 
@@ -859,6 +910,7 @@ export function generateBuyerOrderHistory(
 export { scenarioScripts } from "./scenario-scripts";
 export { productLibrary } from "./product-library";
 export * from "./store";
+export * from "./patience";
 
 /**
  * 商品资料卡（D-32）：给买家 AI 的“店铺真实信息”，用来判断客服说得对不对、让追问有依据。

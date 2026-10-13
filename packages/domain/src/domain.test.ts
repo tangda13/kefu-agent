@@ -3,7 +3,11 @@ import {
   composePersona,
   composePersonaWithRule,
   emailTemplates,
+  ensurePersonaAvatar,
+  pickAvatar,
   forbiddenTerms,
+  patienceAction,
+  patienceFactor,
   personaTemplates,
   standardPhrases,
   toStudentPersonaView,
@@ -114,5 +118,85 @@ describe("系统客户标签与咨询原因（学生端改版 C2）", () => {
     expect(suggestContactReason("错发漏发处理")).toBe("缺件或错发");
     expect(suggestContactReason("沉睡客户唤醒", "customer_care")).toBe("店铺回访");
     expect(suggestContactReason("自定义场景", "pre_sale")).toBe("商品咨询");
+  });
+});
+
+describe("买家耐心（D-40）", () => {
+  it("倍率覆盖全部情绪与性格取值，未知取值按 1", async () => {
+    const { EMOTIONS, PERSONALITIES } = await import("@cecs/contracts");
+    for (const emotion of EMOTIONS) for (const personality of PERSONALITIES) {
+      const factor = patienceFactor({ emotion, personality });
+      expect(factor).toBeGreaterThanOrEqual(0.3);
+      expect(factor).toBeLessThanOrEqual(2);
+    }
+    expect(patienceFactor({})).toBe(1);
+    expect(patienceFactor({ emotion: "平静", personality: "不存在" })).toBe(1);
+    expect(patienceFactor({ emotion: "焦虑" })).toBeLessThan(1);
+    expect(patienceFactor({ emotion: "不满", personality: "敏感挑剔" })).toBeLessThan(patienceFactor({ emotion: "不满" }));
+    expect(patienceFactor({ personality: "随和" })).toBe(1.5);
+  });
+
+  it("按等待时长一步步推进：催、再催、离开", () => {
+    expect(patienceAction(1.9, 0, 1)).toBeNull();
+    expect(patienceAction(2, 0, 1)).toBe("nudge");
+    expect(patienceAction(4, 1, 1)).toBeNull();
+    expect(patienceAction(5, 1, 1)).toBe("nudge");
+    expect(patienceAction(9, 2, 1)).toBeNull();
+    expect(patienceAction(10, 2, 1)).toBe("leave");
+    expect(patienceAction(60, 3, 1)).toBeNull();
+    // 焦虑减半、随和延长
+    expect(patienceAction(1.2, 0, 0.5)).toBe("nudge");
+    expect(patienceAction(2.5, 0, 1.5)).toBeNull();
+  });
+});
+
+describe("D-41 买家头像多样化", () => {
+  const seeded = (seed: string) => {
+    let hash = 0;
+    for (const ch of seed) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    return () => {
+      hash = (hash * 1103515245 + 12345) >>> 0;
+      return ((hash >>> 8) % 1000) / 1000;
+    };
+  };
+
+  it("同一种子结果稳定", () => {
+    for (const seed of ["a", "conv-1", "conv-2"]) {
+      expect(ensurePersonaAvatar({ name: "x" }, seed)).toEqual(ensurePersonaAvatar({ name: "x" }, seed));
+    }
+  });
+
+  it("老快照已有头像保持不变，default/initial 不会被重抽", () => {
+    expect(ensurePersonaAvatar({ avatarUrl: "avatars/f-03.jpg" }, "s").avatarUrl).toBe("avatars/f-03.jpg");
+    expect(ensurePersonaAvatar({ avatarUrl: "avatars/f-03.jpg" }, "s").avatarKind).toBe("photo");
+    expect(ensurePersonaAvatar({ avatarUrl: "", avatarKind: "default" }, "s")).toMatchObject({ avatarUrl: "", avatarKind: "default" });
+  });
+
+  it("1000 个随机种子比例大致符合", () => {
+    const count: Record<string, number> = { default: 0, initial: 0, photo: 0, object: 0 };
+    for (let i = 0; i < 1000; i += 1) {
+      const pick = pickAvatar(i % 2 ? "female" : "male", seeded(`seed-${i}`));
+      count[pick.avatarKind] = (count[pick.avatarKind] ?? 0) + 1;
+      if (pick.avatarKind === "default" || pick.avatarKind === "initial") expect(pick.avatarUrl).toBe("");
+      else expect(pick.avatarUrl).toMatch(/^avatars\/(f|m|pf|pm|o)-\d{2}\.jpg$/);
+    }
+    expect(count.default).toBeGreaterThan(220);
+    expect(count.default).toBeLessThan(380);
+    expect(count.initial).toBeGreaterThan(130);
+    expect(count.initial).toBeLessThan(270);
+    expect(count.photo).toBeGreaterThan(170);
+    expect(count.photo).toBeLessThan(330);
+    expect(count.object).toBeGreaterThan(170);
+    expect(count.object).toBeLessThan(330);
+  });
+
+  it("非人脸/默认/首字母不分性别", () => {
+    for (const kind of ["object", "default", "initial"]) {
+      for (let i = 0; i < 300; i += 1) {
+        const m = pickAvatar("male", seeded(`k-${i}`));
+        const f = pickAvatar("female", seeded(`k-${i}`));
+        if (m.avatarKind === kind && f.avatarKind === kind) expect(m).toEqual(f);
+      }
+    }
   });
 });

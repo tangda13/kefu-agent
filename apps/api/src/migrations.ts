@@ -579,4 +579,11 @@ create table if not exists text_translations (
 );
 `,
   },
+  {
+    /* D-42 买家语音按语种分厂商（豆包 / 阿里云）：朗读记录带厂商，费用按厂商单价分开算 */
+    id: "035_voice_metrics_vendor",
+    sql: `
+alter table voice_metrics add column if not exists vendor text not null default 'doubao';
+`,
+  },
 ];

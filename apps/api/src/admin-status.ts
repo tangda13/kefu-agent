@@ -59,7 +59,12 @@ export async function computeUsage(db: Db, voice: VoiceService) {
   const u = usage.rows[0];
   const llmTokens = Number(u.llm_tokens);
   const llmCost = Number(u.llm_cost);
-  const ttsCost = (Number(u.tts_chars) / 10_000) * profile.ttsPricePer10kChars;
+  const ttsByVendor = await db.query(`select vendor, coalesce(sum(chars), 0) as chars from voice_metrics
+    where kind='tts' and outcome='success' and created_at > date_trunc('month', now()) group by vendor`);
+  const ttsCost = ttsByVendor.rows.reduce(
+    (sum, row) => sum + (Number(row.chars) / 10_000) * (row.vendor === "aliyun" ? profile.aliyunTtsPricePer10kChars : profile.ttsPricePer10kChars),
+    0,
+  );
   const asrCost = (Number(u.asr_ms) / 3_600_000) * profile.asrPricePerHour;
   const totalCost = llmCost + ttsCost + asrCost;
   // 任一项达到提醒比例即告警；0 表示不限
