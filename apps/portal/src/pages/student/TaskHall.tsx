@@ -21,6 +21,10 @@ import "../../styles/student-learn.css";
 type HallTab = "todo" | "done";
 
 /** 业务环节 → 分类色序号（同 StageTag） */
+/** 进行中：展开的当前任务之外先显示几条；已完成先显示几条 */
+const REST_LIMIT = 3;
+const DONE_LIMIT = 5;
+
 const STAGE_CAT: Record<BusinessStage, number> = { in_sale: 1, pre_sale: 2, after_sale: 3, customer_care: 4 };
 
 const INTERACTION_LABELS: Record<string, string> = {
@@ -135,6 +139,8 @@ export function TaskHall({
   const [loadError, setLoadError] = useState("");
   const [reloadTick, setReloadTick] = useState(0);
   const [tab, setTab] = useState<HallTab>("todo");
+  /** 任务多时只先显示前几条，其余“展开全部”，任务板高度不随任务数一直往下长 */
+  const [showAll, setShowAll] = useState(false);
   const [baseline, setBaseline] = useState<BaselineStatus | null>(null);
   const [summary, setSummary] = useState<StudentSummary | null>(null);
   const [showQuiz, setShowQuiz] = useState(false);
@@ -302,13 +308,13 @@ export function TaskHall({
     <section className="th3-side">
       <h3>自由练习</h3>
       <p>不计成绩，场景随便挑。</p>
-      <div className="th3-radio" role="radiogroup" aria-label="练习环节">
+      <div className="th3-radio is-chips" role="radiogroup" aria-label="练习环节">
         <button type="button" role="radio" aria-checked={practiceStage === "random"} className={practiceStage === "random" ? "on" : undefined} onClick={() => { setPracticeStage("random"); setPracticeScenario(""); }}>
-          <i className="rd" aria-hidden="true" />全部随机
+          全部随机
         </button>
         {BUSINESS_STAGES.map((stage) => (
           <button key={stage} type="button" role="radio" aria-checked={practiceStage === stage} className={practiceStage === stage ? "on" : undefined} onClick={() => { setPracticeStage(stage); setPracticeScenario(""); }}>
-            <i className="rd" aria-hidden="true" /><StageDot stage={stage} />{BUSINESS_STAGE_LABELS[stage]}
+            <StageDot stage={stage} />{BUSINESS_STAGE_LABELS[stage]}
           </button>
         ))}
       </div>
@@ -327,8 +333,8 @@ export function TaskHall({
   const head = (
     <div className="th3-h">
       <div className="th3-tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={tab === "todo"} className={tab === "todo" ? "on" : undefined} onClick={() => setTab("todo")}>进行中 <i>{groups.todo.length}</i></button>
-        <button type="button" role="tab" aria-selected={tab === "done"} className={tab === "done" ? "on" : undefined} onClick={() => setTab("done")}>已完成 <i>{groups.done.length}</i></button>
+        <button type="button" role="tab" aria-selected={tab === "todo"} className={tab === "todo" ? "on" : undefined} onClick={() => { setTab("todo"); setShowAll(false); }}>进行中 <i>{groups.todo.length}</i></button>
+        <button type="button" role="tab" aria-selected={tab === "done"} className={tab === "done" ? "on" : undefined} onClick={() => { setTab("done"); setShowAll(false); }}>已完成 <i>{groups.done.length}</i></button>
       </div>
       {tab === "done" && groups.done.length > 0 ? (
         <span className="th3-hfact">平均 <b>{doneFact.average ?? "—"}</b> 分 · {groups.done.length} 个里 <b>{doneFact.passed}</b> 个达标</span>
@@ -403,7 +409,7 @@ export function TaskHall({
         </div>
       ) : null}
       {firstView}
-      {restTodo.map((task) => {
+      {(showAll ? restTodo : restTodo.slice(0, REST_LIMIT)).map((task) => {
         const status = statusOf(task);
         const due = dueText(task.deadline);
         return (
@@ -420,6 +426,11 @@ export function TaskHall({
           </div>
         );
       })}
+      {restTodo.length > REST_LIMIT ? (
+        <button type="button" className="th3-more" onClick={() => setShowAll((value) => !value)}>
+          {showAll ? "收起" : `还有 ${restTodo.length - REST_LIMIT} 个任务 · 展开全部`}
+        </button>
+      ) : null}
       {groups.todo.length === 0 && !needBaseline ? <p className="th3-none">现在没有要完成的任务，已完成的可以在“已完成”里看复盘。</p> : null}
     </>
   );
@@ -429,7 +440,7 @@ export function TaskHall({
   ) : (
     <>
       <div className="th3-th"><span /><span>任务</span><span>成绩</span><span>完成于</span><span /></div>
-      {groups.done.map((task) => {
+      {(showAll ? groups.done : groups.done.slice(0, DONE_LIMIT)).map((task) => {
         const lo = task.score != null && task.passScore != null && task.score < task.passScore;
         const gap = lo && task.passScore != null && task.score != null ? task.passScore - task.score : 0;
         const noteParts = [task.passScore != null ? `达标线 ${task.passScore}` : "不设达标线"];
@@ -449,6 +460,11 @@ export function TaskHall({
           </div>
         );
       })}
+      {groups.done.length > DONE_LIMIT ? (
+        <button type="button" className="th3-more" onClick={() => setShowAll((value) => !value)}>
+          {showAll ? "收起" : `还有 ${groups.done.length - DONE_LIMIT} 个已完成 · 展开全部`}
+        </button>
+      ) : null}
     </>
   );
 

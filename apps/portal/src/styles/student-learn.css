@@ -102,7 +102,7 @@
 .th3-track i { display: block; height: 100%; background: var(--c-ok); }
 .th3-track.empty { background: repeating-linear-gradient(90deg, #e3e8ef 0 6px, transparent 6px 10px); }
 
-.th3-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: stretch; }
+.th3-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
 .th3-main, .th3-side { border: 1px solid var(--c-line); border-radius: 12px; background: var(--c-surface); }
 .th3-main { display: flex; flex-direction: column; }
 .th3-dot { display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 50%; }
@@ -187,7 +187,7 @@
 .th3-side { display: flex; flex-direction: column; gap: 12px; padding: 20px; }
 .th3-side h3 { margin: 0; font-size: var(--fs-section); }
 .th3-side p { margin: -6px 0 0; font-size: var(--fs-small); color: var(--c-ink-3); }
-.th3-side > .ui-btn { justify-content: center; margin-top: auto; background: var(--c-surface); }
+.th3-side > .ui-btn { justify-content: center; margin-top: 4px; background: var(--c-surface); }
 .th3-radio { display: grid; gap: 2px; }
 .th3-radio button { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: none; font: inherit; font-size: var(--fs-body); color: var(--c-ink-2); text-align: left; cursor: pointer; }
 .th3-radio button:hover { background: var(--c-surface-2); }
@@ -196,3 +196,24 @@
 .th3-radio .rd { flex: none; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--c-line-strong); }
 .th3-radio button.on .rd { box-shadow: inset 0 0 0 4px var(--c-brand); }
 .th3-radio .th3-dot { width: 13px; height: 13px; }
+/* 练习环节：小胶囊两行（卡片变矮，和任务不多时的任务板高度接近） */
+.th3-radio.is-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.th3-radio.is-chips button { height: 30px; padding: 0 12px; border: 1px solid var(--c-line); border-radius: 15px; font-size: 13px; gap: 6px; }
+.th3-radio.is-chips button.on { border-color: var(--c-brand); background: var(--c-brand-soft); color: var(--c-brand-ink); }
+.th3-radio.is-chips .th3-dot { width: 8px; height: 8px; }
+/* 任务多时：其余收起成一行 */
+.th3-more { margin: 0; padding: 14px 24px; border: 0; border-top: 1px solid var(--c-line); background: none; color: var(--c-brand-ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.th3-more:hover { background: var(--c-surface-2); }
+
+/* 少用横线（2026-10-13）：列表行之间不画分隔线，靠行距和悬停底色分开；
+   只保留标题行与内容之间的一条线、当前任务与其余任务之间的一条线 */
+.sl-abr { border-bottom: 0; padding: 7px 0; }
+.sl-abr .tip, .sl-abr-tip { margin-top: -2px; }
+.sl-rr { border-top: 0; border-bottom: 0; border-radius: 8px; margin: 0 8px; padding-left: 16px; padding-right: 16px; }
+.sl-rr:hover { background: var(--c-surface-2); }
+.th3-tr, .th3-dr { border-bottom: 0; border-radius: 8px; margin: 0 8px; padding-left: 16px; padding-right: 16px; }
+.th3-tr:hover, .th3-dr:hover { background: var(--c-surface-2); }
+.th3-th { border-bottom: 0; padding-bottom: 4px; }
+.th3-more { border-top: 0; margin: 0 8px 8px; border-radius: 8px; padding-left: 16px; }
+.th3-cur + .th3-tr { margin-top: 6px; }
+.th3-main > :last-child { margin-bottom: 8px; }
