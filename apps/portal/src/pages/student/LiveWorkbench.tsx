@@ -68,6 +68,7 @@ import { OrdersTab } from "./workbench/OrdersTab";
 import { ProductDrawer } from "./workbench/ProductDrawer";
 import { ProductsTab } from "./workbench/ProductsTab";
 import { ShiftBar } from "./workbench/ShiftBar";
+import { MAX_SERVE_LIMIT, type AgentState } from "./workbench/AgentStatus";
 import { Av, MessageBody, errorMessage, goToPage, hashSeed, isCardKind, timeLabel } from "./workbench/shared";
 
 type PanelTab = "order" | "product" | "coupon";
@@ -93,7 +94,9 @@ const EMOJIS = [
 const AUTO_TRANSLATE_KEY = "cecs.autoTranslate";
 const AUTO_PLAY_KEY = "cecs.autoPlay";
 /** 同时接待的上限（默认 3 位） */
+/** 默认最大接待人数（参数：同时进行不少于 3 个买家会话） */
 const MAX_CONCURRENT = 3;
+const MAX_SERVE_KEY = "cecs.maxServe";
 
 function readFlag(key: string): boolean {
   try {
@@ -155,9 +158,21 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   /** 任务条里选中的任务（只影响任务条和倒计时，不筛会话列表）；从任务大厅进入时就是那个任务 */
   const [taskFocus, setTaskFocus] = useState<string | null>(initialTaskId ?? null);
   /** 客服状态：挂起时暂停进线（不存本机，打开工作台默认在线） */
-  const [online, setOnline] = useState(true);
-  const onlineRef = useRef(true);
-  onlineRef.current = online;
+  const [agentState, setAgentState] = useState<AgentState>("online");
+  const agentStateRef = useRef<AgentState>("online");
+  agentStateRef.current = agentState;
+  /** 最大接待人数：界面偏好，存本机 */
+  const [maxServe, setMaxServe] = useState(() => {
+    try {
+      const value = Number(localStorage.getItem(MAX_SERVE_KEY));
+      return value >= 1 && value <= MAX_SERVE_LIMIT ? value : MAX_CONCURRENT;
+    } catch {
+      return MAX_CONCURRENT;
+    }
+  });
+  const maxServeRef = useRef(maxServe);
+  maxServeRef.current = maxServe;
+  const [storeName, setStoreName] = useState("");
   const [dataReady, setDataReady] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [panelTab, setPanelTab] = useState<PanelTab>("order");
@@ -311,7 +326,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     void loadClosed();
     fetchStoreProducts(session).then(setProducts).catch(() => undefined);
     fetchStoreCoupons(session).then(setCoupons).catch(() => undefined);
-    fetchStoreProfile(session).then((profile) => setTiers(profile.tiers)).catch(() => undefined);
+    fetchStoreProfile(session).then((profile) => { setTiers(profile.tiers); setStoreName(profile.name); }).catch(() => undefined);
   }, [loadConversations, loadClosed, session]);
 
   // 列表 20 秒校一次：服务端到点结束的会话、新进线的会话都能及时反映
@@ -1019,12 +1034,12 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       }
     };
     const evaluate = () => {
-      if (!onlineRef.current) return;
+      if (agentStateRef.current !== "online") return;
       for (const task of tasks) {
         if (task.locked || task.progressStatus !== "in_progress") continue;
         if (closedTasksRef.current.has(task.id)) continue;
         if (task.deadline && Date.now() > new Date(task.deadline).getTime()) continue;
-        if (openList.length >= MAX_CONCURRENT) {
+        if (openList.length >= maxServeRef.current) {
           arrivalNotBeforeRef.current.delete(task.id);
           continue;
         }
@@ -1127,7 +1142,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   }, [activeId, products]);
 
   const visibleMessages = (messages ?? []).filter((message) => message.sender !== "teacher");
-  const composerDisabled = !active || isClosed || streamingText !== null;
+  const composerDisabled = !active || isClosed || streamingText !== null || agentState === "offline";
 
   const phraseQuery = phraseFilter.trim().toLowerCase();
   const visibleMyPhrases = (myPhrases ?? []).filter((item) => item.text.toLowerCase().includes(phraseQuery));
@@ -1172,8 +1187,18 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
           const first = conversations.find((item) => item.taskId === taskId && !closedLocal.has(item.id));
           if (first) pickConversation(first.id);
         }}
-        online={online}
-        onToggleOnline={() => setOnline((value) => !value)}
+        agent={{
+          name: session.user.displayName,
+          avatarUrl: session.user.avatarUrl,
+          storeName,
+          state: agentState,
+          onState: setAgentState,
+          maxServe,
+          onMaxServe: (next) => {
+            setMaxServe(next);
+            try { localStorage.setItem(MAX_SERVE_KEY, String(next)); } catch { /* 存不了只在本次生效 */ }
+          },
+        }}
         startedAt={timingConv ? new Date(timingConv.createdAt).getTime() : null}
         timerKey={timingConv?.id ?? null}
         stats={stats}
@@ -1361,7 +1386,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
                   void send();
                 }
               }}
-              placeholder="输入消息，Enter 发送"
+              placeholder={agentState === "offline" ? "当前为离线状态，切换为在线后可发送消息" : "输入消息，Enter 发送"}
               disabled={composerDisabled}
             />
             ) : null}

@@ -5,6 +5,7 @@ import { type StudentTask, type WorkbenchStats } from "../../../api/client";
 import { ShellSlotContext, toast } from "../../../ui";
 import { clockLabel, durationLabel, useNow } from "./shared";
 import { TaskChip } from "./TaskChip";
+import { AgentStatus, type AgentState } from "./AgentStatus";
 
 /* 工作台顶栏（放进外壳顶栏的槽里）：客服状态（在线 / 挂起）+ 今日指标 + 会话剩余时间。
    仿真：不显示任务名、业务环节、接待进度、交流方式这些训练信息（任务要求在任务大厅看）。 */
@@ -15,9 +16,8 @@ interface Props {
   practice: boolean;
   switchable: StudentTask[];
   onPickTask: (taskId: string) => void;
-  /** 客服状态：挂起时不再进线新买家（同千牛 / 飞鸽的“挂起”） */
-  online: boolean;
-  onToggleOnline: () => void;
+  /** 客服状态与最大接待人数（同千牛 / 飞鸽） */
+  agent: { name: string; avatarUrl?: string | null; storeName: string; state: AgentState; onState: (next: AgentState) => void; maxServe: number; onMaxServe: (next: number) => void };
   /** 当前聚焦的任务；null = 自由练习或空闲 */
   task: StudentTask | null;
   /** 倒计时依据：当前这场会话的开始时间 */
@@ -37,7 +37,7 @@ function endsAtOf(task: StudentTask | null, startedAt: number | null): number | 
   return candidates.length ? Math.min(...candidates) : null;
 }
 
-export function ShiftBar({ task, practice, switchable, onPickTask, online, onToggleOnline, startedAt, timerKey, stats, onTimeUp }: Props) {
+export function ShiftBar({ task, practice, switchable, onPickTask, agent, startedAt, timerKey, stats, onTimeUp }: Props) {
   const slot = useContext(ShellSlotContext);
   const now = useNow(1000);
   const endsAt = endsAtOf(task, startedAt);
@@ -79,9 +79,7 @@ export function ShiftBar({ task, practice, switchable, onPickTask, online, onTog
 
   const bar = (
     <div className="wbk-shift">
-      <button type="button" className={online ? "wbk-status" : "wbk-status is-off"} onClick={onToggleOnline} aria-pressed={!online}>
-        <i />{online ? "在线" : "挂起"}<ChevronDown size={13} />
-      </button>
+      <AgentStatus {...agent} />
       <span className="wbk-sep" />
       <div className="wbk-stats">
         <span>今日接待<b className="num">{stats?.todayConversations ?? "—"}</b></span>
