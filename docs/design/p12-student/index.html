@@ -529,6 +529,22 @@ table.api-t td:first-child { white-space: nowrap; font-weight: 600; }
 .r2-c-h { display: flex; align-items: center; gap: 10px; }
 .r2-compose .ver .en { -webkit-line-clamp: 3; }
 
+/* 任务大厅第三版（二次修订）：顶部一排数据卡，下面两块等高 */
+.h3-cards { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.h3-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; display: grid; gap: 6px; align-content: start; min-height: 112px; }
+.h3-card .lb { font-size: 13px; color: var(--ink-2); }
+.h3-card .v b { font-size: 26px; font-weight: 700; line-height: 32px; }
+.h3-card .v small { margin-left: 6px; font-size: 12px; color: var(--ink-3); }
+.h3-card.w .v b { color: var(--warn); }
+.h3-card .ft { font-size: 12px; color: var(--ink-3); }
+.h3-card .h3-bars { height: 34px; gap: 6px; margin-top: 2px; }
+.h3-card .h3-bars span { display: none; }
+.h3-track { height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; margin-top: 8px; }
+.h3-track i { display: block; height: 100%; background: var(--ok); }
+.h3-grid { align-items: stretch !important; }
+.h3-main { display: flex; flex-direction: column; }
+.h3-side .btn { margin-top: auto; }
+
 /* 任务大厅第三版（修订） */
 .h3-col { display: grid; gap: 16px; align-content: start; }
 .h3-week { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; gap: 14px; }
@@ -858,10 +874,10 @@ table.api-t td:first-child { white-space: nowrap; font-weight: 600; }
     <div><b>4. 成绩块、灰色分组条</b>彩色分数块和灰底分组条让列表很“重”。<br><span class="fix">改：分数就是一个数字（低于达标线红），后面“达标线 60”灰字；分组用小标题 + 细线，不加灰底。</span></div>
   </div>
   <div class="pair"><figure><img class="before" src="assets/before-hall-v2.png" alt=""><figcaption>现在</figcaption></figure><div></div></div>
-  <div class="cap"><b>第三版（修订）· 进行中页签</b><span>顶部三个悬空大数字去掉：截止放进任务板标题行，本周接待改成右栏一张带每日小柱的卡片；已完成改成单独页签</span></div>
-  <div class="frame" data-h="760"><div class="screen s" data-tpl="hall3"></div></div>
-  <div class="cap"><b>第三版（修订）· 已完成页签</b><span>已完成单独一个页签，不在进行中的列表里拼一段；每行一个成绩块：分数 + 达标 / 未达标 + 达标线</span></div>
-  <div class="frame" data-h="560"><div class="screen s" data-tpl="hall3done"></div></div>
+  <div class="cap"><b>第三版（二次修订）· 进行中页签</b><span>数据卡放在顶部一排：本周接待（每日小柱）、进行中的任务、最近截止、已完成任务；下面任务板和自由练习等高，左右平衡</span></div>
+  <div class="frame" data-h="820"><div class="screen s" data-tpl="hall3"></div></div>
+  <div class="cap"><b>第三版（二次修订）· 已完成页签</b><span>已完成单独一个页签，不在进行中的列表里拼一段；每行一个成绩块：分数 + 达标 / 未达标 + 达标线</span></div>
+  <div class="frame" data-h="820"><div class="screen s" data-tpl="hall3done"></div></div>
 
   <h2>任务大厅 × 我的记录：去掉重复的仪表盘 <small>2026-10-13 · 待选</small></h2>
   <p class="lede">两页顶部现在是同样四张卡（已完成任务 / 平均分 / 班级排名 / 累计对话）。按“这一页回答什么问题”分开：<b>任务大厅回答“我现在该做什么”，我的记录回答“我做得怎么样、哪里要补”</b>。下面两个方案各画两页的首屏，数据是编的。</p>
@@ -1345,6 +1361,13 @@ const weekCard = () => `<section class="h3-week">
   <div class="h3-week-h"><span>本周接待</span><b>13</b><small>次 · 其中练习 3 次</small></div>
   <div class="h3-bars">${week.map((n, i) => `<div><i style="height:${n ? 6 + n * 9 : 3}px" class="${i === 3 ? "today" : ""}${n ? "" : " zero"}"></i><span>${"一二三四五六日"[i]}</span></div>`).join("")}</div>
 </section>`;
+const topCards = () => `<div class="h3-cards">
+  <section class="h3-card"><div class="lb">本周接待</div><div class="v"><b>13</b><small>次 · 其中练习 3 次</small></div>
+    <div class="h3-bars">${week.map((n, i) => `<div><i style="height:${n ? 4 + n * 7 : 2}px" class="${i === 3 ? "today" : ""}${n ? "" : " zero"}"></i><span>${"一二三四五六日"[i]}</span></div>`).join("")}</div></section>
+  <section class="h3-card"><div class="lb">进行中的任务</div><div class="v"><b>2</b><small>个</small></div><div class="ft">1 个正在接待 · 1 个还没开始</div></section>
+  <section class="h3-card w"><div class="lb">最近截止</div><div class="v"><b>明天 18:00</b></div><div class="ft">「售后差评挽回」还差 2 个场景</div></section>
+  <section class="h3-card"><div class="lb">已完成任务</div><div class="v"><b>2</b><small>/ 4</small></div><div class="h3-track"><i style="width:50%"></i></div></section>
+</div>`;
 const practiceCard = `<section class="h3-side">
       <h3>自由练习</h3>
       <p>不计成绩，场景随便挑。</p>
@@ -1359,8 +1382,9 @@ const practiceCard = `<section class="h3-side">
       <span class="btn" style="justify-content:center">开始练习</span>
     </section>`;
 const taskHead = (tab) => `<div class="h3-h"><div class="h3-tabs"><span class="${tab === "todo" ? "on" : ""}">进行中 <i>2</i></span><span class="${tab === "done" ? "on" : ""}">已完成 <i>2</i></span></div>
-  ${tab === "todo" ? `<span class="h3-hfact">最近截止 <b>明天 18:00</b></span>` : `<span class="h3-hfact is-plain">平均 <b>64</b> 分 · 2 个里 1 个达标</span>`}</div>`;
+  ${tab === "todo" ? "" : `<span class="h3-hfact is-plain">平均 <b>64</b> 分 · 2 个里 1 个达标</span>`}</div>`;
 const hall3 = () => shell("任务大厅", "任务大厅", `
+  ${topCards()}
   <div class="h3-grid">
     <section class="h3-main">
       ${taskHead("todo")}
@@ -1376,9 +1400,10 @@ const hall3 = () => shell("任务大厅", "任务大厅", `
       </article>
       <div class="h3-tr">${dot("c1")}<div><b>清关延误安抚</b><small>售中处理 · 2 个场景 · 不限时 · 文字</small></div><span class="h3-p">0 / 2 场景</span><span class="h3-due">10 月 24 日截止</span><span class="h3-go">开始</span></div>
     </section>
-    <div class="h3-col">${weekCard()}${practiceCard}</div>
+    ${practiceCard}
   </div>`, { notice: false });
 const hall3done = () => shell("任务大厅", "任务大厅", `
+  ${topCards()}
   <div class="h3-grid">
     <section class="h3-main">
       ${taskHead("done")}
@@ -1386,7 +1411,7 @@ const hall3done = () => shell("任务大厅", "任务大厅", `
       <div class="h3-dr">${dot("c1")}<div><b>售中物流同步演练</b><small>售中处理 · 1 个场景</small></div><div class="h3-res"><b>80</b><span class="ok">达标</span><small>达标线 70 · 老师已复核</small></div><span class="h3-when">10 月 13 日</span><span class="h3-go">看复盘</span></div>
       <div class="h3-dr">${dot("c2")}<div><b>新品推广首训</b><small>售前沟通 · 2 个场景</small></div><div class="h3-res"><b class="lo">47</b><span class="bad">未达标</span><small>达标线 60 · 差 13 分</small></div><span class="h3-when">10 月 12 日</span><span class="h3-go">看复盘</span></div>
     </section>
-    <div class="h3-col">${weekCard()}${practiceCard}</div>
+    ${practiceCard}
   </div>`, { notice: false });
 const T = { hall3, hall3done, hallA, hallB, recordsA, store, storeEdit: storeEditFull, hall, hallEmpty, wb, wbProduct, wbEnd, reviews, reviews2, reviews2b, mail, orders, records, recordsEmpty };
 document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
