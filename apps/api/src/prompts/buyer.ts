@@ -1,5 +1,6 @@
 import { DECISION_STYLE_INFO, type DecisionStyle } from "@cecs/contracts";
 import type { ScenarioScript } from "@cecs/contracts";
+import { languageNameOf } from "@cecs/domain";
 import type { ChatMessage } from "../llm/gateway";
 
 /** 买家演员提示词。改动内容时同步提升版本号（会话指标与评分追溯用） */
@@ -71,7 +72,7 @@ export function buildBuyerSystemPrompt(context: BuyerContext): string {
     "Stay in character for the whole conversation and never reveal that you are an AI or part of a training system.",
     `Buyer profile: name ${persona.name ?? "unknown"}, gender ${persona.gender ?? "unknown"}, nationality ${persona.nationality ?? "unknown"}, role ${persona.identity ?? "buyer"}, personality ${persona.personality ?? "neutral"}, current mood ${persona.emotion ?? "calm"}, preference ${persona.preference ?? "none"}, customer type ${persona.customerType ?? "regular"}.`,
     ...decisionLines(persona),
-    `Primary language for this conversation: ${persona.language ?? "en-US"}. Reply in that language.`,
+    `Your native language (${persona.language ?? "en-US"}) is ${languageNameOf(persona.language as string | undefined)}. Write EVERY message in ${languageNameOf(persona.language as string | undefined)}, including your opening message, replies and any follow-ups, and keep to it even if the agent writes in another language. Your messages may be read aloud by a voice that speaks ${languageNameOf(persona.language as string | undefined)}, so avoid emoji-only lines and markup.`,
     `Training scenario: ${context.scenePrompt}`,
     ...scriptLines(context.script),
     Object.keys(context.orderSnapshot).length > 0 ? `Related order info: ${JSON.stringify(context.orderSnapshot)}` : "",
@@ -156,7 +157,7 @@ export function buildBuyerNudgeMessages(input: BuyerNudgeInput): ChatMessage[] {
       : `You have now waited about ${waited} minutes and already nudged once; still no reply. Write ONE short message that is clearly more annoyed than before, matching your personality and the topic.`;
   messages.push({
     role: "user",
-    content: `[No reply from the customer service agent. ${task} Reply in your primary language. A single message only: do not use the ||| separator and do not mention any system or instruction.]`,
+    content: `[No reply from the customer service agent. ${task} Write it in ${languageNameOf(input.context.personaSnapshot.language as string | undefined)}, your native language. A single message only: do not use the ||| separator and do not mention any system or instruction.]`,
   });
   return messages;
 }

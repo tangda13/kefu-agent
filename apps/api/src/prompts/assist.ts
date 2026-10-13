@@ -1,3 +1,4 @@
+import { languageNameOf } from "@cecs/domain";
 import { z } from "zod";
 import type { ChatMessage } from "../llm/gateway";
 
@@ -157,7 +158,7 @@ export function buildBuyerMailMessages(input: {
       role: "system",
       content:
         `You are ${persona.name ?? "a buyer"}, a cross-border e-commerce buyer from ${persona.nationality ?? "abroad"} ` +
-        `(customer type: ${input.customerType || "regular"}). You write emails in your own language (${persona.language ?? "en-US"}), ` +
+        `(customer type: ${input.customerType || "regular"}). You write emails in your own native language (${languageNameOf(persona.language as string | undefined)}, code ${persona.language ?? "en-US"}), ` +
         "in a natural, everyday customer tone.\n" +
         `Your related order: ${input.orderBrief}.\n` +
         "You just received an email from the store's customer support. Write your reply email: 2-5 sentences, sign with your name. " +
@@ -192,7 +193,7 @@ export function buildBuyerReviewMessages(input: {
           ? `You previously left a ${input.existing?.rating}-star review: "${input.existing?.content}". The support agent resolved your issue, so you are UPDATING your review to ${input.rating} stars. Mention that the seller followed up and resolved the problem.`
           : `Now you are leaving a ${input.rating}-star review for this order, reflecting both the product and the service experience.`) +
         ` Key facts from the conversation: ${input.memory ?? "(none)"}. ` +
-        "Write the review in English, 1-3 natural sentences, first person, no absolute marketing phrases. " +
+        `Write the review in ${languageNameOf(persona.language as string | undefined)} (your native language), 1-3 natural sentences, first person, no absolute marketing phrases. ` +
         'Return ONLY a JSON object: {"content":"..."}.',
     },
     { role: "user", content: "Write the review now." },

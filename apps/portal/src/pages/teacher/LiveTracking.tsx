@@ -49,7 +49,11 @@ interface TrackingItem {
   endConditions?: string | null;
 }
 
-const LANGUAGE_NAMES: Record<string, string> = { "en-US": "英语", "es-ES": "西班牙语", "fr-FR": "法语" };
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "英语", es: "西班牙语", fr: "法语", de: "德语", it: "意大利语", pt: "葡萄牙语", ru: "俄语", ja: "日语", ko: "韩语", ar: "阿拉伯语",
+  nl: "荷兰语", pl: "波兰语", tr: "土耳其语", sv: "瑞典语", th: "泰语", vi: "越南语", id: "印尼语",
+};
+const languageName = (code: string) => LANGUAGE_NAMES[code.slice(0, 2).toLowerCase()] ?? code;
 
 interface TeacherAssessment {
   id: string;
@@ -448,7 +452,7 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
               <h5>买家</h5>
               <div className="mon-buyer">
                 <BuyerAvatar buyer={view.buyer} />
-                <div><b>{view.buyer.name}</b><span>{view.buyer.nationality} · {LANGUAGE_NAMES[view.buyer.language] ?? view.buyer.language} · {view.buyer.customerType}</span></div>
+                <div><b>{view.buyer.name}</b><span>{view.buyer.nationality} · {languageName(view.buyer.language)} · {view.buyer.customerType}</span></div>
               </div>
               <dl className="mon-kv">
                 {view.personality ? <><dt>性格</dt><dd>{view.personality}</dd></> : null}

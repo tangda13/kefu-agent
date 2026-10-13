@@ -255,6 +255,15 @@ export class VoiceService {
     return selectVoice({ pool: profile.voicePool, persona, gender, available: await this.availableVendors() });
   }
 
+  /**
+   * 买家能不能用这个语种朗读（D-43）：该语种 × 性别在音色池里有已配置厂商的音色才算。
+   * 英语口音（en-GB / en-AU）缺音色会自然落到通用英语，仍算可用；其他语种缺音色（含语音整体未配置）为 false。
+   */
+  async canSpeak(language: string, gender: VoiceGender, nationality?: string): Promise<boolean> {
+    const selection = await this.selectVoice({ language, nationality, gender }, gender);
+    return Boolean(selection && !selection.fellBack);
+  }
+
   /** 按选定音色合成。退回英语时语种交给厂商自动识别，避免用英语规则硬读其他语言 */
   async synthesizeWith(selection: VoiceSelection, text: string): Promise<SynthesizedSpeech> {
     const profile = await this.profile();

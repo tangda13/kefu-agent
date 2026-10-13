@@ -1,3 +1,4 @@
+import { nativeLanguageOf } from "./language";
 import {
   CUSTOMER_TYPES,
   EMOTIONS,
@@ -243,7 +244,9 @@ export const standardPhrases = [
   "I hope the proposed solution addresses your concern.",
 ] as const;
 
-export interface PersonaSnapshot extends PersonaTemplate {
+export interface PersonaSnapshot extends Omit<PersonaTemplate, "language"> {
+  /** 买家母语代码（de-DE 等），语音做不到时由 API 层改为英语（D-43） */
+  language: string;
   sourceTemplateId: string;
   /** 抽中的画像模板名称（如“价格敏感型个人消费者”），只给老师看 */
   templateName?: string;
@@ -256,43 +259,66 @@ export interface PersonaSnapshot extends PersonaTemplate {
 /** 头像类型：default=平台默认灰色剪影；initial=首字母+底色；photo=生活照；object=非人脸（宠物/风景/动漫等） */
 export type AvatarKind = "default" | "initial" | "photo" | "object";
 
+/** 头像大区：eu 欧美白人 / la 拉丁 / ea 东亚 / sea 东南亚 / sa 南亚 / me 中东 / af 非洲裔 */
+export type AvatarRegion = "eu" | "la" | "ea" | "sea" | "sa" | "me" | "af";
+
+export const AVATAR_REGIONS: readonly AvatarRegion[] = ["eu", "la", "ea", "sea", "sa", "me", "af"];
+
 /**
- * 头像库容量（apps/portal/public/avatars）：
- * f-NN/m-NN 写实人像，pf-NN/pm-NN 多样生活照（按性别），o-NN 非人脸（不分性别）。
+ * 头像库（apps/portal/public/avatars）：
+ * - portraits：a-<区>-<f|m>-NN.jpg 生活化人像，按大区和性别给出数量（序号从 01 连续）；
+ * - object：o-NN 非人脸（宠物/风景/物件等，不分性别）。
+ * 旧的 f-NN / m-NN / pf-NN / pm-NN 文件保留（老会话快照引用），但不再进抽取池。
  */
 export const AVATAR_LIBRARY = {
-  male: 20,
-  female: 20,
-  lifeMale: 13,
-  lifeFemale: 15,
-  object: 62,
-} as const;
+  portraits: {
+    eu: { female: 95, male: 95 },
+    la: { female: 28, male: 27 },
+    ea: { female: 28, male: 28 },
+    sea: { female: 24, male: 24 },
+    sa: { female: 24, male: 24 },
+    me: { female: 24, male: 24 },
+    af: { female: 24, male: 24 },
+  } as Record<AvatarRegion, Record<"male" | "female", number>>,
+  object: 30,
+};
 
-/** 头像类型占比（累计阈值）：默认 30% / 首字母 20% / 生活照 25% / 非人脸 25% */
+/** 头像类型占比（累计阈值）：默认剪影 10% / 首字母 10% / 人像 75% / 非人脸 5% */
 export const AVATAR_KIND_WEIGHTS: ReadonlyArray<readonly [AvatarKind, number]> = [
-  ["default", 0.3],
-  ["initial", 0.5],
-  ["photo", 0.75],
+  ["default", 0.1],
+  ["initial", 0.2],
+  ["photo", 0.95],
   ["object", 1],
 ];
+
+/** 抽人像时优先选买家国籍所在大区的概率（其余 15% 在其他大区抽，模拟移民混居） */
+export const AVATAR_SAME_REGION_RATE = 0.85;
+
+const NATIONALITY_REGION: Record<string, AvatarRegion> = {
+  美国: "eu", 英国: "eu", 加拿大: "eu", 澳大利亚: "eu", 新西兰: "eu", 德国: "eu", 法国: "eu", 西班牙: "eu", 意大利: "eu",
+  荷兰: "eu", 瑞典: "eu", 俄罗斯: "eu", 波兰: "eu", 爱尔兰: "eu", 葡萄牙: "eu", 瑞士: "eu",
+  巴西: "la", 墨西哥: "la", 阿根廷: "la", 智利: "la", 哥伦比亚: "la", 秘鲁: "la",
+  日本: "ea", 韩国: "ea", 中国: "ea", 中国台湾: "ea", 中国香港: "ea",
+  泰国: "sea", 越南: "sea", 菲律宾: "sea", 印度尼西亚: "sea", 印尼: "sea", 马来西亚: "sea", 新加坡: "sea",
+  印度: "sa", 巴基斯坦: "sa", 孟加拉国: "sa", 斯里兰卡: "sa",
+  沙特阿拉伯: "me", 沙特: "me", 阿联酋: "me", 土耳其: "me", 伊朗: "me", 埃及: "me", 以色列: "me",
+  尼日利亚: "af", 南非: "af", 肯尼亚: "af", 加纳: "af",
+};
+
+/** 国籍 → 头像大区；未知国籍按 eu 处理 */
+export function avatarRegionOf(nationality?: string): AvatarRegion {
+  return NATIONALITY_REGION[nationality ?? ""] ?? "eu";
+}
 
 function padIndex(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-export function pickAvatarUrl(
-  gender: "male" | "female",
-  random: () => number = Math.random,
-): string {
-  const count = AVATAR_LIBRARY[gender];
-  const index = 1 + Math.min(count - 1, Math.floor(random() * count));
-  return `avatars/${gender === "female" ? "f" : "m"}-${padIndex(index)}.jpg`;
-}
-
-/** 按类型抽头像：先抽类型，再抽图。default/initial 的 avatarUrl 为空字符串；性别只影响生活照 */
+/** 按类型抽头像：先抽类型，再抽图。default/initial 的 avatarUrl 为空字符串；人像按国籍所在大区优先（85%）+性别抽 */
 export function pickAvatar(
   gender: "male" | "female",
   random: () => number = Math.random,
+  nationality?: string,
 ): { avatarKind: AvatarKind; avatarUrl: string } {
   const roll = random();
   const kind = (AVATAR_KIND_WEIGHTS.find(([, limit]) => roll < limit) ?? AVATAR_KIND_WEIGHTS[AVATAR_KIND_WEIGHTS.length - 1]!)[0];
@@ -301,14 +327,24 @@ export function pickAvatar(
     const index = 1 + Math.min(AVATAR_LIBRARY.object - 1, Math.floor(random() * AVATAR_LIBRARY.object));
     return { avatarKind: kind, avatarUrl: `avatars/o-${padIndex(index)}.jpg` };
   }
-  // 生活照：现有写实人像（f/m）与多样生活照（pf/pm）合并成一个池，按容量均匀抽
-  const real = AVATAR_LIBRARY[gender];
-  const life = gender === "female" ? AVATAR_LIBRARY.lifeFemale : AVATAR_LIBRARY.lifeMale;
-  const pickIndex = Math.min(real + life - 1, Math.floor(random() * (real + life)));
-  if (pickIndex < real) {
-    return { avatarKind: kind, avatarUrl: `avatars/${gender === "female" ? "f" : "m"}-${padIndex(pickIndex + 1)}.jpg` };
+  const home = avatarRegionOf(nationality);
+  const others = AVATAR_REGIONS.filter((region) => region !== home && AVATAR_LIBRARY.portraits[region][gender] > 0);
+  let region: AvatarRegion = home;
+  if (AVATAR_LIBRARY.portraits[home][gender] === 0 || (others.length > 0 && random() >= AVATAR_SAME_REGION_RATE)) {
+    // 其他大区按库存量加权
+    const total = others.reduce((sum, item) => sum + AVATAR_LIBRARY.portraits[item][gender], 0);
+    let target = random() * total;
+    region = others[others.length - 1] ?? home;
+    for (const item of others) {
+      target -= AVATAR_LIBRARY.portraits[item][gender];
+      if (target < 0) { region = item; break; }
+    }
+  } else {
+    random(); // 保持两条分支消耗的随机数一致，便于推演
   }
-  return { avatarKind: kind, avatarUrl: `avatars/${gender === "female" ? "pf" : "pm"}-${padIndex(pickIndex - real + 1)}.jpg` };
+  const count = Math.max(1, AVATAR_LIBRARY.portraits[region][gender]);
+  const index = 1 + Math.min(count - 1, Math.floor(random() * count));
+  return { avatarKind: kind, avatarUrl: `avatars/a-${region}-${gender === "female" ? "f" : "m"}-${padIndex(index)}.jpg` };
 }
 
 /** 稳定散列：同一输入永远得到同一结果（前后端共用，勿改算法） */
@@ -337,16 +373,17 @@ function pick<T>(items: readonly T[], random: () => number): T {
 
 export function composePersona(random: () => number = Math.random): PersonaSnapshot {
   const template = pick(personaTemplates.filter((item) => item.enabled), random);
+  const nationality = pick(NATIONALITIES, random);
   return {
     ...template,
     sourceTemplateId: template.id,
     id: `SNAP-${Date.now()}-${Math.floor(random() * 10000)}`,
-    nationality: pick(NATIONALITIES, random),
+    nationality,
     personality: pick(PERSONALITIES, random),
     emotion: pick(EMOTIONS, random),
-    language: pick(SUPPORTED_LANGUAGES, random),
+    language: "en-US",
     customerType: pick(CUSTOMER_TYPES, random),
-    ...pickAvatar(template.gender, random),
+    ...pickAvatar(template.gender, random, nationality),
     generatedAt: new Date().toISOString(),
   };
 }
@@ -400,12 +437,6 @@ const NAME_POOLS: Record<string, NamePool> = {
     female: ["Ana", "Beatriz", "Camila", "Fernanda", "Juliana", "Larissa", "Mariana", "Letícia"],
     surnames: ["Silva", "Santos", "Oliveira", "Souza", "Costa", "Pereira", "Almeida", "Ferreira"],
   },
-};
-
-/** 国籍→母语（不在支持列表内的国家用英语沟通） */
-const NATIVE_LANGUAGE: Record<string, (typeof SUPPORTED_LANGUAGES)[number]> = {
-  法国: "fr-FR",
-  西班牙: "es-ES",
 };
 
 const IDENTITY_POOL = [
@@ -498,13 +529,10 @@ export function composePersonaWithRule(
   const gender: "male" | "female" = random() < 0.5 ? "male" : "female";
   const namePool = NAME_POOLS[nationality] ?? EN_POOL;
   const name = `${pick(gender === "male" ? namePool.male : namePool.female, random)} ${pick(namePool.surnames, random)}`;
-  // 语言：规则优先；否则国籍没被规则换掉时用模板语言，换掉了就按新国籍说母语
-  const templateLanguage = nationality === template.nationality && (SUPPORTED_LANGUAGES as readonly string[]).includes(template.language ?? "")
-    ? (template.language as (typeof SUPPORTED_LANGUAGES)[number])
-    : undefined;
-  const language = rule.languages?.length
+  // 语言：任务规则指定了就按规则；否则说国籍的母语（D-43，模板语言不再参与；语音做不到时 API 层再改成英语）
+  const language: string = rule.languages?.length
     ? pickConstrained(SUPPORTED_LANGUAGES, rule.languages, random)
-    : templateLanguage ?? NATIVE_LANGUAGE[nationality] ?? "en-US";
+    : nativeLanguageOf(nationality);
   return {
     id: `SNAP-${Date.now()}-${Math.floor(random() * 10000)}`,
     sourceTemplateId: template.id,
@@ -525,7 +553,7 @@ export function composePersonaWithRule(
       ? (template.customerType as (typeof CUSTOMER_TYPES)[number])
       : pick(CUSTOMER_TYPES, random),
     enabled: true,
-    ...pickAvatar(gender, random),
+    ...pickAvatar(gender, random, nationality),
     generatedAt: new Date().toISOString(),
   };
 }
@@ -545,7 +573,7 @@ export function resolvePersonaGender(snapshot: {
 
 /** 历史画像快照缺头像时，按来源模板性别 + 稳定种子补齐（同一会话头像恒定） */
 export function ensurePersonaAvatar<
-  T extends { avatarUrl?: string; avatarKind?: AvatarKind; sourceTemplateId?: string; name?: string },
+  T extends { avatarUrl?: string; avatarKind?: AvatarKind; sourceTemplateId?: string; name?: string; nationality?: string },
 >(snapshot: T, seed: string): T & { avatarUrl: string; avatarKind: AvatarKind } {
   // 老快照已有头像（或已抽到 default/initial）保持不变
   if (snapshot.avatarUrl) return { ...snapshot, avatarKind: snapshot.avatarKind ?? "photo" } as T & { avatarUrl: string; avatarKind: AvatarKind };
@@ -557,7 +585,7 @@ export function ensurePersonaAvatar<
     hash = (hash * 1103515245 + 12345) >>> 0;
     return ((hash >>> 8) % 1000) / 1000;
   };
-  return { ...snapshot, ...pickAvatar(gender, random) };
+  return { ...snapshot, ...pickAvatar(gender, random, snapshot.nationality) };
 }
 
 export function toStudentPersonaView(snapshot: PersonaSnapshot) {
@@ -911,6 +939,7 @@ export { scenarioScripts } from "./scenario-scripts";
 export { productLibrary } from "./product-library";
 export * from "./store";
 export * from "./patience";
+export * from "./language";
 
 /**
  * 商品资料卡（D-32）：给买家 AI 的“店铺真实信息”，用来判断客服说得对不对、让追问有依据。

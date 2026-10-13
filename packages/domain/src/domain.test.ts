@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { NATIONALITIES } from "@cecs/contracts";
 import {
+  AVATAR_LIBRARY,
+  AVATAR_REGIONS,
+  avatarRegionOf,
   composePersona,
   composePersonaWithRule,
   emailTemplates,
@@ -88,7 +92,7 @@ describe("画像模板字段生效（D3）", () => {
     expect(persona.nationality).toBe("德国");
     expect(persona.personality).toBe("敏感挑剔");
     expect(persona.emotion).toBe("不满");
-    expect(persona.language).toBe("en-US");
+    expect(persona.language).toBe("de-DE");
     expect(persona.customerType).toBe("粉丝客");
   });
   it("规则约束的字段按规则抽，国籍被换掉时语言跟着新国籍走", () => {
@@ -175,19 +179,52 @@ describe("D-41 买家头像多样化", () => {
   it("1000 个随机种子比例大致符合", () => {
     const count: Record<string, number> = { default: 0, initial: 0, photo: 0, object: 0 };
     for (let i = 0; i < 1000; i += 1) {
-      const pick = pickAvatar(i % 2 ? "female" : "male", seeded(`seed-${i}`));
+      const pick = pickAvatar(i % 2 ? "female" : "male", seeded(`seed-${i}`), "美国");
       count[pick.avatarKind] = (count[pick.avatarKind] ?? 0) + 1;
       if (pick.avatarKind === "default" || pick.avatarKind === "initial") expect(pick.avatarUrl).toBe("");
-      else expect(pick.avatarUrl).toMatch(/^avatars\/(f|m|pf|pm|o)-\d{2}\.jpg$/);
+      else if (pick.avatarKind === "object") expect(pick.avatarUrl).toMatch(/^avatars\/o-\d{2}\.jpg$/);
+      else expect(pick.avatarUrl).toMatch(/^avatars\/a-(eu|la|ea|sea|sa|me|af)-(f|m)-\d{2}\.jpg$/);
     }
-    expect(count.default).toBeGreaterThan(220);
-    expect(count.default).toBeLessThan(380);
-    expect(count.initial).toBeGreaterThan(130);
-    expect(count.initial).toBeLessThan(270);
-    expect(count.photo).toBeGreaterThan(170);
-    expect(count.photo).toBeLessThan(330);
-    expect(count.object).toBeGreaterThan(170);
-    expect(count.object).toBeLessThan(330);
+    expect(count.default).toBeGreaterThan(60);
+    expect(count.default).toBeLessThan(150);
+    expect(count.initial).toBeGreaterThan(60);
+    expect(count.initial).toBeLessThan(150);
+    expect(count.photo).toBeGreaterThan(680);
+    expect(count.photo).toBeLessThan(820);
+    expect(count.object).toBeGreaterThan(20);
+    expect(count.object).toBeLessThan(90);
+  });
+
+  it("国籍映射到大区，覆盖全部国籍取值", () => {
+    for (const nationality of NATIONALITIES) expect(AVATAR_REGIONS).toContain(avatarRegionOf(nationality));
+    expect(avatarRegionOf("日本")).toBe("ea");
+    expect(avatarRegionOf("巴西")).toBe("la");
+    expect(avatarRegionOf("德国")).toBe("eu");
+    expect(avatarRegionOf("印度")).toBe("sa");
+    expect(avatarRegionOf("某未知国家")).toBe("eu");
+  });
+
+  it("人像优先选买家国籍对应大区（约 85%），并按性别", () => {
+    for (const [nationality, region] of [["日本", "ea"], ["巴西", "la"], ["美国", "eu"]] as const) {
+      let photo = 0;
+      let same = 0;
+      for (let i = 0; i < 3000; i += 1) {
+        const gender = i % 2 ? "female" : "male";
+        const pick = pickAvatar(gender, seeded(`n-${nationality}-${i}`), nationality);
+        if (pick.avatarKind !== "photo") continue;
+        photo += 1;
+        const match = /^avatars\/a-(\w+)-(f|m)-(\d{2})\.jpg$/.exec(pick.avatarUrl)!;
+        expect(match[2]).toBe(gender === "female" ? "f" : "m");
+        expect(Number(match[3])).toBeLessThanOrEqual(AVATAR_LIBRARY.portraits[match[1] as keyof typeof AVATAR_LIBRARY.portraits][gender]);
+        if (match[1] === region) same += 1;
+      }
+      expect(same / photo).toBeGreaterThan(0.8);
+      expect(same / photo).toBeLessThan(0.92);
+    }
+  });
+
+  it("同一国籍+种子+性别头像稳定", () => {
+    expect(pickAvatar("female", seeded("x"), "日本")).toEqual(pickAvatar("female", seeded("x"), "日本"));
   });
 
   it("非人脸/默认/首字母不分性别", () => {

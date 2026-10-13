@@ -20,6 +20,7 @@ import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import type { CallInfo, LlmGateway } from "../llm/gateway";
 import type { VoiceService } from "../voice/service";
+import { resolveBuyerLanguage } from "../voice/buyer-language";
 import { buildBuyerMessages } from "../prompts/buyer";
 import { loadEnabledPersonaTemplates } from "./catalog";
 import { loadStoreProfile } from "./store";
@@ -372,6 +373,12 @@ export function registerConversationRoutes(
         reply.code(409);
         return { code: "NO_MATCHING_PERSONA", message: "这个任务的买家范围里没有可用的画像，请联系老师调整。" };
       }
+      // 买家语言（D-43）：国籍母语，朗读做不到就改英语；任务规则明确指定语言时尊重规则
+      persona.language = await resolveBuyerLanguage(
+        voice,
+        { language: persona.language, nationality: persona.nationality as string, gender: persona.gender },
+        Array.isArray(personaRule.languages) && personaRule.languages.length > 0,
+      );
       // 先定关联订单（按场景的订单状态），再把对应商品的资料卡交给买家 AI（D-32）
       const personaBrief = { name: persona.name as string, nationality: persona.nationality as string };
       const productRows = await db.query("select name, spec, price, image_url, category, details from store_products where enabled");
