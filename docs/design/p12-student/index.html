@@ -530,7 +530,8 @@ table.api-t td:first-child { white-space: nowrap; font-weight: 600; }
 .r2-compose .ver .en { -webkit-line-clamp: 3; }
 
 /* 任务大厅第三版（二次修订）：顶部一排数据卡，下面两块等高 */
-.h3-cards { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.h3-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 300px; gap: 16px; margin-bottom: 16px; }
+.h3-cards + .h3-grid { grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
 .h3-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; display: grid; gap: 6px; align-content: start; min-height: 112px; }
 .h3-card .lb { font-size: 13px; color: var(--ink-2); }
 .h3-card .v b { font-size: 26px; font-weight: 700; line-height: 32px; }
