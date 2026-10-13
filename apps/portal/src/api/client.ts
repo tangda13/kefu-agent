@@ -1288,5 +1288,5 @@ export async function downloadWithAuth(session: Session, path: string, fileName:
 }
 
 /** 评价、邮件正文的中文译文（POST /v1/translate，服务端缓存） */
-export const translateText = (session: Session, text: string) =>
-  apiPost<{ translation: string }>("/v1/translate", session, { text }).then((result) => result.translation);
+export const translateText = (session: Session, text: string, target?: string) =>
+  apiPost<{ translation: string }>("/v1/translate", session, target ? { text, target } : { text }).then((result) => result.translation);

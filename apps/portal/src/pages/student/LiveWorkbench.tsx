@@ -22,6 +22,7 @@ import {
   assetUrl,
   closeConversation,
   createConversation,
+  translateText,
   fetchScenarios,
   type ScenarioSummary,
   createMyPhrase,
@@ -70,6 +71,7 @@ import { OrdersTab } from "./workbench/OrdersTab";
 import { ProductDrawer } from "./workbench/ProductDrawer";
 import { ProductsTab } from "./workbench/ProductsTab";
 import { ShiftBar } from "./workbench/ShiftBar";
+import { TranslateButton, targetOf } from "./workbench/TranslateButton";
 import { BUSINESS_STAGE_LABELS } from "@cecs/contracts";
 import { PRACTICE_EVENT, bumpPractice, readPractice, readPracticeTotal, writePractice, writePracticeTotal, type PracticeConfig } from "./practice";
 import { MAX_SERVE_LIMIT, type AgentState } from "./workbench/AgentStatus";
@@ -204,8 +206,12 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [coupons, setCoupons] = useState<StoreCoupon[]>([]);
   const [detailProduct, setDetailProduct] = useState<StoreProduct | null>(null);
-  const [autoTranslate, setAutoTranslate] = useState(() => readFlag(AUTO_TRANSLATE_KEY));
-  const [autoPlay, setAutoPlay] = useState(() => readFlag(AUTO_PLAY_KEY));
+  // 自动翻译 / 自动播报已从界面去掉（2026-10-13），买家消息逐条点“翻译”“播报”
+  const [autoTranslate, setAutoTranslate] = useState(false);
+  const [autoPlay, setAutoPlay] = useState(false);
+  /** 输入框翻译：目标语言默认取买家的语言，切换会话时重置 */
+  const [outTarget, setOutTarget] = useState("en");
+  const [outBusy, setOutBusy] = useState(false);
   // 已结束的会话（本地即时标记，等待列表刷新）
   const [closedLocal, setClosedLocal] = useState<Set<string>>(new Set());
   const [endConfirm, setEndConfirm] = useState(false);
@@ -274,6 +280,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const isClosed = active?.status === "closed" || (activeId !== null && closedLocal.has(activeId)) || (activeId !== null && closedIdsRef.current.has(activeId));
   const closedReason = activeId ? closedReasonLocal[activeId] ?? active?.closedReason ?? null : null;
   const buyer = active?.buyer ?? null;
+  // 切到另一位买家：输入框翻译的目标语言回到这位买家的语言
+  useEffect(() => { setOutTarget(targetOf(buyer?.language)); }, [activeId, buyer?.language]);
 
   /* 更新某条会话的本地副本（咨询原因、待跟进、备注） */
   const patchConversation = useCallback((id: string, patch: Partial<ConversationSummary>) => {
@@ -734,6 +742,22 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   function noteTyping() {
     const cid = activeIdRef.current;
     if (cid && replyTimers.current.has(cid)) armReplyTimer(cid, REPLY_WINDOW_MS);
+  }
+
+  // 输入框翻译：把客服写的中文译成买家的语言，直接替换输入框内容（同一段文字只翻一次，服务端存库）
+  async function translateInput() {
+    const text = input.trim();
+    if (!text || outBusy) return;
+    setOutBusy(true);
+    try {
+      const translated = await translateText(session, text, outTarget);
+      setInput(translated);
+      textareaRef.current?.focus();
+    } catch (cause) {
+      setNotice(errorMessage(cause));
+    } finally {
+      setOutBusy(false);
+    }
   }
 
   async function send() {
@@ -1451,10 +1475,15 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
               <button type="button" onClick={() => videoInputRef.current?.click()} disabled={cardDisabled} title="发送视频" aria-label="发送视频"><Film size={18} /></button>
               <button type="button" onClick={() => fileInputRef.current?.click()} disabled={cardDisabled} title="发送文件" aria-label="发送文件"><Paperclip size={18} /></button>
               <button ref={phraseButtonRef} type="button" className="wbk-phrase-btn" onClick={openPhrasePanel} disabled={!active || !canType}><MessageSquareText size={16} />快捷短语</button>
-              <div className="wbk-toggles">
-                <label><Languages size={15} />自动翻译<Switch checked={autoTranslate} onChange={toggleAutoTranslate} label="自动翻译" /></label>
-                <label><Volume2 size={15} />自动播报<Switch checked={autoPlay} onChange={toggleAutoPlay} label="自动播报" /></label>
-              </div>
+              {canType ? (
+                <TranslateButton
+                  target={outTarget}
+                  onTarget={setOutTarget}
+                  busy={outBusy}
+                  disabled={composerDisabled || !input.trim()}
+                  onTranslate={() => void translateInput()}
+                />
+              ) : null}
             </div>
             <input ref={imageInputRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => onAttachmentChosen("image", event)} />
             <input ref={videoInputRef} type="file" hidden accept="video/mp4,video/webm,video/quicktime" onChange={(event) => onAttachmentChosen("video", event)} />

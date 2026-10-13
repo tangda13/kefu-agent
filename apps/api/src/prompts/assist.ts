@@ -18,6 +18,19 @@ export function buildTranslationMessages(text: string): ChatMessage[] {
   ];
 }
 
+// ---------- 客服输入框翻译：把客服写的（多为中文）译成买家的语言 ----------
+export function buildOutgoingTranslationMessages(text: string, targetLanguage: string): ChatMessage[] {
+  return [
+    {
+      role: "system",
+      content:
+        `You are a professional translator for cross-border e-commerce customer service. Translate the agent's message into ${targetLanguage}. ` +
+        "Keep a polite, natural customer-service tone; keep order numbers, SKUs, prices and product names unchanged. Output ONLY the translation.",
+    },
+    { role: "user", content: text },
+  ];
+}
+
 // ---------- 订单话术建议（3 版） ----------
 export const suggestionsSchema = z.object({ items: z.array(nonEmpty).min(3) });
 

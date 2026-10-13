@@ -155,3 +155,18 @@
 /* 复盘弹窗：雷达图容器的 compact 类被全局 .compact（控件高 28）误伤，把高度还原 */
 .rec-radar.compact { height: auto; }
 .sl-prac-sc { width: 100%; }
+
+/* 现在要做的 / 自由练习两张卡等高：按钮都落在卡片底部 */
+.sl-focus { align-items: stretch; }
+.sl-now { display: flex; flex-direction: column; }
+.sl-now-acts { margin-top: auto; }
+.sl-prac { display: flex; flex-direction: column; }
+.sl-prac > .ui-btn { margin-top: auto; }
+/* 任务列表：行距收紧，操作列按钮右对齐同宽 */
+.sl-tr { padding-top: 12px; padding-bottom: 12px; }
+.sl-tr-act .ui-btn { min-width: 72px; justify-content: center; }
+/* 自由练习的环节选项：小胶囊一行排开，卡片高度和左边任务卡接近 */
+.sl-prac-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.sl-prac-opts button { height: 28px; padding: 0 10px; border-radius: 14px; font-size: 13px; gap: 6px; }
+.sl-prac-opts button:last-child:nth-child(odd) { grid-column: auto; }
+.sl-prac { gap: 10px; }

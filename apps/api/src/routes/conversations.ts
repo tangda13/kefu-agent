@@ -24,7 +24,7 @@ import { buildBuyerMessages } from "../prompts/buyer";
 import { loadEnabledPersonaTemplates } from "./catalog";
 import { loadStoreProfile } from "./store";
 import { once } from "../inflight";
-import { buildTranslationMessages } from "../prompts/assist";
+import { buildOutgoingTranslationMessages, buildTranslationMessages } from "../prompts/assist";
 
 interface ConversationRow {
   id: string;
@@ -510,7 +510,12 @@ export function registerConversationRoutes(
   );
 
   // 文本翻译（评价、邮件正文的中文译文）。同一段文字只翻一次，译文存库（text_translations），之后直接读取
-  app.post<{ Body: { text?: string } }>(
+  /** 输入框翻译的目标语言（客服把中文译成买家的语言） */
+  const TARGET_LANGUAGES: Record<string, string> = {
+    en: "English", es: "Spanish", fr: "French", de: "German", it: "Italian", pt: "Portuguese",
+    ru: "Russian", ja: "Japanese", ko: "Korean", ar: "Arabic",
+  };
+  app.post<{ Body: { text?: string; target?: string } }>(
     "/v1/translate",
     { preHandler: guard.requireRole("student", "teacher") },
     async (request, reply) => {
@@ -519,7 +524,13 @@ export function registerConversationRoutes(
         reply.code(400);
         return { code: "INVALID_INPUT", message: "没有要翻译的内容。" };
       }
-      const textHash = createHash("sha256").update(text).digest("hex");
+      // 不传 target = 译成中文（评价、邮件正文）；传了 = 输入框外译成买家的语言
+      const target = request.body?.target && request.body.target !== "zh" ? request.body.target : null;
+      if (target && !TARGET_LANGUAGES[target]) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "不支持这种语言。" };
+      }
+      const textHash = createHash("sha256").update(target ? `${target}|${text}` : text).digest("hex");
       const stored = await db.query("select translation from text_translations where text_hash = $1", [textHash]);
       if (stored.rowCount) return { translation: stored.rows[0].translation as string, cached: true };
       if (!gateway.isConfigured()) {
@@ -528,7 +539,10 @@ export function registerConversationRoutes(
       }
       try {
         const translation = await once(`translate:${textHash}`, async () => {
-          const { text: result } = await gateway.complete("assist", buildTranslationMessages(text));
+          const { text: result } = await gateway.complete(
+            "assist",
+            target ? buildOutgoingTranslationMessages(text, TARGET_LANGUAGES[target]!) : buildTranslationMessages(text),
+          );
           await db.query(
             "insert into text_translations (text_hash, source, translation) values ($1, $2, $3) on conflict (text_hash) do nothing",
             [textHash, text, result],

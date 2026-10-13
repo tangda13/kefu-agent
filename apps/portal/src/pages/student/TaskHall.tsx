@@ -342,7 +342,7 @@ export function TaskHall({
                       <div><b>{task.progressDone} / {task.requiredTotal}</b> {task.completionRule === "conversation_count" ? "次接待" : "个场景"}</div>
                       <div className="sl-track"><i style={{ width: `${percent}%` }} /></div>
                     </div>
-                    <div className={due.tone ? `sl-tr-due is-${due.tone}` : "sl-tr-due"}>{status === "upcoming" ? openText(task.startAt) : due.text}</div>
+                    <div className={due.tone ? `sl-tr-due is-${due.tone}` : "sl-tr-due"}>{status === "upcoming" ? openText(task.startAt) : task.deadline ? due.text : ""}</div>
                     <div className="sl-tr-act">
                       {status === "upcoming" ? (
                         <Button size="sm" disabled>未开放</Button>
@@ -375,8 +375,8 @@ export function TaskHall({
                         <div className="sl-cap">{task.passScore != null ? `达标线 ${task.passScore}${task.qualified === false && gap > 0 ? ` · 差 ${gap} 分` : ""}` : "不设达标线"}</div>
                       </div>
                     </div>
-                    <div className="sl-tr-due">{task.deadline ? dueText(task.deadline, true).text : "不设截止"}</div>
-                    <div className="sl-tr-act"><Button size="sm" variant="text" onClick={onOpenRecords}>看复盘</Button></div>
+                    <div className="sl-tr-due" />
+                    <div className="sl-tr-act"><Button size="sm" onClick={onOpenRecords}>看复盘</Button></div>
                   </div>
                 );
               })}
