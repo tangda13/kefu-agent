@@ -274,11 +274,13 @@ function MailEditor(props: EditorProps) {
                   key={index}
                   type="button"
                   className={props.body.startsWith(version.body) ? "v is-on" : "v"}
+                  title={version.body}
                   onClick={() => props.onPickVersion(version)}
                 >
                   <em>版本 {index + 1}</em>
                   {version.subject ? <strong>{version.subject}</strong> : null}
-                  <p>{version.body}</p>
+                  {/* 预览把换行合并成空格：草稿都以“Hi xx,”加空行开头，按原样只能看到称呼 */}
+                  <p>{version.body.replace(/\s+/g, " ").trim()}</p>
                 </button>
               ))}
             </div>

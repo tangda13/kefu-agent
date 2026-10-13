@@ -313,4 +313,4 @@
 .ml2-reply.is-dock .ml2-assist .v:hover { background: var(--c-surface-hover); }
 .ml2-reply.is-dock .ml2-assist .v.is-on { background: var(--c-brand-soft); box-shadow: none; }
 .ml2-reply.is-dock .ml2-assist .v strong { grid-column: 2; }
-.ml2-reply.is-dock .ml2-assist .v p { grid-column: 2; -webkit-line-clamp: 2; }
+.ml2-reply.is-dock .ml2-assist .v p { grid-column: 2; -webkit-line-clamp: 3; white-space: normal; line-height: 20px; }
