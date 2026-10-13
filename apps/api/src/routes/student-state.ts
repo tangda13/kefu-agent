@@ -8,7 +8,7 @@ import { teacherOwnsClass } from "../auth-context";
  * 以前存在客户端 localStorage，换机器即丢失，教师也看不到；现在全部以云端为准。
  */
 
-const READ_KINDS = new Set(["mail", "guidance"]);
+const READ_KINDS = new Set(["mail", "guidance", "notice"]);
 const MAX_DRAFTS = 50;
 const MAX_TEXT = 20_000;
 
@@ -176,7 +176,7 @@ export function registerStudentStateRoutes(
       const kind = request.query.kind ?? "";
       if (!READ_KINDS.has(kind)) {
         reply.code(400);
-        return { code: "INVALID_INPUT", message: "kind 只能是 mail 或 guidance。" };
+        return { code: "INVALID_INPUT", message: "kind 只能是 mail、guidance 或 notice。" };
       }
       const result = await db.query<{ item_id: string }>(
         "select item_id from read_marks where user_id = $1 and kind = $2",

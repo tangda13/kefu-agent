@@ -102,7 +102,12 @@ export function registerAnnouncementRoutes(
       const params = user.role === "admin" ? [] : [user.sub];
       const result = await db.query(
         `select a.id, a.title, a.content, a.expires_at, a.created_at, a.class_id,
-                c.name as class_name
+                c.name as class_name,
+                (select count(*) from users u where u.role = 'student' and u.status = 'active'
+                   and (a.class_id is null or u.class_id = a.class_id)) as recipient_count,
+                (select count(*) from read_marks r join users u on u.id = r.user_id
+                  where r.kind = 'notice' and r.item_id = a.id::text
+                    and (a.class_id is null or u.class_id = a.class_id)) as read_count
          from announcements a
          left join classes c on c.id = a.class_id
          ${scopeFilter}
@@ -118,6 +123,8 @@ export function registerAnnouncementRoutes(
         createdAt: row.created_at,
         expiresAt: row.expires_at,
         expired: row.expires_at ? new Date(row.expires_at).getTime() <= Date.now() : false,
+        recipientCount: Number(row.recipient_count),
+        readCount: Number(row.read_count),
       }));
     },
   );

@@ -95,6 +95,11 @@ export const forbiddenTerms = [
   "销量第一", "领导品牌", "王牌", "至尊", "国家领导人推荐",
   "点击中奖", "限时不买必涨", "最后一次机会", "强制好评返现", "删除差评退款",
   "绕过海关", "低报避税", "无条件清关", "仿牌", "侵权同款",
+  "zero risk", "number one brand", "guaranteed to cure", "100% natural cure", "no customs fees guaranteed",
+  "fake reviews", "review for refund", "delete your review", "undervalue the parcel", "mark it as a gift",
+  "brand replica", "1:1 copy", "差评就退款", "好评返现", "刷单",
+  "代写好评", "包过海关", "礼品申报", "改低申报价", "正品授权（无证明）",
+  "绝对不会坏", "最好的产品", "第一品牌", "全球销量冠军",
 ] as const;
 
 export const standardPhrases = [
@@ -138,6 +143,19 @@ export const standardPhrases = [
   "You may edit your communication preferences at any time.",
   "This offer is subject to the terms shown on the product page.",
   "Stock availability may change before payment is completed.",
+  "I have noted your request and will follow up shortly.",
+  "Could you tell me the size you usually wear?",
+  "This item ships from our overseas warehouse.",
+  "Import duties are determined by your local customs office.",
+  "I have attached the size chart for your reference.",
+  "We can update the shipping address before the parcel is dispatched.",
+  "The return label has been sent to your email.",
+  "Once we receive the returned item, the refund will be processed.",
+  "I apologize for the inconvenience caused by the delay.",
+  "Your satisfaction is important to us, so please let me know if anything is unclear.",
+  "Thank you for shopping with us, and have a great day.",
+  "I will stay on this case until it is fully resolved.",
+  "As a returning customer, you can use this coupon on your next order.",
   "I will summarize the agreed solution before we close the case.",
   "Please confirm that this solution works for you.",
   "Is there anything else I can help you with today?",
@@ -292,13 +310,21 @@ export interface PersonaTemplateBase {
   identity: string;
   preference: string;
   customerType: string;
+  /** D3：模板上的这些字段在任务规则没约束时生效 */
+  nationality?: string;
+  personality?: string;
+  emotion?: string;
+  language?: string;
 }
 
 function pickConstrained<T extends string>(
   all: readonly T[],
   pool: string[] | undefined,
   random: () => number,
+  fallback?: string,
 ): T {
+  // 规则没约束时沿用模板值（D3），模板值不合法才完全随机
+  if (!pool?.length && fallback && all.includes(fallback as T)) return fallback as T;
   const allowed = pool?.length ? all.filter((item) => pool.includes(item)) : all;
   return pick(allowed.length ? allowed : all, random);
 }
@@ -316,13 +342,17 @@ export function composePersonaWithRule(
   const template = templates.length
     ? pick(templates, random)
     : pick(personaTemplates, random);
-  const nationality = pickConstrained(NATIONALITIES, rule.nationalityPool, random);
+  const nationality = pickConstrained(NATIONALITIES, rule.nationalityPool, random, template.nationality);
   const gender: "male" | "female" = random() < 0.5 ? "male" : "female";
   const namePool = NAME_POOLS[nationality] ?? EN_POOL;
   const name = `${pick(gender === "male" ? namePool.male : namePool.female, random)} ${pick(namePool.surnames, random)}`;
+  // 语言：规则优先；否则国籍没被规则换掉时用模板语言，换掉了就按新国籍说母语
+  const templateLanguage = nationality === template.nationality && (SUPPORTED_LANGUAGES as readonly string[]).includes(template.language ?? "")
+    ? (template.language as (typeof SUPPORTED_LANGUAGES)[number])
+    : undefined;
   const language = rule.languages?.length
     ? pickConstrained(SUPPORTED_LANGUAGES, rule.languages, random)
-    : NATIVE_LANGUAGE[nationality] ?? "en-US";
+    : templateLanguage ?? NATIVE_LANGUAGE[nationality] ?? "en-US";
   return {
     id: `SNAP-${Date.now()}-${Math.floor(random() * 10000)}`,
     sourceTemplateId: template.id,
@@ -330,8 +360,8 @@ export function composePersonaWithRule(
     gender,
     nationality,
     identity: template.identity || pick(IDENTITY_POOL, random),
-    personality: pickConstrained(PERSONALITIES, rule.personalityPool, random),
-    emotion: pickConstrained(EMOTIONS, rule.emotionPool, random),
+    personality: pickConstrained(PERSONALITIES, rule.personalityPool, random, template.personality),
+    emotion: pickConstrained(EMOTIONS, rule.emotionPool, random, template.emotion),
     language,
     preference: template.preference || pick(PREFERENCE_POOL, random),
     customerType: rule.customerTypes?.length

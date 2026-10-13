@@ -7,6 +7,7 @@ import {
   SCENARIO_SCRIPT_FIELDS,
   SUPPORTED_LANGUAGES,
 } from "@cecs/contracts";
+import { ensurePersonaAvatar } from "@cecs/domain";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import { writeAudit } from "../auth-context";
@@ -63,9 +64,13 @@ export function registerCatalogRoutes(
   app.get(
     "/v1/catalog/scenarios",
     { preHandler: guard.requireRole() },
-    async () => {
+    async (request) => {
+      /* 剧本只给 AI 买家和老师看：学生请求不返回 script；taskCount = 被几个未关闭的任务使用（场景卡片显示影响面） */
+      const isStudent = request.user!.role === "student";
       const result = await db.query(
-        "select id, name, stage, objective, default_language, enabled, script from scenarios order by id",
+        `select s.id, s.name, s.stage, s.objective, s.default_language, s.enabled, s.script,
+                (select count(*) from tasks t where t.status <> 'closed' and t.scenario_ids ? s.id) as task_count
+         from scenarios s order by s.id`,
       );
       return result.rows.map((row) => ({
         id: row.id,
@@ -74,21 +79,55 @@ export function registerCatalogRoutes(
         objective: row.objective,
         defaultLanguage: row.default_language,
         enabled: row.enabled,
-        script: row.script ?? null,
+        script: isStudent ? null : row.script ?? null,
+        taskCount: Number(row.task_count),
       }));
     },
   );
 
   // 启停场景 / 修改场景剧本（J5）。两项可分别提交
-  app.patch<{ Params: { scenarioId: string }; Body: { enabled?: boolean; script?: Record<string, unknown> } }>(
+  // D6：复制一个场景再定制（内置场景本身也能改，复制是为了保留原版）
+  app.post<{ Body: { fromId?: string; name?: string } }>(
+    "/v1/catalog/scenarios",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request, reply) => {
+      const source = await db.query("select * from scenarios where id = $1", [request.body?.fromId ?? ""]);
+      const row = source.rows[0];
+      if (!row) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "要复制的场景不存在。" };
+      }
+      const name = (request.body?.name?.trim() || `${row.name}（副本）`).slice(0, 40);
+      const id = `SC-${Date.now().toString(36).toUpperCase()}`;
+      await db.query(
+        `insert into scenarios (id, name, stage, objective, default_language, enabled, script)
+         values ($1, $2, $3, $4, $5, true, $6)`,
+        [id, name, row.stage, row.objective, row.default_language, row.script ? JSON.stringify(row.script) : null],
+      );
+      await writeAudit(db, request.user!.sub, "scenario.copy", id, { from: row.id });
+      return { id, name };
+    },
+  );
+
+  app.patch<{ Params: { scenarioId: string }; Body: { enabled?: boolean; script?: Record<string, unknown>; name?: string; objective?: string } }>(
     "/v1/catalog/scenarios/:scenarioId",
     { preHandler: guard.requireRole("teacher", "admin") },
     async (request, reply) => {
       const { scenarioId } = request.params;
       const { enabled, script } = request.body ?? {};
-      if (typeof enabled !== "boolean" && script === undefined) {
+      const name = request.body?.name?.trim();
+      const objective = request.body?.objective?.trim();
+      if (typeof enabled !== "boolean" && script === undefined && name === undefined && objective === undefined) {
         reply.code(400);
-        return { code: "INVALID_INPUT", message: "缺少启用状态或剧本。" };
+        return { code: "INVALID_INPUT", message: "没有要修改的内容。" };
+      }
+      if (name !== undefined && (!name || name.length > 40)) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "场景名称 1–40 个字。" };
+      }
+      if (objective !== undefined && (!objective || objective.length > 300)) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "训练目标 1–300 个字。" };
       }
       let cleanScript: Record<string, string> | null = null;
       if (script !== undefined) {
@@ -113,9 +152,11 @@ export function registerCatalogRoutes(
       const result = await db.query(
         `update scenarios set
            enabled = coalesce($1, enabled),
-           script = case when $3 then $2::jsonb else script end
+           script = case when $3 then $2::jsonb else script end,
+           name = coalesce($5, name),
+           objective = coalesce($6, objective)
          where id = $4 returning id`,
-        [typeof enabled === "boolean" ? enabled : null, cleanScript ? JSON.stringify(cleanScript) : null, cleanScript !== null, scenarioId],
+        [typeof enabled === "boolean" ? enabled : null, cleanScript ? JSON.stringify(cleanScript) : null, cleanScript !== null, scenarioId, name ?? null, objective ?? null],
       );
       if (!result.rowCount) {
         reply.code(404);
@@ -123,6 +164,7 @@ export function registerCatalogRoutes(
       }
       if (typeof enabled === "boolean") await writeAudit(db, request.user!.sub, "scenario.toggle", scenarioId, { enabled });
       if (cleanScript) await writeAudit(db, request.user!.sub, "scenario.script_update", scenarioId);
+      if (name !== undefined || objective !== undefined) await writeAudit(db, request.user!.sub, "scenario.update", scenarioId, { name, objective });
       return { ok: true };
     },
   );
@@ -515,10 +557,17 @@ export function registerCatalogRoutes(
     "/v1/catalog/personas",
     { preHandler: guard.requireRole("teacher", "admin") },
     async () => {
+      /* conversationCount：这个画像被用来接待过几次（画像卡片底部显示） */
       const result = await db.query(
-        "select * from persona_templates order by id",
+        `select p.*, (select count(*) from conversations c where c.persona->>'sourceTemplateId' = p.id) as conversation_count
+         from persona_templates p order by p.id`,
       );
-      return result.rows.map(personaRowToJson);
+      return result.rows.map((row) => ({
+        ...personaRowToJson(row),
+        conversationCount: Number(row.conversation_count),
+        /* 画像卡片头像：按画像编号固定挑一张，同一画像每次都是同一张 */
+        avatarUrl: ensurePersonaAvatar({ sourceTemplateId: String(row.id), name: String(row.name) }, String(row.id)).avatarUrl,
+      }));
     },
   );
 

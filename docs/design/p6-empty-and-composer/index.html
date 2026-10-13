@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>空状态与指导输入</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+:root { --doc-bg:#e9edf3; --doc-ink:#161c26; --doc-ink-2:#465163; --doc-line:#d6dce5; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--doc-bg); color: var(--doc-ink); font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 24px; font-weight: 700; }
+.doc h2 { margin: 64px 0 6px; font-size: 20px; font-weight: 700; }
+.doc .lede { margin: 0 0 20px; color: var(--doc-ink-2); max-width: 980px; }
+.diag { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0 8px; }
+.diag div { background: #fff; border: 1px solid var(--doc-line); border-radius: 10px; padding: 14px 16px; font-size: 13px; color: var(--doc-ink-2); }
+.diag b { display: block; margin-bottom: 4px; color: var(--doc-ink); font-size: 14px; }
+.diag .fix { color: #174aa8; }
+.diag .api { display: inline-block; margin-top: 6px; padding: 1px 6px; border-radius: 4px; background: #fdf0dc; color: #9a5200; font-size: 12px; }
+.cap { display: flex; justify-content: space-between; gap: 24px; margin: 22px 0 8px; font-size: 13px; color: var(--doc-ink-2); }
+.cap b { color: var(--doc-ink); white-space: nowrap; }
+.frame { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid var(--doc-line); box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); background: #fff; }
+.screen { position: absolute; top: 0; left: 0; width: 1440px; height: 900px; transform-origin: 0 0; overflow: hidden; }
+.before { width: 100%; display: block; border-radius: 10px; border: 1px solid var(--doc-line); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.trio-b { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+figure { margin: 0; }
+figcaption { font-size: 12px; color: var(--doc-ink-2); margin-top: 6px; }
+
+/* ===== 织 UI 令牌（同 apps/portal/src/styles/tokens.css） ===== */
+.s { --canvas:#f4f6f9; --surface:#fff; --surface-2:#f8f9fb; --hover:#eef2f7; --line:#e3e7ee; --line-2:#c8cfda; --ink:#161c26; --ink-2:#465163; --ink-3:#5e6a7b; --ink-4:#9aa3b0;
+  --brand:#1d5fd1; --brand-soft:#e8effc; --brand-ink:#174aa8; --ok:#1a7445; --ok-wash:#e3f4ea; --warn:#9a5200; --warn-wash:#fdf0dc; --bad:#b8302a; --bad-wash:#fbe8e6;
+  --c1:#1d5fd1; --c1s:#e8effc; --c2:#0a7a70; --c2s:#e0f3f0; --c3:#8c5b0f; --c3s:#fbefdc; --c4:#6c4fc9; --c4s:#eeeafb;
+  background: var(--surface); color: var(--ink); font: 400 14px/22px Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.s svg { width: 18px; height: 18px; stroke-width: 1.75; flex: none; }
+.num { font-variant-numeric: tabular-nums; }
+.app { position: relative; display: grid; grid-template-columns: 232px 1fr; height: 100%; }
+.side { display: flex; flex-direction: column; padding: 14px 12px; border-right: 1px solid var(--line); background: var(--surface); }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 18px; font-size: 14px; font-weight: 700; }
+.mark { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 6px; background: var(--brand); color: #fff; }
+.mark svg { width: 16px; height: 16px; }
+.nav { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 6px; color: var(--ink-2); font-size: 14px; }
+.nav svg { color: var(--ink-3); }
+.nav.on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.nav.on svg { color: var(--brand-ink); }
+.nav .badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.grow { flex: 1; }
+.foot { border-top: 1px solid var(--line); padding-top: 8px; }
+.main { display: flex; flex-direction: column; min-width: 0; background: var(--canvas); }
+.head { display: flex; align-items: flex-end; gap: 28px; height: 56px; padding: 0 40px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; }
+.head h1 { margin: 0 0 13px; font-size: 20px; font-weight: 700; white-space: nowrap; }
+.head .tabs { display: flex; gap: 24px; align-self: stretch; align-items: flex-end; }
+.head .tab { padding-bottom: 15px; border-bottom: 2px solid transparent; color: var(--ink-2); font-size: 14px; white-space: nowrap; }
+.head .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--brand); }
+.head .tab .n { color: var(--ink-3); font-weight: 400; margin-left: 4px; }
+.head .tab.on .n { color: var(--brand-ink); }
+.head .right { margin-left: auto; display: flex; align-items: center; gap: 14px; margin-bottom: 13px; color: var(--ink-2); }
+.av { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--hover); font-size: 12px; font-weight: 700; color: var(--ink-2); flex: none; }
+.body { flex: 1; overflow: hidden; padding: 28px 40px; }
+.body.flush { padding: 0; }
+.wrap { max-width: 1120px; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--line-2); background: #fff; color: var(--ink); white-space: nowrap; font-size: 14px; font-weight: 500; }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 13px; }
+.btn svg { width: 16px; height: 16px; }
+.search { display: flex; align-items: center; gap: 8px; width: 260px; height: 34px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 6px; background: #fff; color: var(--ink-3); }
+.search svg { width: 15px; height: 15px; }
+.bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.bar-row .r { margin-left: auto; display: flex; gap: 8px; }
+.chips { display: flex; gap: 6px; }
+.chip { height: 28px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--line-2); background: #fff; color: var(--ink-2); font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+.chip.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-ink); font-weight: 600; }
+.chip i { font-style: normal; opacity: .7; }
+.tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; font-size: 12px; font-weight: 500; background: var(--surface-2); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
+.tag.c1 { background: var(--c1s); color: var(--c1); box-shadow: none; } .tag.c2 { background: var(--c2s); color: var(--c2); box-shadow: none; }
+.tag.c3 { background: var(--c3s); color: var(--c3); box-shadow: none; } .tag.c4 { background: var(--c4s); color: var(--c4); box-shadow: none; }
+.tag.bad { background: var(--bad-wash); color: var(--bad); box-shadow: none; } .tag.warn { background: var(--warn-wash); color: var(--warn); box-shadow: none; }
+.tag.ok { background: var(--ok-wash); color: var(--ok); box-shadow: none; } .tag.brand { background: var(--brand-soft); color: var(--brand-ink); box-shadow: none; }
+.sw { position: relative; width: 36px; height: 20px; border-radius: 10px; background: var(--line-2); flex: none; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.sw.on { background: var(--brand); } .sw.on::after { left: 18px; }
+.sw.sm { width: 30px; height: 17px; } .sw.sm::after { width: 13px; height: 13px; } .sw.sm.on::after { left: 15px; }
+.board { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.board + .board { margin-top: 16px; }
+.bhead { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+.bhead h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.bhead .n { color: var(--ink-3); font-size: 13px; }
+.bhead .end { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.muted { color: var(--ink-3); }
+.small { font-size: 13px; }
+.cap-s { font-size: 12px; color: var(--ink-3); font-weight: 500; }
+
+/* ===== 通知公告 ===== */
+.nt-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.nt { display: grid; grid-template-columns: 4px minmax(0, 1fr) 180px 28px; gap: 18px; padding: 18px 20px 18px 0; border-top: 1px solid var(--line); }
+.nt:first-of-type { border-top: 0; }
+.nt .bar { border-radius: 0 3px 3px 0; background: var(--brand); }
+.nt.old .bar { background: var(--line-2); }
+.nt h4 { margin: 0; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.nt p { margin: 4px 0 8px; color: var(--ink-2); font-size: 13px; line-height: 20px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.nt .meta { font-size: 12px; color: var(--ink-3); display: flex; gap: 14px; }
+.nt .meta b { font-weight: 600; color: var(--warn); }
+.read { display: grid; gap: 6px; align-content: center; }
+.read .top { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-3); }
+.read .top b { font-size: 16px; color: var(--ink); font-weight: 700; }
+.track { height: 6px; border-radius: 999px; background: var(--hover); overflow: hidden; }
+.track i { display: block; height: 100%; border-radius: 999px; background: var(--brand); }
+.nt.old h4, .nt.old p { color: var(--ink-3); }
+.fold { display: flex; align-items: center; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); font-size: 13px; border-radius: 0 0 12px 12px; }
+.fold svg { width: 16px; height: 16px; }
+.preview-card { padding: 18px 20px; }
+.preview-card h4 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.preview-card p { margin: 0 0 14px; font-size: 13px; color: var(--ink-2); }
+.client { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fbfcfd; }
+.client .ctop { height: 22px; background: #eef1f5; display: flex; align-items: center; gap: 4px; padding: 0 8px; }
+.client .ctop i { width: 6px; height: 6px; border-radius: 50%; background: #c8cfda; }
+.client .banner { display: flex; gap: 8px; align-items: flex-start; margin: 8px; padding: 8px 10px; border-radius: 8px; background: var(--brand-soft); color: var(--brand-ink); font-size: 12px; line-height: 18px; }
+.client .banner svg { width: 14px; height: 14px; margin-top: 2px; }
+.client .ghostlines { padding: 4px 10px 12px; display: grid; gap: 6px; }
+.client .ghostlines span { height: 8px; border-radius: 4px; background: #e9edf2; }
+.tips { padding: 14px 20px 18px; border-top: 1px solid var(--line); display: grid; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.tips div { display: flex; gap: 8px; } .tips svg { width: 16px; height: 16px; color: var(--ink-3); margin-top: 3px; }
+.empty-big { display: grid; grid-template-columns: 1fr 380px; gap: 40px; align-items: center; padding: 48px 56px; }
+.empty-big .ic { width: 52px; height: 52px; border-radius: 14px; background: var(--brand-soft); color: var(--brand); display: flex; align-items: center; justify-content: center; margin-bottom: 18px; }
+.empty-big .ic svg { width: 26px; height: 26px; }
+.empty-big h3 { margin: 0 0 8px; font-size: 22px; font-weight: 700; }
+.empty-big p { margin: 0 0 20px; color: var(--ink-2); max-width: 460px; }
+.tpl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 28px; }
+.tpl div { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--surface-2); }
+.tpl b { display: block; font-size: 13px; } .tpl span { font-size: 12px; color: var(--ink-3); }
+.history { margin-top: 16px; display: flex; align-items: center; gap: 10px; padding: 14px 20px; color: var(--ink-2); font-size: 13px; }
+.history svg { width: 16px; height: 16px; color: var(--ink-3); }
+.history a { margin-left: auto; color: var(--brand-ink); font-weight: 500; }
+/* 发布抽屉 */
+.scrim { position: absolute; inset: 0; background: rgba(14,20,32,.42); }
+.drawer { position: absolute; top: 0; right: 0; bottom: 0; width: 880px; background: #fff; box-shadow: 0 24px 64px rgba(16,24,40,.25); display: flex; flex-direction: column; }
+.drawer .dh { display: flex; align-items: center; height: 64px; padding: 0 28px; border-bottom: 1px solid var(--line); }
+.drawer .dh h3 { margin: 0; font-size: 18px; font-weight: 600; }
+.drawer .dh svg { margin-left: auto; color: var(--ink-3); }
+.drawer .db { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+.drawer .form { padding: 24px 28px; display: grid; gap: 18px; align-content: start; }
+.field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.field .in { height: 36px; border: 1px solid var(--line-2); border-radius: 6px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; }
+.field .in.focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.field .ta { min-height: 120px; border: 1px solid var(--line-2); border-radius: 6px; padding: 10px 12px; line-height: 22px; }
+.field .hint { font-size: 12px; color: var(--ink-3); margin-top: 6px; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); }
+.seg span { height: 28px; padding: 0 12px; display: inline-flex; align-items: center; border-radius: 4px; font-size: 13px; color: var(--ink-2); }
+.seg span.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.1); }
+.drawer .pv { background: var(--surface-2); border-left: 1px solid var(--line); padding: 24px; }
+.drawer .df { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 28px; border-top: 1px solid var(--line); }
+
+/* ===== 实训跟踪：实时监控 ===== */
+.mon { display: grid; grid-template-columns: 320px minmax(0, 1fr) 300px; height: 100%; background: var(--surface); }
+.q { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
+.q-top { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink-2); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px var(--ok-wash); flex: none; }
+.q-top .r { margin-left: auto; color: var(--ink-3); font-size: 12px; }
+.grp { display: flex; align-items: center; gap: 8px; padding: 12px 16px 6px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.grp .c { font-weight: 500; color: var(--ink-3); }
+.grp.bad { color: var(--bad); }
+.qi { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px; margin: 2px 8px; padding: 10px 8px; border-radius: 8px; }
+.qi.on { background: var(--brand-soft); box-shadow: inset 3px 0 0 var(--brand); }
+.qi img, .qi .ph { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+.qi .l1 { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; }
+.qi .l1 span { font-weight: 400; color: var(--ink-3); font-size: 12px; }
+.qi .l2 { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qi .side-r { text-align: right; display: grid; gap: 2px; align-content: start; }
+.qi .wait { font-size: 12px; font-weight: 700; color: var(--ink-2); }
+.qi .wait.bad { color: var(--bad); } .qi .wait.warn { color: var(--warn); }
+.qi .sc { font-size: 12px; color: var(--ink-3); }
+.qi .sc b { font-size: 14px; color: var(--ink); font-weight: 700; }
+.qi .sc b.bad { color: var(--bad); }
+.q-fold { margin: 8px 16px 14px; padding: 10px 12px; border: 1px dashed var(--line-2); border-radius: 8px; font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.q-fold svg { width: 14px; height: 14px; }
+.conv { display: flex; flex-direction: column; min-width: 0; background: var(--canvas); }
+.conv-h { display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 24px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.conv-h b { font-size: 15px; }
+.conv-h .who { font-size: 12px; color: var(--ink-3); }
+.conv-h .state { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.msgs { flex: 1; padding: 20px 28px; display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+.day { align-self: center; font-size: 12px; color: var(--ink-3); }
+.m { display: flex; gap: 10px; max-width: 72%; }
+.m img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex: none; }
+.m .bub { padding: 10px 14px; border-radius: 4px 14px 14px 14px; background: #fff; border: 1px solid var(--line); line-height: 21px; }
+.m .t { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+.m .tr { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--ink-3); }
+.m.me { align-self: flex-end; flex-direction: row-reverse; }
+.m.me .bub { background: var(--brand); border-color: var(--brand); color: #fff; border-radius: 14px 4px 14px 14px; }
+.m.me .t { text-align: right; }
+.m .stu { width: 30px; height: 30px; border-radius: 50%; background: var(--c4s); color: var(--c4); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex: none; }
+.guide { align-self: center; display: flex; gap: 8px; align-items: center; padding: 6px 12px; border-radius: 999px; background: var(--warn-wash); color: var(--warn); font-size: 12px; }
+.guide svg { width: 14px; height: 14px; }
+.typing { align-self: flex-start; margin-left: 40px; padding: 8px 12px; border-radius: 12px; background: #fff; border: 1px solid var(--line); color: var(--ink-3); font-size: 12px; }
+.compose { padding: 12px 20px 16px; border-top: 1px solid var(--line); background: var(--surface); }
+.compose .presets { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.compose .presets span { height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--line); font-size: 12px; color: var(--ink-2); display: inline-flex; align-items: center; background: var(--surface-2); }
+.compose .row { display: flex; gap: 8px; }
+.compose .in { flex: 1; height: 38px; border: 1px solid var(--line-2); border-radius: 8px; display: flex; align-items: center; padding: 0 12px; color: var(--ink-3); font-size: 13px; }
+.panel { border-left: 1px solid var(--line); background: var(--surface); overflow: hidden; }
+.pb { padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.pb h5 { margin: 0 0 12px; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.figs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; }
+.figs small { display: block; font-size: 12px; color: var(--ink-3); }
+.figs b { font-size: 24px; font-weight: 700; line-height: 30px; }
+.figs b.bad { color: var(--bad); } .figs b.warn { color: var(--warn); }
+.figs b small { display: inline; font-size: 12px; font-weight: 500; margin-left: 2px; }
+.spark { height: 40px; margin-top: 8px; display: block; }
+.buyer { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+.buyer img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+.buyer b { display: block; font-size: 15px; }
+.buyer span { font-size: 12px; color: var(--ink-3); }
+.kv { display: grid; grid-template-columns: 64px 1fr; gap: 6px 10px; font-size: 13px; }
+.kv dt { color: var(--ink-3); } .kv dd { margin: 0; }
+.goal { font-size: 13px; line-height: 21px; color: var(--ink-2); }
+.goal b { color: var(--ink); font-weight: 600; }
+.lock { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--ink-3); font-weight: 500; margin-left: 6px; }
+.lock svg { width: 12px; height: 12px; }
+/* 空：没人在接待 */
+.mon-empty { display: grid; grid-template-columns: 1fr; place-items: center; height: 100%; background: var(--canvas); }
+.me-box { width: 640px; text-align: center; }
+.me-box .ic { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 16px; background: var(--brand-soft); color: var(--brand); display: flex; align-items: center; justify-content: center; }
+.me-box .ic svg { width: 28px; height: 28px; }
+.me-box h3 { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
+.me-box p { margin: 0 0 24px; color: var(--ink-2); }
+.today { display: grid; grid-template-columns: repeat(3, 1fr); text-align: left; }
+.today > div { padding: 16px 20px; border-left: 1px solid var(--line); }
+.today > div:first-child { border-left: 0; }
+.today small { display: block; font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.today b { font-size: 24px; font-weight: 700; }
+.today a { display: block; margin-top: 4px; font-size: 13px; color: var(--brand-ink); font-weight: 500; }
+.today .bad { color: var(--bad); }
+
+/* ===== 回放与评分 ===== */
+.rv { display: grid; grid-template-columns: 64px minmax(0, 1fr) 150px 110px 92px; gap: 18px; align-items: center; padding: 14px 20px; border-top: 1px solid var(--line); }
+.rv.th { padding: 10px 20px; background: var(--surface-2); border-top: 0; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.rv.th + .rv { border-top: 0; }
+.rv .score { width: 52px; height: 52px; border-radius: 12px; background: var(--surface-2); display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.rv .score b { font-size: 22px; font-weight: 700; }
+.rv .score small { margin-top: 3px; font-size: 10px; color: var(--ink-3); font-weight: 600; }
+.rv .score.bad { background: var(--bad-wash); } .rv .score.bad b { color: var(--bad); }
+.rv .score.good { background: var(--ok-wash); } .rv .score.good b { color: var(--ok); }
+.rv .l1 { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.rv .l2 { font-size: 13px; color: var(--ink-3); }
+.rv .cm { font-size: 13px; color: var(--ink-2); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dimmini { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; align-items: end; height: 30px; }
+.dimmini i { display: block; border-radius: 2px 2px 0 0; background: var(--brand); opacity: .85; }
+.dimmini i.low { background: var(--bad); }
+.rv .tm { font-size: 13px; color: var(--ink-2); }
+
+/* ===== 场景配置 ===== */
+.cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.col-h { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.col-h .n { font-size: 12px; color: var(--ink-3); }
+.col-h .ic { margin-left: auto; color: var(--ink-3); }
+.col-h .ic svg { width: 16px; height: 16px; }
+.sc-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: 0 1px 2px rgba(16,24,40,.04); display: grid; gap: 10px; }
+.sc-card + .sc-card { margin-top: 12px; }
+.sc-card .t { display: flex; align-items: flex-start; gap: 10px; }
+.sc-card .t b { font-size: 15px; font-weight: 600; line-height: 22px; flex: 1; }
+.sc-card p { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2); min-height: 40px; }
+.sc-card .ft { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+.sc-card .ft span { display: inline-flex; align-items: center; gap: 4px; }
+.sc-card .ft svg { width: 14px; height: 14px; }
+.sc-card .ft .ok { color: var(--ok); } .sc-card .ft .warn { color: var(--warn); font-weight: 600; }
+.sc-card.off { background: var(--surface-2); } .sc-card.off b, .sc-card.off p { color: var(--ink-3); }
+.sc-add { margin-top: 12px; height: 44px; border: 1px dashed var(--line-2); border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--ink-3); font-size: 13px; }
+.sc-add svg { width: 15px; height: 15px; }
+.legend { display: flex; gap: 18px; font-size: 12px; color: var(--ink-3); margin-left: 4px; }
+/* 画像卡片 */
+.pgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.pc { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 12px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.pc .top { display: flex; gap: 12px; align-items: center; }
+.pc img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
+.pc .ph { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 17px; }
+.pc b { display: block; font-size: 15px; }
+.pc .sub { font-size: 12px; color: var(--ink-3); }
+.pc .sw { margin-left: auto; align-self: flex-start; }
+.pc .traits { display: flex; flex-wrap: wrap; gap: 6px; }
+.pc .ln { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-3); padding-top: 10px; border-top: 1px solid var(--line); }
+.pc.off { opacity: .55; }
+/* 商品卡片 */
+.ggrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.gc { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.gc .img { height: 150px; display: flex; align-items: center; justify-content: center; position: relative; }
+.gc .img img { width: 100%; height: 100%; object-fit: cover; }
+.gc .img svg { width: 40px; height: 40px; stroke-width: 1.3; }
+.gc .img .st { position: absolute; top: 10px; left: 10px; }
+.gc .bd { padding: 12px 14px 14px; display: grid; gap: 4px; }
+.gc b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc .spec { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc .row { display: flex; align-items: baseline; justify-content: space-between; margin-top: 6px; }
+.gc .price { font-size: 18px; font-weight: 700; }
+.gc .stock { font-size: 12px; color: var(--ink-3); }
+.gc .stock.warn { color: var(--warn); font-weight: 600; }
+</style>
+</head>
+<body>
+<style>
+/* ===== 本稿新增 ===== */
+.greet { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+.greet h2 { margin: 0; font-size: 26px; font-weight: 700; }
+.greet span { color: var(--ink-2); font-size: 13px; }
+.todo { display: grid; grid-template-columns: repeat(3, 1fr); }
+.todo > div { display: flex; gap: 14px; padding: 18px 20px; border-left: 1px solid var(--line); }
+.todo > div:first-child { border-left: 0; }
+.todo .big { min-width: 44px; font-size: 36px; font-weight: 700; line-height: 1; letter-spacing: -.02em; }
+.todo .big.zero { color: #c3cad5; }
+.todo b { display: block; font-size: 14px; font-weight: 600; }
+.todo p { margin: 4px 0 8px; font-size: 13px; color: var(--ink-2); }
+.todo .ok { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ok); font-weight: 500; }
+.todo .ok svg { width: 14px; height: 14px; }
+.todo a { font-size: 13px; color: var(--brand-ink); font-weight: 500; }
+.trow { display: grid; grid-template-columns: minmax(0, 1fr) 220px 72px 110px; align-items: center; gap: 20px; padding: 14px 20px; border-top: 1px solid var(--line); }
+.bhead + .trow { border-top: 0; }
+.trow .name { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.trow .meta { font-size: 13px; color: var(--ink-3); }
+.prog { display: grid; gap: 6px; }
+.prog .top { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-2); }
+.prog .top b { color: var(--ink); }
+.trow .score { text-align: right; color: var(--ink-3); font-size: 13px; }
+.trow .due { text-align: right; font-size: 13px; color: var(--ink-2); }
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; margin-top: 16px; }
+.duo > .board + .board { margin-top: 0; }
+/* 图表的“空”状态：骨架照常画，数据位置用虚线和浅色占位 */
+.chart { position: relative; padding: 18px 20px 14px; }
+.dist { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; align-items: end; height: 150px; border-bottom: 1px solid var(--line); }
+.dist div { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%; font-size: 12px; color: var(--ink-3); }
+.dist i { width: 100%; max-width: 48px; border-radius: 4px 4px 0 0; background: var(--brand); }
+.dist.empty i { height: 100%; background: repeating-linear-gradient(-45deg, #f1f4f8 0 6px, #e9edf3 6px 12px); border: 1px dashed #d3d9e2; border-bottom: 0; }
+.axis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; padding-top: 6px; font-size: 12px; color: var(--ink-3); text-align: center; }
+.dims { display: grid; gap: 12px; padding: 18px 20px; }
+.dim { display: grid; grid-template-columns: 96px minmax(0, 1fr) 40px; gap: 12px; align-items: center; font-size: 13px; }
+.dim .track { height: 8px; border-radius: 999px; background: var(--hover); }
+.dim .track.empty { background: repeating-linear-gradient(90deg, #e3e8ef 0 6px, transparent 6px 10px); }
+.dim strong { text-align: right; color: var(--ink-3); font-weight: 500; }
+.overlay-note { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -60%); display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 18px; border-radius: 10px; background: rgba(255,255,255,.94); box-shadow: 0 4px 16px rgba(16,24,40,.08); border: 1px solid var(--line); text-align: center; white-space: nowrap; }
+.overlay-note b { font-size: 14px; }
+.overlay-note span { font-size: 12px; color: var(--ink-3); }
+.overlay-note a { font-size: 13px; color: var(--brand-ink); font-weight: 500; }
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); }
+.kpis > div { padding: 16px 20px; border-left: 1px solid var(--line); }
+.kpis > div:first-child { border-left: 0; }
+.kpis small { display: block; margin-bottom: 4px; font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.kpis b { font-size: 24px; font-weight: 700; }
+.kpis b.dash { color: #c3cad5; }
+.kpis .hint { display: block; margin-top: 2px; font-size: 12px; color: var(--ink-3); }
+.attn { display: grid; grid-template-columns: repeat(3, 1fr); }
+.attn > div { padding: 16px 20px; border-left: 1px solid var(--line); }
+.attn > div:first-child { border-left: 0; }
+.attn h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.attn h4 i { width: 7px; height: 7px; border-radius: 50%; background: var(--bad); }
+.attn h4 i.w { background: var(--warn); }
+.attn .zero { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ok); }
+.attn .zero svg { width: 14px; height: 14px; }
+.attn ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 13px; }
+.attn li { display: flex; justify-content: space-between; color: var(--ink); }
+.attn li span:last-child { color: var(--ink-3); }
+/* 需要关注的学生：上面三格是原因（可点筛选），下面是统一的学生名单 */
+.at-cells { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line); }
+.at-cell { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; padding: 16px 20px; border-left: 1px solid var(--line); }
+.at-cell:first-child { border-left: 0; }
+.at-cell .n { grid-row: span 2; font-size: 32px; font-weight: 700; line-height: 1; letter-spacing: -.02em; }
+.at-cell .n.bad { color: var(--bad); } .at-cell .n.warn { color: var(--warn); } .at-cell .n.zero { color: #c3cad5; }
+.at-cell b { font-size: 14px; font-weight: 600; }
+.at-cell span { font-size: 12px; color: var(--ink-3); }
+.at-cell .ok { display: inline-flex; align-items: center; gap: 4px; color: var(--ok); font-weight: 500; }
+.at-cell .ok svg { width: 13px; height: 13px; }
+.at-cell.on { background: var(--brand-soft); }
+.at-cell.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--brand); }
+.at-row { display: grid; grid-template-columns: minmax(0, 1.2fr) 120px minmax(0, 1.6fr) 110px 150px; gap: 16px; align-items: center; padding: 12px 20px; border-top: 1px solid var(--line); font-size: 13px; }
+.at-row.head { padding: 9px 20px; border-top: 0; background: var(--surface-2); font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.at-row.head + .at-row { border-top: 0; }
+.at-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.at-who .av2 { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex: none; }
+.at-who b { display: block; font-size: 14px; }
+.at-who small { font-size: 12px; color: var(--ink-3); }
+.at-detail { color: var(--ink-2); }
+.at-detail b { font-weight: 700; }
+.at-detail b.bad { color: var(--bad); }
+.at-last { color: var(--ink-2); }
+.at-last.warn { color: var(--warn); font-weight: 600; }
+.at-ops { display: flex; gap: 6px; justify-content: flex-end; }
+.at-more-row { display: flex; justify-content: space-between; align-items: center; color: var(--ink-3) !important; font-weight: 400 !important; }
+.at-more-row .lnk { display: inline-flex; align-items: center; gap: 4px; color: var(--brand-ink); font-weight: 500; }
+.at-more-row .lnk svg { width: 14px; height: 14px; }
+.app { position: relative; }
+.at-more { padding: 10px 20px; border-top: 1px solid var(--line); font-size: 13px; color: var(--brand-ink); font-weight: 500; background: var(--surface-2); border-radius: 0 0 12px 12px; }
+table.rank { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rank th { padding: 10px 20px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 500; color: var(--ink-3); text-align: left; }
+.rank td { padding: 12px 20px; border-top: 1px solid var(--line); color: var(--ink-3); }
+.rank tr.ghost td span { display: inline-block; height: 8px; border-radius: 4px; background: #eef1f5; }
+.rank-empty { position: relative; }
+.rank-empty .overlay-note { top: 58%; }
+/* 指导输入区 */
+.mon { display: grid; grid-template-columns: 320px minmax(0, 1fr) 300px; height: 100%; }
+.q { border-right: 1px solid var(--line); background: #fff; }
+.q-top { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink-2); }
+.q-top .r { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px var(--ok-wash); }
+.grp { padding: 12px 16px 6px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.grp span { font-weight: 500; color: var(--ink-3); margin-left: 6px; }
+.qi { display: grid; grid-template-columns: 36px minmax(0,1fr) auto; gap: 10px; margin: 2px 8px; padding: 10px 8px; border-radius: 8px; }
+.qi.on { background: var(--brand-soft); box-shadow: inset 3px 0 0 var(--brand); }
+.qi img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+.qi b { display: block; font-size: 14px; }
+.qi .m { font-size: 12px; color: var(--ink-3); }
+.qi .r { display: grid; gap: 2px; text-align: right; font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.qi > div:nth-child(2) { min-width: 0; }
+.qi .m { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.qi .r b { font-size: 12px; }
+.qi .r b.bad { color: var(--bad); }
+.conv { display: flex; flex-direction: column; background: var(--canvas); min-width: 0; }
+.conv-h { display: flex; align-items: center; gap: 12px; height: 60px; padding: 0 24px; border-bottom: 1px solid var(--line); background: #fff; }
+.conv-h span { font-size: 12px; color: var(--ink-3); }
+.conv-h .tag { margin-left: auto; }
+.msgs { flex: 1; padding: 20px 28px; display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+.msg { display: flex; gap: 10px; max-width: 72%; }
+.msg img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex: none; }
+.msg p { margin: 0; padding: 10px 14px; border-radius: 4px 14px 14px 14px; background: #fff; border: 1px solid var(--line); line-height: 21px; }
+.msg small { display: block; margin-top: 4px; font-size: 11px; color: var(--ink-3); }
+.msg.me { align-self: flex-end; flex-direction: row-reverse; }
+.msg.me p { background: var(--brand); border-color: var(--brand); color: #fff; border-radius: 14px 4px 14px 14px; }
+.msg.me small { text-align: right; }
+.stu { width: 30px; height: 30px; border-radius: 50%; background: var(--c4s); color: var(--c4); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex: none; }
+.guide-pill { align-self: center; display: flex; gap: 8px; align-items: center; padding: 6px 12px; border-radius: 999px; background: var(--warn-wash); color: var(--warn); font-size: 12px; }
+.guide-pill svg { width: 14px; height: 14px; }
+/* 新的指导输入：一个整体的输入框，和右侧面板底部对齐 */
+.composer { margin: 0 20px 16px; border: 1px solid var(--line-2); border-radius: 12px; background: #fff; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.composer.focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.composer .who { display: flex; align-items: center; gap: 8px; padding: 10px 14px 0; font-size: 12px; color: var(--ink-3); }
+.composer .who svg { width: 14px; height: 14px; color: var(--warn); }
+.composer .who b { color: var(--ink-2); font-weight: 600; }
+.composer .ta { min-height: 52px; padding: 8px 14px; color: var(--ink-3); line-height: 22px; }
+.composer .ta.filled { color: var(--ink); }
+.composer .bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px 10px 14px; }
+.composer .quick { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface-2); font-size: 12px; color: var(--ink-2); }
+.composer .quick svg { width: 14px; height: 14px; }
+.composer .keys { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.composer .send { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border-radius: 8px; background: var(--brand); color: #fff; font-size: 13px; font-weight: 600; }
+.composer .send.off { background: var(--hover); color: var(--ink-4); }
+.composer .send svg { width: 15px; height: 15px; }
+.pop { position: absolute; left: 20px; bottom: 150px; width: 360px; padding: 6px; border-radius: 10px; background: #fff; border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(16,24,40,.14); }
+.pop .h { padding: 6px 10px; font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.pop div.i { padding: 8px 10px; border-radius: 6px; font-size: 13px; }
+.pop div.i.on { background: var(--brand-soft); color: var(--brand-ink); }
+.pop div.i small { display: block; font-size: 12px; color: var(--ink-3); }
+.away-note { display: flex; align-items: center; gap: 8px; margin: 0 20px 8px; padding: 8px 12px; border-radius: 8px; background: var(--warn-wash); color: var(--warn); font-size: 12px; }
+.away-note svg { width: 14px; height: 14px; }
+.panel { border-left: 1px solid var(--line); background: #fff; display: flex; flex-direction: column; }
+.pb { padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.pb h5 { margin: 0 0 12px; font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.figs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; }
+.figs small { display: block; font-size: 12px; color: var(--ink-3); }
+.figs b { font-size: 24px; font-weight: 700; }
+.figs b.bad { color: var(--bad); }
+.figs b small { display: inline; font-size: 12px; font-weight: 500; }
+.kv { display: grid; grid-template-columns: 64px 1fr; gap: 8px 10px; font-size: 13px; margin: 0; }
+.kv dt { color: var(--ink-3); } .kv dd { margin: 0; }
+.goal p { margin: 0 0 6px; font-size: 13px; line-height: 21px; color: var(--ink-2); }
+.goal b { color: var(--ink); }
+.cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.cmp .frame { height: auto !important; }
+</style>
+
+<div class="doc">
+  <h1>教师端：没数据时也画出仪表盘 · 指导输入框重做</h1>
+  <p class="lede">两处改动。第一，数据总览、考核报表等页面在没有数据时，现在只剩一句灰字，老师看不出这一页将来是什么样、要等什么才会有数。改成“骨架照常画、数据位置留出占位、旁边写清还差什么”。第二，实时监控底部的指导输入区松散：快捷语占两行、输入框和发送按钮是分开的两样东西、学生暂离时照样能发却没有提示。示例数据按 2 人的开发班级编（和你现在看到的一致）。</p>
+
+  <div class="diag">
+    <div><b>1. 待办区没数据时只剩一句话</b>“现在没有要你处理的事……”一行灰字，和有待办时完全是两张脸，老师每天打开总览，看不到自己熟悉的三个格子。<br><span class="fix">改：三个格子永远在。数字是 0 时变成浅灰色，下面写“都复核完了”“没人卡住”“没有快截止的任务”，配一个绿色小勾。</span></div>
+    <div><b>2. 成绩与能力没数据时只剩一句话</b>老师不知道这里将来会有哪两张图，也不知道“还差什么”才会出现。<br><span class="fix">改：成绩分布和六项能力两张图照常画：坐标轴、分数段、六项名称都在，柱子和进度条用斜纹 / 虚线占位；中间一个小提示卡写“还没有评分 · 学生完成第一次接待后出现”，并给出“去看任务”。</span></div>
+    <div><b>3. 考核报表同样的问题</b>四个数字写“暂无”，下面整块变成一句话，排名表不见了。<br><span class="fix">改：四个数字用浅灰色的“—”，下面写一行说明（“2 人里 0 人有成绩”）；“需要关注的学生”三栏照常显示，没有人的那栏写“没有”并配绿勾；成绩分布、六项能力、排名表都画骨架加提示卡。</span></div>
+    <div><b>3b. “需要关注的学生”只是三列名字</b>三栏各自一小块，人数藏在标题里；只有名字和一句短语，看不出差在哪、多久没练；看到了也没法直接做什么。没人的栏空着一大块。<br><span class="fix">改：上面三格放原因和大数字（0 变浅灰 + “没有”），点格子筛选；下面一张统一名单：学生、原因标签、具体情况（几分、最弱哪项、退步多少、练过几次）、最近练习（7 天以上标橙）、操作（看记录；从没登录的给“重置密码”）。</span></div>
+    <div><b>4. 指导输入区松散</b>四个快捷语占了两行；输入框只有一行，长一点的指导看不全；发送按钮离输入框有一段距离，禁用时是一块发白的蓝色；整块的上边线和右侧面板对不齐，右下角空出一块。<br><span class="fix">改：做成一个整体的输入框（像聊天软件）：顶部一行写“发给张三 · 只有学生能看到”，中间是多行输入，底部左边是“常用指导”按钮（点开是列表），右边是“Enter 发送”和发送按钮。快捷语收进菜单，不再平铺。</span></div>
+    <div><b>5. 学生暂离时照样能发，没有提示</b>学生已经 14 小时没动，老师发指导学生也看不到，但界面上没说。<br><span class="fix">改：会话暂离时，输入框上方加一条橙色提示“张三已暂离 14 小时，指导会在他回来后看到”；会话已结束时输入框换成“这次接待已结束，去回放与评分复核”。</span></div>
+    <div><b>6. 这条规则要改进经验库</b>之前写的是“没数据的模块收起成一句话”，这次你明确说不要这样。<br><span class="fix">改：经验库里换成“仪表盘和图表没数据时画骨架 + 占位 + 提示卡，不收成一句话；只有列表类（任务、公告）才用一句话 + 按钮的空状态”。</span></div>
+  </div>
+
+  <h2>数据总览</h2>
+  <div class="pair">
+    <figure><img class="before" src="assets/48.png" alt=""><figcaption>现在：待办区和成绩与能力在没数据时都只剩一句话</figcaption></figure>
+    <div></div>
+  </div>
+  <div class="cap"><b>改后 · 数据总览（有任务，但还没有评分）</b><span>三个待办格子永远在，0 变浅灰并写明“都处理完了”；成绩分布和六项能力画出骨架和占位，中间提示卡说清还差什么</span></div>
+  <div class="frame"><div class="screen s" data-tpl="overview"></div></div>
+
+  <h2>考核报表</h2>
+  <div class="pair">
+    <figure><img class="before" src="assets/reports.png" alt=""><figcaption>现在：四个“暂无”，下面整块是一句话，排名表不见了</figcaption></figure>
+    <div></div>
+  </div>
+  <div class="cap"><b>改后 · 考核报表（还没有评分）</b><span>页面结构和有数据时完全一样，只是数字是“—”、图表是占位；“需要关注”照常可用（谁还没有成绩）</span></div>
+  <div class="frame"><div class="screen s" data-tpl="reports"></div></div>
+  <div class="cap"><b>改后 · 需要关注的学生（有数据时）</b><span>整页画全（往下是成绩分布、六项能力、排名）。名单最多显示 5 人，按严重程度排序，其余点“查看全部”在抽屉里看，不管多少人这块高度不变。上面三格是原因，点一格就筛出这些学生；下面是统一的名单：原因、具体情况（分数和最弱项 / 退步多少 / 练没练过）、最近练习（多日没练标橙）、能直接去做的事</span></div>
+  <div class="frame"><div class="screen s" data-tpl="reportsData" data-h="1560"></div></div>
+  <div class="cap"><b>改后 · 点“查看全部 12 人”</b><span>右侧抽屉放完整名单：可切换原因、搜索、导出这批人；报表页面本身不会被拉长</span></div>
+  <div class="frame"><div class="screen s" data-tpl="reportsAll"></div></div>
+
+  <h2>实时监控 · 指导输入框</h2>
+  <div class="pair">
+    <figure><img class="before" src="assets/49.jpg" alt=""><figcaption>现在：快捷语两行、输入框单行、按钮分离，和右侧面板对不齐</figcaption></figure>
+    <div></div>
+  </div>
+  <div class="cap"><b>改后 · 学生在线时</b><span>一个整体的输入框：谁会收到 → 写什么 → 常用指导 / 发送。点“常用指导”弹出列表，选中后填进输入框还能改</span></div>
+  <div class="frame"><div class="screen s" data-tpl="composer"></div></div>
+  <div class="cap"><b>改后 · 学生已暂离</b><span>输入框上方一条橙色提示，老师知道发了也要等学生回来才看到</span></div>
+  <div class="frame"><div class="screen s" data-tpl="composerAway"></div></div>
+</div>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const I = (n) => `<i data-lucide="${n}"></i>`;
+const shell = (active, title, tabs, body, opts = {}) => `<div class="app">
+  <nav class="side">
+    <div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>
+    ${[["chart-column","数据总览"],["clipboard-list","实训任务"],["users-round","班级与学生"],["megaphone","通知公告"],["message-square-more","实训跟踪"],["file-chart-column","考核报表"],["boxes","场景配置"]].map(([i,l]) => `<div class="nav${l===active?" on":""}">${I(i)}${l}</div>`).join("")}
+    <div class="grow"></div><div class="foot"><div class="nav">${I("book-open")}使用帮助</div></div>
+  </nav>
+  <div class="main">
+    <header class="head"><h1>${title}</h1><div class="tabs">${tabs.map(([l,on,n]) => `<span class="tab${on?" on":""}">${l}${n!=null?`<span class="n">${n}</span>`:""}</span>`).join("")}</div>
+      <div class="right">${I("bell")}<span class="av">王</span>王老师 ${I("chevron-down")}</div></header>
+    <div class="body${opts.flush ? " flush" : ""}">${opts.flush ? body : `<div class="wrap">${body}</div>`}</div>
+  </div>${opts.overlay || ""}</div>`;
+const zeroTodo = (title, ok) => `<div><span class="big zero">0</span><div><b>${title}</b><p>${ok}</p><span class="ok">${I("circle-check")}都处理完了</span></div></div>`;
+const task = (name, tag, cls, meta) => `<div class="trow"><div><div class="name">${name}<span class="tag ${cls}">${tag}</span></div><div class="meta">${meta}</div></div>
+  <div class="prog"><div class="top"><span><b>0</b> / 2 人完成</span><span>0%</span></div><div class="track"><i style="width:0"></i></div></div>
+  <div class="score">未评分</div><div class="due">不设截止</div></div>`;
+const DIMS = ["违规用语合规", "语法准确性", "话术规范", "沟通有效性", "客户情绪安抚", "问题解决"];
+const emptyDist = (note) => `<div class="chart"><div class="dist empty">${["<60","60–70","70–80","80–90","90+"].map(() => `<div>0 人<i></i></div>`).join("")}</div>
+  <div class="axis"><span>&lt;60</span><span>60–70</span><span>70–80</span><span>80–90</span><span>90+</span></div>${note}</div>`;
+const emptyDims = (note) => `<div class="chart" style="padding:0"><div class="dims">${DIMS.map((d) => `<div class="dim"><span>${d}</span><span class="track empty"></span><strong>—</strong></div>`).join("")}</div>${note}</div>`;
+const note = (t, s, a) => `<div class="overlay-note"><b>${t}</b><span>${s}</span>${a ? `<a>${a}</a>` : ""}</div>`;
+
+const overview = () => shell("数据总览", "数据总览", [], `
+  <div class="greet"><h2>中午好，王老师</h2><span>跨境电商2601班 · 2 人 · 本周 1 人练过</span></div>
+  <div class="board"><div class="todo">
+    ${zeroTodo("份评分等你复核", "学生每完成一次接待，AI 评分会先到这里")}
+    ${zeroTodo("位学生的买家在等回复", "买家等了 3 分钟以上没人回，会出现在这里")}
+    ${zeroTodo("个任务快截止还没做完", "3 天内截止、还有人没完成的任务")}
+  </div></div>
+  <div class="board" style="margin-top:16px"><div class="bhead"><h3>进行中的任务</h3><span class="n">4</span><span class="end" style="color:var(--brand-ink);font-size:13px;font-weight:500">全部任务 ›</span></div>
+    ${task("画像规则验证-售后", "售后处理", "c3", "跨境电商2601班 · 1 个场景")}
+    ${task("售后差评挽回演练", "售后处理", "c3", "跨境电商2601班 · 1 个场景")}
+    ${task("售中物流同步演练", "售中处理", "c1", "跨境电商2601班 · 1 个场景")}
+  </div>
+  <div class="duo">
+    <div class="board"><div class="bhead"><h3>成绩分布</h3><span class="n">0 人有成绩</span></div>${emptyDist(note("还没有评分", "学生完成第一次接待后，按分数段显示人数", "去看任务 →"))}</div>
+    <div class="board"><div class="bhead"><h3>六项能力</h3><span class="n">全班平均</span></div>${emptyDims(note("还没有评分", "出了评分后显示全班每项的平均分和训前对比"))}</div>
+  </div>`);
+
+const cell = (n, cls, title, desc, on) => `<div class="at-cell${on ? " on" : ""}"><span class="n ${n ? cls : "zero"}">${n}</span><b>${title}</b>${n ? `<span>${desc}</span>` : `<span class="ok">${I("circle-check")}没有</span>`}</div>`;
+const AVC = [["var(--c1s)","var(--c1)"],["var(--c2s)","var(--c2)"],["var(--c3s)","var(--c3)"],["var(--c4s)","var(--c4)"]];
+const atRow = (i, name, id, tag, tagCls, detail, last, lastWarn, ops) => `<div class="at-row">
+  <div class="at-who"><span class="av2" style="background:${AVC[i % 4][0]};color:${AVC[i % 4][1]}">${name[0]}</span><div><b>${name}</b><small>${id}</small></div></div>
+  <div><span class="tag ${tagCls}">${tag}</span></div>
+  <div class="at-detail">${detail}</div>
+  <div class="at-last${lastWarn ? " warn" : ""}">${last}</div>
+  <div class="at-ops">${ops}</div></div>`;
+const atHead = `<div class="at-row head"><span>学生</span><span>原因</span><span>情况</span><span>最近练习</span><span></span></div>`;
+const reports = () => shell("考核报表", "考核报表", [], `
+  <div class="bar-row"><span class="btn" style="width:200px;justify-content:space-between">全部班级 ${I("chevron-down")}</span><span class="btn" style="width:200px;justify-content:space-between">全部任务综合 ${I("chevron-down")}</span>
+    <div class="r"><span class="btn ghost">${I("file-spreadsheet")}导出 Excel</span><span class="btn primary">${I("download")}导出 PDF</span></div></div>
+  <div class="board"><div class="kpis">
+    <div><small>平均分</small><b class="dash">—</b><span class="hint">出了评分后显示</span></div>
+    <div><small>及格率</small><b class="dash">—</b><span class="hint">60 分及以上的比例</span></div>
+    <div><small>优良率（80 分以上）</small><b class="dash">—</b><span class="hint">80 分及以上的比例</span></div>
+    <div><small>参评学生</small><b>0</b><span class="muted"> / 2</span><span class="hint">2 人里 0 人有成绩</span></div>
+  </div></div>
+  <div class="board" style="margin-top:16px"><div class="bhead"><h3>需要关注的学生</h3><span class="n">2 人</span><span class="end"><span class="btn sm ghost">${I("download")}导出名单</span></span></div>
+    <div class="at-cells">${cell(0, "bad", "低于 60 分", "综合成绩不及格")}${cell(0, "bad", "比训前退步", "成绩低于训前测评")}${cell(2, "warn", "还没有成绩", "名单里有、还没出评分", true)}</div>
+    ${atHead}
+    ${atRow(0, "张三", "s2601001", "还没有成绩", "warn", "练过，但还没有结束过一次接待（没有评分）", "14 小时前", false, `<span class="btn sm">看记录</span>`)}
+    ${atRow(1, "李四", "s2601002", "还没有成绩", "warn", "还没开始练", "从没登录过", true, `<span class="btn sm">看记录</span><span class="btn sm ghost">重置密码</span>`)}
+  </div>
+  <div class="duo">
+    <div class="board"><div class="bhead"><h3>成绩分布</h3><span class="n">每人一个综合成绩</span></div>${emptyDist(note("还没有评分", "学生完成接待、出了评分后显示"))}</div>
+    <div class="board"><div class="bhead"><h3>六项能力</h3><span class="n">竖线是训前测评</span></div>${emptyDims(note("还没有评分", "出了评分后显示每项平均分"))}</div>
+  </div>`);
+
+const qi = `<div class="grp">暂离<span>1 · 10 分钟以上没动</span></div>
+  <div class="qi on"><img src="assets/m-01.jpg" alt=""><div><b>张三</b><span class="m">Paul Becker · 货损退款协商</span></div><div class="r"><b>14 小时</b><span>得分 <b class="bad">20</b></span></div></div>`;
+const conv = (away, body) => `<div class="mon">
+  <div class="q"><div class="q-top"><span class="dot"></span>${away ? 0 : 1} 人在接待<span class="r">每 8 秒刷新</span></div>${away ? qi : qi.replace("暂离<span>1 · 10 分钟以上没动", "进行中<span>1").replace("14 小时", "刚刚")}</div>
+  <div class="conv">
+    <div class="conv-h"><b>张三</b><span>正在接待 Paul Becker · 货损退款协商 · 7/22 10:13 开始</span>${away ? `<span class="tag">暂离 14 小时</span>` : `<span class="tag warn">买家等了 2 分钟</span>`}</div>
+    <div class="msgs">
+      <div class="msg"><img src="assets/m-01.jpg" alt=""><div><p>I just received my order and there's a piece missing from the set. This is completely useless to me right now.</p><small>买家 · 10:13</small></div></div>
+      <div class="msg me"><span class="stu">张</span><div><p>好的，知道了</p><small>张三 · 21:11</small></div></div>
+      <div class="msg"><img src="assets/m-01.jpg" alt=""><div><p>Excuse me? That's all you have to say? I told you there's a piece missing and I can't use the product. What are you going to do about it?</p><small>买家 · 21:11</small></div></div>
+    </div>
+    ${body}
+  </div>
+  <div class="panel">
+    <div class="pb"><h5>现场</h5><div class="figs"><div><small>实时得分</small><b class="bad">20</b></div><div><small>买家满意度</small><b style="color:var(--warn)">30<small>/ 100</small></b></div><div><small>轮次</small><b>1</b></div><div><small>已用时</small><b>11<small>小时</small></b></div></div></div>
+    <div class="pb"><h5>买家</h5><dl class="kv"><dt>性格</dt><dd>理性谨慎</dd><dt>当前情绪</dt><dd><span class="tag bad">不满</span></dd><dt>对话阶段</dt><dd>问题陈述</dd></dl></div>
+    <div class="pb" style="border-bottom:0"><h5>场景目标</h5><div class="goal"><p><b>学生要做到：</b>核实证据并提出退款、补发或补偿方案</p><p><b>买家底线：</b>可以接受部分退款（约 20%–30%）或补发配件</p></div></div>
+  </div></div>`;
+const composer = () => shell("实训跟踪", "实训跟踪", [["实时监控", true, 1], ["回放与评分", false, 3]], conv(false, `
+  <div style="position:relative">
+    <div class="pop"><div class="h">常用指导 · 选中后可以再改</div>
+      <div class="i on">先安抚买家情绪，再给解决方案</div>
+      <div class="i">注意合规用语，不要做绝对化承诺</div>
+      <div class="i">给出明确的物流 / 售后时间</div>
+      <div class="i">先弄清买家真正想要什么</div></div>
+    <div class="composer focus">
+      <div class="who">${I("lightbulb")}发给 <b>张三</b> · 只有学生能看到，买家看不到</div>
+      <div class="ta filled">先安抚买家情绪，再问清少了哪一件，给出补发或退款方案</div>
+      <div class="bar"><span class="quick">${I("list")}常用指导 ${I("chevron-up")}</span><span class="keys">Enter 发送 · Shift + Enter 换行</span><span class="send">${I("send")}发送指导</span></div>
+    </div>
+  </div>`), { flush: true });
+const composerAway = () => shell("实训跟踪", "实训跟踪", [["实时监控", true, 0], ["回放与评分", false, 3]], conv(true, `
+  <div class="away-note">${I("clock")}张三已暂离 14 小时，指导会在他回到工作台后看到</div>
+  <div class="composer">
+    <div class="who">${I("lightbulb")}发给 <b>张三</b> · 只有学生能看到，买家看不到</div>
+    <div class="ta">写一条指导，比如：先安抚买家，再问清少了哪一件</div>
+    <div class="bar"><span class="quick">${I("list")}常用指导 ${I("chevron-down")}</span><span class="keys">Enter 发送 · Shift + Enter 换行</span><span class="send off">${I("send")}发送指导</span></div>
+  </div>`), { flush: true });
+
+const reportsData = () => shell("考核报表", "考核报表", [], `
+  <div class="bar-row"><span class="btn" style="width:200px;justify-content:space-between">跨境电商2601班 ${I("chevron-down")}</span><span class="btn" style="width:200px;justify-content:space-between">全部任务综合 ${I("chevron-down")}</span>
+    <div class="r"><span class="btn ghost">${I("file-spreadsheet")}导出 Excel</span><span class="btn primary">${I("download")}导出 PDF</span></div></div>
+  <div class="board"><div class="kpis">
+    <div><small>平均分</small><b>74</b><span class="hint" style="color:var(--ok)">较训前 +9</span></div>
+    <div><small>及格率</small><b>93%</b><span class="hint">40 人里 37 人及格</span></div>
+    <div><small>优良率（80 分以上）</small><b>33%</b><span class="hint">13 人</span></div>
+    <div><small>参评学生</small><b>40</b><span class="muted"> / 45</span><span class="hint">5 人还没有成绩</span></div>
+  </div></div>
+  <div class="board" style="margin-top:16px"><div class="bhead"><h3>需要关注的学生</h3><span class="n">19 人</span><span class="end"><span class="btn sm ghost">${I("download")}导出名单</span></span></div>
+    <div class="at-cells">${cell(12, "bad", "低于 60 分", "综合成绩不及格", true)}${cell(2, "bad", "比训前退步", "成绩低于训前测评")}${cell(5, "warn", "还没有成绩", "名单里有、还没出评分")}</div>
+    ${atHead}
+    ${LOW.slice(0, 5).map((r, i) => atRow(i, r[0], r[1], "低于 60 分", "bad", `<b class='bad'>${r[2]}</b> 分 · 最弱：${r[3]}`, r[4], r[5], `<span class="btn sm">看记录</span>`)).join("")}
+    <div class="at-more at-more-row"><span>还有 7 人没显示，按分数从低到高排在后面</span><span class="lnk">查看全部 12 人 ${I("arrow-right")}</span></div>
+  </div>
+  <div class="duo">
+    <div class="board"><div class="bhead"><h3>成绩分布</h3><span class="n">每人一个综合成绩</span></div>
+      <div class="chart"><div class="dist">${[[12,"bad",34],[7,"",20],[8,"",23],[9,"",26],[4,"",12]].map(([n,c,h]) => `<div>${n} 人<i style="height:${h * 2.6}%;${c ? "background:var(--bad)" : ""}"></i></div>`).join("")}</div>
+      <div class="axis"><span>&lt;60</span><span>60–70</span><span>70–80</span><span>80–90</span><span>90+</span></div></div></div>
+    <div class="board"><div class="bhead"><h3>六项能力</h3><span class="n">全班平均 · 红色是最弱两项</span></div>
+      <div class="dims">${[["违规用语合规",84],["语法准确性",77],["话术规范",80],["沟通有效性",74],["客户情绪安抚",62,1],["问题解决",58,1]].map(([d,v,w]) => `<div class="dim"><span style="${w ? "color:var(--bad);font-weight:600" : ""}">${d}</span><span class="track"><i style="display:block;height:100%;width:${v}%;border-radius:999px;background:${w ? "var(--bad)" : "var(--brand)"}"></i></span><strong style="color:var(--ink);font-weight:700">${v}</strong></div>`).join("")}</div></div>
+  </div>
+  <div class="board" style="margin-top:16px"><div class="bhead"><h3>成绩排名</h3><span class="n">40 人 · 完整六项分数在“导出 Excel”里</span></div>
+    <table class="rank"><tr><th style="width:80px;white-space:nowrap">名次</th><th>学生</th><th>综合成绩</th><th>最弱项</th><th>较训前</th></tr>
+    ${[["1","吴子轩","91","问题解决 82","+12"],["2","王小明","88","客户情绪安抚 80","+10"],["3","张三","86","沟通有效性 79","+8"]].map((r) => `<tr><td>${r[0]}</td><td style="color:var(--ink)">${r[1]}</td><td style="color:var(--ink);font-weight:700">${r[2]}</td><td>${r[3]}</td><td style="color:var(--ok)">${r[4]}</td></tr>`).join("")}</table></div>`, { tall: true });
+const LOW = [["孙浩然","s2601007",42,"问题解决 30","12 天前",true],["李四","s2601002",54,"问题解决 41","今天 10:32",false],["周雨桐","s2601008",55,"客户情绪安抚 44","3 天前",false],["何嘉怡","s2601011",57,"客户情绪安抚 48","昨天",false],["林子豪","s2601023",58,"语法准确性 50","9 天前",true],
+  ["赵一凡","s2601030",58,"问题解决 47","2 天前",false],["钱多多","s2601031",59,"沟通有效性 50","今天 09:10",false],["郑可欣","s2601012",59,"问题解决 49","4 天前",false],["黄俊杰","s2601014",59,"话术规范 51","昨天",false],["刘小红","s2601004",59,"问题解决 52","8 天前",true],["陈思远","s2601033",59,"语法准确性 52","昨天",false],["许诺","s2601035",59,"沟通有效性 53","今天 11:02",false]];
+const reportsAll = () => shell("考核报表", "考核报表", [], `<div class="board" style="height:300px"></div>`, { overlay: `<div class="scrim"></div><div class="drawer" style="width:760px">
+    <div class="dh"><h3>需要关注的学生 · 跨境电商2601班</h3>${I("x")}</div>
+    <div style="padding:16px 24px 8px;display:flex;gap:10px;align-items:center"><div class="chips"><span class="chip on">低于 60 分 <i>12</i></span><span class="chip">比训前退步 <i>2</i></span><span class="chip">还没有成绩 <i>5</i></span></div><span class="search" style="width:200px;margin-left:auto">${I("search")}搜索姓名或学号</span></div>
+    <div style="flex:1;overflow:hidden">${atHead.replace('<span></span></div>', '<span></span></div>')}${LOW.map((r, i) => atRow(i, r[0], r[1], "低于 60 分", "bad", `<b class='bad'>${r[2]}</b> 分 · 最弱：${r[3]}`, r[4], r[5], `<span class="btn sm">看记录</span>`)).join("")}</div>
+    <div class="df"><span class="btn ghost">${I("download")}导出这 12 人</span><span class="btn">关闭</span></div>
+  </div>` });
+const T = { overview, reports, reportsData, reportsAll, composer, composerAway };
+document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
+if (window.lucide) lucide.createIcons();
+function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const h = Number(s.dataset.h || 900); s.style.height = h + "px"; const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${h * k}px`; }); }
+fit(); addEventListener("resize", fit);
+</script>
+</body>
+</html>

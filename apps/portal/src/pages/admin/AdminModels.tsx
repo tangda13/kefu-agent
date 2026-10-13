@@ -1,5 +1,5 @@
-import { CheckCircle2, FlaskConical, Pencil, Plus, Save, Star, Trash2, XCircle } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { FlaskConical, Plus, Square, Volume2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LLM_PRESETS,
   LLM_PURPOSES,
@@ -9,12 +9,16 @@ import {
   type LlmRoutingSettings,
   type LlmTestResult,
 } from "@cecs/contracts";
-import { PageHeader } from "../../components/AppShell";
-import { ApiError, apiGet, apiPost, apiRequestDelete, apiRequestPut, type Session } from "../../api/client";
+import { ApiError, apiGet, apiPost, apiRequestDelete, apiRequestPut, previewVoice, type Session } from "../../api/client";
+import {
+  Button, Confirm, DataTable, Drawer, Empty, Field, HeaderTabs, Input, ListRow, Monogram, MoreMenu, Select, SettingSection, Sheet,
+  Status, Switch, Tag, Textarea, toast,
+} from "../../ui";
 
-function errorText(cause: unknown): string {
-  return cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。";
-}
+/* AI 与语音服务（G1–G7，P4 按 DESIGN.md 2.0 重做）：模型、用途分配、语音服务、用量与额度。
+   技术参数（超时、请求体、请求头、输出字段名）收进编辑抽屉的「高级设置」。 */
+
+const errorText = (cause: unknown) => (cause instanceof ApiError ? cause.message : cause instanceof Error ? cause.message : "无法连接服务器，请稍后重试");
 
 interface LlmState {
   profiles: LlmProfileView[];
@@ -27,9 +31,11 @@ interface UsageState {
   byPurpose: Array<{ purpose: LlmPurpose; calls: number; failures: number; fallbacks: number; tokens: number; cost: number }>;
 }
 
+interface VoiceSpeaker { id: string; label: string; gender: "male" | "female"; lang: string }
+
 interface ProvidersState {
   voice: {
-    vendor: string; vendors: Array<{ key: string; label: string }>; apiKeyMasked: string;
+    vendor: string; vendors: Array<{ key: string; label: string; speakers: VoiceSpeaker[] }>; apiKeyMasked: string;
     ttsResourceId: string; ttsSpeaker: string; ttsSpeakerMale: string; asrResourceId: string;
     ttsPricePer10kChars: number; asrPricePerHour: number;
   };
@@ -37,7 +43,8 @@ interface ProvidersState {
   quota: { monthlyBudgetYuan: number; monthlyTokens: number; warnPercent: number; budgetPercent: number; tokenPercent: number; usedPercent: number; alert: boolean };
 }
 
-const yuan = (value: number) => `¥${value < 1 ? value.toFixed(4) : value.toFixed(2)}`;
+const yuan = (value: number) => `¥${value > 0 && value < 1 ? value.toFixed(4) : value.toFixed(2)}`;
+const seconds = (ms: number | null | undefined) => (ms == null ? "—" : `${(ms / 1000).toFixed(1)} 秒`);
 const host = (url: string) => {
   try {
     return new URL(url).host;
@@ -46,125 +53,135 @@ const host = (url: string) => {
   }
 };
 
-/** AI 与语音服务（G1–G7）：档案、用途分配、用量费用、语音、额度 */
+type ModelTab = "models" | "voice" | "usage";
+
 export function AdminModels({ session }: { session: Session }) {
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const [tab, setTab] = useState<ModelTab>("models");
   const [llm, setLlm] = useState<LlmState | null>(null);
   const [usage, setUsage] = useState<UsageState | null>(null);
   const [providers, setProviders] = useState<ProvidersState | null>(null);
-  const [editing, setEditing] = useState<LlmProfileView | "new" | null>(null);
-  const [testing, setTesting] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    apiGet<LlmState>("/v1/admin/llm", session).then(setLlm).catch((cause) => setError(errorText(cause)));
+    apiGet<LlmState>("/v1/admin/llm", session).then(setLlm).catch((cause) => toast.error(errorText(cause)));
     apiGet<UsageState>("/v1/admin/llm/usage", session).then(setUsage).catch(() => undefined);
     apiGet<ProvidersState>("/v1/admin/providers", session).then(setProviders).catch(() => undefined);
   }, [session]);
   useEffect(() => { load(); }, [load]);
 
-  const flash = (message: string) => { setNotice(message); setError(""); };
-  const fail = (cause: unknown) => { setError(errorText(cause)); setNotice(""); };
+  return (
+    <>
+      <HeaderTabs
+        items={[
+          { id: "models", label: "模型", count: llm?.profiles.length },
+          { id: "voice", label: "语音服务" },
+          { id: "usage", label: providers?.quota.alert ? <>用量与额度 <Tag tone="danger">{providers.quota.usedPercent}%</Tag></> : "用量与额度" },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+      <Sheet>
+        {tab === "models" ? (
+          <>
+            <ProfilesSection session={session} llm={llm} reload={load} />
+            {llm ? <RoutingSection session={session} llm={llm} reload={load} /> : null}
+            {providers ? <MonthSummary providers={providers} onOpen={() => setTab("usage")} /> : null}
+          </>
+        ) : null}
+        {tab === "voice" && providers ? <VoiceSection session={session} data={providers} reload={load} /> : null}
+        {tab === "usage" ? <UsageSections session={session} usage={usage} providers={providers} reload={load} /> : null}
+      </Sheet>
+    </>
+  );
+}
 
-  async function testProfile(profile: LlmProfileView) {
+// ---------- 模型 ----------
+
+function ProfilesSection({ session, llm, reload }: { session: Session; llm: LlmState | null; reload: () => void }) {
+  const [editing, setEditing] = useState<LlmProfileView | "new" | null>(null);
+  const [testing, setTesting] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<LlmProfileView | null>(null);
+  const vendors = useMemo(() => [...new Set((llm?.profiles ?? []).map((profile) => host(profile.baseUrl)))], [llm]);
+
+  async function test(profile: LlmProfileView) {
     setTesting(profile.id);
     try {
       const result = await apiPost<LlmTestResult>(`/v1/admin/llm/profiles/${profile.id}/test`, session);
-      if (result.ok) flash(`「${profile.name}」测试通过：首字 ${result.ttftMs}ms，输出 ${result.charsPerSecond} 字/秒。`);
-      else setError(`「${profile.name}」测试未通过：${result.error ?? "未知错误"}`);
-      load();
-    } catch (cause) { fail(cause); } finally { setTesting(null); }
+      if (result.ok) toast.ok(`「${profile.name}」连接正常，首字 ${seconds(result.ttftMs)}`);
+      else toast.error(`「${profile.name}」测试未通过，点“编辑”查看报错`);
+      reload();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    } finally {
+      setTesting(null);
+    }
   }
 
   async function setDefault(profile: LlmProfileView) {
     try {
       await apiRequestPut("/v1/admin/llm/default", session, { profileId: profile.id });
-      flash(`已把「${profile.name}」设为默认档案，立即生效。`);
-      load();
-    } catch (cause) { fail(cause); }
+      toast.ok(`已把「${profile.name}」设为默认模型`);
+      reload();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    }
   }
 
-  async function remove(profile: LlmProfileView) {
-    if (!window.confirm(`删除档案「${profile.name}」？`)) return;
+  async function remove() {
+    if (!removing) return;
     try {
-      await apiRequestDelete(`/v1/admin/llm/profiles/${profile.id}`, session);
-      flash("档案已删除。");
-      load();
-    } catch (cause) { fail(cause); }
+      await apiRequestDelete(`/v1/admin/llm/profiles/${removing.id}`, session);
+      toast.ok("已删除");
+      setRemoving(null);
+      reload();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    }
   }
 
   return (
-    <div className="page">
-      <PageHeader
-        eyebrow="MODELS & VOICE"
-        title="AI 与语音服务"
-        description="模型厂商档案、按用途分配模型、连通性测试与费用统计。所有改动立即生效，API Key 只在云端加密保存。"
-        actions={<button className="primary-button" onClick={() => setEditing("new")}><Plus size={16} /> 新增模型档案</button>}
-      />
-      {notice ? <p className="form-notice">{notice}</p> : null}
-      {error ? <p className="form-error">{error}</p> : null}
-      {providers?.quota.alert ? (
-        <p className="form-error">本月费用 / tokens 已用到额度的 {providers.quota.usedPercent}%（提醒线 {providers.quota.warnPercent}%），请关注余额或调整额度。</p>
-      ) : null}
-
-      {editing ? (
-        <ProfileForm
-          session={session}
-          profile={editing === "new" ? null : editing}
-          onClose={() => setEditing(null)}
-          onSaved={(message) => { setEditing(null); flash(message); load(); }}
+    <SettingSection
+      title="模型"
+      desc="接入的大模型服务。密钥只加密保存在服务器上；测试通过的模型才能设为默认，或分配给下面的用途。"
+      actions={<Button variant="primary" icon={Plus} onClick={() => setEditing("new")}>新增模型</Button>}
+    >
+      {!llm ? <Empty>正在读取…</Empty> : llm.profiles.length === 0 ? <Empty>还没有模型。点「新增模型」，选好厂商后填入密钥即可。</Empty> : null}
+      {llm?.profiles.map((row) => (
+        <ListRow
+          key={row.id}
+          muted={!row.enabled}
+          leading={<Monogram text={row.name} tone={vendors.indexOf(host(row.baseUrl)) + 1} />}
+          title={<>{row.name}{row.isDefault ? <Tag tone="accent">默认</Tag> : null}{!row.enabled ? <Tag>已停用</Tag> : null}</>}
+          meta={`${row.model} · ${host(row.baseUrl)} · ${row.apiKeyMasked || "未设置密钥"}`}
+          status={
+            row.testStatus === "ok" ? <Status tone="ok">正常 · 首字 {seconds(row.testResult?.ttftMs)}</Status>
+              : row.testStatus === "failed" ? <Status tone="danger">测试未通过</Status>
+                : <Status>未测试</Status>
+          }
+          actions={
+            <>
+              <Button size="sm" variant="ghost" disabled={testing === row.id} onClick={() => void test(row)}>{testing === row.id ? "测试中…" : "测试"}</Button>
+              <Button size="sm" onClick={() => setEditing(row)}>编辑</Button>
+              {!row.isDefault ? (
+                <MoreMenu items={[
+                  { label: "设为默认", disabled: row.testStatus !== "ok" || !row.enabled, onClick: () => void setDefault(row) },
+                  { label: "删除", danger: true, onClick: () => setRemoving(row) },
+                ]} />
+              ) : <span className="menu-placeholder" />}
+            </>
+          }
         />
+      ))}
+      {editing ? <ProfileDrawer session={session} profile={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} /> : null}
+      {removing ? (
+        <Confirm title="删除模型" danger confirmText="删除" onConfirm={() => void remove()} onClose={() => setRemoving(null)}>
+          删除「{removing.name}」后，分配给它的用途会改用默认模型。
+        </Confirm>
       ) : null}
-
-      <section className="panel data-panel">
-        <div className="panel-heading"><div><h2>模型档案</h2><p>一个档案 = 一个厂商地址 + 一个模型 + 参数。测试通过后才能设为默认或分配给用途。</p></div></div>
-        <table>
-          <thead><tr><th>名称</th><th>模型</th><th>地址</th><th>Key</th><th>测试</th><th>操作</th></tr></thead>
-          <tbody>
-            {llm?.profiles.length === 0 ? <tr><td colSpan={6}>还没有模型档案。点右上角「新增模型档案」，选择厂商模板后填入 Key 即可。</td></tr> : null}
-            {llm?.profiles.map((profile) => (
-              <tr key={profile.id}>
-                <td>
-                  <strong>{profile.name}</strong>
-                  {profile.isDefault ? <em className="status-pill green" style={{ marginLeft: 6 }}>默认</em> : null}
-                  {!profile.enabled ? <em className="status-pill gray" style={{ marginLeft: 6 }}>已停用</em> : null}
-                </td>
-                <td>{profile.model}</td>
-                <td title={profile.baseUrl}>{host(profile.baseUrl)}</td>
-                <td>{profile.apiKeyMasked || "—"}</td>
-                <td>
-                  {profile.testStatus === "ok" ? (
-                    <span className="status-pill green"><CheckCircle2 size={12} /> 首字 {profile.testResult?.ttftMs ?? "—"}ms</span>
-                  ) : profile.testStatus === "failed" ? (
-                    <span className="status-pill warn-pill" title={profile.testResult?.error ?? ""}><XCircle size={12} /> 未通过</span>
-                  ) : <span className="status-pill gray">未测试</span>}
-                </td>
-                <td>
-                  <button className="text-button" disabled={testing === profile.id} onClick={() => void testProfile(profile)}><FlaskConical size={14} /> {testing === profile.id ? "测试中" : "测试"}</button>
-                  <button className="text-button" onClick={() => setEditing(profile)}><Pencil size={14} /> 编辑</button>
-                  {!profile.isDefault ? <button className="text-button" onClick={() => void setDefault(profile)}><Star size={14} /> 设为默认</button> : null}
-                  {!profile.isDefault ? <button className="text-button" onClick={() => void remove(profile)}><Trash2 size={14} /> 删除</button> : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      {llm ? <RoutingSection session={session} llm={llm} onSaved={(message) => { flash(message); load(); }} onError={fail} /> : null}
-      <UsageSection usage={usage} />
-      {providers ? <VoiceAndQuota session={session} data={providers} onSaved={(message) => { flash(message); load(); }} onError={fail} /> : null}
-    </div>
+    </SettingSection>
   );
 }
 
-// ---------- 新增 / 编辑档案 ----------
-function ProfileForm({ session, profile, onClose, onSaved }: {
-  session: Session;
-  profile: LlmProfileView | null;
-  onClose: () => void;
-  onSaved: (message: string) => void;
-}) {
+function ProfileDrawer({ session, profile, onClose, onSaved }: { session: Session; profile: LlmProfileView | null; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState(() => ({
     presetKey: profile?.presetKey ?? "deepseek",
     name: profile?.name ?? LLM_PRESETS[0]!.label,
@@ -175,13 +192,13 @@ function ProfileForm({ session, profile, onClose, onSaved }: {
     extraHeaders: JSON.stringify(profile?.extraHeaders ?? {}, null, 2),
     maxTokensField: profile?.maxTokensField ?? "max_tokens",
     jsonMode: profile?.jsonMode ?? LLM_PRESETS[0]!.jsonMode,
-    timeoutMs: String(profile?.timeoutMs ?? 60000),
+    timeoutSeconds: String(Math.round((profile?.timeoutMs ?? 60000) / 1000)),
     priceInput: String(profile?.priceInput ?? 0),
     priceOutput: String(profile?.priceOutput ?? 0),
     enabled: profile?.enabled ?? true,
   }));
   const [result, setResult] = useState<LlmTestResult | null>(profile?.testResult ?? null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"" | "test" | "save" | "saveTest">("");
   const [error, setError] = useState("");
   const preset = useMemo(() => LLM_PRESETS.find((item) => item.key === form.presetKey), [form.presetKey]);
 
@@ -206,7 +223,7 @@ function ProfileForm({ session, profile, onClose, onSaved }: {
       extraBody = JSON.parse(form.extraBody.trim() || "{}");
       extraHeaders = JSON.parse(form.extraHeaders.trim() || "{}");
     } catch {
-      throw new Error("额外请求体 / 请求头必须是合法的 JSON 对象");
+      throw new Error("高级设置里的附加参数和请求头必须是合法的 JSON");
     }
     return {
       name: form.name,
@@ -218,7 +235,7 @@ function ProfileForm({ session, profile, onClose, onSaved }: {
       extraHeaders,
       maxTokensField: form.maxTokensField,
       jsonMode: form.jsonMode,
-      timeoutMs: Number(form.timeoutMs) || 60000,
+      timeoutMs: (Number(form.timeoutSeconds) || 60) * 1000,
       priceInput: Number(form.priceInput) || 0,
       priceOutput: Number(form.priceOutput) || 0,
       enabled: form.enabled,
@@ -226,17 +243,19 @@ function ProfileForm({ session, profile, onClose, onSaved }: {
   }
 
   async function testDraft() {
-    setBusy(true);
+    setBusy("test");
     setError("");
     try {
       setResult(await apiPost<LlmTestResult>("/v1/admin/llm/test", session, { ...payload(), ...(profile ? { id: profile.id } : {}) }));
     } catch (cause) {
-      setError(cause instanceof Error && !(cause instanceof ApiError) ? cause.message : errorText(cause));
-    } finally { setBusy(false); }
+      setError(errorText(cause));
+    } finally {
+      setBusy("");
+    }
   }
 
   async function save(thenTest: boolean) {
-    setBusy(true);
+    setBusy(thenTest ? "saveTest" : "save");
     setError("");
     try {
       const body = payload();
@@ -247,190 +266,226 @@ function ProfileForm({ session, profile, onClose, onSaved }: {
         const tested = await apiPost<LlmTestResult>(`/v1/admin/llm/profiles/${id}/test`, session);
         if (!tested.ok) {
           setResult(tested);
-          setError("已保存，但连通性测试未通过，请根据下方报错修改。");
+          setError("已保存，但连接测试没有通过，请根据下方报错修改");
           return;
         }
-        onSaved(`「${form.name}」已保存并测试通过（首字 ${tested.ttftMs}ms）。`);
+        toast.ok(`「${form.name}」已保存，连接正常`);
       } else {
-        onSaved(`「${form.name}」已保存。修改了地址、Key、模型或参数后需要重新测试。`);
+        toast.ok(`「${form.name}」已保存`);
       }
+      onSaved();
     } catch (cause) {
-      setError(cause instanceof Error && !(cause instanceof ApiError) ? cause.message : errorText(cause));
-    } finally { setBusy(false); }
+      setError(errorText(cause));
+    } finally {
+      setBusy("");
+    }
   }
 
   const set = (key: keyof typeof form) => (event: { target: { value: string } }) => setForm({ ...form, [key]: event.target.value });
 
   return (
-    <section className="panel">
-      <div className="panel-heading">
-        <div><h2>{profile ? `编辑档案：${profile.name}` : "新增模型档案"}</h2><p>{preset?.note || "选好厂商模板会自动带出地址、推荐模型和必要参数，通常只需填 Key。"}</p></div>
-        <button className="secondary-button compact" onClick={onClose}>取消</button>
-      </div>
-      {error ? <p className="form-error">{error}</p> : null}
-      <div className="form-grid">
-        <label>厂商模板
-          <select value={form.presetKey} onChange={(event) => applyPreset(event.target.value)}>
+    <Drawer
+      title={profile ? `编辑模型 · ${profile.name}` : "新增模型"}
+      width={720}
+      onClose={onClose}
+      footer={
+        <>
+          <Button icon={FlaskConical} loading={busy === "test"} disabled={Boolean(busy)} onClick={() => void testDraft()}>测试连接</Button>
+          <span className="drawer-foot-fill" />
+          <Button disabled={Boolean(busy)} loading={busy === "save"} onClick={() => void save(false)}>仅保存</Button>
+          <Button variant="primary" disabled={Boolean(busy)} loading={busy === "saveTest"} onClick={() => void save(true)}>保存并测试</Button>
+        </>
+      }
+    >
+      {preset?.note ? <p className="drawer-note">{preset.note}</p> : null}
+      <div className="form-grid-2">
+        <Field label="厂商">
+          <Select value={form.presetKey} onChange={(event) => applyPreset(event.target.value)}>
             {LLM_PRESETS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
-          </select>
-        </label>
-        <label>档案名称<input value={form.name} onChange={set("name")} /></label>
-        <label>接口地址（到 /v1 这一级，系统会拼上 /chat/completions）<input value={form.baseUrl} onChange={set("baseUrl")} placeholder="https://api.example.com/v1" /></label>
-        <label>API Key{profile ? `（当前 ${profile.apiKeyMasked || "未设置"}，留空不改）` : ""}<input type="password" value={form.apiKey} onChange={set("apiKey")} placeholder="sk-..." autoComplete="off" /></label>
-        <label>模型名
-          <input value={form.model} onChange={set("model")} list="llm-model-options" />
+          </Select>
+        </Field>
+        <Field label="名称" hint="在本系统里显示的名字"><Input value={form.name} onChange={set("name")} /></Field>
+        <Field label="服务地址" hint="填到 /v1 这一级"><Input value={form.baseUrl} onChange={set("baseUrl")} placeholder="https://api.example.com/v1" /></Field>
+        <Field label="密钥" hint={profile ? `当前 ${profile.apiKeyMasked || "未设置"}，不改就留空` : "厂商控制台里创建的 API Key"}>
+          <Input type="password" value={form.apiKey} onChange={set("apiKey")} placeholder="sk-..." autoComplete="off" />
+        </Field>
+        <Field label="模型名">
+          <Input value={form.model} onChange={set("model")} list="llm-model-options" />
           <datalist id="llm-model-options">{preset?.models.map((model) => <option key={model} value={model} />)}</datalist>
-        </label>
-        <label>最大输出字段
-          <select value={form.maxTokensField} onChange={set("maxTokensField")}>
-            <option value="max_tokens">max_tokens（多数厂商）</option>
-            <option value="max_completion_tokens">max_completion_tokens（OpenAI 新模型）</option>
-          </select>
-        </label>
-        <label>超时（毫秒）<input type="number" value={form.timeoutMs} onChange={set("timeoutMs")} /></label>
-        <label>输入单价（元 / 百万 tokens）<input type="number" step="0.01" value={form.priceInput} onChange={set("priceInput")} /></label>
-        <label>输出单价（元 / 百万 tokens）<input type="number" step="0.01" value={form.priceOutput} onChange={set("priceOutput")} /></label>
-        <label className="checkbox-row"><input type="checkbox" checked={form.jsonMode} onChange={(event) => setForm({ ...form, jsonMode: event.target.checked })} /> 支持 JSON 模式（评分、导演等结构化输出时下发 response_format）</label>
-        <label className="checkbox-row"><input type="checkbox" checked={form.enabled} onChange={(event) => setForm({ ...form, enabled: event.target.checked })} /> 启用</label>
+        </Field>
+        <Field label="启用">
+          <span className="switch-line"><Switch checked={form.enabled} label="启用" onChange={(enabled) => setForm({ ...form, enabled })} />{form.enabled ? "启用中" : "已停用，不会被调用"}</span>
+        </Field>
+        <Field label="输入单价" hint="元 / 百万 tokens，用于统计费用"><Input type="number" step="0.01" value={form.priceInput} onChange={set("priceInput")} /></Field>
+        <Field label="输出单价" hint="元 / 百万 tokens"><Input type="number" step="0.01" value={form.priceOutput} onChange={set("priceOutput")} /></Field>
       </div>
-      <div className="form-grid two">
-        <label>额外请求体（JSON，合并进每次请求，例如关闭思考）<textarea rows={4} value={form.extraBody} onChange={set("extraBody")} spellCheck={false} /></label>
-        <label>自定义请求头（JSON）<textarea rows={4} value={form.extraHeaders} onChange={set("extraHeaders")} spellCheck={false} /></label>
-      </div>
+
+      <details className="advanced">
+        <summary>高级设置</summary>
+        <div className="form-grid-2">
+          <Field label="超时" hint="秒，超过就算失败并切到备用模型"><Input type="number" value={form.timeoutSeconds} onChange={set("timeoutSeconds")} /></Field>
+          <Field label="回复长度字段名">
+            <Select value={form.maxTokensField} onChange={set("maxTokensField")}>
+              <option value="max_tokens">max_tokens（多数厂商）</option>
+              <option value="max_completion_tokens">max_completion_tokens（OpenAI 新模型）</option>
+            </Select>
+          </Field>
+          <Field label="结构化输出">
+            <span className="switch-line"><Switch checked={form.jsonMode} label="支持 JSON 模式" onChange={(jsonMode) => setForm({ ...form, jsonMode })} />支持 JSON 模式（评分、情绪推进会用到）</span>
+          </Field>
+          <span />
+          <Field label="附加请求参数" hint="JSON，合并进每次请求，例如关闭深度思考">
+            <Textarea rows={5} className="mono" value={form.extraBody} onChange={set("extraBody")} spellCheck={false} />
+          </Field>
+          <Field label="附加请求头" hint="JSON">
+            <Textarea rows={5} className="mono" value={form.extraHeaders} onChange={set("extraHeaders")} spellCheck={false} />
+          </Field>
+        </div>
+      </details>
+
+      {error ? <p className="drawer-error" role="alert">{error}</p> : null}
       {result ? (
-        <div className={result.ok ? "form-notice" : "form-error"}>
-          {result.ok
-            ? <>测试通过：首字 {result.ttftMs}ms · 输出 {result.charsPerSecond} 字/秒 · tokens {result.inputTokens}/{result.outputTokens} · 样例回复：“{result.sample}”</>
-            : <>测试未通过（耗时 {result.totalMs}ms）：<pre style={{ whiteSpace: "pre-wrap", margin: "6px 0 0" }}>{result.error}</pre></>}
+        <div className={result.ok ? "test-result is-ok" : "test-result is-bad"}>
+          {result.ok ? (
+            <>
+              <strong>连接正常</strong>
+              <span>首字 {seconds(result.ttftMs)} · 输出 {result.charsPerSecond} 字/秒 · 用了 {result.inputTokens + result.outputTokens} tokens</span>
+              {result.sample ? <q>{result.sample}</q> : null}
+            </>
+          ) : (
+            <>
+              <strong>测试未通过</strong>
+              <pre>{result.error}</pre>
+            </>
+          )}
         </div>
       ) : null}
-      <div className="form-actions">
-        <button className="secondary-button" disabled={busy} onClick={() => void testDraft()}><FlaskConical size={15} /> 测试连通</button>
-        <button className="secondary-button" disabled={busy} onClick={() => void save(false)}><Save size={15} /> 仅保存</button>
-        <button className="primary-button" disabled={busy} onClick={() => void save(true)}><Save size={15} /> 保存并测试</button>
-      </div>
-    </section>
+    </Drawer>
   );
 }
 
 // ---------- 用途分配 ----------
-function RoutingSection({ session, llm, onSaved, onError }: {
-  session: Session;
-  llm: LlmState;
-  onSaved: (message: string) => void;
-  onError: (cause: unknown) => void;
-}) {
+
+function RoutingSection({ session, llm, reload }: { session: Session; llm: LlmState; reload: () => void }) {
   const [routing, setRouting] = useState<LlmRoutingSettings>(llm.routing);
+  const [busy, setBusy] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
   useEffect(() => setRouting(llm.routing), [llm.routing]);
   const usable = llm.profiles.filter((profile) => profile.enabled && profile.testStatus === "ok");
   const defaultProfile = llm.profiles.find((profile) => profile.isDefault);
+  const dirty = JSON.stringify(routing) !== JSON.stringify(llm.routing);
 
   function update(purpose: LlmPurpose, patch: Partial<LlmRoutingSettings["routes"][LlmPurpose]>) {
     setRouting((current) => ({ ...current, routes: { ...current.routes, [purpose]: { ...current.routes[purpose], ...patch } } }));
   }
 
   async function save() {
+    setBusy(true);
     try {
       await apiRequestPut("/v1/admin/llm/routing", session, routing);
-      onSaved("用途分配已保存，立即生效。");
-    } catch (cause) { onError(cause); }
+      toast.ok("用途分配已保存，立即生效");
+      setAdvanced(false);
+      reload();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <section className="panel data-panel">
-      <div className="panel-heading">
-        <div><h2>用途分配</h2><p>不同任务可以用不同模型：对话要快，评分要稳，辅助任务可以用便宜的。没单独指定的用途走默认档案（{defaultProfile?.name ?? "未设置"}）。主档案连续失败 3 次会自动切到备用档案 5 分钟，并写入审计日志。</p></div>
-        <button className="primary-button compact" onClick={() => void save()}><Save size={15} /> 保存分配</button>
-      </div>
-      <table>
-        <thead><tr><th>用途</th><th>主档案</th><th>备用档案</th><th>temperature</th><th>最大输出 tokens</th><th>当前生效</th></tr></thead>
-        <tbody>
-          {LLM_PURPOSES.map((purpose) => {
-            const route = routing.routes[purpose];
-            return (
-              <tr key={purpose}>
-                <td><strong>{LLM_PURPOSE_LABELS[purpose].label}</strong><br /><small>{LLM_PURPOSE_LABELS[purpose].hint}</small></td>
-                <td>
-                  <select value={route.profileId ?? ""} onChange={(event) => update(purpose, { profileId: event.target.value || null })}>
-                    <option value="">跟随默认档案</option>
-                    {usable.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
-                  </select>
-                </td>
-                <td>
-                  <select value={route.fallbackProfileId ?? ""} onChange={(event) => update(purpose, { fallbackProfileId: event.target.value || null })}>
-                    <option value="">不设备用</option>
-                    {usable.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
-                  </select>
-                </td>
-                <td><input type="number" step="0.1" min="0" max="2" style={{ width: 70 }} value={route.temperature} onChange={(event) => update(purpose, { temperature: Number(event.target.value) })} /></td>
-                <td><input type="number" min="16" style={{ width: 90 }} value={route.maxTokens} onChange={(event) => update(purpose, { maxTokens: Number(event.target.value) })} /></td>
-                <td>{llm.active[purpose] ? `${llm.active[purpose]!.profileName} · ${llm.active[purpose]!.model}` : <span className="status-pill warn-pill">未配置</span>}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <div className="form-grid">
-        <label>导演运行频率：每
-          <input type="number" min="1" max="10" style={{ width: 70, margin: "0 6px" }} value={routing.directorEveryNTurns}
-            onChange={(event) => setRouting({ ...routing, directorEveryNTurns: Number(event.target.value) || 1 })} />
-          轮学生发言运行一次（调大可降低成本，买家情绪更新会变慢）
-        </label>
-      </div>
-    </section>
-  );
-}
+    <SettingSection
+      title="用途分配"
+      desc={<>不同任务用不同模型：对话要快，评分要稳。没有单独指定的用途使用默认模型（{defaultProfile?.name ?? "未设置"}）；主模型连续出错 3 次，自动改用备用模型 5 分钟。</>}
+      actions={
+        <>
+          {dirty ? <Button variant="primary" loading={busy} onClick={() => void save()}>保存</Button> : null}
+          {dirty ? <Button variant="ghost" onClick={() => setRouting(llm.routing)}>放弃修改</Button> : null}
+          <Button variant="text" onClick={() => setAdvanced(true)}>高级设置：随机性、回复长度</Button>
+        </>
+      }
+    >
+      {LLM_PURPOSES.map((purpose) => (
+        <div key={purpose} className="route-row">
+          <div>
+            <strong>{LLM_PURPOSE_LABELS[purpose].label}</strong>
+            <small>{LLM_PURPOSE_LABELS[purpose].hint}</small>
+          </div>
+          <Select value={routing.routes[purpose].profileId ?? ""} onChange={(event) => update(purpose, { profileId: event.target.value || null })}>
+            <option value="">跟随默认模型</option>
+            {usable.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+          </Select>
+          <span className="route-arrow">备用</span>
+          <Select value={routing.routes[purpose].fallbackProfileId ?? ""} onChange={(event) => update(purpose, { fallbackProfileId: event.target.value || null })}>
+            <option value="">不设备用</option>
+            {usable.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+          </Select>
+        </div>
+      ))}
 
-// ---------- 用量与费用 ----------
-function UsageSection({ usage }: { usage: UsageState | null }) {
-  return (
-    <section className="panel data-panel">
-      <div className="panel-heading"><div><h2>本月模型用量与费用</h2><p>费用按各档案填写的单价折算；未填单价的档案费用显示为 0。</p></div></div>
-      <table>
-        <thead><tr><th>用途</th><th>调用</th><th>失败</th><th>走备用</th><th>tokens</th><th>费用</th></tr></thead>
-        <tbody>
-          {LLM_PURPOSES.map((purpose) => {
-            const row = usage?.byPurpose.find((item) => item.purpose === purpose);
-            return (
-              <tr key={purpose}>
-                <td>{LLM_PURPOSE_LABELS[purpose].label}</td>
-                <td>{row?.calls ?? 0}</td><td>{row?.failures ?? 0}</td><td>{row?.fallbacks ?? 0}</td>
-                <td>{(row?.tokens ?? 0).toLocaleString()}</td><td>{yuan(row?.cost ?? 0)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {usage?.byProfile.length ? (
-        <table>
-          <thead><tr><th>档案 / 模型</th><th>调用</th><th>失败</th><th>输入 tokens</th><th>输出 tokens</th><th>平均首字</th><th>费用</th></tr></thead>
-          <tbody>
-            {usage.byProfile.map((row) => (
-              <tr key={`${row.profileName}-${row.model}`}>
-                <td>{row.profileName} · {row.model}</td><td>{row.calls}</td><td>{row.failures}</td>
-                <td>{row.inputTokens.toLocaleString()}</td><td>{row.outputTokens.toLocaleString()}</td>
-                <td>{row.avgTtftMs !== null ? `${row.avgTtftMs}ms` : "—"}</td><td>{yuan(row.cost)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {advanced ? (
+        <Drawer
+          title="用途分配 · 高级设置"
+          onClose={() => setAdvanced(false)}
+          footer={<><Button onClick={() => setAdvanced(false)}>关闭</Button><Button variant="primary" loading={busy} disabled={!dirty} onClick={() => void save()}>保存</Button></>}
+        >
+          <p className="drawer-note">一般不需要改。随机性越大回复越多变（对话建议 0.8，评分建议 0.2）；回复长度上限的单位是 tokens，约等于 1 个汉字或 0.7 个英文单词。</p>
+          {LLM_PURPOSES.map((purpose) => (
+            <div key={purpose} className="adv-row">
+              <strong>{LLM_PURPOSE_LABELS[purpose].label}</strong>
+              <Field label="随机性"><Input type="number" step="0.1" min="0" max="2" value={routing.routes[purpose].temperature} onChange={(event) => update(purpose, { temperature: Number(event.target.value) })} /></Field>
+              <Field label="回复长度上限"><Input type="number" min="16" value={routing.routes[purpose].maxTokens} onChange={(event) => update(purpose, { maxTokens: Number(event.target.value) })} /></Field>
+            </div>
+          ))}
+          <Field label="情绪与剧情推进的频率" hint="学生每发几条消息，在后台推演一次买家的情绪和剧情。调大能省钱，但买家情绪变化会慢一些。">
+            <span className="inline-number">每<Input type="number" min="1" max="10" className="num-input" value={routing.directorEveryNTurns} onChange={(event) => setRouting({ ...routing, directorEveryNTurns: Number(event.target.value) || 1 })} />条运行一次</span>
+          </Field>
+        </Drawer>
       ) : null}
-    </section>
+    </SettingSection>
   );
 }
 
-// ---------- 语音服务 + 月度额度 ----------
-function VoiceAndQuota({ session, data, onSaved, onError }: {
-  session: Session;
-  data: ProvidersState;
-  onSaved: (message: string) => void;
-  onError: (cause: unknown) => void;
-}) {
+// ---------- 本月用量摘要 ----------
+
+function MonthSummary({ providers, onOpen }: { providers: ProvidersState; onOpen?: () => void }) {
+  const u = providers.usage;
+  const q = providers.quota;
+  return (
+    <SettingSection
+      title="本月用量"
+      desc="按各模型填写的单价折算。设置了上限后，达到提醒线会在管理端顶部提醒。"
+      actions={onOpen ? <Button variant="text" onClick={onOpen}>查看明细、设置额度</Button> : undefined}
+    >
+      <div className="usage-tiles">
+        <UsageTile label="本月费用" value={yuan(u.totalCost)} percent={q.monthlyBudgetYuan > 0 ? q.budgetPercent : null} note={q.monthlyBudgetYuan > 0 ? `上限 ¥${q.monthlyBudgetYuan} · 已用 ${q.budgetPercent}%` : "未设上限"} alert={q.alert && q.budgetPercent >= q.warnPercent} />
+        <UsageTile label="模型 tokens" value={u.llmTokens.toLocaleString()} percent={q.monthlyTokens > 0 ? q.tokenPercent : null} note={q.monthlyTokens > 0 ? `上限 ${q.monthlyTokens.toLocaleString()} · 已用 ${q.tokenPercent}%` : "未设上限"} alert={q.alert && q.tokenPercent >= q.warnPercent} />
+        <UsageTile label="模型调用" value={u.llmCalls.toLocaleString()} percent={null} note={`语音朗读 ${u.ttsCalls} 次 · 识别 ${u.asrCalls} 次`} />
+      </div>
+    </SettingSection>
+  );
+}
+
+function UsageTile({ label, value, percent, note, alert }: { label: string; value: string; percent: number | null; note: string; alert?: boolean }) {
+  return (
+    <div className="usage-tile">
+      <span className="figure-label">{label}</span>
+      <strong className="usage-value num">{value}</strong>
+      <span className="usage-bar"><i className={alert ? "is-danger" : undefined} style={{ width: `${percent === null ? 0 : Math.min(100, percent)}%` }} /></span>
+      <span className="figure-extra">{note}</span>
+    </div>
+  );
+}
+
+// ---------- 语音服务 ----------
+
+function VoiceSection({ session, data, reload }: { session: Session; data: ProvidersState; reload: () => void }) {
   const [voice, setVoice] = useState({ ...data.voice, apiKey: "" });
-  const [quota, setQuota] = useState({ monthlyBudgetYuan: String(data.quota.monthlyBudgetYuan), monthlyTokens: String(data.quota.monthlyTokens), warnPercent: String(data.quota.warnPercent) });
+  const [busy, setBusy] = useState(false);
   const u = data.usage;
 
-  async function saveVoice() {
+  async function save() {
+    setBusy(true);
     try {
       await apiRequestPut("/v1/admin/providers", session, {
         voice: {
@@ -445,55 +500,173 @@ function VoiceAndQuota({ session, data, onSaved, onError }: {
         },
       });
       setVoice((current) => ({ ...current, apiKey: "" }));
-      onSaved("语音服务配置已保存，立即生效。");
-    } catch (cause) { onError(cause); }
+      toast.ok("语音服务已保存，立即生效");
+      reload();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
   }
 
-  async function saveQuota() {
+  const set = (key: keyof typeof voice) => (event: { target: { value: string } }) => setVoice({ ...voice, [key]: event.target.value });
+  const speakers = data.voice.vendors.find((item) => item.key === voice.vendor)?.speakers ?? [];
+  return (
+    <>
+      <SettingSection
+        title="服务商与密钥"
+        desc={`学生在工作台里语音输入、朗读买家消息时使用。当前密钥 ${data.voice.apiKeyMasked || "未设置"}。`}
+        actions={<Button variant="primary" loading={busy} onClick={() => void save()}>保存</Button>}
+      >
+        <div className="form-grid-2 form-max">
+          <Field label="厂商">
+            <Select value={voice.vendor} onChange={set("vendor")}>
+              {data.voice.vendors.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+            </Select>
+          </Field>
+          <Field label="密钥" hint="不改就留空"><Input type="password" value={voice.apiKey} onChange={set("apiKey")} autoComplete="off" /></Field>
+          <Field label="朗读资源 ID"><Input value={voice.ttsResourceId} onChange={set("ttsResourceId")} /></Field>
+          <Field label="识别资源 ID"><Input value={voice.asrResourceId} onChange={set("asrResourceId")} /></Field>
+        </div>
+      </SettingSection>
+      <SettingSection title="音色" desc="朗读买家消息时，按买家性别选用。买家大多说英语，优先选英语音色；点“试听”用一句买家原话听效果。"
+        actions={<Button variant="primary" loading={busy} onClick={() => void save()}>保存</Button>}
+      >
+        <div className="form-grid-2 form-max">
+          <SpeakerPicker session={session} label="女声" gender="female" speakers={speakers} value={voice.ttsSpeaker} onChange={(id) => setVoice({ ...voice, ttsSpeaker: id })} />
+          <SpeakerPicker session={session} label="男声" gender="male" speakers={speakers} value={voice.ttsSpeakerMale} onChange={(id) => setVoice({ ...voice, ttsSpeakerMale: id })} />
+        </div>
+      </SettingSection>
+      <SettingSection title="计费" desc={`用于统计费用。本月朗读 ${u.ttsChars.toLocaleString()} 字、识别 ${u.asrMinutes} 分钟，合计 ${yuan(u.ttsCost + u.asrCost)}。`}>
+        <div className="form-grid-2 form-max">
+          <Field label="朗读单价" hint="元 / 万字"><Input type="number" step="0.01" value={voice.ttsPricePer10kChars} onChange={set("ttsPricePer10kChars")} /></Field>
+          <Field label="识别单价" hint="元 / 小时"><Input type="number" step="0.01" value={voice.asrPricePerHour} onChange={set("asrPricePerHour")} /></Field>
+        </div>
+      </SettingSection>
+    </>
+  );
+}
+
+const CUSTOM_SPEAKER = "__custom";
+
+/** 音色选择：常用音色下拉 + 手动填 ID（厂商新出的音色） + 试听 */
+function SpeakerPicker({ session, label, gender, speakers, value, onChange }: {
+  session: Session; label: string; gender: "male" | "female"; speakers: VoiceSpeaker[]; value: string; onChange: (id: string) => void;
+}) {
+  const options = speakers.filter((item) => item.gender === gender);
+  const [custom, setCustom] = useState(() => Boolean(value) && !options.some((item) => item.id === value));
+  const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const audio = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => () => audio.current?.pause(), []);
+
+  async function play() {
+    if (playing) {
+      audio.current?.pause();
+      setPlaying(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const url = await previewVoice(session, value);
+      const player = new Audio(url);
+      audio.current = player;
+      player.onended = () => { setPlaying(false); URL.revokeObjectURL(url); };
+      await player.play();
+      setPlaying(true);
+    } catch (cause) {
+      toast.error(errorText(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const current = options.find((item) => item.id === value);
+  return (
+    <Field label={label} hint={custom ? "填写厂商控制台里的音色 ID" : current?.lang ? `适用：${current.lang}` : undefined}>
+      <span className="speaker-picker">
+        <Select
+          value={custom ? CUSTOM_SPEAKER : value}
+          onChange={(event) => {
+            if (event.target.value === CUSTOM_SPEAKER) setCustom(true);
+            else { setCustom(false); onChange(event.target.value); }
+          }}
+        >
+          {options.map((item) => <option key={item.id} value={item.id}>{item.label} · {item.lang.replace(/（.*）/, "")}</option>)}
+          <option value={CUSTOM_SPEAKER}>其他音色（手动填写 ID）</option>
+        </Select>
+        <Button icon={playing ? Square : Volume2} loading={loading} disabled={!value} onClick={() => void play()}>{playing ? "停止" : "试听"}</Button>
+      </span>
+      {custom ? <Input className="speaker-custom" value={value} placeholder="例如 en_female_dacey_uranus_bigtts" onChange={(event) => onChange(event.target.value.trim())} /> : null}
+    </Field>
+  );
+}
+
+// ---------- 用量与额度 ----------
+
+function UsageSections({ session, usage, providers, reload }: { session: Session; usage: UsageState | null; providers: ProvidersState | null; reload: () => void }) {
+  const [quota, setQuota] = useState({ monthlyBudgetYuan: "", monthlyTokens: "", warnPercent: "" });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (providers) setQuota({ monthlyBudgetYuan: String(providers.quota.monthlyBudgetYuan), monthlyTokens: String(providers.quota.monthlyTokens), warnPercent: String(providers.quota.warnPercent) });
+  }, [providers]);
+  if (!providers) return <Empty>正在读取…</Empty>;
+
+  async function save() {
+    setBusy(true);
     try {
       await apiRequestPut("/v1/admin/providers", session, {
         quota: { monthlyBudgetYuan: Number(quota.monthlyBudgetYuan) || 0, monthlyTokens: Number(quota.monthlyTokens) || 0, warnPercent: Number(quota.warnPercent) || 80 },
       });
-      onSaved("月度额度已保存。");
-    } catch (cause) { onError(cause); }
+      toast.ok("额度已保存");
+      reload();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const setV = (key: keyof typeof voice) => (event: { target: { value: string } }) => setVoice({ ...voice, [key]: event.target.value });
   return (
-    <div className="classes-layout">
-      <section className="panel">
-        <div className="panel-heading"><div><h2>语音服务</h2><p>当前 Key {data.voice.apiKeyMasked || "未设置"} · 本月合成 {u.ttsCalls} 次（{u.ttsChars.toLocaleString()} 字）· 识别 {u.asrCalls} 次（{u.asrMinutes} 分钟）</p></div></div>
-        <div className="form-grid">
-          <label>厂商
-            <select value={voice.vendor} onChange={setV("vendor")}>
-              {data.voice.vendors.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
-            </select>
-          </label>
-          <label>新 API Key（留空不改）<input type="password" value={voice.apiKey} onChange={setV("apiKey")} autoComplete="off" /></label>
-          <label>合成资源 ID<input value={voice.ttsResourceId} onChange={setV("ttsResourceId")} /></label>
-          <label>女声音色<input value={voice.ttsSpeaker} onChange={setV("ttsSpeaker")} /></label>
-          <label>男声音色<input value={voice.ttsSpeakerMale} onChange={setV("ttsSpeakerMale")} /></label>
-          <label>识别资源 ID<input value={voice.asrResourceId} onChange={setV("asrResourceId")} /></label>
-          <label>合成单价（元 / 万字符）<input type="number" step="0.01" value={voice.ttsPricePer10kChars} onChange={setV("ttsPricePer10kChars")} /></label>
-          <label>识别单价（元 / 小时）<input type="number" step="0.01" value={voice.asrPricePerHour} onChange={setV("asrPricePerHour")} /></label>
+    <>
+      <MonthSummary providers={providers} />
+      <SettingSection title="月度额度" desc="按金额（含语音）或 tokens 计算，任一项达到提醒线就在管理端顶部提醒。填 0 表示不限。" actions={<Button variant="primary" loading={busy} onClick={() => void save()}>保存</Button>}>
+        <div className="form-grid-3 form-max">
+          <Field label="每月费用上限" hint="元"><Input type="number" value={quota.monthlyBudgetYuan} onChange={(event) => setQuota({ ...quota, monthlyBudgetYuan: event.target.value })} /></Field>
+          <Field label="每月 tokens 上限"><Input type="number" value={quota.monthlyTokens} onChange={(event) => setQuota({ ...quota, monthlyTokens: event.target.value })} /></Field>
+          <Field label="提醒线" hint="%，达到后提醒"><Input type="number" value={quota.warnPercent} onChange={(event) => setQuota({ ...quota, warnPercent: event.target.value })} /></Field>
         </div>
-        <div className="form-actions"><button className="primary-button" onClick={() => void saveVoice()}><Save size={15} /> 保存语音配置</button></div>
-      </section>
-      <section className="panel">
-        <div className="panel-heading"><div><h2>月度额度</h2><p>按金额（含语音）或 tokens 计算，任一项达到提醒线即告警；填 0 表示不限。</p></div></div>
-        <div className="dimension-list">
-          <div><span>本月费用</span><i><b style={{ width: `${Math.min(100, data.quota.budgetPercent)}%` }} /></i><strong>{yuan(u.totalCost)}{data.quota.monthlyBudgetYuan > 0 ? ` / ¥${data.quota.monthlyBudgetYuan}` : ""}</strong></div>
-          <div><span>模型 tokens</span><i><b style={{ width: `${Math.min(100, data.quota.tokenPercent)}%` }} /></i><strong>{u.llmTokens.toLocaleString()}{data.quota.monthlyTokens > 0 ? ` / ${data.quota.monthlyTokens.toLocaleString()}` : ""}</strong></div>
-          <div><span>其中模型</span><i><b style={{ width: u.totalCost > 0 ? `${(u.llmCost / u.totalCost) * 100}%` : "0%" }} /></i><strong>{yuan(u.llmCost)}</strong></div>
-          <div><span>其中语音</span><i><b style={{ width: u.totalCost > 0 ? `${((u.ttsCost + u.asrCost) / u.totalCost) * 100}%` : "0%" }} /></i><strong>{yuan(u.ttsCost + u.asrCost)}</strong></div>
-        </div>
-        <div className="form-grid">
-          <label>每月费用上限（元）<input type="number" value={quota.monthlyBudgetYuan} onChange={(event) => setQuota({ ...quota, monthlyBudgetYuan: event.target.value })} /></label>
-          <label>每月 tokens 上限<input type="number" value={quota.monthlyTokens} onChange={(event) => setQuota({ ...quota, monthlyTokens: event.target.value })} /></label>
-          <label>提醒线（%）<input type="number" value={quota.warnPercent} onChange={(event) => setQuota({ ...quota, warnPercent: event.target.value })} /></label>
-        </div>
-        <div className="form-actions"><button className="primary-button" onClick={() => void saveQuota()}><Save size={15} /> 保存额度</button></div>
-      </section>
-    </div>
+      </SettingSection>
+      <SettingSection title="按用途" desc="本月每种用途的调用、失败和费用。“用了备用”是主模型出错后自动切换的次数。">
+        <DataTable
+          rows={[...LLM_PURPOSES]}
+          rowKey={(purpose) => purpose}
+          columns={[
+            { key: "purpose", title: "用途", render: (purpose) => LLM_PURPOSE_LABELS[purpose].label },
+            { key: "calls", title: "调用", width: 80, align: "right", render: (purpose) => usage?.byPurpose.find((row) => row.purpose === purpose)?.calls ?? 0 },
+            { key: "failures", title: "失败", width: 70, align: "right", render: (purpose) => usage?.byPurpose.find((row) => row.purpose === purpose)?.failures ?? 0 },
+            { key: "fallbacks", title: "用了备用", width: 90, align: "right", render: (purpose) => usage?.byPurpose.find((row) => row.purpose === purpose)?.fallbacks ?? 0 },
+            { key: "tokens", title: "tokens", width: 110, align: "right", render: (purpose) => (usage?.byPurpose.find((row) => row.purpose === purpose)?.tokens ?? 0).toLocaleString() },
+            { key: "cost", title: "费用", width: 100, align: "right", render: (purpose) => yuan(usage?.byPurpose.find((row) => row.purpose === purpose)?.cost ?? 0) },
+          ]}
+        />
+      </SettingSection>
+      {usage?.byProfile.length ? (
+        <SettingSection title="按模型" desc="本月每个模型的用量和平均首字时间。">
+          <DataTable
+            rows={usage.byProfile}
+            rowKey={(row) => `${row.profileName}-${row.model}`}
+            columns={[
+              { key: "name", title: "模型", render: (row) => <>{row.profileName}<small>{row.model}</small></> },
+              { key: "calls", title: "调用", width: 80, align: "right", render: (row) => row.calls },
+              { key: "failures", title: "失败", width: 70, align: "right", render: (row) => row.failures },
+              { key: "tokens", title: "tokens", width: 110, align: "right", render: (row) => (row.inputTokens + row.outputTokens).toLocaleString() },
+              { key: "ttft", title: "平均首字", width: 100, align: "right", render: (row) => seconds(row.avgTtftMs) },
+              { key: "cost", title: "费用", width: 100, align: "right", render: (row) => yuan(row.cost) },
+            ]}
+          />
+        </SettingSection>
+      ) : null}
+    </>
   );
 }

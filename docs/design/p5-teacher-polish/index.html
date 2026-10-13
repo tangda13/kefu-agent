@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>教师端三页精修</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+:root { --doc-bg:#e9edf3; --doc-ink:#161c26; --doc-ink-2:#465163; --doc-line:#d6dce5; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--doc-bg); color: var(--doc-ink); font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 24px; font-weight: 700; }
+.doc h2 { margin: 64px 0 6px; font-size: 20px; font-weight: 700; }
+.doc .lede { margin: 0 0 20px; color: var(--doc-ink-2); max-width: 980px; }
+.diag { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0 8px; }
+.diag div { background: #fff; border: 1px solid var(--doc-line); border-radius: 10px; padding: 14px 16px; font-size: 13px; color: var(--doc-ink-2); }
+.diag b { display: block; margin-bottom: 4px; color: var(--doc-ink); font-size: 14px; }
+.diag .fix { color: #174aa8; }
+.diag .api { display: inline-block; margin-top: 6px; padding: 1px 6px; border-radius: 4px; background: #fdf0dc; color: #9a5200; font-size: 12px; }
+.cap { display: flex; justify-content: space-between; gap: 24px; margin: 22px 0 8px; font-size: 13px; color: var(--doc-ink-2); }
+.cap b { color: var(--doc-ink); white-space: nowrap; }
+.frame { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid var(--doc-line); box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); background: #fff; }
+.screen { position: absolute; top: 0; left: 0; width: 1440px; height: 900px; transform-origin: 0 0; overflow: hidden; }
+.before { width: 100%; display: block; border-radius: 10px; border: 1px solid var(--doc-line); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.trio-b { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+figure { margin: 0; }
+figcaption { font-size: 12px; color: var(--doc-ink-2); margin-top: 6px; }
+
+/* ===== 织 UI 令牌（同 apps/portal/src/styles/tokens.css） ===== */
+.s { --canvas:#f4f6f9; --surface:#fff; --surface-2:#f8f9fb; --hover:#eef2f7; --line:#e3e7ee; --line-2:#c8cfda; --ink:#161c26; --ink-2:#465163; --ink-3:#5e6a7b; --ink-4:#9aa3b0;
+  --brand:#1d5fd1; --brand-soft:#e8effc; --brand-ink:#174aa8; --ok:#1a7445; --ok-wash:#e3f4ea; --warn:#9a5200; --warn-wash:#fdf0dc; --bad:#b8302a; --bad-wash:#fbe8e6;
+  --c1:#1d5fd1; --c1s:#e8effc; --c2:#0a7a70; --c2s:#e0f3f0; --c3:#8c5b0f; --c3s:#fbefdc; --c4:#6c4fc9; --c4s:#eeeafb;
+  background: var(--surface); color: var(--ink); font: 400 14px/22px Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.s svg { width: 18px; height: 18px; stroke-width: 1.75; flex: none; }
+.num { font-variant-numeric: tabular-nums; }
+.app { position: relative; display: grid; grid-template-columns: 232px 1fr; height: 100%; }
+.side { display: flex; flex-direction: column; padding: 14px 12px; border-right: 1px solid var(--line); background: var(--surface); }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 18px; font-size: 14px; font-weight: 700; }
+.mark { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 6px; background: var(--brand); color: #fff; }
+.mark svg { width: 16px; height: 16px; }
+.nav { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 6px; color: var(--ink-2); font-size: 14px; }
+.nav svg { color: var(--ink-3); }
+.nav.on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.nav.on svg { color: var(--brand-ink); }
+.nav .badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.grow { flex: 1; }
+.foot { border-top: 1px solid var(--line); padding-top: 8px; }
+.main { display: flex; flex-direction: column; min-width: 0; background: var(--canvas); }
+.head { display: flex; align-items: flex-end; gap: 28px; height: 56px; padding: 0 40px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; }
+.head h1 { margin: 0 0 13px; font-size: 20px; font-weight: 700; white-space: nowrap; }
+.head .tabs { display: flex; gap: 24px; align-self: stretch; align-items: flex-end; }
+.head .tab { padding-bottom: 15px; border-bottom: 2px solid transparent; color: var(--ink-2); font-size: 14px; white-space: nowrap; }
+.head .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--brand); }
+.head .tab .n { color: var(--ink-3); font-weight: 400; margin-left: 4px; }
+.head .tab.on .n { color: var(--brand-ink); }
+.head .right { margin-left: auto; display: flex; align-items: center; gap: 14px; margin-bottom: 13px; color: var(--ink-2); }
+.av { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--hover); font-size: 12px; font-weight: 700; color: var(--ink-2); flex: none; }
+.body { flex: 1; overflow: hidden; padding: 28px 40px; }
+.body.flush { padding: 0; }
+.wrap { max-width: 1120px; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--line-2); background: #fff; color: var(--ink); white-space: nowrap; font-size: 14px; font-weight: 500; }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 13px; }
+.btn svg { width: 16px; height: 16px; }
+.search { display: flex; align-items: center; gap: 8px; width: 260px; height: 34px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 6px; background: #fff; color: var(--ink-3); }
+.search svg { width: 15px; height: 15px; }
+.bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.bar-row .r { margin-left: auto; display: flex; gap: 8px; }
+.chips { display: flex; gap: 6px; }
+.chip { height: 28px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--line-2); background: #fff; color: var(--ink-2); font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+.chip.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-ink); font-weight: 600; }
+.chip i { font-style: normal; opacity: .7; }
+.tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; font-size: 12px; font-weight: 500; background: var(--surface-2); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
+.tag.c1 { background: var(--c1s); color: var(--c1); box-shadow: none; } .tag.c2 { background: var(--c2s); color: var(--c2); box-shadow: none; }
+.tag.c3 { background: var(--c3s); color: var(--c3); box-shadow: none; } .tag.c4 { background: var(--c4s); color: var(--c4); box-shadow: none; }
+.tag.bad { background: var(--bad-wash); color: var(--bad); box-shadow: none; } .tag.warn { background: var(--warn-wash); color: var(--warn); box-shadow: none; }
+.tag.ok { background: var(--ok-wash); color: var(--ok); box-shadow: none; } .tag.brand { background: var(--brand-soft); color: var(--brand-ink); box-shadow: none; }
+.sw { position: relative; width: 36px; height: 20px; border-radius: 10px; background: var(--line-2); flex: none; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.sw.on { background: var(--brand); } .sw.on::after { left: 18px; }
+.sw.sm { width: 30px; height: 17px; } .sw.sm::after { width: 13px; height: 13px; } .sw.sm.on::after { left: 15px; }
+.board { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.board + .board { margin-top: 16px; }
+.bhead { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+.bhead h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.bhead .n { color: var(--ink-3); font-size: 13px; }
+.bhead .end { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.muted { color: var(--ink-3); }
+.small { font-size: 13px; }
+.cap-s { font-size: 12px; color: var(--ink-3); font-weight: 500; }
+
+/* ===== 通知公告 ===== */
+.nt-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.nt { display: grid; grid-template-columns: 4px minmax(0, 1fr) 180px 28px; gap: 18px; padding: 18px 20px 18px 0; border-top: 1px solid var(--line); }
+.nt:first-of-type { border-top: 0; }
+.nt .bar { border-radius: 0 3px 3px 0; background: var(--brand); }
+.nt.old .bar { background: var(--line-2); }
+.nt h4 { margin: 0; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.nt p { margin: 4px 0 8px; color: var(--ink-2); font-size: 13px; line-height: 20px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.nt .meta { font-size: 12px; color: var(--ink-3); display: flex; gap: 14px; }
+.nt .meta b { font-weight: 600; color: var(--warn); }
+.read { display: grid; gap: 6px; align-content: center; }
+.read .top { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-3); }
+.read .top b { font-size: 16px; color: var(--ink); font-weight: 700; }
+.track { height: 6px; border-radius: 999px; background: var(--hover); overflow: hidden; }
+.track i { display: block; height: 100%; border-radius: 999px; background: var(--brand); }
+.nt.old h4, .nt.old p { color: var(--ink-3); }
+.fold { display: flex; align-items: center; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); font-size: 13px; border-radius: 0 0 12px 12px; }
+.fold svg { width: 16px; height: 16px; }
+.preview-card { padding: 18px 20px; }
+.preview-card h4 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.preview-card p { margin: 0 0 14px; font-size: 13px; color: var(--ink-2); }
+.client { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fbfcfd; }
+.client .ctop { height: 22px; background: #eef1f5; display: flex; align-items: center; gap: 4px; padding: 0 8px; }
+.client .ctop i { width: 6px; height: 6px; border-radius: 50%; background: #c8cfda; }
+.client .banner { display: flex; gap: 8px; align-items: flex-start; margin: 8px; padding: 8px 10px; border-radius: 8px; background: var(--brand-soft); color: var(--brand-ink); font-size: 12px; line-height: 18px; }
+.client .banner svg { width: 14px; height: 14px; margin-top: 2px; }
+.client .ghostlines { padding: 4px 10px 12px; display: grid; gap: 6px; }
+.client .ghostlines span { height: 8px; border-radius: 4px; background: #e9edf2; }
+.tips { padding: 14px 20px 18px; border-top: 1px solid var(--line); display: grid; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.tips div { display: flex; gap: 8px; } .tips svg { width: 16px; height: 16px; color: var(--ink-3); margin-top: 3px; }
+.empty-big { display: grid; grid-template-columns: 1fr 380px; gap: 40px; align-items: center; padding: 48px 56px; }
+.empty-big .ic { width: 52px; height: 52px; border-radius: 14px; background: var(--brand-soft); color: var(--brand); display: flex; align-items: center; justify-content: center; margin-bottom: 18px; }
+.empty-big .ic svg { width: 26px; height: 26px; }
+.empty-big h3 { margin: 0 0 8px; font-size: 22px; font-weight: 700; }
+.empty-big p { margin: 0 0 20px; color: var(--ink-2); max-width: 460px; }
+.tpl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 28px; }
+.tpl div { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--surface-2); }
+.tpl b { display: block; font-size: 13px; } .tpl span { font-size: 12px; color: var(--ink-3); }
+.history { margin-top: 16px; display: flex; align-items: center; gap: 10px; padding: 14px 20px; color: var(--ink-2); font-size: 13px; }
+.history svg { width: 16px; height: 16px; color: var(--ink-3); }
+.history a { margin-left: auto; color: var(--brand-ink); font-weight: 500; }
+/* 发布抽屉 */
+.scrim { position: absolute; inset: 0; background: rgba(14,20,32,.42); }
+.drawer { position: absolute; top: 0; right: 0; bottom: 0; width: 880px; background: #fff; box-shadow: 0 24px 64px rgba(16,24,40,.25); display: flex; flex-direction: column; }
+.drawer .dh { display: flex; align-items: center; height: 64px; padding: 0 28px; border-bottom: 1px solid var(--line); }
+.drawer .dh h3 { margin: 0; font-size: 18px; font-weight: 600; }
+.drawer .dh svg { margin-left: auto; color: var(--ink-3); }
+.drawer .db { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+.drawer .form { padding: 24px 28px; display: grid; gap: 18px; align-content: start; }
+.field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.field .in { height: 36px; border: 1px solid var(--line-2); border-radius: 6px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; }
+.field .in.focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.field .ta { min-height: 120px; border: 1px solid var(--line-2); border-radius: 6px; padding: 10px 12px; line-height: 22px; }
+.field .hint { font-size: 12px; color: var(--ink-3); margin-top: 6px; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); }
+.seg span { height: 28px; padding: 0 12px; display: inline-flex; align-items: center; border-radius: 4px; font-size: 13px; color: var(--ink-2); }
+.seg span.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.1); }
+.drawer .pv { background: var(--surface-2); border-left: 1px solid var(--line); padding: 24px; }
+.drawer .df { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 28px; border-top: 1px solid var(--line); }
+
+/* ===== 实训跟踪：实时监控 ===== */
+.mon { display: grid; grid-template-columns: 320px minmax(0, 1fr) 300px; height: 100%; background: var(--surface); }
+.q { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
+.q-top { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink-2); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px var(--ok-wash); flex: none; }
+.q-top .r { margin-left: auto; color: var(--ink-3); font-size: 12px; }
+.grp { display: flex; align-items: center; gap: 8px; padding: 12px 16px 6px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.grp .c { font-weight: 500; color: var(--ink-3); }
+.grp.bad { color: var(--bad); }
+.qi { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px; margin: 2px 8px; padding: 10px 8px; border-radius: 8px; }
+.qi.on { background: var(--brand-soft); box-shadow: inset 3px 0 0 var(--brand); }
+.qi img, .qi .ph { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+.qi .l1 { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; }
+.qi .l1 span { font-weight: 400; color: var(--ink-3); font-size: 12px; }
+.qi .l2 { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qi .side-r { text-align: right; display: grid; gap: 2px; align-content: start; }
+.qi .wait { font-size: 12px; font-weight: 700; color: var(--ink-2); }
+.qi .wait.bad { color: var(--bad); } .qi .wait.warn { color: var(--warn); }
+.qi .sc { font-size: 12px; color: var(--ink-3); }
+.qi .sc b { font-size: 14px; color: var(--ink); font-weight: 700; }
+.qi .sc b.bad { color: var(--bad); }
+.q-fold { margin: 8px 16px 14px; padding: 10px 12px; border: 1px dashed var(--line-2); border-radius: 8px; font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.q-fold svg { width: 14px; height: 14px; }
+.conv { display: flex; flex-direction: column; min-width: 0; background: var(--canvas); }
+.conv-h { display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 24px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.conv-h b { font-size: 15px; }
+.conv-h .who { font-size: 12px; color: var(--ink-3); }
+.conv-h .state { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.msgs { flex: 1; padding: 20px 28px; display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+.day { align-self: center; font-size: 12px; color: var(--ink-3); }
+.m { display: flex; gap: 10px; max-width: 72%; }
+.m img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex: none; }
+.m .bub { padding: 10px 14px; border-radius: 4px 14px 14px 14px; background: #fff; border: 1px solid var(--line); line-height: 21px; }
+.m .t { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+.m .tr { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--ink-3); }
+.m.me { align-self: flex-end; flex-direction: row-reverse; }
+.m.me .bub { background: var(--brand); border-color: var(--brand); color: #fff; border-radius: 14px 4px 14px 14px; }
+.m.me .t { text-align: right; }
+.m .stu { width: 30px; height: 30px; border-radius: 50%; background: var(--c4s); color: var(--c4); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex: none; }
+.guide { align-self: center; display: flex; gap: 8px; align-items: center; padding: 6px 12px; border-radius: 999px; background: var(--warn-wash); color: var(--warn); font-size: 12px; }
+.guide svg { width: 14px; height: 14px; }
+.typing { align-self: flex-start; margin-left: 40px; padding: 8px 12px; border-radius: 12px; background: #fff; border: 1px solid var(--line); color: var(--ink-3); font-size: 12px; }
+.compose { padding: 12px 20px 16px; border-top: 1px solid var(--line); background: var(--surface); }
+.compose .presets { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.compose .presets span { height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--line); font-size: 12px; color: var(--ink-2); display: inline-flex; align-items: center; background: var(--surface-2); }
+.compose .row { display: flex; gap: 8px; }
+.compose .in { flex: 1; height: 38px; border: 1px solid var(--line-2); border-radius: 8px; display: flex; align-items: center; padding: 0 12px; color: var(--ink-3); font-size: 13px; }
+.panel { border-left: 1px solid var(--line); background: var(--surface); overflow: hidden; }
+.pb { padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.pb h5 { margin: 0 0 12px; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.figs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; }
+.figs small { display: block; font-size: 12px; color: var(--ink-3); }
+.figs b { font-size: 24px; font-weight: 700; line-height: 30px; }
+.figs b.bad { color: var(--bad); } .figs b.warn { color: var(--warn); }
+.figs b small { display: inline; font-size: 12px; font-weight: 500; margin-left: 2px; }
+.spark { height: 40px; margin-top: 8px; display: block; }
+.buyer { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+.buyer img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+.buyer b { display: block; font-size: 15px; }
+.buyer span { font-size: 12px; color: var(--ink-3); }
+.kv { display: grid; grid-template-columns: 64px 1fr; gap: 6px 10px; font-size: 13px; }
+.kv dt { color: var(--ink-3); } .kv dd { margin: 0; }
+.goal { font-size: 13px; line-height: 21px; color: var(--ink-2); }
+.goal b { color: var(--ink); font-weight: 600; }
+.lock { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--ink-3); font-weight: 500; margin-left: 6px; }
+.lock svg { width: 12px; height: 12px; }
+/* 空：没人在接待 */
+.mon-empty { display: grid; grid-template-columns: 1fr; place-items: center; height: 100%; background: var(--canvas); }
+.me-box { width: 640px; text-align: center; }
+.me-box .ic { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 16px; background: var(--brand-soft); color: var(--brand); display: flex; align-items: center; justify-content: center; }
+.me-box .ic svg { width: 28px; height: 28px; }
+.me-box h3 { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
+.me-box p { margin: 0 0 24px; color: var(--ink-2); }
+.today { display: grid; grid-template-columns: repeat(3, 1fr); text-align: left; }
+.today > div { padding: 16px 20px; border-left: 1px solid var(--line); }
+.today > div:first-child { border-left: 0; }
+.today small { display: block; font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.today b { font-size: 24px; font-weight: 700; }
+.today a { display: block; margin-top: 4px; font-size: 13px; color: var(--brand-ink); font-weight: 500; }
+.today .bad { color: var(--bad); }
+
+/* ===== 回放与评分 ===== */
+.rv { display: grid; grid-template-columns: 64px minmax(0, 1fr) 150px 110px 92px; gap: 18px; align-items: center; padding: 14px 20px; border-top: 1px solid var(--line); }
+.rv.th { padding: 10px 20px; background: var(--surface-2); border-top: 0; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.rv.th + .rv { border-top: 0; }
+.rv .score { width: 52px; height: 52px; border-radius: 12px; background: var(--surface-2); display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.rv .score b { font-size: 22px; font-weight: 700; }
+.rv .score small { margin-top: 3px; font-size: 10px; color: var(--ink-3); font-weight: 600; }
+.rv .score.bad { background: var(--bad-wash); } .rv .score.bad b { color: var(--bad); }
+.rv .score.good { background: var(--ok-wash); } .rv .score.good b { color: var(--ok); }
+.rv .l1 { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.rv .l2 { font-size: 13px; color: var(--ink-3); }
+.rv .cm { font-size: 13px; color: var(--ink-2); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dimmini { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; align-items: end; height: 30px; }
+.dimmini i { display: block; border-radius: 2px 2px 0 0; background: var(--brand); opacity: .85; }
+.dimmini i.low { background: var(--bad); }
+.rv .tm { font-size: 13px; color: var(--ink-2); }
+
+/* ===== 场景配置 ===== */
+.cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.col-h { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.col-h .n { font-size: 12px; color: var(--ink-3); }
+.col-h .ic { margin-left: auto; color: var(--ink-3); }
+.col-h .ic svg { width: 16px; height: 16px; }
+.sc-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: 0 1px 2px rgba(16,24,40,.04); display: grid; gap: 10px; }
+.sc-card + .sc-card { margin-top: 12px; }
+.sc-card .t { display: flex; align-items: flex-start; gap: 10px; }
+.sc-card .t b { font-size: 15px; font-weight: 600; line-height: 22px; flex: 1; }
+.sc-card p { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2); min-height: 40px; }
+.sc-card .ft { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+.sc-card .ft span { display: inline-flex; align-items: center; gap: 4px; }
+.sc-card .ft svg { width: 14px; height: 14px; }
+.sc-card .ft .ok { color: var(--ok); } .sc-card .ft .warn { color: var(--warn); font-weight: 600; }
+.sc-card.off { background: var(--surface-2); } .sc-card.off b, .sc-card.off p { color: var(--ink-3); }
+.sc-add { margin-top: 12px; height: 44px; border: 1px dashed var(--line-2); border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--ink-3); font-size: 13px; }
+.sc-add svg { width: 15px; height: 15px; }
+.legend { display: flex; gap: 18px; font-size: 12px; color: var(--ink-3); margin-left: 4px; }
+/* 画像卡片 */
+.pgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.pc { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 12px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.pc .top { display: flex; gap: 12px; align-items: center; }
+.pc img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
+.pc .ph { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 17px; }
+.pc b { display: block; font-size: 15px; }
+.pc .sub { font-size: 12px; color: var(--ink-3); }
+.pc .sw { margin-left: auto; align-self: flex-start; }
+.pc .traits { display: flex; flex-wrap: wrap; gap: 6px; }
+.pc .ln { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-3); padding-top: 10px; border-top: 1px solid var(--line); }
+.pc.off { opacity: .55; }
+/* 商品卡片 */
+.ggrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.gc { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.gc .img { height: 150px; display: flex; align-items: center; justify-content: center; position: relative; }
+.gc .img img { width: 100%; height: 100%; object-fit: cover; }
+.gc .img svg { width: 40px; height: 40px; stroke-width: 1.3; }
+.gc .img .st { position: absolute; top: 10px; left: 10px; }
+.gc .bd { padding: 12px 14px 14px; display: grid; gap: 4px; }
+.gc b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc .spec { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc .row { display: flex; align-items: baseline; justify-content: space-between; margin-top: 6px; }
+.gc .price { font-size: 18px; font-weight: 700; }
+.gc .stock { font-size: 12px; color: var(--ink-3); }
+.gc .stock.warn { color: var(--warn); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>教师端精修：通知公告 · 实训跟踪 · 场景配置</h1>
+  <p class="lede">这三页的问题不是颜色，而是“页面只把数据列出来，没有替老师想下一步”：空页面只有一句灰字，监控页每条会话长得一样，场景配置是一张拉长的清单。下面先诊断，再给出改后的样子。颜色、字体、外壳都用织 UI，不变。示例数据按一个 45 人的班级编，只看版式。</p>
+
+  <div class="diag">
+    <div><b>1. 空页面只有一句灰字和一个孤零零的按钮</b>通知公告没有内容时，整屏只剩一行说明，老师不知道公告会出现在学生哪里、该写什么。<br><span class="fix">改：空状态讲清“学生在哪看到”，配一张学生端示意图和三个常用模板（截止提醒、课堂安排、系统维护），点一下就起草。</span></div>
+    <div><b>2. 公告发出去，看不到效果</b>老师最关心“学生看到了没有”，现在只有发布和到期时间。<br><span class="fix">改：每条公告显示“已读 38 / 45”和进度条，快到期的标橙；过期的收进底部一行，不再单独占一个页签。</span><br><span class="api">要补接口：学生关掉公告时记已读（read_marks 加 notice 类型），公告列表返回已读人数</span></div>
+    <div><b>3. 监控列表每条都一样重</b>三行灰字，学生名最大但最不重要；82 天前的会话也叫“暂离”混在里面，真正等着回复的买家反而淹没了。<br><span class="fix">改：按“需介入 / 进行中 / 暂离”分组，需介入置顶标红；每条右侧只突出两件事——买家等了多久、实时得分；超过 1 天没动的收进“已中断”一行。</span></div>
+    <div><b>4. 会话区只有聊天，老师判断不了</b>看不到买家是谁、这个场景学生该达成什么；顶部四个数字一样大，“买家已等 13 小时”这种数字没有意义。<br><span class="fix">改：右侧加“现场”面板：得分、满意度走势、轮次、用时；买家资料；场景目标和买家底线（剧本，只老师可见）。会话头只留一句状态。气泡改成真实客服软件的样子，老师的指导以橙色提示条插在时间线里。</span><br><span class="api">要补接口：导演每轮已经算满意度，顺手存一份历史（和每轮得分一样），用来画走势；场景目标从剧本里取</span></div>
+    <div><b>5. 场景配置是一张拉长的清单</b>名字在最左、开关和编辑在最右，中间一大片空白；缺不缺剧本、被几个任务在用，都看不出来。<br><span class="fix">改：四个业务环节排成四列，每个场景一张卡片：目标、剧本完整度、被几个任务使用、开关在右上角；点卡片编辑，列底部“复制一个场景”。</span></div>
+    <div><b>6. 画像、商品、回放都是表格</b>画像看不到“人”，商品看不到“货”，回放里分数和评语挤在一行，“回放复核”像普通文字。<br><span class="fix">改：画像用头像卡片（按性别固定一张头像），商品用图片卡片，停用的变淡；回放每行左边一个分数块（低于 60 红、80 以上绿）、六项小柱、一行评语、右边“复核”按钮。</span><br><span class="api">要补接口：画像返回“接待过几次”，场景返回“被几个任务在用”</span></div>
+  </div>
+
+  <h2>通知公告</h2>
+  <div class="pair">
+    <figure><img class="before" src="assets/37.png" alt=""><figcaption>现在：没有公告时，整页只有一行灰字</figcaption></figure>
+    <figure><img class="before" src="assets/b-notice-exp.png" alt="" onerror="this.parentNode.style.display='none'"><figcaption>现在：过期公告单独一个页签，看不到谁读了</figcaption></figure>
+  </div>
+  <div class="cap"><b>改后 · 有公告时</b><span>左边是公告列表，每条看得到已读进度；右边一直放着“学生端怎么显示”的示意和写公告的提醒；过期的收在底部一行</span></div>
+  <div class="frame"><div class="screen s" data-tpl="notices"></div></div>
+  <div class="cap"><b>改后 · 还没有公告</b><span>说清公告出现在哪、什么时候该用任务而不是公告；三个常用模板一键起草</span></div>
+  <div class="frame"><div class="screen s" data-tpl="noticesEmpty"></div></div>
+  <div class="cap"><b>改后 · 发布公告（右侧抽屉）</b><span>边写边看学生端的效果；有效期用分段控件；发给哪个班一目了然</span></div>
+  <div class="frame"><div class="screen s" data-tpl="noticeCompose"></div></div>
+
+  <h2>实训跟踪</h2>
+  <div class="pair">
+    <figure><img class="before" src="assets/38.png" alt=""><figcaption>现在：列表和会话区信息都平铺，看不出谁要先管</figcaption></figure>
+    <figure><img class="before" src="assets/b-replay.png" alt=""><figcaption>现在：回放与评分是表格，分数不醒目</figcaption></figure>
+  </div>
+  <div class="cap"><b>改后 · 实时监控（有学生在接待）</b><span>左：按紧急程度分组的队列；中：像真实客服软件的会话和指导输入；右：现场面板，老师判断要不要介入的依据都在这里</span></div>
+  <div class="frame"><div class="screen s" data-tpl="monitor"></div></div>
+  <div class="cap"><b>改后 · 实时监控（现在没人在接待）</b><span>不留一整屏空白：给出今天的情况和去处——待复核几份、谁今天还没练</span></div>
+  <div class="frame"><div class="screen s" data-tpl="monitorEmpty"></div></div>
+  <div class="cap"><b>改后 · 回放与评分</b><span>分数块一眼看出高低；六项小柱看出短板；评语只留一行；每行一个“复核”按钮</span></div>
+  <div class="frame"><div class="screen s" data-tpl="replay"></div></div>
+
+  <h2>场景配置</h2>
+  <div class="trio-b">
+    <figure><img class="before" src="assets/39.png" alt=""><figcaption>现在：场景清单，开关和编辑离名字很远</figcaption></figure>
+    <figure><img class="before" src="assets/b-personas.png" alt=""><figcaption>现在：买家画像是表格</figcaption></figure>
+    <figure><img class="before" src="assets/b-products.png" alt=""><figcaption>现在：商品是表格，图片只有小方块</figcaption></figure>
+  </div>
+  <div class="cap"><b>改后 · 场景</b><span>四个业务环节四列卡片；缺剧本标橙；被几个任务在用写在卡片底部（停用前心里有数）</span></div>
+  <div class="frame"><div class="screen s" data-tpl="scenes"></div></div>
+  <div class="cap"><b>改后 · 买家画像</b><span>头像卡片：国籍语言、客户类型、性格和情绪；停用的变淡；用客户类型筛选</span></div>
+  <div class="frame"><div class="screen s" data-tpl="personas"></div></div>
+  <div class="cap"><b>改后 · 店铺商品</b><span>图片卡片：价格最大，库存低于 100 标橙；没有图片的用浅色底 + 图标占位，提醒补图</span></div>
+  <div class="frame"><div class="screen s" data-tpl="products"></div></div>
+</div>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const I = (n) => `<i data-lucide="${n}"></i>`;
+const shell = (active, title, tabs, body, opts = {}) => `<div class="app">
+  <nav class="side">
+    <div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>
+    ${[["chart-column","数据总览"],["clipboard-list","实训任务"],["users-round","班级与学生"],["megaphone","通知公告"],["message-square-more","实训跟踪"],["file-chart-column","考核报表"],["boxes","场景配置"]].map(([i,l]) => `<div class="nav${l===active?" on":""}">${I(i)}${l}${l==="实训跟踪" && opts.badge ? `<span class="badge">${opts.badge}</span>` : ""}</div>`).join("")}
+    <div class="grow"></div><div class="foot"><div class="nav">${I("book-open")}使用帮助</div></div>
+  </nav>
+  <div class="main" style="position:relative">
+    <header class="head"><h1>${title}</h1><div class="tabs">${tabs.map(([l,on,n]) => `<span class="tab${on?" on":""}">${l}${n!=null?`<span class="n">${n}</span>`:""}</span>`).join("")}</div>
+      <div class="right">${I("bell")}<span class="av">王</span>王老师 ${I("chevron-down")}</div></header>
+    <div class="body${opts.flush ? " flush" : ""}">${opts.flush ? body : `<div class="wrap">${body}</div>`}</div>
+  </div>${opts.overlay || ""}</div>`;
+const A = (f) => `assets/${f}.jpg`;
+
+/* ---------- 通知公告 ---------- */
+const nt = (title, cls, content, pub, left, leftWarn, read, total, old) => `<div class="nt${old ? " old" : ""}"><span class="bar"></span>
+  <div><h4>${title}<span class="tag">${cls}</span></h4><p>${content}</p>
+    <div class="meta"><span>${pub} 发布</span>${leftWarn ? `<b>${left}</b>` : `<span>${left}</span>`}</div></div>
+  <div class="read"><div class="top"><span>已读</span><span><b class="num">${read}</b> / ${total}</span></div><div class="track"><i style="width:${read/total*100}%"></i></div></div>
+  <div class="muted" style="padding-top:2px">${I("ellipsis")}</div></div>`;
+const clientPreview = (title, text) => `<div class="client"><div class="ctop"><i></i><i></i><i></i></div>
+  <div class="banner">${I("megaphone")}<div><b>${title}</b> ${text}</div></div>
+  <div class="ghostlines"><span style="width:70%"></span><span style="width:90%"></span><span style="width:55%"></span><span style="width:80%"></span></div></div>`;
+const notices = () => shell("通知公告", "通知公告", [], `
+  <div class="nt-grid">
+    <div>
+      <div class="board">
+        <div class="bhead"><h3>生效中</h3><span class="n">3</span><div class="end"><span class="btn primary">${I("plus")}发布公告</span></div></div>
+        ${nt("「售后差评挽回」明天 18:00 截止", "跨境电商2601班", "还没完成的同学抓紧时间，至少完成两个场景的接待。遇到买家情绪很激动的情况，先安抚再给方案，记得用规范话术。", "10/12", "还剩 1 天", true, 38, 45)}
+        ${nt("周四第 3–4 节改到 302 机房", "全部班级", "本周四的实训课改到实训楼 302 机房，请提前 5 分钟到，用自己的账号登录客户端。", "10/11", "还剩 3 天", false, 71, 87)}
+        ${nt("本学期考核方式说明", "全部班级", "期末成绩 = 平时实训 60% + 期末考核 40%。平时实训按每个任务的平均分计算，自由练习不计入成绩。", "9/02", "一直有效", false, 85, 87)}
+        <div class="fold">${I("archive")}已过期 6 条<span style="margin-left:auto;color:var(--brand-ink);font-weight:500">展开</span></div>
+      </div>
+    </div>
+    <div class="board">
+      <div class="preview-card"><h4>学生端怎么显示</h4><p>公告出现在学生客户端顶部，学生关掉后算已读，到期自动消失。</p>
+        ${clientPreview("「售后差评挽回」明天 18:00 截止", "还没完成的同学抓紧时间…")}</div>
+      <div class="tips">
+        <div>${I("check")}<span>适合：调课、截止提醒、考核说明</span></div>
+        <div>${I("arrow-right")}<span>要学生去<b style="color:var(--ink)">完成</b>的事，用「实训任务」下发，系统会统计完成情况</span></div>
+      </div>
+    </div>
+  </div>`, { badge: 2 });
+const noticesEmpty = () => shell("通知公告", "通知公告", [], `
+  <div class="board"><div class="empty-big">
+    <div>
+      <div class="ic">${I("megaphone")}</div>
+      <h3>还没有生效中的公告</h3>
+      <p>公告会出现在学生客户端顶部，学生关掉后算已读，到期自动消失。适合调课、截止提醒、考核说明；要学生去完成的事，请用「实训任务」下发。</p>
+      <span class="btn primary">${I("plus")}发布公告</span>
+      <div class="tpl">
+        <div><b>截止提醒</b><span>“××任务明天 18:00 截止…”</span></div>
+        <div><b>课堂安排</b><span>“周四实训课改到 302 机房…”</span></div>
+        <div><b>系统维护</b><span>“今晚 22:00–23:00 暂停使用…”</span></div>
+      </div>
+    </div>
+    ${clientPreview("周四第 3–4 节改到 302 机房", "请提前 5 分钟到…")}
+  </div></div>
+  <div class="board history">${I("archive")}已过期的公告 1 条 · 最近一条「任务三本周五16:00截止」8/15 到期<a>查看</a></div>`, { badge: 2 });
+const noticeCompose = () => shell("通知公告", "通知公告", [], `
+  <div class="board" style="height:300px"></div>`, { badge: 2, overlay: `<div class="scrim"></div><div class="drawer">
+    <div class="dh"><h3>发布公告</h3>${I("x")}</div>
+    <div class="db">
+      <div class="form">
+        <div class="field"><label>发给</label><div class="in"><span>跨境电商2601班（45 人）</span>${I("chevron-down")}</div></div>
+        <div class="field"><label>标题</label><div class="in focus"><span>「售后差评挽回」明天 18:00 截止</span><span class="muted small">18 / 40</span></div></div>
+        <div class="field"><label>内容</label><div class="ta">还没完成的同学抓紧时间，至少完成两个场景的接待。遇到买家情绪很激动的情况，先安抚再给方案，记得用规范话术。</div><div class="hint">学生端顶部只显示前 30 个字，点开看全文</div></div>
+        <div class="field"><label>有效期</label><div class="seg"><span>7 天</span><span class="on">14 天</span><span>30 天</span><span>一直有效</span></div><div class="hint">10 月 27 日后自动从学生端消失</div></div>
+      </div>
+      <div class="pv"><div class="cap-s" style="margin-bottom:10px">学生端预览</div>${clientPreview("「售后差评挽回」明天 18:00 截止", "还没完成的同学抓紧时间…")}</div>
+    </div>
+    <div class="df"><span class="btn ghost">取消</span><span class="btn primary">${I("send")}发布给 45 名学生</span></div>
+  </div>` });
+
+/* ---------- 实训跟踪 ---------- */
+const qi = (img, name, tag, buyer, scen, wait, waitCls, score, on) => `<div class="qi${on ? " on" : ""}"><img src="${A(img)}" alt="">
+  <div style="min-width:0"><div class="l1">${name}${tag ? `<span>${tag}</span>` : ""}</div><div class="l2">${buyer} · ${scen}</div></div>
+  <div class="side-r"><span class="wait ${waitCls}">${wait}</span><span class="sc">得分 <b class="${score < 60 ? "bad" : ""} num">${score}</b></span></div></div>`;
+const tabsT = (a) => [["实时监控", a === 0, 5], ["回放与评分", a === 1, 3]];
+const spark = `<svg class="spark" viewBox="0 0 240 34" preserveAspectRatio="none" style="width:100%"><polyline fill="none" stroke="#b8302a" stroke-width="2" vector-effect="non-scaling-stroke" points="0,6 40,8 80,12 120,19 160,24 200,23 240,29"/><polyline fill="#fbe8e6" stroke="none" points="0,6 40,8 80,12 120,19 160,24 200,23 240,29 240,34 0,34"/></svg>`;
+const monitor = () => shell("实训跟踪", "实训跟踪", tabsT(0), `<div class="mon">
+  <div class="q">
+    <div class="q-top"><span class="dot"></span>5 人在接待<span class="r">每 8 秒刷新</span></div>
+    <div class="grp bad">需介入<span class="c">2 · 买家在等回复</span></div>
+    ${qi("m-03", "李四", "", "Paul Becker", "货损退款协商", "等 6 分钟", "bad", 48, true)}
+    ${qi("f-03", "何嘉怡", "", "Yuki Tanaka", "清关延误安抚", "等 4 分钟", "warn", 63)}
+    <div class="grp">进行中<span class="c">3</span></div>
+    ${qi("f-05", "张三", "", "Camille Bernard", "差评挽回", "刚刚", "", 76)}
+    ${qi("m-05", "王小明", "", "Lukas Schneider", "未付款订单催付", "1 分钟前", "", 82)}
+    ${qi("f-07", "赵思琪", "练习", "Emma Wilson", "新品咨询与卖点介绍", "2 分钟前", "", 71)}
+    <div class="grp">暂离<span class="c">1 · 10 分钟以上没动</span></div>
+    ${qi("m-07", "孙浩然", "", "Marco Rossi", "复购老客优惠沟通", "18 分钟", "", 69)}
+    <div class="q-fold">${I("archive")}已中断 9 个（超过 1 天没动，不再提醒）</div>
+  </div>
+  <div class="conv">
+    <div class="conv-h"><b>李四</b><span class="who">正在接待 Paul Becker · 货损退款协商 · 10:13 开始</span>
+      <div class="state"><span class="tag bad">买家等了 6 分钟</span><span class="btn sm">${I("monitor-play")}回放全程</span></div></div>
+    <div class="msgs">
+      <span class="day">今天 10:13</span>
+      <div class="m"><img src="${A("m-01")}" alt=""><div><div class="bub">I just received my order and there's a piece missing from the set. This is completely useless to me right now.<div class="tr">我刚收到订单，套装里少了一件，现在完全没法用。</div></div><div class="t">买家 · 10:13</div></div></div>
+      <div class="m me"><span class="stu">李</span><div><div class="bub">好的，知道了</div><div class="t">李四 · 10:15</div></div></div>
+      <div class="guide">${I("lightbulb")}王老师：先安抚买家情绪，再问清少了哪一件，给出补发或退款方案 · 10:16</div>
+      <div class="m"><img src="${A("m-01")}" alt=""><div><div class="bub">Excuse me? That's all you have to say? I told you there's a piece missing and I can't use the product. What are you going to do about it?<div class="tr">就这些？我说了少了一件没法用，你们打算怎么处理？</div></div><div class="t">买家 · 10:17</div></div></div>
+      <div class="typing">学生还没有回复 · 6 分钟</div>
+    </div>
+    <div class="compose">
+      <div class="presets"><span>先安抚买家情绪，再给解决方案</span><span>注意合规用语，不要做绝对化承诺</span><span>给出明确的物流 / 售后时间</span><span>先弄清买家真正想要什么</span></div>
+      <div class="row"><div class="in">给李四发一条指导，只有学生能看到，买家看不到</div><span class="btn primary">${I("send")}发送指导</span></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="pb"><h5>现场</h5><div class="figs">
+      <div><small>实时得分</small><b class="bad num">48</b></div>
+      <div><small>买家满意度</small><b class="warn num">30<small>/ 100</small></b></div>
+      <div><small>轮次</small><b class="num">2</b></div>
+      <div><small>已用时</small><b class="num">7<small>分钟</small></b></div>
+    </div><div class="cap-s" style="margin-top:12px">满意度走势 · 从 72 降到 30</div>${spark}</div>
+    <div class="pb"><h5>买家</h5>
+      <div class="buyer"><img src="${A("m-01")}" alt=""><div><b>Paul Becker</b><span>德国 · 英语 · 复购老客</span></div></div>
+      <dl class="kv"><dt>性格</dt><dd>理性谨慎</dd><dt>当前情绪</dt><dd><span class="tag bad">不满</span></dd><dt>订单</dt><dd>PO-202607-244670 · 已签收</dd></dl></div>
+    <div class="pb"><h5>场景目标<span class="lock">${I("lock")}只有老师能看到</span></h5>
+      <div class="goal"><b>学生要做到：</b>核实证据后提出退款、补发或补偿方案。<br><b>买家想要：</b>尽快补发缺件，不想退货。<br><b>买家底线：</b>补发 + 小额补偿可以接受。</div></div>
+  </div>
+</div>`, { flush: true, badge: 2 });
+const monitorEmpty = () => shell("实训跟踪", "实训跟踪", [["实时监控", true, 0], ["回放与评分", false, 3]], `<div class="mon-empty"><div class="me-box">
+  <div class="ic">${I("monitor-play")}</div>
+  <h3>现在没有学生在接待</h3>
+  <p>学生打开客服工作台开始接待后，会话会出现在这里，你可以旁观并随时发指导。</p>
+  <div class="board today">
+    <div><small>今天接待过</small><b class="num">38</b><span class="muted small"> 人</span><a>看名单 →</a></div>
+    <div><small>等你复核</small><b class="num bad">3</b><span class="muted small"> 份</span><a>去复核 →</a></div>
+    <div><small>今天还没练</small><b class="num" style="color:var(--warn)">7</b><span class="muted small"> 人</span><a>看是谁 →</a></div>
+  </div>
+</div></div>`, { flush: true });
+const dm = (arr) => `<div class="dimmini">${arr.map((v) => `<i class="${v < 60 ? "low" : ""}" style="height:${Math.max(12,(v-30)/70*100)}%"></i>`).join("")}</div>`;
+const rv = (score, name, tag, scen, buyer, comment, dims, time, reviewed) => `<div class="rv">
+  <div class="score ${score < 60 ? "bad" : score >= 80 ? "good" : ""}"><b class="num">${score}</b><small>${reviewed ? "已复核" : "AI 评分"}</small></div>
+  <div style="min-width:0"><div class="l1">${name}${tag ? `<span class="tag">${tag}</span>` : ""}<span class="l2" style="font-weight:400">${scen} · 买家 ${buyer}</span></div><div class="cm">${comment}</div></div>
+  ${dm(dims)}
+  <div class="tm">${time}</div>
+  <div style="text-align:right">${reviewed ? `<span class="btn sm ghost">查看</span>` : `<span class="btn sm">复核</span>`}</div></div>`;
+const replay = () => shell("实训跟踪", "实训跟踪", tabsT(1), `
+  <div class="bar-row"><div class="chips"><span class="chip on">待复核 <i>3</i></span><span class="chip">低于 60 分 <i>1</i></span><span class="chip">已复核 <i>12</i></span><span class="chip">全部 <i>15</i></span></div>
+    <div class="r"><span class="search">${I("search")}搜索学生、任务或场景</span></div></div>
+  <div class="board">
+    <div class="rv th"><span>总分</span><span>学生 · 评语</span><span>六项能力</span><span>时间</span><span></span></div>
+    ${rv(58, "李四", "", "货损退款协商", "Jessica Miller", "客服回应机械，忽视材质差异和退回疑虑，重复提问且未实际解决问题，沟通低效。", [72, 64, 55, 48, 50, 41], "今天 10:32")}
+    ${rv(88, "张三", "练习", "货损退款协商", "Felix Schneider", "回复礼貌且安抚到位，但未按流程要求买家提供损坏证据，直接承诺方案，风险较高。语法优秀。", [92, 95, 86, 88, 84, 80], "昨天 19:12")}
+    ${rv(71, "王小明", "", "差评挽回", "Camille Bernard", "能识别买家不满的原因并道歉，补偿方案给得偏晚，邀评时机不对。", [80, 76, 74, 70, 66, 58], "昨天 15:40")}
+    <div class="rv" style="background:var(--surface-2);padding:10px 20px;font-size:13px;color:var(--ink-3)"><span></span><span>已复核的 12 份在“已复核”里</span><span></span><span></span><span></span></div>
+  </div>`, { badge: 2 });
+
+/* ---------- 场景配置 ---------- */
+const tabsS = (a) => [["场景", a === 0, 8], ["买家画像", a === 1, 20], ["店铺商品", a === 2, 9]];
+const card = (name, obj, script, tasks, on = true) => `<div class="sc-card${on ? "" : " off"}"><div class="t"><b>${name}</b><span class="sw sm${on ? " on" : ""}"></span></div><p>${obj}</p>
+  <div class="ft">${script === 5 ? `<span class="ok">${I("circle-check")}剧本完整</span>` : `<span class="warn">${I("circle-alert")}剧本缺 ${5 - script} 项</span>`}<span style="margin-left:auto">${I("clipboard-list")}${tasks ? `${tasks} 个任务在用` : "没有任务在用"}</span></div></div>`;
+const col = (tag, cls, n, cards) => `<div><div class="col-h"><span class="tag ${cls}">${tag}</span><span class="n">${n}</span></div>${cards}<div class="sc-add">${I("copy-plus")}复制一个场景</div></div>`;
+const scenes = () => shell("场景配置", "场景配置", tabsS(0), `
+  <div class="bar-row"><span class="search">${I("search")}搜索场景</span><div class="legend"><span>剧本只给 AI 买家看，学生看不到</span></div></div>
+  <div class="cols">
+    ${col("售前沟通", "c2", "2 个 · 全部启用", card("新品咨询与卖点介绍", "识别需求并以合规英文介绍新品卖点", 5, 1) + card("新客开发邮件", "完成新客开发邮件并修正违规宣传用语", 3, 0))}
+    ${col("售中处理", "c1", "2 个 · 全部启用", card("未付款订单催付", "在不施压的前提下说明库存与付款安排", 5, 1) + card("清关延误安抚", "同步物流节点并安抚焦虑客户", 5, 1))}
+    ${col("售后处理", "c3", "3 个 · 2 个启用", card("货损退款协商", "核实证据并提出退款、补发或补偿方案", 5, 2) + card("差评挽回", "回应负面评价并推动问题闭环", 5, 1) + card("退货地址变更（副本）", "复制自“货损退款协商”，还没改", 2, 0, false))}
+    ${col("客户分层维护", "c4", "2 个 · 全部启用", card("复购老客优惠沟通", "结合历史偏好完成个性化复购推荐", 5, 0) + card("沉睡客户唤醒", "以节日关怀和新品信息重新建立联系", 4, 0))}
+  </div>`, { badge: 2 });
+const pc = (img, name, role, place, type, typeCls, traits, used, on = true) => `<div class="pc${on ? "" : " off"}"><div class="top">${img.startsWith("#") ? `<span class="ph" style="background:${img.split("|")[0].slice(1) ? "var(--c4s)" : ""};color:var(--c4)">${name[0]}</span>` : `<img src="${A(img)}" alt="">`}<div><b>${name}</b><span class="sub">${role}</span></div><span class="sw sm${on ? " on" : ""}"></span></div>
+  <div class="traits"><span class="tag ${typeCls}">${type}</span>${traits.map((t) => `<span class="tag">${t}</span>`).join("")}</div>
+  <div class="ln"><span>${place}</span><span>${used}</span></div></div>`;
+const personas = () => shell("场景配置", "场景配置", tabsS(1), `
+  <div class="bar-row"><span class="search">${I("search")}搜索姓名、国籍或身份</span><div class="chips"><span class="chip on">全部 <i>20</i></span><span class="chip">潜在意向客 <i>7</i></span><span class="chip">复购老客 <i>6</i></span><span class="chip">粉丝客 <i>5</i></span><span class="chip">沉睡客 <i>2</i></span></div>
+    <div class="r"><span class="btn ghost">${I("download")}模板</span><span class="btn">${I("file-up")}批量导入</span><span class="btn primary">${I("plus")}新建画像</span></div></div>
+  <div class="pgrid">
+    ${pc("f-01", "Jessica Miller", "独立站零售买家", "美国 · 英语", "粉丝客", "c4", ["友好健谈", "期待"], "接待 32 次")}
+    ${pc("m-01", "Lukas Schneider", "小型采购商", "德国 · 英语", "复购老客", "c1", ["理性谨慎", "平静"], "接待 27 次")}
+    ${pc("f-03", "Camille Bernard", "生活方式买手", "法国 · 法语", "潜在意向客", "c2", ["敏感挑剔", "不满"], "接待 19 次")}
+    ${pc("f-05", "Yuki Tanaka", "平台个人买家", "日本 · 英语", "潜在意向客", "c2", ["犹豫保守", "焦虑"], "接待 24 次")}
+    ${pc("m-03", "Daniel Johnson", "企业行政采购", "加拿大 · 英语", "复购老客", "c1", ["直接高效", "平静"], "接待 15 次")}
+    ${pc("f-07", "Olivia Brown", "社媒内容创作者", "英国 · 英语", "粉丝客", "c4", ["友好健谈", "期待"], "接待 21 次")}
+    ${pc("m-05", "Mateo Garcia", "平台个人买家", "西班牙 · 西班牙语", "潜在意向客", "c2", ["直接高效", "焦虑"], "接待 11 次")}
+    ${pc("m-07", "Noah Williams", "独立站沉睡用户", "美国 · 英语", "沉睡客", "", ["犹豫保守", "平静"], "还没接待过", false)}
+  </div>`, { badge: 2 });
+const gc = (img, color, icon, name, spec, price, sold, stock, on = true) => `<div class="gc" style="${on ? "" : "opacity:.55"}"><div class="img" style="background:${color}">${img ? `<img src="assets/${img}.jpg" alt="">` : `<span style="color:rgba(22,28,38,.45)">${I(icon)}</span>`}${on ? "" : `<span class="st tag">已下架</span>`}${!img ? `<span class="st tag warn" style="left:auto;right:10px">缺图片</span>` : ""}</div>
+  <div class="bd"><b>${name}</b><span class="spec">${spec}</span><div class="row"><span class="price num">${price}</span><span class="stock${stock < 100 ? " warn" : ""} num">已售 ${sold} · 库存 ${stock}</span></div></div></div>`;
+const products = () => shell("场景配置", "场景配置", tabsS(2), `
+  <div class="bar-row"><span class="search">${I("search")}搜索商品</span><div class="chips"><span class="chip on">全部 <i>9</i></span><span class="chip">缺图片 <i>6</i></span><span class="chip">已下架 <i>0</i></span></div>
+    <div class="r"><span class="btn">${I("folder-input")}导入资料包</span><span class="btn primary">${I("plus")}添加商品</span></div></div>
+  <div class="ggrid">
+    ${gc("p1", "#f1f3f6", "", "连衣裙V领无袖性感印花大下摆", "均码 / 常规款", "$9.90", 0, 100)}
+    ${gc("p2", "#f1f3f6", "", "女套头衫基本款T恤", "均码 / 常规款", "$9.90", 0, 100)}
+    ${gc("p3", "#f1f3f6", "", "收腰短袖V领度假长裙", "均码 / 常规款", "$9.90", 0, 100)}
+    ${gc("", "#e8effc", "headphones", "Wireless Noise-Cancelling Earbuds", "Black / USB-C / with charging case", "$39.99", 1286, 452)}
+    ${gc("", "#fbefdc", "lamp", "Smart LED String Lights 10m", "RGB / App control / IP65", "$21.50", 903, 1210)}
+    ${gc("", "#e0f3f0", "cup-soda", "Stainless Insulated Tumbler 600ml", "Matte green / double wall", "$15.80", 2140, 866)}
+    ${gc("", "#eeeafb", "dumbbell", "Foldable Yoga Mat", "6mm / TPE / carry strap", "$18.90", 758, 330)}
+    ${gc("", "#fae7ee", "brush", "Pro Makeup Brush Set 12pcs", "Vegan fiber / travel pouch", "$24.20", 664, 75)}
+  </div>`, { badge: 2 });
+
+const T = { notices, noticesEmpty, noticeCompose, monitor, monitorEmpty, replay, scenes, personas, products };
+document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
+if (window.lucide) lucide.createIcons();
+function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${900 * k}px`; }); }
+fit(); addEventListener("resize", fit);
+</script>
+</body>
+</html>

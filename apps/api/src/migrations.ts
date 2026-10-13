@@ -487,4 +487,30 @@ alter table assessments add column if not exists model text;
 alter table assessments add column if not exists evidence jsonb not null default '{}'::jsonb;
 `,
   },
+  {
+    /* D8：班内分组（一个学生只在一个组里，空 = 未分组） */
+    id: "026_student_groups",
+    sql: `
+alter table users add column if not exists group_name text;
+`,
+  },
+  {
+    /* D9 / C7：教师逐维度复核。AI 原始分另存，教师评语与 AI 评语分开 */
+    id: "027_assessment_review",
+    sql: `
+alter table assessments add column if not exists ai_scores jsonb;
+alter table assessments add column if not exists ai_total numeric;
+alter table assessments add column if not exists teacher_comment text;
+alter table assessments add column if not exists reviewed_by uuid references users(id) on delete set null;
+alter table assessments add column if not exists reviewed_at timestamptz;
+`,
+  },
+  {
+    /* 公告已读：学生端顶栏显示过即记已读（kind = notice），教师端公告列表显示已读人数 */
+    id: "028_notice_read_marks",
+    sql: `
+alter table read_marks drop constraint if exists read_marks_kind_check;
+alter table read_marks add constraint read_marks_kind_check check (kind in ('mail','guidance','notice'));
+`,
+  },
 ];

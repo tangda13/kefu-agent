@@ -259,7 +259,8 @@ export function registerClassRoutes(
       }
       await db.query(
         `update users set status = coalesce($1, status), display_name = coalesce($2, display_name),
-                          class_id = coalesce($3, class_id), updated_at = now()
+                          class_id = coalesce($3, class_id), updated_at = now(),
+                          group_name = case when $3::uuid is null then group_name else null end
          where id = $4`,
         [status ?? null, displayName ?? null, moving ? classId : null, studentId],
       );
@@ -360,10 +361,19 @@ export function registerClassRoutes(
         reply.code(403);
         return { code: "FORBIDDEN", message: "您未被授权管理该班级。" };
       }
+      // D8：名单带统计列。平均分按任务口径：先算每个任务的会话均分，再对任务求平均（自由练习不计）
       const result = await db.query(
-        `select id, username, display_name, status, must_change_password, created_at
-         from users where class_id = $1 and role = 'student'
-         order by username`,
+        `select u.id, u.username, u.display_name, u.status, u.must_change_password, u.created_at, u.group_name,
+                (select count(*) from task_progress tp where tp.student_id = u.id) as tasks_total,
+                (select count(*) from task_progress tp where tp.student_id = u.id and tp.status = 'done') as tasks_done,
+                (select round(avg(t.score)) from (
+                   select avg(a.total) as score from assessments a join conversations c on c.id = a.conversation_id
+                   where a.student_id = u.id and c.task_id is not null group by c.task_id
+                 ) t) as average_score,
+                (select max(m.created_at) from conversation_messages m join conversations c on c.id = m.conversation_id
+                 where c.student_id = u.id and m.sender = 'student') as last_active_at
+         from users u where u.class_id = $1 and u.role = 'student'
+         order by u.username`,
         [classId],
       );
       return result.rows.map((row) => ({
@@ -373,7 +383,41 @@ export function registerClassRoutes(
         status: row.status,
         mustChangePassword: row.must_change_password,
         createdAt: row.created_at,
+        groupName: row.group_name ?? null,
+        tasksTotal: Number(row.tasks_total),
+        tasksDone: Number(row.tasks_done),
+        averageScore: row.average_score == null ? null : Number(row.average_score),
+        lastActiveAt: row.last_active_at ?? null,
       }));
+    },
+  );
+
+  // D8：把若干学生分到一个组（groupName 为空 = 移出分组）
+  app.put<{ Params: { classId: string }; Body: { studentIds?: string[]; groupName?: string | null } }>(
+    "/v1/classes/:classId/groups",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request, reply) => {
+      const { classId } = request.params;
+      if (!(await teacherOwnsClass(db, request.user!, classId))) {
+        reply.code(403);
+        return { code: "FORBIDDEN", message: "您未被授权管理该班级。" };
+      }
+      const ids = Array.isArray(request.body?.studentIds) ? request.body!.studentIds.filter((id) => UUID_RE.test(id)) : [];
+      const groupName = request.body?.groupName?.trim() || null;
+      if (ids.length === 0) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "请先选择学生。" };
+      }
+      if (groupName && groupName.length > 20) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "组名不超过 20 个字。" };
+      }
+      const result = await db.query(
+        "update users set group_name = $1, updated_at = now() where class_id = $2 and role = 'student' and id = any($3::uuid[])",
+        [groupName, classId, ids],
+      );
+      await writeAudit(db, request.user!.sub, "class.group", classId, { groupName, count: result.rowCount });
+      return { updated: result.rowCount ?? 0 };
     },
   );
 

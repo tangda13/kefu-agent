@@ -1,4 +1,5 @@
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const fs = require("node:fs");
 const path = require("node:path");
 
 // 学生/教师共用同一客户端，登录页内切换「学生登录/教师登录」页签。
@@ -18,13 +19,29 @@ if (profile && /^[\w-]{1,32}$/.test(profile)) {
 }
 const roleTitle = { student: "学生", teacher: "教师" };
 
+// D10：考核报表直接存成 PDF 文件（页面里的“导出 PDF”调用），不走系统打印对话框
+ipcMain.handle("cecs:save-pdf", async (event, options = {}) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window) return { ok: false };
+  const safeName = String(options.fileName || "报表").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
+  const { canceled, filePath } = await dialog.showSaveDialog(window, {
+    title: "导出 PDF",
+    defaultPath: path.join(app.getPath("documents"), `${safeName}.pdf`),
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+  });
+  if (canceled || !filePath) return { ok: false, canceled: true };
+  const data = await event.sender.printToPDF({ printBackground: true, pageSize: "A4", landscape: Boolean(options.landscape), margins: { marginType: "default" } });
+  fs.writeFileSync(filePath, data);
+  return { ok: true, filePath };
+});
+
 function createWindow() {
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1180,
     minHeight: 720,
-    title: profile ? `跨境电商客服 AI 实训平台 · 调试[${(roleTitle[role] ?? "") + profile.replace(/^[a-z]+/i, "") || profile}]` : "跨境电商客服 AI 实训平台",
+    title: profile ? `跨境电商客服AI实训平台 · 调试[${(roleTitle[role] ?? "") + profile.replace(/^[a-z]+/i, "") || profile}]` : "跨境电商客服AI实训平台",
     backgroundColor: "#f4f7f8",
     autoHideMenuBar: true,
     webPreferences: {

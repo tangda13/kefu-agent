@@ -8,10 +8,10 @@ export const LLM_PURPOSES = ["dialogue", "director", "assessment", "assist"] as 
 export type LlmPurpose = (typeof LLM_PURPOSES)[number];
 
 export const LLM_PURPOSE_LABELS: Record<LlmPurpose, { label: string; hint: string; temperature: number; maxTokens: number }> = {
-  dialogue: { label: "买家对话", hint: "学生实时对话，最看重首字速度，建议关闭思考", temperature: 0.8, maxTokens: 400 },
-  director: { label: "导演评估", hint: "每轮异步推演买家情绪与剧情，可用便宜快速的模型", temperature: 0.3, maxTokens: 600 },
+  dialogue: { label: "买家对话", hint: "学生实时对话，最看重回复速度，建议关闭深度思考", temperature: 0.8, maxTokens: 400 },
+  director: { label: "情绪与剧情推进", hint: "在后台推演买家情绪和剧情走向，可用便宜、快速的模型", temperature: 0.3, maxTokens: 600 },
   assessment: { label: "六维评分", hint: "会话结束后评分，看重稳定和准确", temperature: 0.2, maxTokens: 1200 },
-  assist: { label: "话术与生成", hint: "回复建议、邮件草稿、翻译、买家评价等辅助任务", temperature: 0.5, maxTokens: 1200 },
+  assist: { label: "辅助生成", hint: "回复建议、邮件草稿、翻译、买家评价等", temperature: 0.5, maxTokens: 1200 },
 };
 
 /** 协议族：目前只开放 OpenAI 兼容 Chat Completions（国内主流厂商与 NewAPI 网关均支持） */

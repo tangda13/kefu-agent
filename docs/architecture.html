@@ -144,7 +144,7 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
   <div class="card"><div class="k">交付形态</div><div class="v">Windows 客户端（学生/教师）+ 云端管理端（浏览器）</div></div>
   <div class="card"><div class="k">规模与服务期</div><div class="v">200 账号 · 3 年服务期</div></div>
   <div class="card"><div class="k">技术栈</div><div class="v">React + Vite · Fastify + TypeScript · PostgreSQL 16 · Electron</div></div>
-  <div class="card"><div class="k">AI 服务</div><div class="v">LLM：DeepSeek 默认，可多厂商切换 · 语音：豆包 TTS/ASR</div></div>
+  <div class="card"><div class="k">AI 服务</div><div class="v">LLM：经团队总网关 Flow API 调 DeepSeek，可多厂商切换 · 语音：豆包 TTS/ASR</div></div>
   <div class="card"><div class="k">代码仓库</div><div class="v mono">github.com/tangda13/kefu-agent（main）</div></div>
   <div class="card"><div class="k">规模</div><div class="v">28 张表 · 23 个迁移 · 约 80 个接口</div></div>
 </div>
@@ -195,9 +195,9 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
 
   <!-- external -->
   <rect class="box" x="760" y="150" width="180" height="96" rx="4"/>
-  <text x="774" y="174" class="title">LLM 厂商</text>
-  <text x="774" y="194" class="small">DeepSeek（默认）</text>
-  <text x="774" y="210" class="small">通义 / 智谱 / 豆包方舟 / Kimi…</text>
+  <text x="774" y="174" class="title">模型网关 Flow API</text>
+  <text x="774" y="194" class="small">DeepSeek V4 Flash / Pro（默认）</text>
+  <text x="774" y="210" class="small">也可直连通义 / 智谱 / Kimi…</text>
   <text x="774" y="226" class="small">兼容 OpenAI 接口，可热切换</text>
   <rect class="box" x="760" y="280" width="180" height="76" rx="4"/>
   <text x="774" y="304" class="title">豆包语音</text>
@@ -263,11 +263,12 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
 <tr><td>conversations</td><td>学生</td><td class="mono">conversations · :id/opening · :id/reply · :id/messages · :id/close · :id/voice-messages · :id/asr · messages/:mid/tts · messages/:mid/translate · :id/cards · :id/attachment-messages · :id/orders · student/workbench-stats · student/guidance</td><td>买家对话主链路、语音、卡片、附件、翻译、工作台 KPI、教师指导通知</td></tr>
 <tr><td>orders</td><td>学生</td><td class="mono">student/orders · orders/:id · orders/:id/suggestions · student/reviews · student/assessments</td><td>订单与评价、AI 三版话术、成绩记录</td></tr>
 <tr><td>catalog</td><td>全部（按角色）</td><td class="mono">catalog/scenarios(PATCH 启停/剧本) · personas(/import) · phrases · my-phrases · forbidden-terms · mail-templates · store/products · store/coupons · mail/submissions · mail/assist · mail/replies</td><td>场景库、画像库、商品库、词库与话术、邮件实训</td></tr>
-<tr><td>teacher</td><td>教师 / 管理员</td><td class="mono">teacher/overview · tracking · conversations/:id/messages · conversations/:id/intervene · reports · assessments(/:id)</td><td>数据总览、实时监控与介入、回放复核、考核报表</td></tr>
-<tr><td>admin</td><td>管理员</td><td class="mono">admin/system · providers · teachers(/:id/reset-password) · content · backups · backup-schedule · export/:kind · audit · acceptance(/run · .csv)</td><td>系统总览、语音配置与月度额度（金额/tokens）、内容库、备份导出、审计、验收测试与明细导出</td></tr>
+<tr><td>teacher</td><td>教师 / 管理员</td><td class="mono">teacher/overview · tracking · conversations/:id/messages · conversations/:id/intervene · reports · assessments(/:id 逐维度复核)</td><td>数据总览、实时监控与介入、回放复核（逐维度改分、教师评语单独存）、考核报表</td></tr>
+<tr><td>admin</td><td>管理员</td><td class="mono">admin/system · alerts · providers · teachers(/:id/reset-password) · content(/import · /:id PATCH 启停) · backups · backup-schedule（含保留份数 keep） · voice/preview（音色试听） · export/:kind · audit · acceptance(/run · .csv)</td><td>系统总览、语音配置与月度额度（金额/tokens）、内容库、备份导出、审计、验收测试与明细导出</td></tr>
 <tr><td>admin-llm</td><td>管理员</td><td class="mono">admin/llm · llm/profiles(/:id · /:id/test) · llm/test · llm/default · llm/routing · llm/usage</td><td>模型档案增删改、连通性测试（草稿/已保存）、默认档案、按用途分配主/备用档案与参数、用量与费用</td></tr>
 <tr><td>announcements</td><td>教师 / 学生</td><td class="mono">announcements · student/announcements</td><td>班级公告</td></tr>
 <tr><td>baseline</td><td>学生</td><td class="mono">student/baseline(/questions /submit)</td><td>入学基线测评</td></tr>
+<tr><td>brand</td><td>公开 / 管理员</td><td class="mono">public/brand(GET，无需登录) · admin/brand(PUT)</td><td>平台名称与标识（D-21），存 app_settings.brand；标识为 data URL，限 PNG/JPG/WebP/SVG、256 KB</td></tr>
 <tr><td>student-state</td><td>学生（教师只读）</td><td class="mono">student/review-replies · student/mail-drafts(/:id) · me/read-marks · students/:id/review-replies</td><td>评价回复记录、邮件草稿、已读标记（原存客户端本机，K1–K4 已迁云端）</td></tr>
 </table></div>
 
@@ -303,7 +304,7 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
 <tr><td>教学</td><td class="mono">tasks · task_classes · task_progress · scenarios · persona_templates · announcements · baseline_assessments</td><td>任务含 persona_rule、scoring_weights、time_limit_minutes、start_at、deadline</td></tr>
 <tr><td>实训</td><td class="mono">conversations · conversation_messages · orders · store_products · mail_submissions · mail_replies · student_phrases · review_replies · mail_drafts · read_marks</td><td>conversations.state（jsonb）存导演状态（含 studentTurns 计数）；conversations.persona 存画像快照（售前含 interestedProduct）；scenarios.script 存场景剧本；消息 kind 支持 text/voice/image/video/file/card</td></tr>
 <tr><td>评估与计量</td><td class="mono">assessments · conversation_metrics · voice_metrics · llm_usage</td><td>六维评分与评语（含 prompt_version、model、evidence）；首字耗时、输出速度、语音耗时（ASR 记音频时长 audio_ms）用于验收报表；llm_usage 记每次模型调用的用途、档案、tokens、费用、结果、是否走备用</td></tr>
-<tr><td>配置</td><td class="mono">llm_profiles · app_settings · content_terms</td><td>llm_profiles 存模型档案（地址、加密 Key、模型、请求头/请求体、单价、测试结果、是否默认）；app_settings 存 llm_routing（用途分配、导演频率）、voice（语音档案，Key 加密）、quota（月度金额/tokens 额度）、备份计划；content_terms 存违规词与标准话术</td></tr>
+<tr><td>配置</td><td class="mono">llm_profiles · app_settings · content_terms</td><td>llm_profiles 存模型档案（地址、加密 Key、模型、请求头/请求体、单价、测试结果、是否默认）；app_settings 存 llm_routing（用途分配、导演频率）、voice（语音档案，Key 加密）、quota（月度金额/tokens 额度）、备份计划、brand（平台名称与标识）；content_terms 存违规词与标准话术</td></tr>
 </table></div>
 <p>迁移在 <code>apps/api/src/migrations.ts</code> 中按编号追加，API 启动时自动执行；种子数据在 <code>seed.ts</code>，每次启动 <code>on conflict do nothing</code>（已知问题：删掉的种子会在重启后恢复）。</p>
 
@@ -349,7 +350,7 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
 <tr><td>连通性测试</td><td><span class="tag t-ok">已实现</span></td><td>返回首字、输出速度、tokens、样例或上游报错原文；未测试或未通过的档案不能设为默认或分配给用途；改了地址/Key/模型/参数后测试状态自动重置</td></tr>
 <tr><td>按用途选模型</td><td><span class="tag t-ok">已实现</span></td><td>买家对话 / 导演评估 / 六维评分 / 话术与生成，各自指定主档案、备用档案、temperature、max_tokens；未指定走默认档案；导演可设每 N 轮运行一次</td></tr>
 <tr><td>回退与告警</td><td><span class="tag t-ok">已实现</span></td><td>主档案出错且未出字 → 当次立即换备用；连续失败 3 次熔断 5 分钟（备用优先），写审计 <code>llm.failover</code></td></tr>
-<tr><td>当前模型（开发库）</td><td>默认「DeepSeek Flash」（deepseek-flash，关思考）首字约 0.5s；评分用「DeepSeek V4 Pro」约 1.1s；旧 keliagent 档案保留（约 4.9s）</td><td>通义、智谱等待拿到 Key 后在管理端新增档案实测</td></tr>
+<tr><td>当前模型（开发库）</td><td>2026-10-12 起走团队总网关 Flow API（https://flowapi.robusta.top/v1，开发令牌）：默认「Flow · DeepSeek V4 Flash」（deepseek-v4-flash-ga-260731）用于对话/导演/话术，「Flow · DeepSeek V4 Pro」（deepseek-v4-pro-ga-260813）用于评分，两者互为备用；连通性测试首字约 0.9s / 1.4s；系统内验收 100 次全部成功，首字 P99 2.62s、最大 2.98s（本机，比官方直连慢约 1s，P5 在正式服务器复测）。DeepSeek 官方档案保留但不再分配（旧 keliagent 档案已删除）；正式验收时切回 DeepSeek 官方直连，验收后改回 Flow（D-24）</td><td>网关令牌是 auto 分组、多渠道随机分配，关思考必须同时带 <code>thinking:{type:"disabled"}</code> 和 <code>reasoning_effort:"none"</code>（只带前者时部分渠道仍会思考）。生产令牌与开发令牌分开，生产令牌部署时在生产管理端填写</td></tr>
 <tr><td>TTS</td><td><span class="tag t-ok">已实现</span> 豆包 seed-tts-2.0，按画像性别选音色、按语言指定语种，缓存 mp3</td><td>语音也做成档案（G7）：厂商接口 VoiceProvider，Key 加密；长文本分句合成待做</td></tr>
 <tr><td>ASR</td><td><span class="tag t-ok">已实现</span> 豆包大模型识别；按住说话 → 转文字或直接发语音</td><td>记录音频时长用于计费</td></tr>
 <tr><td>计量与额度</td><td><span class="tag t-ok">已实现</span></td><td>模型按档案单价折算费用（元/百万 tokens），语音按元/万字符、元/小时；月度额度按金额或 tokens，任一达到提醒线告警</td></tr>
@@ -377,6 +378,7 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
   <li>买家邮件回信：邮件提交后异步执行。</li>
   <li>定时备份：<code>server.ts</code> 每 10 分钟检查一次备份计划（按容器时区；Docker 中缺 pg_dump，待修复）。</li>
 </ul>
+<div class="note">以上异步任务都在 API 进程内执行，请求里发出去就不再跟踪，API 重启时正在跑的任务会丢失。<span class="tag t-plan">规划</span> 开发方案 L 节（P5 前做）：评分和买家评价定时补漏 + 失败重试 + 管理端“重新评分”；导演按会话串行、state 按字段合并；熔断按“档案 + 用途”计数；启动时复位中断的验收测试。<strong>不拆独立 Worker、不引入任务队列</strong>：200 账号的负载主要是等模型返回，单进程足够；以后要部署多台或出现耗 CPU 的任务时再拆。</div>
 <h3>本地开发</h3>
 <p>端口：API <code>8787</code> · 前端 <code>5288</code>（strictPort）· 数据库容器 <code>cecs-pg:5434</code>。启动：根目录 <code>dev.cmd</code>（服务 + 学生/教师两个独立登录的客户端）、<code>admin.cmd</code>（浏览器管理端）。第一个启动服务的窗口是托管窗口，API 与前端日志合并显示，Ctrl+C 或关窗即全部停止；之后的入口只开客户端/浏览器后退出。<code>dev.cmd status / restart api / logs / stop / test / eval</code>。日志在 <code>.devrun/logs</code>。验证：<code>pnpm build &amp;&amp; pnpm test</code>，前端类型检查用 <code>cd apps/portal &amp;&amp; npx tsc -b --force</code>。详细运维见 skill <code>kefu-weihu</code>。</p>
 
@@ -386,9 +388,9 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
 <tr><th>端</th><th>页面</th></tr>
 <tr><td>学生端</td><td>任务大厅（TaskHall）· 客服工作台（LiveWorkbench）· 订单（LiveOrders）· 评价（LiveReviews）· 邮件（LiveMail）· 我的记录（LiveRecords）· 基线测评（BaselineQuiz）</td></tr>
 <tr><td>教师端</td><td>数据总览 · 实训任务 · 班级与学生 · 实训跟踪 · 考核报表 · 场景配置（含场景剧本编辑）· 公告</td></tr>
-<tr><td>管理端</td><td>系统总览（含验收报表与明细 CSV）· AI 与语音服务（AdminModels：模型档案、用途分配、用量费用、语音、额度）· 账号与权限 · 内容资源库 · 数据与备份（AdminLive）</td></tr>
+<tr><td>管理端</td><td>系统总览（页签：运行状态 · 品牌设置 AdminBrand；含验收报表与明细 CSV）· AI 与语音服务（AdminModels：模型档案、用途分配、用量费用、语音、额度）· 账号与权限 · 内容资源库 · 数据与备份（AdminLive）</td></tr>
 </table></div>
-<p>样式集中在 <code>apps/portal/src/styles.css</code>，现行规范是根目录 <code>DESIGN.md</code>（苹果风）。<span class="tag t-plan">规划</span> P3 期整体重做设计（去 AI 味，向真实客服软件/电商后台靠拢），届时重写 DESIGN.md 与组件库。<code>Workbench/Orders/Records/MailStudio.tsx</code> 是早期演示页，待清理。</p>
+<p>设计规范是根目录 <code>DESIGN.md</code> 2.0「墨白」（D-20：方向 A 打底、信息密度借方向 B）。样式分三层：<code>styles/tokens.css</code>（设计令牌）→ <code>styles.css</code>（外壳、登录页，以及各页面旧样式；旧变量名已映射到新令牌）→ <code>styles/ui.css</code>（共用组件）。共用组件在 <code>src/ui/index.tsx</code>：Button、Field/Input/Select/Textarea、Switch、Tabs、Segmented、Tag、Status、HelpTip、StatBar、Panel、Toolbar、Empty、DataTable、MoreMenu、Dialog、Drawer、Confirm、toast。开发环境打开 <code>?gallery=1</code> 是组件陈列页。品牌由 <code>src/brand.tsx</code> 的 BrandProvider 提供（登录前读公开接口，本机缓存上次结果，同步窗口标题和页签图标）；外壳与登录页不再写死任何品牌。<code>Workbench/Orders/Records/MailStudio.tsx</code> 是早期演示页，待清理。</p>
 
 <!-- 11 -->
 <h2 id="status">11. 现状与待办</h2>
@@ -399,19 +401,30 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
 <tr><td>P1</td><td>用户管理整改 + 本机数据迁云端</td><td><span class="tag t-ok">已完成</span> I1–I8、K1–K4；37 项测试通过</td></tr>
 <tr><td>P1b</td><td>开发调试环境：dev.cmd / admin.cmd、多窗口调试、日志、状态检查</td><td><span class="tag t-ok">已完成</span></td></tr>
 <tr><td>P2</td><td>模型网关 + Agent 底座重构</td><td><span class="tag t-ok">已完成</span> G1–G7、J1–J8、B2；57 项测试通过；DeepSeek 设为默认档案。通义/智谱真实对话待拿到 Key 后验证</td></tr>
-<tr><td>P3</td><td>设计定向与组件库</td><td><span class="tag t-plan">待开始</span></td></tr>
+<tr><td>P3</td><td>设计定向与组件库</td><td><span class="tag t-ok">已完成</span> H1 风格稿定方向 A；H2 DESIGN.md 2.0 + tokens.css；H3 共用组件库、新外壳与登录页；H6 品牌可替换</td></tr>
 <tr><td>P4</td><td>逐页按新设计重做 + 参数细项补齐</td><td><span class="tag t-plan">待开始</span></td></tr>
-<tr><td>P5</td><td>性能验收与 200 账号压测</td><td><span class="tag t-plan">待开始</span></td></tr>
+<tr><td>P5</td><td>后台任务可靠性（L1–L4）+ 性能验收（切 DeepSeek 官方）与 200 账号压测</td><td><span class="tag t-plan">待开始</span></td></tr>
 <tr><td>R</td><td>发版上线：客户端打包、自动更新、CORS/nginx、备份修复、DEPLOY.md</td><td><span class="tag t-plan">用户明确发版时启动</span></td></tr>
 <tr><td>P6</td><td>购买服务器、部署、交付资料</td><td><span class="tag t-plan">待开始</span></td></tr>
 </table></div>
-<p>完整差距清单（A–I 节）与排期见 <code>docs/重启开发方案-2026-10.md</code>。</p>
+<p>完整差距清单（A–L 节）与排期见 <code>docs/重启开发方案-2026-10.md</code>。</p>
 
 <!-- 12 -->
 <h2 id="changelog">12. 变更记录</h2>
 <div class="table-wrap"><table>
 <tr><th>日期</th><th>变更</th></tr>
-<tr><td>2026-10-12</td><td>启动脚本改为托管窗口模式（scripts/dev.mjs）：首个启动窗口托管 API/前端并合并日志，控制端口 18787 做互斥与 stop/restart 通道，后续入口只开客户端/浏览器；删除三个 PowerShell 脚本。</td></tr>
+<tr><td>2026-10-13</td><td>仪表盘卡片化（D-31）：LiveOverview 新增 TodoCard；widgets 新增 KpiCard、ScoreGauge（半圆仪表）、RateRing（圆环）；考核报表关键数字改卡片；AttentionBoard 原因格加图标与绿色小勾；HelpTip 浮层改为挂到 body（fixed 定位）。只改前端。</td></tr>
+<tr><td>2026-10-13</td><td>教师端空状态与指导输入（D-30）：widgets 新增 ChartEmptyNote，ScoreDistribution / DimensionBars 支持空骨架；数据总览待办格子与图表永远显示；考核报表新增 AttentionBoard（三格原因 + 名单最多 5 人 + 查看全部抽屉 + 导出），关键数字与排名表有空态；widgets 新增 openReplayFor / takeReplaySearch，从报表跳到回放与评分并预填搜索；实时监控指导输入改为整体输入框（常用指导用 MoreMenu 向上弹出），暂离提示、结束后去复核。只改前端。</td></tr>
+<tr><td>2026-10-13</td><td>教师端三页按页面类型精修（D-29）：迁移 028（read_marks 增加 notice 类型），学生端拉取公告即记已读，GET /v1/announcements 返回 recipientCount / readCount；GET /v1/teacher/tracking 增加 personality、emotion、satisfactionTrend、scoreTrend、objective、buyerGoal、bottomLine、stale，新增 GET /v1/teacher/tracking/today（今日接待人数、待复核、今天没练）；导演状态新增 satisfactions 历史；GET /v1/catalog/scenarios 返回 taskCount，且学生请求不再返回 script（修复剧本对学生可见）；GET /v1/catalog/personas 返回 conversationCount 与固定头像 avatarUrl。前端：通知公告、实训跟踪（三栏监控 + 回放列表）、场景配置（列卡片 / 画像卡片 / 商品卡片）重做；MoreMenu 支持自定义触发按钮。</td></tr>
+<tr><td>2026-10-13</td><td>视觉换成“织 UI”（D-28，主色蓝 #1d5fd1、冷灰中性色）：styles/tokens.css 按织 UI 改值（变量名不变，--c-primary/--c-accent 指向 brand / brand-ink），新增 Manrope 字体文件 src/assets/fonts；ui.css 的按钮、标签、开关、页签、筛选标签、内容板、待办数字、进度和数据条对齐织 UI；ui 新增 StageTag（业务环节分类色），用在任务行和场景分组。DESIGN.md 升到 3.0。学生端沉浸层样式暂未改。</td></tr>
+<tr><td>2026-10-13</td><td>教师端改为“工作台”版式（D-27）：ui 新增 Bench / Board / BoardLink / FilterChips / Flag，AppShell 支持导航角标（badges）；教师端新增 TaskRow，7 页按对比稿重做。接口：GET /v1/tasks 返回 averageScore，GET /v1/teacher/overview 返回 weekActive（近 7 天发过消息的学生数）。开关改为墨色。</td></tr>
+<tr><td>2026-10-13</td><td>教师端 7 页按“一张纸”重做并补 D2–D10：迁移 026（users.group_name 班内分组）、027（assessments.ai_scores / ai_total / teacher_comment / reviewed_by / reviewed_at）；新接口 PUT /v1/classes/:id/groups、POST /v1/catalog/scenarios（复制场景），PATCH 场景支持 name/objective，PATCH /v1/teacher/assessments 改为逐维度 scores + teacherComment（总分由 assessment.ts weightedTotal 按任务权重重算）；班级名单接口返回分组与统计列；画像/商品种子改为按版本只写一次；domain composePersonaWithRule 让模板字段生效；Electron 新增 cecs:save-pdf（printToPDF）供考核报表导出。前端新增共用组件 SearchBox、ChipSelect、KeyValues，components/AccountDialogs（一次性密码、批量导入学生）。</td></tr>
+<tr><td>2026-10-13</td><td>备份加保留份数（backupSchedule.keep，默认 14，可选 7/14/30/60，手动备份也计入），每次备份后由 pruneBackups 删除最早的文件；音色改为下拉选择（VOICE_VENDORS 带 speakers 音色表，英语优先）+ 手动填 ID，新增 POST /v1/admin/voice/preview 试听；系统总览去掉“最近改动”（审计仍落库，接口 admin/audit 保留）。</td></tr>
+<tr><td>2026-10-12</td><td>前端版式定为“一张纸”（D-25）：ui 组件库新增 HeaderTabs（经 ShellSlotContext 渲染进顶栏）、Sheet、Section、SettingSection、Figures、Gauge、ListRow、Callout、StatusHero；顶栏高 56；管理端 5 页按新版式重做。</td></tr>
+<tr><td>2026-10-12</td><td>P4 管理端：新增 admin-status.ts（服务实时检测、告警汇总、本月用量，系统总览与顶栏提醒共用）；新增接口 admin/alerts、admin/content/:id(PATCH 启停)、admin/content/import；内置词库按 app_settings.contentSeedVersion 只写入一次；管理端 5 个页面用新组件重做，AppShell 增加 banner 位（管理端告警常驻提醒）。</td></tr>
+<tr><td>2026-10-12</td><td>P3 完成：DESIGN.md 重写为 2.0「墨白」；新增 styles/tokens.css、styles/ui.css、src/ui 共用组件库与 ?gallery=1 陈列页；外壳改为白色侧栏 216 + 顶栏 48（页名进顶栏，用户菜单收纳退出登录，去掉“云端服务已连接”等常驻提示）；PageHeader 只保留操作区，MetricCard 拼成统计条；登录页改为整页场景图（等距微缩工作间）+ 浮卡片。品牌可替换（H6）：新增 routes/brand.ts（public/brand、admin/brand），管理端系统总览加「品牌设置」页签；初始名称“跨境电商客服AI实训平台”、初始标识为客服耳麦图标。</td></tr>
+<tr><td>2026-10-12</td><td>架构评审：200 账号不拆 Worker、不引入任务队列；后台任务可靠性列为开发方案 L 节（评分补漏、导演串行、熔断按用途、验收状态复位），排在 P5 之前；验收时模型切回 DeepSeek 官方（D-24）。</td></tr>
+<tr><td>2026-10-12</td><td>模型上游从 DeepSeek 官方切到团队总网关 Flow API（不再自建专属 NewAPI）：开发库新增两个 Flow 档案并设为默认、重新分配四种用途；只改配置，未改代码。</td></tr>
 <tr><td>2026-10-12</td><td>启动脚本改为托管窗口模式（scripts/dev.mjs）：首个启动窗口托管 API/前端并合并日志，控制端口 18787 做互斥与 stop/restart 通道，后续入口只开客户端/浏览器后退出；删除三个 PowerShell 脚本。</td></tr>
 <tr><td>2026-10-12</td><td>P2 完成：模型网关（llm_profiles 多档案、Key 加密、厂商模板、连通性测试、按用途分配主/备用档案、熔断回退与审计告警、按金额/tokens 计量）；调用层换成 pi 0.82.1，删除自研 conversation-provider.ts；Agent 底座（提示词模板带版本、JSON 模式 + zod 校验重试、按字符预算截取历史、评分读全量对话并引入违规词与逐轮得分、场景剧本、导演每 N 轮、Agent 评测集）；验收口径修正（首字从收到请求算起、失败计入分母、明细 CSV）；语音做成档案；售前买家拿到在售商品。迁移 024/025。</td></tr>
 <tr><td>2026-10-12</td><td>P1b 完成：启动入口改为 dev.cmd（学生/教师客户端调试，可同时开多个独立登录窗口）和 admin.cmd（管理端）；修复前端只听 IPv6 导致脚本/客户端连不上；补装 Electron 运行时；开发日志改为可读格式并落盘 .devrun/logs。</td></tr>

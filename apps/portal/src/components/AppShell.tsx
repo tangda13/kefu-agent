@@ -9,6 +9,7 @@ import {
   GraduationCap,
   LayoutDashboard,
   LibraryBig,
+  LogOut,
   ListChecks,
   Mail,
   Megaphone,
@@ -23,6 +24,8 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { UserRole } from "@cecs/contracts";
+import { BrandMark, useBrand } from "../brand";
+import { ShellSlotContext } from "../ui";
 
 export interface NavItem {
   id: string;
@@ -187,62 +190,96 @@ function TopbarNotice({ items }: { items?: ShellAnnouncement[] }) {
   );
 }
 
-export function AppShell({ role, active, onNavigate, children, onSignOut, userName, userMeta, notifications, announcements }: { role: UserRole; active: string; onNavigate: (id: string) => void; children: ReactNode; onSignOut?: () => void; userName?: string; userMeta?: string; notifications?: ShellNotificationCenter; announcements?: ShellAnnouncement[] }) {
+/** banner：顶栏下方的常驻提醒（如管理端额度告警），没有时不占位 */
+export function AppShell({ role, active, onNavigate, children, onSignOut, userName, userMeta, notifications, announcements, banner, badges }: { role: UserRole; active: string; onNavigate: (id: string) => void; children: ReactNode; onSignOut?: () => void; userName?: string; userMeta?: string; notifications?: ShellNotificationCenter; announcements?: ShellAnnouncement[]; banner?: ReactNode; badges?: Record<string, number> }) {
+  const { brand } = useBrand();
   const fallback = identity[role];
-  const user = {
-    name: userName ?? fallback.name,
-    meta: userMeta ?? fallback.meta,
-    initials: (userName ?? fallback.name).slice(0, 1),
-  };
+  const name = userName ?? fallback.name;
+  const meta = userMeta ?? fallback.meta;
   const navigation = roleNav[role];
-  const roleLabel = role === "student" ? "学生端" : role === "teacher" ? "教师端" : "管理端";
-  const activeLabel = navigation.find((item) => item.id === active)?.label;
+  const activeLabel = navigation.find((item) => item.id === active)?.label ?? "";
+  // 顶栏里给页面放页签的位置（HeaderTabs 渲染到这里）
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
   return (
-    <div className="app-frame">
-      <aside className="sidebar">
-        <div className="brand-lockup">
-          <span className="brand-mark">K</span>
-          <span><strong>跨境电商客服</strong><small>AI 实训平台</small></span>
+    <div className="shell">
+      <aside className="shell-side">
+        <div className="shell-brand" title={brand.name}>
+          <BrandMark size={24} />
+          <strong>{brand.name}</strong>
         </div>
-        <div className="role-chip">{roleLabel}</div>
-        <nav aria-label="主导航">
+        <nav className="shell-nav" aria-label="主导航">
           {navigation.map((item) => {
             const Icon = item.icon;
-            return <button key={item.id} className={active === item.id ? "nav-item active" : "nav-item"} onClick={() => onNavigate(item.id)}><Icon size={19} /><span>{item.label}</span>{active === item.id && <i />}</button>;
+            return (
+              <button key={item.id} type="button" className={active === item.id ? "is-active" : undefined} aria-current={active === item.id ? "page" : undefined} onClick={() => onNavigate(item.id)}>
+                <Icon size={18} />
+                <span>{item.label}</span>
+                {badges?.[item.id] ? <em className="shell-nav-badge">{badges[item.id]}</em> : null}
+              </button>
+            );
           })}
         </nav>
-        <div className="sidebar-foot">
-          <button className="support-link"><BookOpenCheck size={18} /> 使用帮助</button>
-          {onSignOut && <button className="support-link" onClick={onSignOut}><ShieldCheck size={18} /> 退出登录</button>}
-          <div className="connection-state"><span className="pulse-dot" /> 云端服务已连接</div>
+        <div className="shell-side-foot">
+          <button type="button"><BookOpenCheck size={18} /><span>使用帮助</span></button>
         </div>
       </aside>
-      <section className="app-main">
-        <header className="topbar">
-          {role === "student" ? (
-            <TopbarNotice items={announcements} />
-          ) : (
-            <nav className="topbar-crumb" aria-label="当前位置">
-              <span>{roleLabel}</span>
-              {activeLabel ? <><i aria-hidden="true">/</i><strong>{activeLabel}</strong></> : null}
-            </nav>
-          )}
-          <div className="top-actions">
+      <section className="shell-main">
+        <header className="shell-top">
+          <h1 className="shell-title">{activeLabel}</h1>
+          <div className="shell-head-slot" ref={setSlot} />
+          {role === "student" ? <TopbarNotice items={announcements} /> : <span className="shell-top-fill" />}
+          <div className="shell-top-actions">
             <NotificationBell center={notifications} />
-            <button className="profile-button"><span className="avatar small">{user.initials}</span><span><strong>{user.name}</strong><small>{user.meta}</small></span><ChevronDown size={15} /></button>
+            <ProfileMenu name={name} meta={meta} onSignOut={onSignOut} />
           </div>
         </header>
-        <div className="content-scroll">{children}</div>
+        {banner}
+        <ShellSlotContext.Provider value={slot}>
+          <div className="content-scroll">{children}</div>
+        </ShellSlotContext.Provider>
       </section>
     </div>
   );
 }
 
-export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode }) {
-  return <div className="page-header"><div>{eyebrow && <span className="eyebrow">{eyebrow}</span>}<h1>{title}</h1>{description && <p>{description}</p>}</div>{actions && <div className="page-actions">{actions}</div>}</div>;
+function ProfileMenu({ name, meta, onSignOut }: { name: string; meta: string; onSignOut?: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="shell-profile">
+      <button type="button" className="shell-profile-btn" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+        <span className="avatar small">{name.slice(0, 1)}</span>
+        <span>{name}</span>
+        <ChevronDown size={14} />
+      </button>
+      {open ? (
+        <>
+          <div className="notify-overlay" onClick={() => setOpen(false)} />
+          <div className="ui-menu-pop shell-profile-pop" role="menu">
+            <div className="shell-profile-meta"><strong>{name}</strong><small>{meta}</small></div>
+            {onSignOut ? <button type="button" role="menuitem" onClick={onSignOut}><LogOut size={14} />退出登录</button> : null}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
 }
 
-export function MetricCard({ label, value, suffix, trend, icon: Icon, tone = "blue" }: { label: string; value: string; suffix?: string; trend: string; icon: LucideIcon; tone?: "blue" | "green" | "amber" | "coral" }) {
-  return <article className={`metric-card tone-${tone}`}><div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon size={16} /></span></div><strong className="metric-value">{value}<small>{suffix}</small></strong><p>{trend}</p></article>;
+/** 页面工具栏：页名已在顶栏，这里只放页面级操作。旧版的英文眉标、大标题和说明不再显示（P3 去 AI 味）。 */
+export function PageHeader({ actions }: { eyebrow?: string; title?: string; description?: string; actions?: ReactNode }) {
+  if (!actions) return null;
+  return <div className="page-toolbar">{actions}</div>;
 }
 
+/** 指标：多个 MetricCard 放在 .metric-grid 里时，样式上拼成一条统计条（DESIGN.md 第 6 节） */
+export function MetricCard({ label, value, suffix, trend }: { label: string; value: string; suffix?: string; trend?: string; icon?: LucideIcon; tone?: "blue" | "green" | "amber" | "coral" }) {
+  const empty = value === "" || value === "—" || value === "-";
+  return (
+    <article className="metric-card">
+      <span className="metric-label">{label}</span>
+      <span className="metric-line">
+        <strong className={empty ? "metric-value is-empty" : "metric-value"}>{empty ? "暂无" : value}{!empty && suffix ? <small>{suffix}</small> : null}</strong>
+        {trend ? <small className="metric-trend">{trend}</small> : null}
+      </span>
+    </article>
+  );
+}

@@ -4,6 +4,7 @@ import { ensurePersonaAvatar, toStudentPersonaView } from "@cecs/domain";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import { writeAudit } from "../auth-context";
+import { weightedTotal } from "../assessment";
 
 /** 教师授权班级的学生 ID 子查询（管理员不限）；paramIndex 指定教师ID占位序号 */
 function scopedStudentsSql(isAdmin: boolean, paramIndex = 1): string {
@@ -149,7 +150,10 @@ export function registerTeacherRoutes(
              (select count(distinct c.student_id) from conversations c where c.student_id in (${students})) as active_students,
              (select count(*) from users where role = 'student' and id in (${students})) as total_students,
              (select count(*) from conversation_messages m join conversations c on c.id = m.conversation_id
-              where c.student_id in (${students})) as total_messages`,
+              where c.student_id in (${students})) as total_messages,
+             (select count(*) from conversations c where c.student_id in (${students})) as total_conversations,
+             (select count(distinct c.student_id) from conversation_messages m join conversations c on c.id = m.conversation_id
+              where m.sender = 'student' and m.created_at > now() - interval '7 days' and c.student_id in (${students})) as week_active`,
           baseParams,
         ),
         db.query(
@@ -173,6 +177,8 @@ export function registerTeacherRoutes(
         activeStudents: Number(head.active_students),
         totalStudents: Number(head.total_students),
         totalMessages: Number(head.total_messages),
+        totalConversations: Number(head.total_conversations),
+        weekActive: Number(head.week_active),
         completionRate:
           Number(progressRow.total) > 0
             ? Math.round((Number(progressRow.done) / Number(progressRow.total)) * 100)
@@ -199,7 +205,7 @@ export function registerTeacherRoutes(
       const params = isAdmin ? [] : [user.sub];
       const result = await db.query(
         `select c.id, c.persona, c.state, c.created_at, c.task_id, u.display_name as student_name, u.username,
-                s.name as scenario_name,
+                s.name as scenario_name, s.objective as scenario_objective, s.script as scenario_script,
                 (select count(*) from conversation_messages m where m.conversation_id = c.id and m.sender = 'student') as student_turns,
                 lm.sender as last_sender, lm.created_at as last_at, lm.content as last_content
          from conversations c
@@ -234,6 +240,16 @@ export function registerTeacherRoutes(
           liveScore: (row.state as { liveScore?: number } | null)?.liveScore ?? null,
           satisfaction: (row.state as { satisfaction?: number } | null)?.satisfaction ?? null,
           stage: (row.state as { stage?: string } | null)?.stage ?? null,
+          /* 实训跟踪“现场”面板：只给老师看的买家性格、当前情绪、走势和场景剧本（学生端永远拿不到） */
+          personality: (row.persona as { personality?: string } | null)?.personality ?? null,
+          emotion: (row.state as { emotion?: string } | null)?.emotion ?? (row.persona as { emotion?: string } | null)?.emotion ?? null,
+          satisfactionTrend: (row.state as { satisfactions?: number[] } | null)?.satisfactions ?? [],
+          scoreTrend: (row.state as { scores?: number[] } | null)?.scores ?? [],
+          objective: row.scenario_objective ?? null,
+          buyerGoal: (row.scenario_script as { buyerGoal?: string } | null)?.buyerGoal ?? null,
+          bottomLine: (row.scenario_script as { bottomLine?: string } | null)?.bottomLine ?? null,
+          /* 超过 1 天没有任何消息：学生早已离开，前端收进“已中断”一行，不再提醒 */
+          stale: idleSeconds >= 86400,
           startedAt: row.created_at,
           // 自由练习（无任务）会话：可监控可介入，但不参与考核统计
           practice: !row.task_id,
@@ -242,6 +258,32 @@ export function registerTeacherRoutes(
           alert: row.last_sender === "buyer" && idleSeconds >= 180 && idleSeconds < 1800,
         };
       });
+    },
+  );
+
+  // 实时监控没人接待时的今日概况：今天接待过几人、几份待复核、几人今天还没练
+  app.get(
+    "/v1/teacher/tracking/today",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request) => {
+      const user = request.user!;
+      const isAdmin = user.role === "admin";
+      const params = isAdmin ? [] : [user.sub];
+      const scoped = scopedStudentsSql(isAdmin);
+      const result = await db.query<{ total: string; active: string; pending: string }>(
+        `select
+           (select count(*) from users u where u.role = 'student' and u.status = 'active' and u.id in (${scoped})) as total,
+           (select count(distinct c.student_id) from conversations c
+              join conversation_messages m on m.conversation_id = c.id and m.sender = 'student'
+             where m.created_at >= date_trunc('day', now()) and c.student_id in (${scoped})) as active,
+           (select count(*) from assessments a join conversations c on c.id = a.conversation_id
+             where a.reviewed_at is null and c.student_id in (${scoped})) as pending`,
+        params,
+      );
+      const row = result.rows[0];
+      const total = Number(row?.total ?? 0);
+      const active = Number(row?.active ?? 0);
+      return { activeToday: active, pendingReviews: Number(row?.pending ?? 0), notPracticedToday: Math.max(0, total - active), studentTotal: total };
     },
   );
 
@@ -423,11 +465,13 @@ export function registerTeacherRoutes(
       const isAdmin = user.role === "admin";
       const params = isAdmin ? [] : [user.sub];
       const result = await db.query(
-        `select a.*, u.display_name as student_name, c.persona, s.name as scenario_name
+        `select a.*, u.display_name as student_name, u.username, c.persona, c.task_id, s.name as scenario_name,
+                t.name as task_name, t.scoring_weights
          from assessments a
          join users u on u.id = a.student_id
          join conversations c on c.id = a.conversation_id
          left join scenarios s on s.id = c.scenario_id
+         left join tasks t on t.id = c.task_id
          where a.student_id in (${scopedStudentsSql(isAdmin)})
          order by a.created_at desc limit 100`,
         params,
@@ -442,39 +486,69 @@ export function registerTeacherRoutes(
         total: Number(row.total),
         comment: row.comment,
         suggestions: row.suggestions,
+        aiScores: row.ai_scores ?? null,
+        aiTotal: row.ai_total == null ? null : Number(row.ai_total),
+        teacherComment: row.teacher_comment ?? null,
+        reviewedAt: row.reviewed_at ?? null,
+        practice: row.task_id == null,
+        taskName: row.task_name ?? null,
+        username: row.username,
+        weights: row.scoring_weights ?? {},
         createdAt: row.created_at,
       }));
     },
   );
 
-  // 人工复核：调整总分/评语
-  app.patch<{ Params: { assessmentId: string }; Body: { total?: number; comment?: string } }>(
+  // 人工复核（D9）：逐维度改分，总分按任务权重重算；教师评语单独存（C7），AI 原始分首次复核时留底
+  app.patch<{ Params: { assessmentId: string }; Body: { scores?: Record<string, number>; teacherComment?: string } }>(
     "/v1/teacher/assessments/:assessmentId",
     { preHandler: guard.requireRole("teacher", "admin") },
     async (request, reply) => {
       const user = request.user!;
       const isAdmin = user.role === "admin";
-      const { total, comment } = request.body ?? {};
-      if (total !== undefined && (!Number.isFinite(total) || total < 0 || total > 100)) {
+      const { scores: input, teacherComment } = request.body ?? {};
+      if (input === undefined && teacherComment === undefined) {
         reply.code(400);
-        return { code: "INVALID_INPUT", message: "总分须在 0-100 之间。" };
+        return { code: "INVALID_INPUT", message: "没有要修改的内容。" };
       }
-      const result = await db.query(
-        `update assessments set
-           total = coalesce($1, total),
-           comment = coalesce($2, comment)
-         where id = $3 and student_id in (${scopedStudentsSql(isAdmin, 4)})
-         returning id, conversation_id, total`,
-        isAdmin
-          ? [total ?? null, comment ?? null, request.params.assessmentId]
-          : [total ?? null, comment ?? null, request.params.assessmentId, user.sub],
+      if (teacherComment !== undefined && teacherComment.length > 500) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "评语不超过 500 字。" };
+      }
+      const found = await db.query(
+        `select a.id, a.scores, a.total, a.conversation_id, t.scoring_weights
+         from assessments a join conversations c on c.id = a.conversation_id left join tasks t on t.id = c.task_id
+         where a.id = $1 and a.student_id in (${scopedStudentsSql(isAdmin, 2)})`,
+        isAdmin ? [request.params.assessmentId] : [request.params.assessmentId, user.sub],
       );
-      if (!result.rowCount) {
+      const row = found.rows[0];
+      if (!row) {
         reply.code(404);
         return { code: "NOT_FOUND", message: "评分记录不存在或无权复核。" };
       }
+      let scores = row.scores as Record<string, number>;
+      if (input !== undefined) {
+        const next: Record<string, number> = {};
+        for (const dim of ASSESSMENT_DIMENSIONS) {
+          const value = Number(input[dim.id] ?? scores[dim.id]);
+          if (!Number.isFinite(value) || value < 0 || value > 100) {
+            reply.code(400);
+            return { code: "INVALID_INPUT", message: `「${dim.label}」要在 0–100 之间。` };
+          }
+          next[dim.id] = Math.round(value);
+        }
+        scores = next;
+      }
+      const total = weightedTotal(scores, (row.scoring_weights ?? {}) as Record<string, number>);
+      await db.query(
+        `update assessments set
+           ai_scores = coalesce(ai_scores, scores), ai_total = coalesce(ai_total, total),
+           scores = $1, total = $2, teacher_comment = coalesce($3, teacher_comment),
+           reviewed_by = $4, reviewed_at = now()
+         where id = $5`,
+        [JSON.stringify(scores), total, teacherComment?.trim() ?? null, user.sub, row.id],
+      );
       // 同步任务成绩：任务成绩 = 该任务下所有已评会话的均分，复核改分后重算
-      const row = result.rows[0];
       await db.query(
         `update task_progress tp set score = sub.avg_total, updated_at = now()
          from conversations c,
@@ -486,8 +560,8 @@ export function registerTeacherRoutes(
          where c.id = $1 and tp.task_id = c.task_id and tp.student_id = c.student_id`,
         [row.conversation_id],
       );
-      await writeAudit(db, user.sub, "assessment.review", request.params.assessmentId, { total, comment });
-      return { ok: true };
+      await writeAudit(db, user.sub, "assessment.review", request.params.assessmentId, { scores, total, teacherComment });
+      return { ok: true, scores, total };
     },
   );
 }

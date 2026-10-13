@@ -102,6 +102,9 @@ export function registerOrderRoutes(
         scores: row.scores,
         total: Number(row.total),
         comment: row.comment,
+        /* C7：教师复核评语与 AI 评语分开展示 */
+        teacherComment: row.teacher_comment ?? null,
+        reviewed: row.reviewed_at != null,
         suggestions: row.suggestions,
         /* 自由练习（无任务归属）：保留 AI 反馈供学习，但不计入平均分与雷达 */
         practice: row.task_id == null,

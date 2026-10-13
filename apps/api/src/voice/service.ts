@@ -51,9 +51,38 @@ const doubaoProvider: VoiceProvider = {
   },
 };
 
-export const VOICE_VENDORS: Record<string, { label: string; provider: VoiceProvider }> = {
-  doubao: { label: "豆包语音（火山引擎）", provider: doubaoProvider },
+/** 可选音色。买家多为海外客户，英语音色排在前面；表外的音色可在管理端手动填 ID */
+export interface VoiceSpeaker {
+  id: string;
+  label: string;
+  gender: "male" | "female";
+  /** 适用语言说明 */
+  lang: string;
+}
+
+const DOUBAO_SPEAKERS: VoiceSpeaker[] = [
+  { id: "en_female_dacey_uranus_bigtts", label: "Dacey", gender: "female", lang: "英语" },
+  { id: "en_female_stokie_uranus_bigtts", label: "Stokie", gender: "female", lang: "英语" },
+  { id: "zh_female_vv_uranus_bigtts", label: "Vivi", gender: "female", lang: "多语种（中、英、日、西班牙、印尼）" },
+  { id: "zh_female_yingyujiaoxue_uranus_bigtts", label: "Tina", gender: "female", lang: "中文、英式英语" },
+  { id: "zh_female_xiaohe_uranus_bigtts", label: "小何", gender: "female", lang: "中文" },
+  { id: "zh_female_qingxinnvsheng_uranus_bigtts", label: "清新女声", gender: "female", lang: "中文" },
+  { id: "zh_female_cancan_uranus_bigtts", label: "知性灿灿", gender: "female", lang: "中文" },
+  { id: "zh_female_kefunvsheng_uranus_bigtts", label: "暖阳女声", gender: "female", lang: "中文" },
+  { id: "en_male_tim_uranus_bigtts", label: "Tim", gender: "male", lang: "英语" },
+  { id: "zh_male_dayi_uranus_bigtts", label: "大壹", gender: "male", lang: "中文" },
+  { id: "zh_male_m191_uranus_bigtts", label: "云舟", gender: "male", lang: "中文" },
+  { id: "zh_male_taocheng_uranus_bigtts", label: "小天", gender: "male", lang: "中文" },
+  { id: "zh_male_ruyayichen_uranus_bigtts", label: "儒雅逸辰", gender: "male", lang: "中文" },
+  { id: "zh_male_shaonianzixin_uranus_bigtts", label: "少年梓辛", gender: "male", lang: "中文" },
+];
+
+export const VOICE_VENDORS: Record<string, { label: string; provider: VoiceProvider; speakers: VoiceSpeaker[] }> = {
+  doubao: { label: "豆包语音（火山引擎）", provider: doubaoProvider, speakers: DOUBAO_SPEAKERS },
 };
+
+/** 试听用的句子：买家的真实口吻 */
+export const VOICE_PREVIEW_TEXT = "Hi, I ordered a jacket last week and it still hasn't arrived. Could you check where my package is?";
 
 /** WAV 时长（毫秒），用于按小时计费；非 WAV 返回 0 */
 export function wavDurationMs(audio: Buffer): number {
@@ -121,6 +150,13 @@ export class VoiceService {
   async synthesize(text: string, gender: "male" | "female", language: string | undefined) {
     const profile = await this.profile();
     return VOICE_VENDORS[profile.vendor]!.provider.synthesize(profile, text, gender, language);
+  }
+
+  /** 用指定音色试听（不保存） */
+  async preview(speaker: string, text = VOICE_PREVIEW_TEXT) {
+    const profile = await this.profile();
+    const trial = { ...profile, ttsSpeaker: speaker, ttsSpeakerMale: speaker };
+    return VOICE_VENDORS[profile.vendor]!.provider.synthesize(trial, text, "female", "en");
   }
 
   async recognize(audio: Buffer, format: "wav" | "mp3", language: string | undefined) {

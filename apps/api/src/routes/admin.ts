@@ -13,15 +13,12 @@ import { VOICE_VENDORS, type VoiceProfile, type VoiceService } from "../voice/se
 import { loadEnv } from "../env";
 import { generateTemporaryPassword, hashPassword } from "../security";
 import { clearLoginFailures } from "../login-throttle";
+import { BACKUP_DIR, BACKUP_KEEP_OPTIONS, DEFAULT_BACKUP_KEEP, DEFAULT_QUOTA, pruneBackups, collectAlerts, collectServices, collectVersion, computeUsage } from "../admin-status";
 
 const execFileAsync = promisify(execFile);
-const STARTED_AT = Date.now();
-const BACKUP_DIR = path.resolve(process.cwd(), "backups");
-
-const DEFAULT_QUOTA: QuotaSettings = { monthlyBudgetYuan: 0, monthlyTokens: 0, warnPercent: 80 };
 
 /** 执行数据库备份（路由与定时调度共用） */
-export async function performBackup(db: Db): Promise<{ fileName: string; size: number }> {
+export async function performBackup(db: Db): Promise<{ fileName: string; size: number; removed: number }> {
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
   const fileName = `backup-${new Date().toISOString().replace(/[:.]/g, "-")}.sql`;
   const target = path.join(BACKUP_DIR, fileName);
@@ -40,7 +37,10 @@ export async function performBackup(db: Db): Promise<{ fileName: string; size: n
     );
     fs.writeFileSync(target, stdout);
   }
-  return { fileName, size: fs.statSync(target).size };
+  const size = fs.statSync(target).size;
+  const schedule = await getSetting<{ keep?: number }>(db, "backupSchedule");
+  const removed = pruneBackups(Number(schedule?.keep) || DEFAULT_BACKUP_KEEP);
+  return { fileName, size, removed: removed.length };
 }
 
 export function registerAdminRoutes(
@@ -54,25 +54,22 @@ export function registerAdminRoutes(
 
   // ---------- 系统总览 ----------
   app.get("/v1/admin/system", { preHandler: adminOnly }, async () => {
-    const [counts, errors] = await Promise.all([
+    const [counts, services, alerts, version] = await Promise.all([
       db.query(`select
         (select count(*) from users where role='student') as students,
         (select count(*) from users where role='teacher') as teachers,
         (select count(*) from conversations) as conversations,
         (select count(*) from conversation_messages) as messages,
         (select count(*) from assessments) as assessments`),
-      db.query(`select
-        (select count(*) from conversation_metrics where outcome!='success' and received_at > now()-interval '24 hours') as llm_errors,
-        (select count(*) from voice_metrics where outcome!='success' and created_at > now()-interval '24 hours') as voice_errors`),
+      collectServices(db, gateway, voice),
+      collectAlerts(db, voice),
+      collectVersion(db),
     ]);
     const row = counts.rows[0];
-    const err = errors.rows[0];
     return {
-      version: "0.4.0",
-      uptimeSeconds: Math.round((Date.now() - STARTED_AT) / 1000),
-      database: "ok",
-      llmProvider: gateway.describe("dialogue")?.profileName ?? "unconfigured",
-      llmModel: gateway.describe("dialogue")?.model ?? "",
+      version,
+      services,
+      alerts,
       counts: {
         students: Number(row.students),
         teachers: Number(row.teachers),
@@ -80,36 +77,18 @@ export function registerAdminRoutes(
         messages: Number(row.messages),
         assessments: Number(row.assessments),
       },
-      alerts24h: { llmErrors: Number(err.llm_errors), voiceErrors: Number(err.voice_errors) },
     };
   });
 
-  // ---------- 语音服务配置 + 本月用量与费用额度（模型档案见 admin-llm.ts） ----------
+  // 顶栏常驻提醒（E5）：只返回需要处理的告警，管理端定时拉取
+  app.get("/v1/admin/alerts", { preHandler: adminOnly }, async () => collectAlerts(db, voice));
+
   app.get("/v1/admin/providers", { preHandler: adminOnly }, async () => {
-    const profile = await voice.profile();
-    const quota = { ...DEFAULT_QUOTA, ...((await getSetting<Partial<QuotaSettings>>(db, "quota")) ?? {}) };
-    const usage = await db.query(`select
-      (select count(*) from llm_usage where created_at > date_trunc('month', now())) as llm_calls,
-      (select coalesce(sum(input_tokens + output_tokens), 0) from llm_usage where created_at > date_trunc('month', now())) as llm_tokens,
-      (select coalesce(sum(cost), 0) from llm_usage where created_at > date_trunc('month', now())) as llm_cost,
-      (select count(*) from voice_metrics where kind='tts' and created_at > date_trunc('month', now())) as tts_calls,
-      (select coalesce(sum(chars), 0) from voice_metrics where kind='tts' and outcome='success' and created_at > date_trunc('month', now())) as tts_chars,
-      (select count(*) from voice_metrics where kind='asr' and created_at > date_trunc('month', now())) as asr_calls,
-      (select coalesce(sum(audio_ms), 0) from voice_metrics where kind='asr' and outcome='success' and created_at > date_trunc('month', now())) as asr_ms`);
-    const u = usage.rows[0];
-    const llmTokens = Number(u.llm_tokens);
-    const llmCost = Number(u.llm_cost);
-    const ttsCost = (Number(u.tts_chars) / 10_000) * profile.ttsPricePer10kChars;
-    const asrCost = (Number(u.asr_ms) / 3_600_000) * profile.asrPricePerHour;
-    const totalCost = llmCost + ttsCost + asrCost;
-    // 额度按金额或 tokens 计算（G6），任一项达到提醒比例即告警；0 表示不限
-    const budgetPercent = quota.monthlyBudgetYuan > 0 ? Math.round((totalCost / quota.monthlyBudgetYuan) * 100) : 0;
-    const tokenPercent = quota.monthlyTokens > 0 ? Math.round((llmTokens / quota.monthlyTokens) * 100) : 0;
-    const usedPercent = Math.max(budgetPercent, tokenPercent);
+    const { profile, usage, quota } = await computeUsage(db, voice);
     return {
       voice: {
         vendor: profile.vendor,
-        vendors: Object.entries(VOICE_VENDORS).map(([key, item]) => ({ key, label: item.label })),
+        vendors: Object.entries(VOICE_VENDORS).map(([key, item]) => ({ key, label: item.label, speakers: item.speakers })),
         apiKeyMasked: maskSecret(profile.apiKey),
         ttsResourceId: profile.ttsResourceId,
         ttsSpeaker: profile.ttsSpeaker,
@@ -118,19 +97,8 @@ export function registerAdminRoutes(
         ttsPricePer10kChars: profile.ttsPricePer10kChars,
         asrPricePerHour: profile.asrPricePerHour,
       },
-      usage: {
-        llmCalls: Number(u.llm_calls),
-        llmTokens,
-        llmCost,
-        ttsCalls: Number(u.tts_calls),
-        ttsChars: Number(u.tts_chars),
-        ttsCost,
-        asrCalls: Number(u.asr_calls),
-        asrMinutes: Math.round(Number(u.asr_ms) / 60_000),
-        asrCost,
-        totalCost,
-      },
-      quota: { ...quota, budgetPercent, tokenPercent, usedPercent, alert: usedPercent >= quota.warnPercent },
+      usage,
+      quota,
     };
   });
 
@@ -277,6 +245,50 @@ export function registerAdminRoutes(
     },
   );
 
+  app.patch<{ Params: { termId: string }; Body: { enabled?: unknown } }>(
+    "/v1/admin/content/:termId",
+    { preHandler: adminOnly },
+    async (request, reply) => {
+      if (typeof request.body?.enabled !== "boolean") {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "缺少启用状态。" };
+      }
+      const result = await db.query("update content_terms set enabled = $2 where id = $1 returning id", [request.params.termId, request.body.enabled]);
+      if (!result.rowCount) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "条目不存在。" };
+      }
+      await writeAudit(db, request.user!.sub, request.body.enabled ? "admin.content_enable" : "admin.content_disable", request.params.termId);
+      return { ok: true };
+    },
+  );
+
+  // 批量导入：每行一条，去掉空行和重复，已存在的跳过
+  app.post<{ Body: { kind?: string; texts?: unknown } }>(
+    "/v1/admin/content/import",
+    { preHandler: adminOnly },
+    async (request, reply) => {
+      const kind = request.body?.kind === "phrase" ? "phrase" : "forbidden";
+      const raw = Array.isArray(request.body?.texts) ? request.body.texts : [];
+      const texts = [...new Set(raw.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))];
+      if (texts.length === 0) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "没有可导入的内容。" };
+      }
+      if (texts.length > 2000) {
+        reply.code(400);
+        return { code: "TOO_MANY", message: "一次最多导入 2000 条。" };
+      }
+      const result = await db.query(
+        "insert into content_terms (kind, text) select $1, unnest($2::text[]) on conflict do nothing returning id",
+        [kind, texts],
+      );
+      const added = result.rowCount ?? 0;
+      await writeAudit(db, request.user!.sub, "admin.content_import", kind, { added, skipped: texts.length - added });
+      return { added, skipped: texts.length - added };
+    },
+  );
+
   app.delete<{ Params: { termId: string } }>(
     "/v1/admin/content/:termId",
     { preHandler: adminOnly },
@@ -291,11 +303,33 @@ export function registerAdminRoutes(
     },
   );
 
+  // 音色试听：用当前密钥合成一句买家口吻的英文，返回 mp3
+  app.post<{ Body: { speaker?: string } }>("/v1/admin/voice/preview", { preHandler: adminOnly }, async (request, reply) => {
+    const speaker = String(request.body?.speaker ?? "").trim();
+    if (!/^[A-Za-z0-9_.-]{3,80}$/.test(speaker)) {
+      reply.code(400);
+      return { code: "INVALID_SPEAKER", message: "音色 ID 格式不对。" };
+    }
+    if (!(await voice.configured())) {
+      reply.code(503);
+      return { code: "TTS_NOT_CONFIGURED", message: "还没有配置语音密钥。" };
+    }
+    try {
+      const { audio } = await voice.preview(speaker);
+      reply.type("audio/mpeg");
+      return reply.send(audio);
+    } catch (error) {
+      request.log.warn(error, "voice preview failed");
+      reply.code(502);
+      return { code: "PREVIEW_FAILED", message: "试听失败：音色 ID 可能不存在，或与朗读资源 ID 不匹配。" };
+    }
+  });
+
   // ---------- 数据与备份 ----------
   app.post("/v1/admin/backups", { preHandler: adminOnly }, async (request, reply) => {
     try {
       const result = await performBackup(db);
-      await writeAudit(db, request.user!.sub, "admin.backup", result.fileName, { size: result.size });
+      await writeAudit(db, request.user!.sub, "admin.backup", result.fileName, { size: result.size, removed: result.removed });
       return { ok: true, ...result };
     } catch (error) {
       request.log.error(error, "backup failed");
@@ -306,9 +340,10 @@ export function registerAdminRoutes(
 
   // 定时备份策略
   app.get("/v1/admin/backup-schedule", { preHandler: adminOnly }, async () => {
-    return (await getSetting(db, "backupSchedule")) ?? { enabled: false, hour: 2 };
+    const saved = (await getSetting<Record<string, unknown>>(db, "backupSchedule")) ?? {};
+    return { enabled: false, hour: 2, keep: DEFAULT_BACKUP_KEEP, ...saved, keepOptions: BACKUP_KEEP_OPTIONS };
   });
-  app.put<{ Body: { enabled?: boolean; hour?: number } }>(
+  app.put<{ Body: { enabled?: boolean; hour?: number; keep?: number } }>(
     "/v1/admin/backup-schedule",
     { preHandler: adminOnly },
     async (request) => {
@@ -317,10 +352,11 @@ export function registerAdminRoutes(
         ...current,
         enabled: request.body?.enabled ?? current.enabled,
         hour: Math.max(0, Math.min(23, Number(request.body?.hour ?? current.hour ?? 2))),
+        keep: Math.max(3, Math.min(90, Number(request.body?.keep ?? current.keep ?? DEFAULT_BACKUP_KEEP))),
       };
       await setSetting(db, "backupSchedule", next);
       await writeAudit(db, request.user!.sub, "admin.backup_schedule", undefined, next);
-      return next;
+      return { ...next, keepOptions: BACKUP_KEEP_OPTIONS };
     },
   );
 

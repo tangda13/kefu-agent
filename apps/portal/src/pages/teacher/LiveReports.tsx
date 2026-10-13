@@ -1,10 +1,17 @@
-import { Download, FileSpreadsheet, GraduationCap, ListChecks, Trophy, UsersRound } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, FileSpreadsheet } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { ASSESSMENT_DIMENSIONS } from "@cecs/contracts";
-import { MetricCard, PageHeader } from "../../components/AppShell";
-import { ApiError, apiGet, fetchClasses, fetchTeacherTasks, type ClassSummary, type Session, type TeacherTask } from "../../api/client";
-import { Histogram, scoreBand, SCORE_BUCKETS } from "./widgets";
+import { ApiError, apiGet, fetchClassStudents, fetchClasses, fetchTeacherTasks, type ClassStudent, type ClassSummary, type Session, type TeacherTask } from "../../api/client";
+import { Bench, Board, Button, Callout, DataTable, HelpTip, Select, toast } from "../../ui";
+import { AttentionBoard } from "./AttentionBoard";
+import { ChartEmptyNote, DimensionBars, KpiCard, RateRing, ScoreDistribution, ScoreGauge, SCORE_BUCKETS } from "./widgets";
+
+declare global {
+  interface Window {
+    desktopRuntime?: { isDesktop: boolean; savePdf?: (options: { fileName: string; landscape?: boolean }) => Promise<{ ok: boolean; filePath?: string; canceled?: boolean }> };
+  }
+}
 
 interface ReportData {
   distribution: number[];
@@ -25,14 +32,44 @@ interface ReportData {
   studentCount: number;
 }
 
+const RANK_COLUMNS = (ranking: ReportData["ranking"], byTask: boolean) => [
+  { key: "rank", title: "#", width: 48, render: (row: ReportData["ranking"][number]) => <span className="num muted">{ranking.indexOf(row) + 1}</span> },
+  { key: "name", title: "学生", render: (row: ReportData["ranking"][number]) => <><span className="cell-title">{row.name}</span><span className="cell-meta">{row.username}</span></> },
+  { key: "avg", title: byTask ? "成绩" : "综合成绩", width: 100, align: "right" as const, render: (row: ReportData["ranking"][number]) => <span className={row.average < 60 ? "strong-num is-bad" : "strong-num"}>{row.average}</span> },
+  {
+    key: "gain", title: "较训前", width: 90, align: "right" as const,
+    render: (row: ReportData["ranking"][number]) => {
+      if (row.baseline == null) return <span className="faint">—</span>;
+      const diff = row.average - row.baseline;
+      return <span className={diff > 0 ? "delta is-up" : diff < 0 ? "delta is-down" : "delta"}>{diff > 0 ? `+${diff}` : diff === 0 ? "持平" : diff}</span>;
+    },
+  },
+  { key: "count", title: "任务 / 接待", width: 110, align: "right" as const, render: (row: ReportData["ranking"][number]) => <span className="num">{row.tasks} / {row.sessions}</span> },
+  {
+    key: "weak", title: "最弱一项", width: 160,
+    render: (row: ReportData["ranking"][number]) => {
+      const worst = ASSESSMENT_DIMENSIONS.map((dim) => ({ label: dim.label, value: row.dims[dim.id] })).filter((dim) => dim.value != null).sort((a, b) => a.value! - b.value!)[0];
+      return worst ? <span>{worst.label} <span className={worst.value! < 60 ? "strong-num is-bad" : "muted"}>{worst.value}</span></span> : <span className="faint">—</span>;
+    },
+  },
+];
+
 /* 口径：任务 = 考核单位。任务成绩 = 会话均分；综合成绩 = 任务均分；一人一个样本 */
-export function LiveReports({ session }: { session: Session }) {
+export function LiveReports({ session, onNavigate }: { session: Session; onNavigate?: (page: string) => void }) {
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [classId, setClassId] = useState<string>("");
   const [tasks, setTasks] = useState<TeacherTask[]>([]);
   const [taskId, setTaskId] = useState<string>("");
   const [data, setData] = useState<ReportData | null>(null);
   const [error, setError] = useState("");
+  const [roster, setRoster] = useState<ClassStudent[]>([]);
+
+  /* 名单：用来找“还没有成绩”的学生 */
+  useEffect(() => {
+    const ids = classId ? [classId] : classes.map((item) => item.id);
+    if (!ids.length) return setRoster([]);
+    Promise.all(ids.map((id) => fetchClassStudents(session, id))).then((lists) => setRoster(lists.flat())).catch(() => setRoster([]));
+  }, [session, classId, classes]);
 
   useEffect(() => {
     fetchClasses(session).then(setClasses).catch(() => undefined);
@@ -91,182 +128,130 @@ export function LiveReports({ session }: { session: Session }) {
     const good = (data.distribution[3] ?? 0) + (data.distribution[4] ?? 0);
     const pass = total - (data.distribution[0] ?? 0);
     return {
-      assessed: data.assessedCount,
-      students: data.studentCount,
-      average: data.ranking.length
-        ? Math.round(data.ranking.reduce((sum, row) => sum + row.average, 0) / data.ranking.length)
-        : null,
+      average: data.ranking.length ? Math.round(data.ranking.reduce((sum, row) => sum + row.average, 0) / data.ranking.length) : null,
       passRate: total > 0 ? Math.round((pass / total) * 100) : null,
       goodRate: total > 0 ? Math.round((good / total) * 100) : null,
     };
   }, [data]);
 
+  const className = classes.find((item) => item.id === classId)?.name ?? "全部班级";
+  const taskName = tasks.find((task) => task.id === taskId)?.name ?? null;
+  const baseline = useMemo(() => Object.fromEntries((data?.baselineRadar ?? []).map((dim) => [dim.id, dim.value])), [data]);
+  const weak = useMemo(() => {
+    const scored = (data?.radar ?? []).filter((dim) => dim.value != null).sort((a, b) => (a.value ?? 0) - (b.value ?? 0));
+    return new Set(scored.slice(0, 2).map((dim) => dim.id));
+  }, [data]);
+
+  /* D10：客户端里直接存成 PDF 文件；浏览器里退回系统打印（可选“另存为 PDF”） */
+  async function exportPdf() {
+    const fileName = `考核报表-${className}${taskName ? `-${taskName}` : ""}-${new Date().toLocaleDateString("zh-CN").replace(/\//g, "-")}`;
+    if (window.desktopRuntime?.savePdf) {
+      try {
+        const result = await window.desktopRuntime.savePdf({ fileName, landscape: true });
+        if (result.ok) toast.ok(`已保存到 ${result.filePath}`);
+      } catch {
+        toast.error("导出失败，请重试");
+      }
+      return;
+    }
+    window.print();
+  }
+
+  const hasData = Boolean(data && data.ranking.length > 0);
+
+  const withBaseline = (data?.ranking ?? []).filter((row) => row.baseline != null);
+  const gain = withBaseline.length ? Math.round(withBaseline.reduce((sum, row) => sum + row.average - row.baseline!, 0) / withBaseline.length) : null;
+  const activeRoster = roster.filter((row) => row.status === "active").length;
+  const scoredCount = data?.studentCount ?? 0;
+  const passCount = data ? data.distribution.reduce((sum, value) => sum + value, 0) - (data.distribution[0] ?? 0) : 0;
+  const goodCount = data ? (data.distribution[3] ?? 0) + (data.distribution[4] ?? 0) : 0;
+
   return (
-    <div className="page report-page">
-      <PageHeader
-        title="考核报表"
-        description="以任务为考核单位：任务成绩 = 会话均分，综合成绩 = 各任务成绩平均；自由练习不计入。"
-        actions={
-          <>
-            <select className="report-class-select" value={classId} onChange={(event) => setClassId(event.target.value)} aria-label="班级筛选">
-              <option value="">全部班级</option>
-              {classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-            <select className="report-class-select" value={taskId} onChange={(event) => setTaskId(event.target.value)} aria-label="任务筛选">
-              <option value="">全部任务（综合成绩）</option>
-              {tasks.map((task) => (
-                <option key={task.id} value={task.id}>
-                  {task.name}{task.status === "closed" ? "（已结束）" : ""}
-                </option>
-              ))}
-            </select>
-            <button className="secondary-button" onClick={exportExcel} disabled={!data || data.ranking.length === 0}>
-              <FileSpreadsheet size={16} /> 导出 Excel
-            </button>
-            <button className="primary-button" onClick={() => window.print()} disabled={!data}>
-              <Download size={16} /> 导出 PDF
-            </button>
-          </>
-        }
-      />
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
+    <Bench className="report-sheet">
+      <div className="bench-bar">
+        <Select className="toolbar-select" value={classId} onChange={(event) => setClassId(event.target.value)} aria-label="班级">
+          <option value="">全部班级</option>
+          {classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </Select>
+        <Select className="toolbar-select" value={taskId} onChange={(event) => setTaskId(event.target.value)} aria-label="任务">
+          <option value="">全部任务综合</option>
+          {tasks.map((task) => <option key={task.id} value={task.id}>{task.name}{task.status === "closed" ? "（已结束）" : ""}</option>)}
+        </Select>
+        <div className="bench-bar-end">
+          <Button variant="ghost" icon={FileSpreadsheet} disabled={!hasData} onClick={exportExcel}>导出 Excel</Button>
+          <Button variant="primary" icon={Download} disabled={!data} onClick={() => void exportPdf()}>导出 PDF</Button>
+        </div>
+      </div>
+      <h1 className="print-only report-title">{className} · {taskName ?? "全部任务综合"} · 考核报表</h1>
+      {error ? <Callout tone="danger" title="读取失败">{error}</Callout> : null}
 
-      <section className="metric-grid four print-block">
-        <MetricCard
+      {/* 关键数字卡片（D-31）：每个数配一个一眼能读懂的小图；没数据时只画灰色底圈 */}
+      <div className="kpi-cards">
+        <KpiCard
+          label={taskId ? "任务平均分" : "平均分"}
+          help="每个学生先算一个综合成绩（各任务成绩的平均），再求全班平均；自由练习不计入"
+          value={summary?.average != null ? <><b>{summary.average}</b><small>/ 100</small></> : null}
+          sub={summary?.average != null && gain != null ? <><span className={gain < 0 ? "kpi-pill is-down" : "kpi-pill"}>{gain < 0 ? <ArrowDown size={12} /> : <ArrowUp size={12} />}{Math.abs(gain)}</span>较训前</> : null}
+          chart={<ScoreGauge value={summary?.average ?? null} />}
+        />
+        <KpiCard
+          label="及格率"
+          help="综合成绩 60 分及以上的学生，占有成绩学生的比例"
+          value={summary?.passRate != null ? <b>{summary.passRate}%</b> : null}
+          sub={summary?.passRate != null ? `${scoredCount} 人里 ${passCount} 人及格` : null}
+          chart={<RateRing value={summary?.passRate ?? null} />}
+        />
+        <KpiCard
+          label="优良率"
+          help="综合成绩 80 分及以上的学生，占有成绩学生的比例"
+          value={summary?.goodRate != null ? <b>{summary.goodRate}%</b> : null}
+          sub={summary?.goodRate != null ? `${goodCount} 人 80 分以上` : null}
+          chart={<RateRing value={summary?.goodRate ?? null} color="var(--c-cat-2)" />}
+        />
+        <KpiCard
           label="参评学生"
-          value={summary ? String(summary.students) : "—"}
-          trend="至少完成一个任务评分的学生"
-          icon={UsersRound}
+          help="已经有成绩的学生 / 班里在用的学生"
+          value={<><b>{scoredCount}</b><small>/ {activeRoster} 人</small></>}
+          bar={activeRoster ? scoredCount / activeRoster : 0}
         />
-        <MetricCard
-          label="已评会话"
-          value={summary ? String(summary.assessed) : "—"}
-          trend="过程数据：任务下的会话评分次数"
-          icon={ListChecks}
-          tone="green"
-        />
-        <MetricCard
-          label={taskId ? "任务平均分" : "综合平均分"}
-          value={summary?.average != null ? String(summary.average) : "—"}
-          trend="按学生平均（每人等权）"
-          icon={GraduationCap}
-          tone="amber"
-        />
-        <MetricCard
-          label="及格率 / 优良率"
-          value={summary?.passRate != null ? `${summary.passRate}%` : "—"}
-          trend={summary?.goodRate != null ? `80 分以上学生占 ${summary.goodRate}%` : "暂无评分数据"}
-          icon={Trophy}
-          tone="coral"
-        />
-      </section>
-
-      <div className="tt-overview-grid print-block">
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>班级成绩分布</h2>
-              <p>{taskId ? "该任务成绩分布" : "综合成绩分布"} · 每名学生计一个成绩 · 共 {data?.studentCount ?? 0} 人</p>
-            </div>
-          </div>
-          <Histogram
-            distribution={data?.distribution ?? [0, 0, 0, 0, 0]}
-            emptyHint="学生完成实训任务并评分后，成绩分布会汇总到这里（自由练习不计入）。"
-          />
-        </section>
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>全班能力对比</h2>
-              <p>
-                {data && data.baselineCount > 0
-                  ? `训前基线（${data.baselineCount} 人已测评） vs 当前六维平均`
-                  : "六个评分维度平均值（学生完成初始测评后显示训前对比）"}
-              </p>
-            </div>
-          </div>
-          <div className="tch-cmp">
-            {(data?.radar ?? []).map((dim) => {
-              const base = data?.baselineRadar.find((item) => item.id === dim.id)?.value ?? null;
-              const diff = dim.value != null && base != null ? dim.value - base : null;
-              return (
-                <div key={dim.id} className="tch-cmp-row">
-                  <span className="tch-cmp-label">{dim.label}</span>
-                  <div className="tch-cmp-bars">
-                    <i className="cur"><b style={{ width: `${dim.value ?? 0}%` }} /></i>
-                    {base != null ? <i className="base"><b style={{ width: `${base}%` }} /></i> : null}
-                  </div>
-                  <strong>{dim.value ?? "—"}</strong>
-                  <small>{base != null ? `初始 ${base}` : "—"}</small>
-                  {diff != null ? (
-                    <span className={diff > 0 ? "rec-delta up" : diff < 0 ? "rec-delta down" : "rec-delta"}>
-                      {diff > 0 ? `+${diff}` : diff < 0 ? String(diff) : "±0"}
-                    </span>
-                  ) : <span className="rec-delta tch-cmp-empty">—</span>}
-                </div>
-              );
-            })}
-          </div>
-          {data && data.baselineCount > 0 ? (
-            <div className="tch-cmp-legend"><span><i className="cur" /> 当前平均</span><span><i className="base" /> 初始测评基线</span></div>
-          ) : null}
-        </section>
       </div>
 
-      <section className="panel data-panel print-block">
-        <div className="panel-heading">
-          <div>
-            <h2>学生成绩排名</h2>
-            <p>{taskId ? "按该任务成绩排序" : "按综合成绩排序（综合 = 各任务成绩平均）"} · 含六维均值与训前对比</p>
+      <AttentionBoard
+        ranking={data?.ranking ?? []}
+        roster={roster}
+        hasBaseline={Boolean(data?.baselineCount)}
+        scopeName={className}
+        onNavigate={onNavigate}
+      />
+
+      <div className="duo">
+        <Board title={<>成绩分布<HelpTip>每个学生一个综合成绩，按分数段统计人数</HelpTip></>} count={hasData ? `${data!.studentCount} 人` : undefined}>
+          <ScoreDistribution distribution={data?.distribution ?? [0, 0, 0, 0, 0]} emptyNote={<ChartEmptyNote desc="学生完成接待后出现" />} />
+        </Board>
+        <Board title={<>六项能力<HelpTip>{data?.baselineCount ? "全班每一项的平均分，红色是最弱的两项；竖线是训前测评" : "全班每一项的平均分，红色是最弱的两项"}</HelpTip></>}>
+          <DimensionBars
+            dims={data?.radar?.length ? data.radar : ASSESSMENT_DIMENSIONS.map((dim) => ({ id: dim.id, label: dim.label, value: null }))}
+            weak={hasData ? weak : undefined}
+            baseline={data?.baselineCount ? baseline : undefined}
+            emptyNote={<ChartEmptyNote desc="学生完成接待后出现" />}
+          />
+        </Board>
+      </div>
+      <Board title={<>成绩排名<HelpTip>{taskId ? "按这个任务的成绩排" : "按综合成绩排"}；完整的六项分数在“导出 Excel”里</HelpTip></>}>
+        {hasData ? (
+          <DataTable
+            rows={data!.ranking}
+            rowKey={(row) => row.username}
+            columns={RANK_COLUMNS(data!.ranking, Boolean(taskId))}
+          />
+        ) : (
+          <div className="rank-ghost">
+            <div className="rank-ghost-head"><span>名次</span><span>学生</span><span>综合成绩</span><span>较训前</span><span>最弱一项</span></div>
+            {[0, 1, 2].map((index) => <div key={index} className="rank-ghost-row"><i style={{ width: 24 }} /><i style={{ width: 120 }} /><i style={{ width: 40 }} /><i style={{ width: 36 }} /><i style={{ width: 100 }} /></div>)}
+            <ChartEmptyNote desc="学生完成接待后出现" />
           </div>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>排名</th><th>学生</th><th>任务</th><th>会话</th><th>初始</th><th>{taskId ? "任务成绩" : "综合成绩"}</th><th>提升</th><th>最高任务分</th>
-              {ASSESSMENT_DIMENSIONS.map((dim) => <th key={dim.id}>{dim.label.slice(0, 4)}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {(data?.ranking ?? []).map((row, index) => {
-              const gain = row.baseline != null ? row.average - row.baseline : null;
-              const band = scoreBand(row.average);
-              return (
-                <tr key={row.username}>
-                  <td><span className={`rank-number rank-${Math.min(index + 1, 4)}`}>{index + 1}</span></td>
-                  <td>
-                    <span className="student-cell">
-                      <span className="avatar small">{row.name[0]}</span>
-                      <span><strong>{row.name}</strong><small>{row.username}</small></span>
-                    </span>
-                  </td>
-                  <td>{row.tasks}</td>
-                  <td>{row.sessions}</td>
-                  <td>{row.baseline ?? "—"}</td>
-                  <td>
-                    <span className="tt-total-cell">
-                      <strong>{row.average}</strong>
-                      <em className={`rec-band ${band.cls}`}>{band.label}</em>
-                    </span>
-                  </td>
-                  <td>
-                    {gain != null ? (
-                      <span className={gain > 0 ? "rec-delta up" : gain < 0 ? "rec-delta down" : "rec-delta"}>
-                        {gain > 0 ? `+${gain}` : gain < 0 ? String(gain) : "±0"}
-                      </span>
-                    ) : "—"}
-                  </td>
-                  <td>{row.best}</td>
-                  {ASSESSMENT_DIMENSIONS.map((dim) => <td key={dim.id}>{row.dims[dim.id] ?? "—"}</td>)}
-                </tr>
-              );
-            })}
-            {data && data.ranking.length === 0 ? (
-              <tr><td colSpan={14}><span className="muted">暂无评分数据：学生完成实训任务、会话结束并评分后自动生成（自由练习不计入）。</span></td></tr>
-            ) : null}
-          </tbody>
-        </table>
-      </section>
-    </div>
+        )}
+      </Board>
+    </Bench>
   );
 }

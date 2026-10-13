@@ -1,5 +1,6 @@
 import { BarChart3, X } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
+import { HelpTip } from "../../ui";
 
 /* 教师端共享 UI：统一弹窗 / 成绩直方图 / 六维雷达 / 分数档位 */
 
@@ -145,7 +146,8 @@ export function scoreBand(total: number): { cls: string; label: string } {
 export function formatIdle(seconds: number): string {
   if (seconds < 60) return `${Math.max(seconds, 0)} 秒`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟`;
-  return `${Math.floor(seconds / 3600)} 小时+`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时`;
+  return `${Math.floor(seconds / 86400)} 天`;
 }
 
 export async function copyText(text: string): Promise<boolean> {
@@ -166,4 +168,145 @@ export async function copyText(text: string): Promise<boolean> {
       area.remove();
     }
   }
+}
+
+/** 关键数字卡片（D-31）：标签 + 大数字 + 一行事实，右侧一个小图（仪表 / 圆环），或底部一条进度条 */
+export function KpiCard({ label, help, value, sub, chart, bar }: { label: string; help: string; value: ReactNode | null; sub?: ReactNode; chart?: ReactNode; bar?: number }) {
+  return (
+    <div className="kpi-card">
+      <span className="kpi-card-label">{label}<HelpTip>{help}</HelpTip></span>
+      <div className="kpi-card-main">
+        <span className="kpi-card-value">{value ?? <b className="is-dash">—</b>}</span>
+        {sub ? <span className="kpi-card-sub">{sub}</span> : null}
+      </div>
+      {chart ? <span className="kpi-card-chart">{chart}</span> : null}
+      {bar != null ? <span className="kpi-card-bar"><i style={{ width: `${Math.round(bar * 100)}%` }} /></span> : null}
+    </div>
+  );
+}
+
+/** 半圆仪表：满分 100，刻一道 60 分及格线；低于 60 画红色。value 为空只画灰色底圈 */
+export function ScoreGauge({ value }: { value: number | null }) {
+  const r = 40;
+  const length = Math.PI * r;
+  const angle = 0.6 * Math.PI;
+  const mx = 52 - r * Math.cos(angle);
+  const my = 50 - r * Math.sin(angle);
+  return (
+    <svg className="kpi-gauge" viewBox="0 0 104 60" aria-hidden="true">
+      <path d="M12 50 A40 40 0 0 1 92 50" fill="none" stroke="var(--c-surface-hover)" strokeWidth={8} strokeLinecap="round" />
+      {value != null ? <path d="M12 50 A40 40 0 0 1 92 50" fill="none" stroke={value < 60 ? "var(--c-danger)" : "var(--c-brand)"} strokeWidth={8} strokeLinecap="round" strokeDasharray={`${(length * Math.max(0, Math.min(100, value))) / 100} ${length}`} /> : null}
+      <line x1={mx - 6 * Math.cos(angle)} y1={my - 6 * Math.sin(angle)} x2={mx + 7 * Math.cos(angle)} y2={my + 7 * Math.sin(angle)} stroke="var(--c-ink-2)" strokeWidth={2} />
+      <text x={mx - 15} y={my - 6} fontSize={9} fill="var(--c-ink-3)">60</text>
+    </svg>
+  );
+}
+
+/** 圆环：百分比；value 为空只画灰色底圈 */
+export function RateRing({ value, color = "var(--c-brand)" }: { value: number | null; color?: string }) {
+  const r = 26;
+  const length = 2 * Math.PI * r;
+  return (
+    <svg className="kpi-ring" viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx={32} cy={32} r={r} fill="none" stroke="var(--c-surface-hover)" strokeWidth={8} />
+      {value != null && value > 0 ? <circle cx={32} cy={32} r={r} fill="none" stroke={color} strokeWidth={8} strokeLinecap="round" strokeDasharray={`${(length * Math.min(100, value)) / 100} ${length}`} transform="rotate(-90 32 32)" /> : null}
+    </svg>
+  );
+}
+
+/** 图表没数据时盖在骨架上的提示卡：说清还差什么，可带一个去处 */
+export function ChartEmptyNote({ title = "还没有评分", desc, action }: { title?: string; desc: string; action?: ReactNode }) {
+  return <div className="chart-note"><b>{title}</b><span>{desc}</span>{action}</div>;
+}
+
+/** 成绩分布：五档竖条。没有数据时照常画出五档和坐标，柱子用斜纹占位，配一张提示卡（D-30） */
+export function ScoreDistribution({ distribution, emptyNote }: { distribution: number[]; emptyNote?: ReactNode }) {
+  const total = distribution.reduce((sum, value) => sum + value, 0);
+  const max = Math.max(1, ...distribution);
+  return (
+    <div className={total ? "score-dist" : "score-dist is-empty"} role="img" aria-label="成绩分布">
+      {distribution.map((value, index) => (
+        <div key={index} className="score-dist-col">
+          <span className="score-dist-count">{value} 人</span>
+          <i style={{ height: total ? (value ? `${Math.max(4, Math.round((value / max) * 100))}%` : "2px") : undefined }} className={index === 0 ? "is-low" : undefined} />
+          <span className="score-dist-label">{SCORE_BUCKETS[index]}</span>
+        </div>
+      ))}
+      {total ? null : emptyNote ?? <ChartEmptyNote desc="学生完成接待、出了评分后，按分数段显示人数" />}
+    </div>
+  );
+}
+
+/** 六项能力横条：偏弱项标出来。没有数据时进度条用虚线占位，配一张提示卡 */
+export function DimensionBars({ dims, weak, baseline, emptyNote }: { dims: RadarDim[]; weak?: Set<string>; baseline?: Record<string, number | null>; emptyNote?: ReactNode }) {
+  const empty = dims.every((dim) => dim.value == null);
+  return (
+    <div className={empty ? "dim-bars is-empty" : "dim-bars"}>
+      {dims.map((dim) => {
+        const base = baseline?.[dim.id];
+        return (
+          <div key={dim.id} className={weak?.has(dim.id) ? "dim-bar is-weak" : "dim-bar"}>
+            <span className="dim-bar-label">{dim.label}</span>
+            <span className="dim-bar-track">
+              {dim.value != null ? <i style={{ width: `${dim.value}%` }} /> : null}
+              {base != null ? <b style={{ left: `${base}%` }} title={`训前 ${base}`} /> : null}
+            </span>
+            <strong>{dim.value ?? "—"}</strong>
+            <em>{weak?.has(dim.id) ? "偏弱" : ""}</em>
+          </div>
+        );
+      })}
+      {empty ? emptyNote ?? <ChartEmptyNote desc="出了评分后显示每项的平均分" /> : null}
+    </div>
+  );
+}
+
+/** 截止时间写成人话并按紧急程度上色：已逾期 = 红，3 天内 = 橙 */
+export function dueText(deadline: string | null, closed = false): { text: string; tone: "" | "warn" | "bad" } {
+  if (!deadline) return { text: "不设截止", tone: "" };
+  const end = new Date(deadline);
+  const hours = (end.getTime() - Date.now()) / 3_600_000;
+  const date = `${end.getMonth() + 1}/${end.getDate()}`;
+  if (closed) return { text: `${date} 截止`, tone: "" };
+  if (hours < 0) {
+    const days = Math.ceil(-hours / 24);
+    return { text: days <= 1 ? "已逾期" : `已逾期 ${days} 天`, tone: "bad" };
+  }
+  if (hours < 24) return { text: `今天 ${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")} 截止`, tone: "warn" };
+  if (hours < 72) return { text: `还剩 ${Math.ceil(hours / 24)} 天`, tone: "warn" };
+  if (hours < 24 * 7) return { text: `还剩 ${Math.ceil(hours / 24)} 天`, tone: "" };
+  return { text: `${date} 截止`, tone: "" };
+}
+
+/** 进度：完成人数 + 百分比 + 粗进度条 */
+export function Progress({ done, total }: { done: number; total: number }) {
+  const percent = total ? Math.round((done / total) * 100) : 0;
+  return (
+    <div className="prog">
+      <div className="prog-top"><span><b>{done}</b> / {total} 人完成</span><span>{percent}%</span></div>
+      <div className="prog-track"><i style={{ width: `${percent}%` }} /></div>
+    </div>
+  );
+}
+
+/* 从总览跳到实训跟踪时指定打开哪个页签（页面切换不经过路由，用一个一次性的变量传过去） */
+let nextTrackingTab: "live" | "replay" | null = null;
+export function openTrackingTab(tab: "live" | "replay") {
+  nextTrackingTab = tab;
+}
+/** 从别的页跳到“回放与评分”时，预先填好搜索词（如考核报表里点某个学生的“看回放”） */
+let nextReplaySearch: string | null = null;
+export function openReplayFor(keyword: string) {
+  nextTrackingTab = "replay";
+  nextReplaySearch = keyword;
+}
+export function takeReplaySearch(): string {
+  const value = nextReplaySearch ?? "";
+  nextReplaySearch = null;
+  return value;
+}
+export function takeTrackingTab(): "live" | "replay" {
+  const tab = nextTrackingTab ?? "live";
+  nextTrackingTab = null;
+  return tab;
 }

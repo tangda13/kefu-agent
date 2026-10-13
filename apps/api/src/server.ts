@@ -33,6 +33,7 @@ import { registerTeacherRoutes } from "./routes/teacher";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerAdminLlmRoutes } from "./routes/admin-llm";
 import { registerStudentStateRoutes } from "./routes/student-state";
+import { registerBrandRoutes } from "./routes/brand";
 
 export interface BuildServerOptions {
   env?: Partial<ApiEnv>;
@@ -139,6 +140,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   registerAdminRoutes(app, db, guard, gateway, voice);
   registerAdminLlmRoutes(app, db, guard, gateway, sealer);
   registerStudentStateRoutes(app, db, guard);
+  registerBrandRoutes(app, db, guard);
 
   // 定时备份调度：每 10 分钟检查一次（到达设定小时且当日未备份则执行）
   if (process.env.NODE_ENV !== "test") {

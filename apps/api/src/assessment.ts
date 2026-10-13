@@ -107,17 +107,7 @@ export async function assessConversation(
   );
   const scores: Record<string, number> = {};
   for (const id of DIMENSION_IDS) scores[id] = (parsed.scores as Record<string, number>)[id] ?? 60;
-  /* 总分：任务配置了考核权重则按权重加权，无任务/无权重时六维等权 */
-  const weights = (conversation.scoring_weights ?? {}) as Record<string, number>;
-  const weightOf = (id: string) => {
-    const value = Number(weights[id]);
-    return Number.isFinite(value) && value > 0 ? value : 0;
-  };
-  const weightSum = DIMENSION_IDS.reduce((sum, id) => sum + weightOf(id), 0);
-  const total =
-    weightSum > 0
-      ? Math.round(DIMENSION_IDS.reduce((sum, id) => sum + (scores[id] ?? 0) * weightOf(id), 0) / weightSum)
-      : Math.round(DIMENSION_IDS.reduce((sum, id) => sum + (scores[id] ?? 0), 0) / DIMENSION_IDS.length);
+  const total = weightedTotal(scores, (conversation.scoring_weights ?? {}) as Record<string, number>);
   await db.query(
     `insert into assessments (conversation_id, student_id, scores, total, comment, suggestions, prompt_version, model, evidence)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict (conversation_id) do nothing`,
@@ -166,4 +156,16 @@ export async function assessConversation(
       [conversation.task_id, conversation.student_id, completed, progress.avg_total],
     );
   }
+}
+
+/** 总分：任务配置了考核权重则按权重加权，无任务/无权重时六维等权（AI 评分与教师复核共用） */
+export function weightedTotal(scores: Record<string, number>, weights: Record<string, number>): number {
+  const weightOf = (id: string) => {
+    const value = Number(weights[id]);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  };
+  const weightSum = DIMENSION_IDS.reduce((sum, id) => sum + weightOf(id), 0);
+  return weightSum > 0
+    ? Math.round(DIMENSION_IDS.reduce((sum, id) => sum + (scores[id] ?? 0) * weightOf(id), 0) / weightSum)
+    : Math.round(DIMENSION_IDS.reduce((sum, id) => sum + (scores[id] ?? 0), 0) / DIMENSION_IDS.length);
 }

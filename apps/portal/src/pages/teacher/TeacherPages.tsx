@@ -12,14 +12,14 @@ import { LiveNotices } from "./LiveNotices";
 import { LiveTracking } from "./LiveTracking";
 import { LiveReports } from "./LiveReports";
 
-export function TeacherPages({ page, session }: { page: string; session?: Session | null }) {
+export function TeacherPages({ page, session, onNavigate }: { page: string; session?: Session | null; onNavigate?: (page: string) => void }) {
   if (page === "assignments") return session ? <LiveAssignments session={session} /> : <Assignments />;
   if (page === "classes") return session ? <LiveClasses session={session} /> : <Classes />;
   if (page === "notices") return session ? <LiveNotices session={session} /> : <Notices />;
-  if (page === "tracking") return session ? <LiveTracking session={session} /> : <Tracking />;
-  if (page === "reports") return session ? <LiveReports session={session} /> : <Reports />;
+  if (page === "tracking") return session ? <LiveTracking session={session} onNavigate={onNavigate} /> : <Tracking />;
+  if (page === "reports") return session ? <LiveReports session={session} onNavigate={onNavigate} /> : <Reports />;
   if (page === "scenarios") return session ? <LiveScenarioConfig session={session} /> : <Scenarios />;
-  return session ? <LiveOverview session={session} /> : <Overview />;
+  return session ? <LiveOverview session={session} onNavigate={onNavigate} /> : <Overview />;
 }
 
 function Overview() {

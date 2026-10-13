@@ -14,9 +14,13 @@ import { TaskHall } from "./pages/student/TaskHall";
 import { Workbench } from "./pages/student/Workbench";
 import { LiveWorkbench } from "./pages/student/LiveWorkbench";
 import { TeacherPages } from "./pages/teacher/TeacherPages";
+import { Button } from "./ui";
 import {
   clearSession,
+  fetchAdminAlerts,
+  type AdminAlert,
   fetchStudentAnnouncements,
+  apiGet,
   fetchReadMarks,
   fetchStudentGuidance,
   migrateLocalOnce,
@@ -79,7 +83,11 @@ export function App() {
   const [announcementItems, setAnnouncementItems] = useState<StudentAnnouncement[]>([]);
   useEffect(() => {
     if (!studentLive || !session) return;
-    const load = () => fetchStudentAnnouncements(session).then(setAnnouncementItems).catch(() => undefined);
+    // 顶栏会轮播所有有效公告，拿到即视为看到：记已读，教师端公告列表据此统计“已读 N / 班级人数”
+    const load = () => fetchStudentAnnouncements(session).then((items) => {
+      setAnnouncementItems(items);
+      if (items.length) void saveReadMarks(session, "notice", items.map((item) => item.id)).catch(() => undefined);
+    }).catch(() => undefined);
     load();
     const timer = window.setInterval(load, 60_000);
     return () => window.clearInterval(timer);
@@ -135,6 +143,43 @@ export function App() {
     };
   }, [studentLive, session, guidance, readIds]);
 
+  /** 教师端侧栏角标：买家等待超过 3 分钟的会话数，30 秒刷新（D-27） */
+  const [teacherWaiting, setTeacherWaiting] = useState(0);
+  const teacherLive = signedIn && !demo && role === "teacher" && session !== null;
+  useEffect(() => {
+    if (!teacherLive || !session) {
+      setTeacherWaiting(0);
+      return;
+    }
+    const load = () => void apiGet<Array<{ alert: boolean }>>("/v1/teacher/tracking", session).then((rows) => setTeacherWaiting(rows.filter((row) => row.alert).length)).catch(() => undefined);
+    load();
+    const timer = window.setInterval(load, 30_000);
+    return () => window.clearInterval(timer);
+  }, [teacherLive, session]);
+
+  /** 管理端顶栏常驻提醒（E5）：额度、模型失败、备份过期等，每 5 分钟和切换页面时刷新 */
+  const [adminAlerts, setAdminAlerts] = useState<AdminAlert[]>([]);
+  const adminLive = signedIn && !demo && role === "admin" && session !== null;
+  useEffect(() => {
+    if (!adminLive || !session) {
+      setAdminAlerts([]);
+      return;
+    }
+    const load = () => void fetchAdminAlerts(session).then(setAdminAlerts).catch(() => undefined);
+    load();
+    const timer = window.setInterval(load, 5 * 60_000);
+    return () => window.clearInterval(timer);
+  }, [adminLive, session, active]);
+  const topAlert = adminAlerts[0];
+  const adminBanner =
+    topAlert && active !== "system" && !(adminAlerts.length === 1 && topAlert.page === active) ? (
+      <div className={adminAlerts.some((item) => item.level === "danger") ? "shell-banner is-danger" : "shell-banner"} role="status">
+        <strong>{topAlert.title}</strong>
+        {adminAlerts.length > 1 ? <span>等 {adminAlerts.length} 项需要处理</span> : <span>{topAlert.detail}</span>}
+        <Button size="sm" onClick={() => setActive(adminAlerts.length > 1 ? "system" : topAlert.page)}>{adminAlerts.length > 1 ? "查看全部" : "去处理"}</Button>
+      </div>
+    ) : null;
+
   if (!signedIn) {
     return (
       <LoginScreen
@@ -157,6 +202,8 @@ export function App() {
       userMeta={session?.user.username}
       notifications={notifications}
       announcements={announcements}
+      banner={adminBanner}
+      badges={teacherWaiting ? { tracking: teacherWaiting } : undefined}
       onSignOut={
         demo
           ? undefined
@@ -170,8 +217,8 @@ export function App() {
       {role === "student" && (
         <StudentPage active={active} onNavigate={setActive} session={session} />
       )}
-      {role === "teacher" && <TeacherPages page={active} session={session} />}
-      {role === "admin" && <AdminPages page={active} session={session} />}
+      {role === "teacher" && <TeacherPages page={active} session={session} onNavigate={setActive} />}
+      {role === "admin" && <AdminPages page={active} session={session} onNavigate={setActive} />}
     </AppShell>
   );
 }

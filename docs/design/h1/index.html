@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>H1 风格稿</title>
+<style>
+/* ============ 文档外壳（评审页本身，不属于任何方向） ============ */
+:root { --doc-bg:#ecedef; --doc-ink:#1c1d1f; --doc-ink-2:#5f6368; --doc-line:#d9dce1; --doc-accent:#246bc7; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--doc-bg); color: var(--doc-ink); font: 400 14px/1.6 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.doc-head { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 24px; padding: 12px 32px; background: rgba(255,255,255,.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--doc-line); }
+.doc-head h1 { margin: 0; font-size: 16px; font-weight: 600; white-space: nowrap; }
+.doc-head nav { display: flex; gap: 4px; flex-wrap: wrap; }
+.doc-head nav a { padding: 5px 12px; border-radius: 6px; color: var(--doc-ink-2); text-decoration: none; font-size: 13px; white-space: nowrap; }
+.doc-head nav a:hover { background: #f1f2f4; color: var(--doc-ink); }
+.doc-head .meta { margin-left: auto; color: var(--doc-ink-2); font-size: 12px; white-space: nowrap; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc section { margin-bottom: 72px; scroll-margin-top: 72px; }
+.doc h2 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+.doc h3 { margin: 32px 0 10px; font-size: 15px; font-weight: 600; }
+.doc .lede { margin: 0 0 20px; color: var(--doc-ink-2); max-width: 880px; }
+.doc p { max-width: 880px; }
+
+.issues { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+.issue { background: #fff; border: 1px solid var(--doc-line); border-radius: 8px; padding: 14px 16px; }
+.issue h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+.issue .bad { margin: 0 0 8px; color: #8a2a22; font-size: 13px; }
+.issue .fix { margin: 0; color: var(--doc-ink-2); font-size: 13px; }
+.issue .fix b { color: var(--doc-ink); font-weight: 600; }
+.shots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.shots figure { margin: 0; background: #fff; border: 1px solid var(--doc-line); border-radius: 8px; overflow: hidden; }
+.shots img { display: block; width: 100%; aspect-ratio: 16/10; object-fit: cover; object-position: top left; }
+.shots figcaption { padding: 6px 10px; font-size: 12px; color: var(--doc-ink-2); }
+.rules { margin: 0; padding-left: 20px; max-width: 920px; }
+.rules li { margin: 4px 0; }
+.copy-table { width: 100%; max-width: 920px; border-collapse: collapse; background: #fff; border: 1px solid var(--doc-line); border-radius: 8px; overflow: hidden; font-size: 13px; }
+.copy-table th, .copy-table td { padding: 8px 12px; border-bottom: 1px solid #eef0f2; text-align: left; vertical-align: top; }
+.copy-table th { background: #f6f7f8; font-weight: 600; color: var(--doc-ink-2); }
+.copy-table td:first-child { color: #8a2a22; }
+
+.dir-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; margin-bottom: 16px; }
+.dir-head .tag { display: inline-block; margin-bottom: 6px; padding: 2px 8px; border-radius: 4px; background: #fff; border: 1px solid var(--doc-line); font-size: 12px; color: var(--doc-ink-2); }
+.swatches { display: flex; gap: 6px; }
+.swatches span { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: var(--doc-ink-2); }
+.swatches i { display: block; width: 40px; height: 28px; border-radius: 6px; border: 1px solid rgba(0,0,0,.08); }
+.traits { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+.traits div { background: #fff; border: 1px solid var(--doc-line); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.traits b { display: block; font-size: 12px; color: var(--doc-ink-2); font-weight: 500; margin-bottom: 2px; }
+.frame-cap { display: flex; justify-content: space-between; margin: 20px 0 8px; font-size: 13px; color: var(--doc-ink-2); }
+.frame-cap b { color: var(--doc-ink); font-weight: 600; }
+.frame { position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--doc-line); box-shadow: 0 12px 40px -16px rgba(0,0,0,.18); background: #fff; }
+.screen { position: absolute; top: 0; left: 0; width: 1440px; height: 900px; transform-origin: 0 0; overflow: hidden; }
+.compare { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--doc-line); font-size: 13px; }
+.compare th, .compare td { padding: 10px 14px; border-bottom: 1px solid #eef0f2; text-align: left; vertical-align: top; }
+.compare thead th { background: #f6f7f8; font-weight: 600; }
+.compare tbody th { width: 140px; color: var(--doc-ink-2); font-weight: 500; }
+
+/* ============ 三个方向的设计令牌 ============ */
+.d-A {
+  --bg:#f5f6f7; --surface:#fff; --surface-2:#f7f8f9; --line:#e6e8eb; --line-2:#d5d8dd;
+  --ink:#1c1d1f; --ink-2:#5f6368; --ink-3:#8a8f98;
+  --accent:#246bc7; --accent-wash:#eaf1fb; --primary:#1c1d1f; --primary-hover:#000; --primary-ink:#fff;
+  --ok:#1f7a4a; --ok-wash:#e8f4ee; --warn:#a15c07; --warn-wash:#fdf3e2; --bad:#b4342b; --bad-wash:#fbecea;
+  --r:8px; --r-sm:6px; --fs:13px; --row:44px;
+  --side-bg:#fff; --side-ink:#5f6368; --side-active-bg:#f1f2f4; --side-active-ink:#1c1d1f;
+  --bubble-me:#1c1d1f; --bubble-me-ink:#fff; --bubble-them:#f1f2f4;
+}
+.d-B {
+  --bg:#f0f2f5; --surface:#fff; --surface-2:#f7f8fa; --line:#e5e6eb; --line-2:#c9cdd4;
+  --ink:#1d2129; --ink-2:#4e5969; --ink-3:#86909c;
+  --accent:#1f5fd6; --accent-wash:#e8f0fd; --primary:#1f5fd6; --primary-hover:#1a51b8; --primary-ink:#fff;
+  --ok:#1d8a4e; --ok-wash:#e7f6ee; --warn:#c26a00; --warn-wash:#fff4e5; --bad:#d4380d; --bad-wash:#fff1ec;
+  --r:4px; --r-sm:4px; --fs:13px; --row:40px;
+  --side-bg:#1b2232; --side-ink:#a6adbb; --side-active-bg:#2a3347; --side-active-ink:#fff;
+  --bubble-me:#e1ecfd; --bubble-me-ink:#1d2129; --bubble-them:#fff;
+}
+.d-C {
+  --bg:#f6f5f1; --surface:#fffefb; --surface-2:#f9f8f4; --line:#e8e5dd; --line-2:#d6d2c7;
+  --ink:#24221e; --ink-2:#625e56; --ink-3:#958f84;
+  --accent:#1e6a50; --accent-wash:#e6f0eb; --primary:#1e6a50; --primary-hover:#17563f; --primary-ink:#fff;
+  --ok:#1e6a50; --ok-wash:#e6f0eb; --warn:#9a5b0b; --warn-wash:#fbf1de; --bad:#b03a2e; --bad-wash:#f9eae7;
+  --r:10px; --r-sm:8px; --fs:14px; --row:48px;
+  --side-bg:#24221e; --side-ink:#c9c4b8; --side-active-bg:#3a3731; --side-active-ink:#fff;
+  --bubble-me:#e3eee8; --bubble-me-ink:#24221e; --bubble-them:#fff;
+}
+
+/* ============ 共用部件（全部消费令牌） ============ */
+.screen { background: var(--bg); color: var(--ink); font: 400 var(--fs)/1.55 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
+.screen svg { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
+.screen button { font: inherit; color: inherit; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-2); }
+.faint { color: var(--ink-3); }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface); white-space: nowrap; cursor: pointer; font-size: 13px; }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); font-weight: 500; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border-radius: 4px; font-size: 12px; line-height: 1; white-space: nowrap; background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+.chip.ok { background: var(--ok-wash); color: var(--ok); border-color: transparent; }
+.chip.warn { background: var(--warn-wash); color: var(--warn); border-color: transparent; }
+.chip.bad { background: var(--bad-wash); color: var(--bad); border-color: transparent; }
+.chip.accent { background: var(--accent-wash); color: var(--accent); border-color: transparent; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); display: inline-block; flex: none; }
+.dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+.av { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex: none; background: var(--line); }
+.av.sm { width: 24px; height: 24px; }
+.av.txt { display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); }
+.seg { display: inline-flex; padding: 2px; border-radius: var(--r-sm); background: var(--surface-2); border: 1px solid var(--line); }
+.seg button { height: 26px; padding: 0 10px; border: 0; border-radius: calc(var(--r-sm) - 2px); background: transparent; color: var(--ink-2); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.seg button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.seg button .n { margin-left: 4px; color: var(--ink-3); font-weight: 400; }
+.input { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-3); font-size: 13px; }
+.select { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; height: 32px; padding: 0 8px 0 10px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--surface); font-size: 13px; white-space: nowrap; }
+.select svg { width: 14px; height: 14px; color: var(--ink-3); }
+.kv { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 13px; }
+.kv dt { color: var(--ink-2); } .kv dd { margin: 0; }
+
+/* ---------- 应用外壳 ---------- */
+.app { display: flex; height: 100%; }
+.side { display: flex; flex-direction: column; flex: none; background: var(--side-bg); color: var(--side-ink); }
+.side .brand { display: flex; align-items: center; gap: 8px; }
+.side .mark svg, .lg-brand .mark svg { width: 15px; height: 15px; color: #fff; }
+.side .mark { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; background: var(--ink); color: #fff; font-weight: 700; font-size: 13px; }
+.side .nav-item { display: flex; align-items: center; gap: 10px; color: var(--side-ink); text-decoration: none; white-space: nowrap; cursor: pointer; }
+.side .nav-item.on { background: var(--side-active-bg); color: var(--side-active-ink); font-weight: 600; }
+.side .nav-item .badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; line-height: 18px; text-align: center; font-weight: 600; }
+.side .grow { flex: 1; }
+.main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.top { display: flex; align-items: center; gap: 16px; height: 48px; padding: 0 20px; background: var(--surface); border-bottom: 1px solid var(--line); flex: none; }
+.top .title { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.top .crumb { color: var(--ink-3); font-size: 13px; white-space: nowrap; }
+.top .right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.top .user { display: flex; align-items: center; gap: 8px; font-size: 13px; white-space: nowrap; }
+.top .icon-btn { position: relative; display: inline-flex; color: var(--ink-2); }
+.top .icon-btn .pip { position: absolute; top: -2px; right: -2px; width: 7px; height: 7px; border-radius: 50%; background: var(--bad); border: 1.5px solid var(--surface); }
+.content { flex: 1; min-height: 0; }
+
+/* A：白色侧栏、文字导航 */
+.d-A .side { width: 216px; padding: 14px 10px; border-right: 1px solid var(--line); gap: 2px; }
+.d-A .side .brand { padding: 2px 4px 16px; color: var(--ink); font-size: 13px; min-width: 0; }
+.side .brand b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.01em; }
+.d-A .side .nav-item { height: 34px; padding: 0 10px; border-radius: var(--r-sm); font-size: 13px; }
+.d-A .side .group { padding: 14px 10px 6px; font-size: 12px; color: var(--ink-3); }
+.d-A .side .foot { padding: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.d-A .side .foot .av, .d-A .side .foot .av + span { display: none; }
+
+/* B：深色窄栏、图标在上文字在下 */
+.d-B .side { width: 72px; padding: 10px 6px; gap: 2px; align-items: stretch; }
+.d-B .side .brand { justify-content: center; padding: 4px 0 14px; }
+.d-B .side .brand b { display: none; }
+.d-B .side .mark { width: 32px; height: 32px; background: var(--primary); font-size: 15px; }
+.d-B .side .nav-item { position: relative; flex-direction: column; gap: 4px; justify-content: center; height: 56px; border-radius: 6px; font-size: 11px; font-weight: 400; }
+.d-B .side .nav-item.on { font-weight: 500; }
+.d-B .side .nav-item svg { width: 18px; height: 18px; }
+.d-B .side .nav-item .badge { position: absolute; top: 6px; right: 10px; margin: 0; }
+.d-B .side .group, .d-B .side .foot { display: none; }
+.d-B .top { height: 52px; }
+
+/* C：去掉侧栏，导航放顶栏 */
+.d-C .app { flex-direction: column; }
+.d-C .side { flex-direction: row; align-items: center; height: 52px; padding: 0 20px; gap: 2px; }
+.d-C .side .brand { padding-right: 20px; margin-right: 8px; border-right: 1px solid #3a3731; color: #fff; font-size: 14px; }
+.d-C .side .mark { background: #f6f5f1; color: var(--ink); }
+.d-C .side .nav-item { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; }
+.d-C .side .nav-item svg { display: none; }
+.d-C .side .nav-item .badge { margin-left: 6px; }
+.d-C .side .group { display: none; }
+.d-C .side .grow { flex: 1; }
+.d-C .side .foot { display: flex; align-items: center; gap: 14px; color: var(--side-ink); font-size: 13px; }
+.d-C .side .foot .av.txt { background: #3a3731; border-color: #4a463f; color: #fff; }
+.d-C .top { display: none; }
+.d-C .page-head { display: flex; }
+
+/* ---------- 客服工作台 ---------- */
+.ws { display: grid; grid-template-columns: 300px minmax(0, 1fr) 320px; height: 100%; }
+.ws-metrics { display: flex; align-items: center; gap: 22px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.ws-metrics b { margin-left: 6px; color: var(--ink); font-weight: 600; font-size: 13px; }
+.ws-metrics b.hot { color: var(--bad); }
+.ws-list { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-right: 1px solid var(--line); }
+.ws-list .tools { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-bottom: 1px solid var(--line); }
+.conv { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 2px 10px; padding: 11px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.conv.on { background: var(--accent-wash); box-shadow: inset 2px 0 0 var(--accent); }
+.conv .av { grid-row: span 2; }
+.conv .name { display: flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; overflow: hidden; }
+.conv .name .cc { font-weight: 400; font-size: 11px; color: var(--ink-3); }
+.conv .time { font-size: 12px; color: var(--ink-3); text-align: right; }
+.conv .preview { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-2); font-size: 12px; }
+.conv .unread { justify-self: end; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; line-height: 18px; text-align: center; font-weight: 600; }
+.conv .wait { justify-self: end; font-size: 11px; color: var(--warn); }
+.ws-chat { display: flex; flex-direction: column; min-height: 0; background: var(--surface-2); }
+.chat-head { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--line); flex: none; }
+.chat-head .who b { display: block; font-size: 14px; }
+.chat-head .who span { font-size: 12px; color: var(--ink-2); }
+.chat-head .acts { margin-left: auto; display: flex; gap: 8px; }
+.msgs { flex: 1; min-height: 0; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; overflow: hidden; }
+.sys { align-self: center; font-size: 12px; color: var(--ink-3); }
+.msg { display: flex; gap: 10px; max-width: 76%; }
+.msg.me { align-self: flex-end; flex-direction: row-reverse; }
+.msg .body { display: flex; flex-direction: column; gap: 4px; }
+.msg.me .body { align-items: flex-end; }
+.bubble { padding: 9px 12px; border-radius: var(--r); background: var(--bubble-them); border: 1px solid var(--line); line-height: 1.55; }
+.msg.me .bubble { background: var(--bubble-me); color: var(--bubble-me-ink); border-color: transparent; }
+.trans { padding: 0 2px; font-size: 12px; color: var(--ink-2); }
+.meta-row { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--ink-3); }
+.meta-row .lk { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
+.meta-row .lk svg { width: 12px; height: 12px; }
+.card-msg { display: flex; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); width: 300px; }
+.thumb { width: 40px; height: 40px; border-radius: 6px; flex: none; }
+.composer { margin: 0 16px 16px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); flex: none; }
+.composer .bar { display: flex; align-items: center; gap: 14px; padding: 8px 12px; color: var(--ink-2); border-bottom: 1px solid var(--line); }
+.composer .bar .sp { flex: 1; }
+.composer .bar .tog { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.switch { width: 28px; height: 16px; border-radius: 8px; background: var(--accent); position: relative; display: inline-block; }
+.switch::after { content: ""; position: absolute; top: 2px; right: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; }
+.composer .area { height: 64px; padding: 10px 12px; color: var(--ink-3); }
+.composer .send { display: flex; align-items: center; gap: 10px; padding: 0 12px 10px; }
+.composer .send .sp { flex: 1; }
+.ws-side { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--line); }
+.tabs { display: flex; gap: 18px; padding: 0 16px; height: 44px; align-items: stretch; border-bottom: 1px solid var(--line); flex: none; }
+.tabs span { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--ink-2); border-bottom: 2px solid transparent; white-space: nowrap; }
+.tabs span.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.tabs span .n { color: var(--ink-3); font-weight: 400; }
+.side-sec { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.side-sec h5 { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--ink-2); display: flex; justify-content: space-between; align-items: center; }
+.side-sec h5 a { font-weight: 400; color: var(--accent); }
+.order { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 4px 10px; }
+.order .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.order .s { font-size: 12px; color: var(--ink-2); }
+.order .acts { grid-column: 1 / -1; display: flex; gap: 6px; margin-top: 8px; }
+.mini-orders { margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.mini-orders li { display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px dashed var(--line); color: var(--ink-2); }
+.mini-orders li:first-child { border-top: 0; }
+
+/* ---------- 实训跟踪 ---------- */
+.page-head { display: none; align-items: center; gap: 16px; padding: 16px 24px 0; }
+.page-head .title { font-size: 18px; font-weight: 600; }
+.tr-wrap { display: flex; flex-direction: column; height: 100%; padding: 16px 20px 20px; gap: 12px; }
+.d-C .tr-wrap { padding-top: 12px; }
+.tr-bar { display: flex; align-items: center; gap: 10px; flex: none; }
+.tr-bar .sp { flex: 1; }
+.live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.stats { display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); flex: none; }
+.stats div { flex: 1; padding: 10px 16px; border-left: 1px solid var(--line); }
+.stats div:first-child { border-left: 0; }
+.stats small { display: block; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.stats b { font-size: 20px; font-weight: 600; }
+.stats b.hot { color: var(--bad); }
+.stats em { font-style: normal; font-size: 12px; color: var(--ink-3); margin-left: 6px; }
+.tr { display: grid; grid-template-columns: 340px minmax(0, 1fr) 300px; flex: 1; min-height: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.tr-list { display: flex; flex-direction: column; border-right: 1px solid var(--line); min-height: 0; }
+.tr-list .tools { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
+.sess { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.sess.on { background: var(--accent-wash); box-shadow: inset 2px 0 0 var(--accent); }
+.sess.alert { box-shadow: inset 2px 0 0 var(--bad); }
+.sess .stu { font-weight: 600; white-space: nowrap; }
+.sess .stu small { margin-left: 6px; font-weight: 400; color: var(--ink-3); font-size: 12px; }
+.sess .r { justify-self: end; font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.sess .line2 { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; }
+.mood { display: inline-flex; align-items: center; gap: 4px; }
+.tr-chat { display: flex; flex-direction: column; min-height: 0; background: var(--surface-2); }
+.tr-chat .chat-head .who span { white-space: nowrap; }
+.note { align-self: stretch; display: flex; gap: 8px; align-items: flex-start; margin: -6px 0 0 42px; padding: 6px 10px; border-left: 2px solid var(--warn); background: var(--warn-wash); color: var(--ink-2); font-size: 12px; border-radius: 0 var(--r-sm) var(--r-sm) 0; max-width: 520px; }
+.note svg { width: 13px; height: 13px; margin-top: 3px; color: var(--warn); }
+.tr-side { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); }
+.dims { display: flex; flex-direction: column; gap: 8px; }
+.dim { display: grid; grid-template-columns: 76px minmax(0, 1fr) 26px; gap: 8px; align-items: center; font-size: 12px; color: var(--ink-2); }
+.dim .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.dim .bar i { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
+.d-B .dim .bar i { background: var(--accent); }
+.d-C .dim .bar i { background: var(--accent); }
+.dim .bar i.low { background: var(--bad); }
+.dim b { text-align: right; color: var(--ink); font-weight: 600; }
+.guide { margin-top: auto; padding: 12px 16px 16px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.guide .area { height: 84px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: var(--r-sm); color: var(--ink-3); font-size: 13px; background: var(--surface); }
+.guide .quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.guide .quick span { padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.guide .row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); }
+.guide .row .btn { margin-left: auto; }
+
+/* ============ 登录页 ============ */
+.login { position: relative; height: 100%; overflow: hidden; }
+.login .scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.lg-frame { position: relative; display: grid; grid-template-rows: auto 1fr auto; height: 100%; padding: 28px 64px 20px; }
+.lg-brand { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.lg-brand .mark { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 6px; background: var(--ink); color: #fff; font-weight: 700; font-size: 14px; }
+.lg-brand b { font-weight: 700; }
+.lg-body { display: grid; grid-template-columns: minmax(0, 1fr) 392px; align-items: center; gap: 48px; }
+.lg-card { width: 392px; padding: 32px 32px 24px; border-radius: 14px; background: rgba(255,255,255,.97); box-shadow: 0 30px 80px -24px rgba(40,40,52,.28), 0 2px 6px rgba(40,40,52,.06); display: flex; flex-direction: column; gap: 16px; }
+.lg-card h1 { margin: 0; font-size: 22px; font-weight: 600; }
+.lg-card .sub { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); }
+.lg-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 10px; background: #f1f2f4; }
+.lg-tabs span { height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 14px; color: var(--ink-2); }
+.lg-tabs span.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; color: #3a3a3c; }
+.field .box { display: flex; align-items: center; height: 44px; padding: 0 14px; border: 1px solid #d9d9de; border-radius: 10px; background: #fff; color: var(--ink); font-weight: 400; font-size: 14px; }
+.field .box.ph { color: #aeaeb2; }
+.field .box.focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.field .box svg { margin-left: auto; color: var(--ink-3); }
+.screen .lg-submit { height: 44px; border: 0; border-radius: 10px; background: var(--primary); color: #fff; font-size: 15px; font-weight: 600; }
+.lg-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--ink-2); }
+.lg-row a { color: var(--accent); text-decoration: none; }
+.chk { display: inline-flex; align-items: center; gap: 6px; }
+.chk i { width: 14px; height: 14px; border: 1px solid var(--line-2); border-radius: 3px; background: #fff; }
+.lg-foot { display: flex; justify-content: space-between; font-size: 12px; color: rgba(29,29,31,.55); }
+.lg-foot .conn { display: inline-flex; align-items: center; gap: 6px; }
+
+/* A：冷灰展台 + 一道光（与 AIGC 同一家族） */
+.lA { background: #d9d9dd; }
+.lA.dark .slogan, .lA.dark .lg-brand { color: #f2f3f5; }
+.lA.dark .lg-foot { color: rgba(255,255,255,.6); }
+.scene-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.scene-pick .frame-cap { margin-top: 0; }
+.lA .slogan { display: flex; flex-direction: column; align-self: start; margin: 40px 0 0; font-size: 40px; font-weight: 300; line-height: 1.55; letter-spacing: .12em; color: #232326; }
+
+/* B：暖色实景桌面，卡片实底 */
+.lB .scene { object-position: 30% 50%; }
+.lB::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,0) 45%, rgba(40,30,20,.18) 100%); pointer-events: none; }
+.lB .lg-frame { z-index: 1; }
+.lB .lg-brand { color: #fff; text-shadow: 0 1px 8px rgba(0,0,0,.35); }
+.lB .lg-brand .mark { background: var(--primary); }
+.lB .lg-card { border-radius: 8px; background: #fff; }
+.lB .lg-tabs { border-radius: 6px; } .lB .lg-tabs span { border-radius: 4px; }
+.lB .field .box, .lB .lg-submit { border-radius: 6px; }
+.lB .lg-foot { color: rgba(255,255,255,.85); text-shadow: 0 1px 6px rgba(0,0,0,.4); }
+.lB .caption { align-self: start; margin: 28px 0 0; color: #fff; text-shadow: 0 1px 10px rgba(0,0,0,.45); }
+.lB .caption b { display: block; font-size: 26px; font-weight: 600; letter-spacing: .02em; }
+.lB .caption span { font-size: 14px; opacity: .9; }
+
+/* C：无图，多语种问候作底纹 */
+.lC { background: var(--bg); }
+.lC .lg-brand .mark { background: var(--ink); }
+.lC .hello { position: absolute; left: 64px; top: 120px; right: 520px; display: flex; flex-direction: column; gap: 2px; font-size: 44px; font-weight: 300; line-height: 1.3; color: #dcd8ce; letter-spacing: .01em; white-space: nowrap; }
+.lC .hello span.hl { color: var(--ink); }
+.lC .hello span.hl em { font-style: normal; font-size: 16px; color: var(--ink-2); margin-left: 16px; letter-spacing: .04em; vertical-align: middle; }
+.lC .lg-card { box-shadow: none; border: 1px solid var(--line); background: var(--surface); }
+.lC .lg-tabs { background: #efede7; }
+.lC .lg-foot { color: var(--ink-3); }
+</style>
+</head>
+<body>
+
+<header class="doc-head">
+  <h1>跨境客服 · H1 风格稿</h1>
+  <nav>
+    <a href="#diag">问题诊断</a>
+    <a href="#rules">通用整改</a>
+    <a href="#scenes">场景图候选</a>
+    <a href="#A">方向 A 墨白（已选）</a>
+    <a href="#B">方向 B 运营台</a>
+    <a href="#C">方向 C 纸本</a>
+    <a href="#compare">对比与建议</a>
+  </nav>
+  <span class="meta">P3 · 2026-10-12 · 静态稿，数据为示意</span>
+</header>
+
+<div class="doc">
+
+<section id="diag">
+  <h2>问题诊断</h2>
+  <p class="lede">先看现状。下面 8 张是现在的界面（5 张来自你的截图，3 张是我补截的登录、工作台、实训跟踪）。问题按类别归纳，每条都写了改法；这些改法不管选哪个风格方向都要做。</p>
+  <div class="shots">
+    <figure><img src="assets/before-login.png" alt=""><figcaption>登录</figcaption></figure>
+    <figure><img src="assets/before-workbench.png" alt=""><figcaption>学生 · 客服工作台</figcaption></figure>
+    <figure><img src="assets/before-tracking.png" alt=""><figcaption>教师 · 实训跟踪</figcaption></figure>
+    <figure><img src="assets/before-report.png" alt=""><figcaption>教师 · 考核报表</figcaption></figure>
+    <figure><img src="assets/before-scenario.png" alt=""><figcaption>教师 · 场景配置</figcaption></figure>
+    <figure><img src="assets/before-admin-overview.png" alt=""><figcaption>管理 · 系统总览</figcaption></figure>
+    <figure><img src="assets/before-admin-models.png" alt=""><figcaption>管理 · AI 与语音服务</figcaption></figure>
+    <figure><img src="assets/before-admin-accounts.png" alt=""><figcaption>管理 · 账号与权限</figcaption></figure>
+  </div>
+
+  <h3>AI 味从哪来</h3>
+  <div class="issues">
+    <div class="issue"><h4>1. 登录页是模板套路</h4><p class="bad">左半屏深色营销区 + 英文眉标 STUDENT DESKTOP + 两行大标语 + 「4 / 20+ / 6」三个大数字 + 底部英文口号；右边白底表单，底部还有一条“账号权限由服务端校验…审计记录”。</p><p class="fix"><b>改：</b>按 AIGC 平台的思路，整页一张表达产品本身的场景图，浮一张登录卡片；文字只留品牌、一句标语和登录必需项。工程说明删掉。</p></div>
+    <div class="issue"><h4>2. 页头太大、话太多</h4><p class="bad">每页都是 34px 大标题 + 一整行解释（“以任务为考核单位：任务成绩 = 会话均分…”），学生端还有英文眉标 SERVICE CENTER。顶栏面包屑和大标题重复写一遍页名。</p><p class="fix"><b>改：</b>页名只出现一次（顶栏，15px）；解释性文字删掉，确实需要的口径说明收进标题旁的「?」浮层。</p></div>
+    <div class="issue"><h4>3. 统计卡片是装饰</h4><p class="bad">四张大卡、48px 数字、右上角装饰图标、底部一行口径说明（“过程数据：任务下的会话评分次数”）。没数据时是一根大横线“—”。占了首屏 1/4 高度。</p><p class="fix"><b>改：</b>换成一条 56px 高的统计条：标签 + 数字，同一行；空值写“暂无”；口径进浮层。</p></div>
+    <div class="issue"><h4>4. 卡片套卡片、大圆角</h4><p class="bad">圆角 4/8/12/16/20/999 混用，几乎所有东西都包在 16–20px 圆角白卡里；账号与权限页两张卡紧贴没有间距；按钮全是胶囊形。</p><p class="fix"><b>改：</b>一个方向只用一到两档圆角；表格直接贴在页面容器里，不再包一层卡片；按钮统一矩形小圆角。</p></div>
+  </div>
+
+  <h3>布局不规范</h3>
+  <div class="issues">
+    <div class="issue"><h4>5. 表单直接铺在列表上面</h4><p class="bad">账号与权限页：“账号 / 姓名”输入框拉满半屏，“新增教师”按钮孤零零在右下角，紧接着就是表格。班级同理。</p><p class="fix"><b>改：</b>列表页统一为「工具栏（搜索、筛选、新增按钮）+ 表格」；新增和编辑走弹窗或右侧抽屉。</p></div>
+    <div class="issue"><h4>6. 键值对两端对齐，中间一大片空白</h4><p class="bad">系统总览的“规模统计”：标签贴最左、数字贴最右，1500px 宽只放了 4 行，而且标签没有内边距贴着卡片边。</p><p class="fix"><b>改：</b>并入顶部统计条，或用两到四列的键值网格（标签 72px 定宽，值紧跟）。</p></div>
+    <div class="issue"><h4>7. 按钮文字折行</h4><p class="bad">“导出 Excel”“导出 PDF”“导出明细 CSV”“运行验收测试（100 次）”“保存分配”都被挤成两行。</p><p class="fix"><b>改：</b>按钮一律 <code>white-space: nowrap</code>，高 32px；长文案缩短（“运行 100 次验收”）。</p></div>
+    <div class="issue"><h4>8. 表格行内错位</h4><p class="bad">用途分配表：描述文字压到下一行标题上；“当前生效”列把模型 ID 折成两行；表头混英文 temperature。场景配置：主图列 160px 只放 48px 缩略图，操作列挤在右边，“删除”常驻红字。</p><p class="fix"><b>改：</b>列宽按内容定；描述放在名称下方同一单元格；危险操作收进「更多」菜单，二次确认。</p></div>
+  </div>
+
+  <h3>工程味的文字</h3>
+  <table class="copy-table">
+    <thead><tr><th>现在</th><th>问题</th><th>改成</th></tr></thead>
+    <tbody>
+      <tr><td>api.keliagent.cn（导入自.env）</td><td>开发者视角的来源说明</td><td>名称由管理员填写，例如“课粒网关”；来源不展示</td></tr>
+      <tr><td>deepseek-flash / deepseek-v4-pro 出现在“当前生效”列和总览卡片</td><td>模型 ID 给开发看的</td><td>只显示档案名“DeepSeek Flash”；模型 ID 放编辑弹窗里</td></tr>
+      <tr><td>temperature / 最大输出 tokens</td><td>参数名直接露出</td><td>“随机性”“回复长度上限”，放进「高级」折叠区</td></tr>
+      <tr><td>导演评估 / 每 N 轮运行</td><td>内部架构名</td><td>“情绪与剧情推进”；频率放高级设置</td></tr>
+      <tr><td>过程数据：任务下的会话评分次数</td><td>写给自己看的注释</td><td>删除，或浮层里写“已打分的对话次数”</td></tr>
+      <tr><td>按学生平均（每人等权）· 训前基线（1 人已测评）vs 当前六维平均</td><td>统计口径堆在副标题</td><td>标题“全班能力对比”，口径进「?」</td></tr>
+      <tr><td>P50 6985ms / P95 18416ms / P99 20144ms</td><td>毫秒和分位数给运维看</td><td>主行写“6.6% 在 3 秒内（要求 ≥99%）”，分位数放展开明细，单位统一秒</td></tr>
+      <tr><td>云端服务已连接（侧栏常驻）· 账号权限由服务端校验…</td><td>技术状态当成卖点</td><td>正常时不显示；断线时顶部出现横条提示</td></tr>
+      <tr><td>AI 实训平台（学生工作台侧栏）</td><td>违反“沉浸层不出现实训”</td><td>学生工作台品牌区只写产品名，品牌名待定（见文末）</td></tr>
+    </tbody>
+  </table>
+
+  <h3>细节</h3>
+  <div class="issues">
+    <div class="issue"><h4>9. 客服工作台：所有会话都有红点</h4><p class="bad">10 个会话 10 个红点，时间显示“82天”“88天”，红点失去意义；买家信息在聊天头和右栏头部、右栏卡片里出现三次。</p><p class="fix"><b>改：</b>红点换成未读条数，只给真正在等回复的会话；超过一天显示日期；买家信息只在右栏出现一次，聊天头只放名字和国家。</p></div>
+    <div class="issue"><h4>10. 译文、朗读是蓝色链接</h4><p class="bad">每条买家消息下都有一行蓝字“显示译文 播报”，比消息本身还抢眼。</p><p class="fix"><b>改：</b>开了自动翻译就直接在原文下方灰字显示译文；朗读是一个小图标，悬停才变深。</p></div>
+    <div class="issue"><h4>11. 状态重复表达</h4><p class="bad">商品“在售”：开关 + 文字“在售”；模型测试：绿色胶囊“✓首字 534ms”；验收判定：红叉 + “未达标”。</p><p class="fix"><b>改：</b>一种状态只用一种表达：开关就够了；状态用小色点 + 文字；数值放普通单元格。</p></div>
+    <div class="issue"><h4>12. 蓝色什么都管</h4><p class="bad">主按钮、链接、选中态、图标、标签、开关全是同一个蓝，页面上蓝色到处都是。</p><p class="fix"><b>改：</b>主按钮和强调色分开（方向 A 用墨黑主按钮），蓝色只用于链接、焦点和选中。</p></div>
+    <div class="issue"><h4>13. 空状态又大又空</h4><p class="bad">实训跟踪：左右两个大空状态，各一个图标 + 标题 + 两行说明，“进行中 0”在统计卡和页签里各出现一次。</p><p class="fix"><b>改：</b>空状态一行字 + 一个可操作的链接（如“去下发任务”）；同一数字只出现一次。</p></div>
+    <div class="issue"><h4>14. 侧栏头部冗余</h4><p class="bad">蓝色“K”方块 + 两行品牌名 + 一个“教师端”胶囊，占了 120px 高。</p><p class="fix"><b>改：</b>品牌一行；身份在右上角用户菜单里体现。</p></div>
+  </div>
+</section>
+
+<section id="rules">
+  <h2>通用整改（不论选哪个方向）</h2>
+  <ul class="rules">
+    <li><b>一个页面一个标题</b>，在顶栏。页面主体第一行是工具栏（筛选、搜索、主操作），然后是内容。</li>
+    <li><b>统计用条，不用卡</b>：一条横向统计条，最多 6 项。</li>
+    <li><b>表格是主角</b>：行高 40–48px，数字右对齐、等宽数字；操作列最多两个文字按钮，其余进「更多」。</li>
+    <li><b>新增 / 编辑走弹窗或抽屉</b>，不把表单平铺在页面上。</li>
+    <li><b>文案三条线</b>：学生沉浸层像真实客服软件，不出现“实训”；教师看到的是教学语言；技术参数（模型 ID、毫秒、temperature）只在管理端的高级区出现。</li>
+    <li><b>颜色有分工</b>：中性色占九成以上；强调色只管链接、焦点、选中；红色只给真正要处理的事。</li>
+    <li><b>不用</b>：渐变、emoji、英文眉标、装饰性图标块、大面积留白、胶囊按钮、阴影卡片墙。</li>
+    <li><b>组件三端共用</b>（H3）：按钮、输入、选择、表格、弹窗、抽屉、页签、分段控件、标签、统计条、空状态、加载与错误。</li>
+  </ul>
+</section>
+
+<section id="scenes">
+  <h2>登录场景图候选（第二轮）</h2>
+  <p class="lede">按你的要求：画面是跨境电商客服的工作现场，有代入感，不用实拍。四张都按方向 A 的登录布局摆好了，品牌位已换成可替换的平台名和客服耳麦图标。挑一张（或说哪张往哪个方向改），我再精修。</p>
+  <div class="scene-pick">
+    <div><div class="frame-cap"><b>① 第一人称工位</b><span>坐在工位前：屏幕上是客服工作台，墙上是时区钟和航线图（代入感最强）</span></div>
+      <div class="frame"><div class="screen d-A" data-tpl="login-A" data-img="assets/scene-candidates/s1-firstperson.png"></div></div></div>
+    <div><div class="frame-cap"><b>② 等距微缩工作间</b><span>工位 + 包裹传送带 + 航线飞向地球，多国旗帜对话</span></div>
+      <div class="frame"><div class="screen d-A" data-tpl="login-A" data-img="assets/scene-candidates/s2-isometric.png"></div></div></div>
+    <div><div class="frame-cap"><b>③ 夜班 · 窗外港口</b><span>跨时区夜班：双屏会话与物流地图，窗外货轮和货机（深色，氛围最重）</span></div>
+      <div class="frame"><div class="screen d-A" data-tpl="login-A" data-img="assets/scene-candidates/s3-night-port.png" data-dark="1"></div></div></div>
+    <div><div class="frame-cap"><b>④ 一次对话连起一切</b><span>聊天窗口居中，包裹、耳麦、退款单、五星评价、地球仪环绕（最抽象）</span></div>
+      <div class="frame"><div class="screen d-A" data-tpl="login-A" data-img="assets/scene-candidates/s4-orbit.png"></div></div></div>
+  </div>
+</section>
+
+<section id="A">
+  <div class="dir-head">
+    <div><span class="tag">方向 A · 已选（信息密度借 B）</span><h2>墨白 · 与 AIGC 平台同一家族</h2><p class="lede" style="margin:0">直接沿用 AIGC 平台的设计语言：白底、近黑主按钮，蓝色只点缀。登录页用同一种“整页场景图 + 浮卡片”，场景换成包裹、耳机、聊天气泡和地球仪，一道光从左扫到右：左边是线稿，右边是成品。课粒的产品放在一起时像一家公司做的。</p></div>
+    <div class="swatches"><span><i style="background:#1c1d1f"></i>主按钮</span><span><i style="background:#246bc7"></i>强调</span><span><i style="background:#f5f6f7"></i>底色</span><span><i style="background:#e6e8eb"></i>分隔</span><span><i style="background:#b4342b"></i>警示</span></div>
+  </div>
+  <div class="traits">
+    <div><b>密度</b>中，行高 44px，正文 13px</div>
+    <div><b>圆角</b>8px，控件 6px</div>
+    <div><b>导航</b>白色侧栏 200px，纯文字 + 线性图标</div>
+    <div><b>气质</b>安静、克制，像 Linear / 飞书后台</div>
+  </div>
+  <div class="frame-cap"><b>登录</b><span>学生 / 教师共用一个客户端，页签切换</span></div>
+  <div class="frame"><div class="screen d-A" data-tpl="login-A"></div></div>
+  <div class="frame-cap"><b>学生 · 客服工作台</b><span>沉浸层：品牌区不出现“实训”</span></div>
+  <div class="frame"><div class="screen d-A" data-tpl="ws"></div></div>
+  <div class="frame-cap"><b>教师 · 实训跟踪</b><span>选中一条需要介入的会话</span></div>
+  <div class="frame"><div class="screen d-A" data-tpl="track"></div></div>
+</section>
+
+<section id="B">
+  <div class="dir-head">
+    <div><span class="tag">方向 B</span><h2>运营台 · 千牛 / 电商后台式</h2><p class="lede" style="margin:0">深色窄导航栏、图标在上文字在下，品牌蓝作主按钮，4px 小圆角，信息最密。学生会觉得在用真正的店铺后台。登录页用一张暖色实景桌面照片：笔记本、包裹、耳机、地图。</p></div>
+    <div class="swatches"><span><i style="background:#1f5fd6"></i>主按钮</span><span><i style="background:#1b2232"></i>导航</span><span><i style="background:#f0f2f5"></i>底色</span><span><i style="background:#e5e6eb"></i>分隔</span><span><i style="background:#d4380d"></i>警示</span></div>
+  </div>
+  <div class="traits">
+    <div><b>密度</b>高，行高 40px，正文 13px</div>
+    <div><b>圆角</b>4px</div>
+    <div><b>导航</b>深色窄栏 72px，图标 + 小字</div>
+    <div><b>气质</b>干练、业务感强，像千牛 / 店小秘</div>
+  </div>
+  <div class="frame-cap"><b>登录</b><span>暖色实景照片 + 实底卡片</span></div>
+  <div class="frame"><div class="screen d-B" data-tpl="login-B"></div></div>
+  <div class="frame-cap"><b>学生 · 客服工作台</b></div>
+  <div class="frame"><div class="screen d-B" data-tpl="ws"></div></div>
+  <div class="frame-cap"><b>教师 · 实训跟踪</b></div>
+  <div class="frame"><div class="screen d-B" data-tpl="track"></div></div>
+</section>
+
+<section id="C">
+  <div class="dir-head">
+    <div><span class="tag">方向 C</span><h2>纸本 · Shopify 式</h2><p class="lede" style="margin:0">暖白纸色、墨绿强调，字号稍大、留白稍多，读起来最舒服。去掉左侧栏，导航放进顶部深色条，工作台多出 200px 宽度。登录页不用图片，用十几种语言的“你好”做底纹，当前学生语种高亮。</p></div>
+    <div class="swatches"><span><i style="background:#1e6a50"></i>主按钮</span><span><i style="background:#24221e"></i>导航</span><span><i style="background:#f6f5f1"></i>底色</span><span><i style="background:#e8e5dd"></i>分隔</span><span><i style="background:#b03a2e"></i>警示</span></div>
+  </div>
+  <div class="traits">
+    <div><b>密度</b>中低，行高 48px，正文 14px</div>
+    <div><b>圆角</b>10px，控件 8px</div>
+    <div><b>导航</b>顶部深色横条，无侧栏</div>
+    <div><b>气质</b>温和、有书卷气，像 Shopify / Notion</div>
+  </div>
+  <div class="frame-cap"><b>登录</b><span>无图，多语种问候作底纹</span></div>
+  <div class="frame"><div class="screen d-C" data-tpl="login-C"></div></div>
+  <div class="frame-cap"><b>学生 · 客服工作台</b></div>
+  <div class="frame"><div class="screen d-C" data-tpl="ws"></div></div>
+  <div class="frame-cap"><b>教师 · 实训跟踪</b></div>
+  <div class="frame"><div class="screen d-C" data-tpl="track"></div></div>
+</section>
+
+<section id="compare">
+  <h2>对比与建议</h2>
+  <table class="compare">
+    <thead><tr><th></th><th>A 墨白</th><th>B 运营台</th><th>C 纸本</th></tr></thead>
+    <tbody>
+      <tr><th>去 AI 味</th><td>强：无渐变、无品牌色铺陈</td><td>强：业务后台的“土味”反而真实</td><td>强：暖色、无图，最不像模板</td></tr>
+      <tr><th>像真实客服软件</th><td>中上</td><td>最像（千牛、店小秘都是这一路）</td><td>中</td></tr>
+      <tr><th>教师 / 管理端表格多的页面</th><td>好</td><td>最好，一屏放得最多</td><td>一般，行高大、一屏少 20% 行</td></tr>
+      <tr><th>机房 1366×768 小屏</th><td>好</td><td>最好（侧栏只有 72px）</td><td>好（无侧栏）</td></tr>
+      <tr><th>与课粒其他产品一致</th><td>最一致（AIGC 平台同一套）</td><td>不一致</td><td>不一致</td></tr>
+      <tr><th>改造工作量</th><td>中</td><td>中</td><td>中上（导航结构变化最大）</td></tr>
+    </tbody>
+  </table>
+  <h3>我的建议</h3>
+  <p>选 <b>A 墨白</b> 作基础，再从 B 借一点密度：表格行高用 40px，教师端和管理端的列表页按 B 的信息量来排。这样登录页和 AIGC 平台是一个家族，进去之后的工作台又足够像生产工具。</p>
+  <p>也可以混搭，比如“登录用 A，内页用 B”，告诉我哪几处要换就行。</p>
+  <h3>需要你定的</h3>
+  <ul class="rules">
+    <li><b>选哪个方向</b>（或怎么混搭）。</li>
+    <li><b>品牌名</b>：现在是“跨境电商客服 · AI 实训平台”。学生工作台不能出现“实训”，稿里暂用“跨境客服”。候选：“跨境客服”“课粒 · 跨境客服”“Kefu Desk”，或你另定。</li>
+    <li><b>登录场景图</b>：A、B 两张是 AI 生成的初稿，选定方向后我再精修几版给你挑。</li>
+  </ul>
+</section>
+
+</div>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const I = (name) => `<i data-lucide="${name}"></i>`;
+const BRAND = "跨境电商客服AI实训平台";
+
+const studentNav = [
+  ["layout-grid", "任务大厅"], ["message-square-text", "客服工作台", true, 3], ["package", "订单"],
+  ["star", "评价"], ["mail", "邮件", false, 2], ["history", "我的记录"],
+];
+const teacherNav = [
+  ["activity", "数据总览"], ["clipboard-list", "实训任务"], ["users", "班级与学生"], ["megaphone", "通知公告"],
+  ["monitor-play", "实训跟踪", true, 1], ["file-text", "考核报表"], ["sliders-horizontal", "场景配置"],
+];
+
+function shell({ nav, user, initial, title, crumb, topExtra = "", body }) {
+  const items = nav.map(([icon, label, on, badge]) =>
+    `<a class="nav-item${on ? " on" : ""}">${I(icon)}<span>${label}</span>${badge ? `<span class="badge">${badge}</span>` : ""}</a>`).join("");
+  return `<div class="app">
+    <nav class="side">
+      <div class="brand"><span class="mark">${I("headset")}</span><b>${BRAND}</b></div>
+      ${items}
+      <div class="grow"></div>
+      <div class="foot">${I("circle-help")}<span>使用帮助</span><span class="av txt" style="width:28px;height:28px;margin-left:8px">${initial}</span><span>${user}</span></div>
+    </nav>
+    <div class="main">
+      <header class="top">
+        ${crumb ? `<span class="crumb">${crumb}</span>` : ""}<span class="title">${title}</span>
+        ${topExtra}
+        <div class="right">
+          <span class="icon-btn">${I("bell")}<span class="pip"></span></span>
+          <span class="user"><span class="av txt" style="width:28px;height:28px">${initial}</span>${user}${I("chevron-down")}</span>
+        </div>
+      </header>
+      <div class="page-head"><span class="title">${title}</span>${topExtra}</div>
+      <div class="content">${body}</div>
+    </div>
+  </div>`;
+}
+
+const conversations = [
+  ["m-01", "Paul Becker", "DE", "21:11", "Excuse me? That's all you have to say? I told you…", 2, true],
+  ["f-01", "Lena Fischer", "DE", "21:06", "Are you kidding me right now?", 1],
+  ["f-02", "Julia Richter", "AT", "20:52", "Hi, I just got the interactive feeder toy and…", 0, false, "等待 4 分钟"],
+  ["f-03", "Ana Pereira", "PT", "昨天", "hey, I bought some t-shirts last week, sizes…", 0],
+  ["f-04", "Anna Fischer", "DE", "昨天", "I paid almost 30 dollars for this, and…", 0],
+  ["m-02", "Noah Williams", "US", "10-09", "So what exactly is new? I saw the post…", 0],
+  ["f-05", "Hana Sato", "JP", "10-08", "The last time I bought from your store…", 0],
+  ["m-03", "Elena Colombo", "IT", "10-08", "Order PO-202607-244670", 0],
+];
+
+function workbench() {
+  const list = conversations.map(([av, name, cc, time, pv, unread, on, wait]) => `
+    <div class="conv${on ? " on" : ""}">
+      <img class="av" src="assets/${av}.jpg" alt="">
+      <span class="name">${name}<span class="cc">${cc}</span></span><span class="time num">${time}</span>
+      <span class="preview">${pv}</span>${unread ? `<span class="unread">${unread}</span>` : wait ? `<span class="wait">${wait}</span>` : "<span></span>"}
+    </div>`).join("");
+  const metrics = `<div class="ws-metrics" style="margin-left:24px">
+      <span>今日接待<b class="num">6</b></span><span>待回复<b class="num hot">3</b></span><span>平均响应<b class="num">48 秒</b></span>
+      <span>满意率<b class="num">92%</b></span><span>询单转化<b class="num">33%</b></span><span>支付金额<b class="num">USD 86.30</b></span></div>`;
+  const body = `<div class="ws">
+    <aside class="ws-list">
+      <div class="tools">
+        <div class="input">${I("search")}搜索客户、订单号或聊天内容</div>
+        <div class="seg"><button class="on">待回复<span class="n">3</span></button><button>全部<span class="n">10</span></button><button>已结束</button></div>
+      </div>
+      ${list}
+    </aside>
+    <main class="ws-chat">
+      <div class="chat-head">
+        <img class="av" src="assets/m-01.jpg" alt="">
+        <div class="who"><b>Paul Becker</b><span>德国 · 售后 · 订单 PO-202607-244670</span></div>
+        <div class="acts"><span class="btn sm">${I("arrow-right-left")}转交主管</span><span class="btn sm">结束会话</span></div>
+      </div>
+      <div class="msgs">
+        <span class="sys">10:13 · 会话已分配给你</span>
+        <div class="msg"><img class="av" src="assets/m-01.jpg" alt=""><div class="body">
+          <div class="bubble">I just received my order and there's a piece missing from the set. This is completely useless to me right now.</div>
+          <div class="trans">我刚收到订单，套装里少了一件。现在这东西对我完全没用。</div>
+          <div class="meta-row"><span class="num">10:13</span><span class="lk">${I("volume-2")}朗读</span></div></div></div>
+        <div class="msg me"><div class="body">
+          <div class="bubble">Hi Paul, I'm sorry to hear that. Could you tell me which piece is missing? I'll check the packing record right away.</div>
+          <div class="meta-row"><span class="num">21:09</span>${I("check-check")}</div></div></div>
+        <div class="msg"><img class="av" src="assets/m-01.jpg" alt=""><div class="body">
+          <div class="bubble">Excuse me? That's all you have to say? I told you there's a piece missing and I can't use the product. What are you going to do about it?</div>
+          <div class="trans">就这些？我说了少了一件，产品没法用。你们打算怎么处理？</div>
+          <div class="meta-row"><span class="num">21:11</span><span class="lk">${I("volume-2")}朗读</span></div></div></div>
+      </div>
+      <div class="composer">
+        <div class="bar">${I("smile")}${I("image")}${I("package")}${I("ticket")}${I("book-open")}<span class="sp"></span>
+          <span class="tog">${I("languages")}发送前译成英文 <span class="switch"></span></span></div>
+        <div class="area">输入回复，Enter 发送，Shift + Enter 换行</div>
+        <div class="send"><span class="btn sm">${I("mic")}按住说话</span><span class="sp"></span><span class="faint num" style="font-size:12px">0 / 1000</span><span class="btn primary">发送</span></div>
+      </div>
+    </main>
+    <aside class="ws-side">
+      <div class="tabs"><span class="on">客户</span><span>订单<span class="n">4</span></span><span>商品</span><span>优惠券</span></div>
+      <div class="side-sec">
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px"><img class="av" src="assets/m-01.jpg" alt="" style="width:40px;height:40px">
+          <div><b style="font-size:14px">Paul Becker</b><div style="display:flex;gap:4px;margin-top:2px"><span class="chip">老客户</span><span class="chip">英语</span></div></div></div>
+        <dl class="kv"><dt>国家</dt><dd>德国 · 柏林</dd><dt>身份</dt><dd>精品店主</dd><dt>历史订单</dt><dd class="num">4 笔 · USD 186.40</dd><dt>近 3 天</dt><dd>咨询 1 次</dd></dl>
+      </div>
+      <div class="side-sec">
+        <h5>当前订单<a>查看详情</a></h5>
+        <div class="order">
+          <span class="thumb" style="background:#3f6e8c"></span>
+          <div><div class="t">Wireless Noise-Cancelling Earbuds</div><div class="s num">PO-202607-244670 · ×1 · USD 39.99</div></div>
+          <div class="s" style="grid-column:1/-1;display:flex;gap:6px;align-items:center;margin-top:6px"><span class="dot ok"></span>已签收 · 07-12 · DHL</div>
+          <div class="acts"><span class="btn sm">补发</span><span class="btn sm">部分退款</span><span class="btn sm">发优惠券</span></div>
+        </div>
+      </div>
+      <div class="side-sec">
+        <h5>近期订单</h5>
+        <ul class="mini-orders num">
+          <li><span>Smart LED String Lights</span><span>06-28 · USD 21.50</span></li>
+          <li><span>Stainless Tumbler 600ml</span><span>05-14 · USD 15.80</span></li>
+          <li><span>Foldable Yoga Mat</span><span>03-02 · USD 18.90</span></li>
+        </ul>
+      </div>
+    </aside>
+  </div>`;
+  return shell({ nav: studentNav, user: "张三", initial: "张", title: "客服工作台", topExtra: metrics, body });
+}
+
+const sessions = [
+  ["张三", "s2601001", "Paul Becker · 售后", "第 6 轮", "bad", "不满", "等待 2 分钟", true, true],
+  ["李四", "s2601002", "Lena Fischer · 售后", "第 3 轮", "warn", "着急", "", false, false],
+  ["王五", "s2601003", "Noah Williams · 售前", "第 8 轮", "ok", "平静", "", false, false],
+  ["赵六", "s2601004", "Hana Sato · 售中", "第 2 轮", "ok", "平静", "", false, false],
+];
+
+function tracking() {
+  const list = sessions.map(([n, id, buyer, round, mood, moodTxt, wait, on, alert]) => `
+    <div class="sess${on ? " on" : ""}${alert && !on ? " alert" : ""}">
+      <span class="stu">${n}<small class="num">${id}</small></span><span class="r num">${round}</span>
+      <span class="line2">${buyer}<span class="faint">·</span><span class="mood"><span class="dot ${mood}"></span>${moodTxt}</span>${wait ? `<span class="chip bad" style="margin-left:auto">${wait}</span>` : ""}</span>
+    </div>`).join("");
+  const filters = `<div class="tr-bar" style="margin-left:24px;flex:1">
+      <span class="select">跨境电商2601班 ${I("chevron-down")}</span><span class="select">全部任务 ${I("chevron-down")}</span>
+      <span class="sp"></span><span class="live"><span class="dot ok"></span>实时 · 8 秒前更新</span></div>`;
+  const body = `<div class="tr-wrap">
+    <div class="stats">
+      <div><small>正在接待</small><b class="num">4</b><em>共 32 人</em></div>
+      <div><small>需要介入</small><b class="num hot">1</b><em>买家等待超过 2 分钟或情绪恶化</em></div>
+      <div><small>暂离</small><b class="num">10</b></div>
+      <div><small>今日已完成</small><b class="num">18</b><em>平均 76 分</em></div>
+    </div>
+    <div class="tr">
+      <div class="tr-list">
+        <div class="tools"><div class="seg"><button class="on">进行中<span class="n">4</span></button><button>需介入<span class="n">1</span></button><button>暂离<span class="n">10</span></button><button>已结束</button></div></div>
+        ${list}
+      </div>
+      <div class="tr-chat">
+        <div class="chat-head">
+          <span class="av txt">张</span>
+          <div class="who"><b>张三 ↔ Paul Becker</b><span>任务「售后差评挽回演练」· 售后 · 第 6 轮 · 已进行 11 分钟</span></div>
+          <div class="acts"><span class="btn sm">${I("pause")}暂停对话</span></div>
+        </div>
+        <div class="msgs">
+          <div class="msg"><img class="av" src="assets/m-01.jpg" alt=""><div class="body">
+            <div class="bubble">I just received my order and there's a piece missing from the set. This is completely useless to me right now.</div>
+            <div class="meta-row"><span class="num">21:05</span></div></div></div>
+          <div class="msg me"><div class="body"><div class="bubble">好的，知道了</div><div class="meta-row"><span class="num">21:09</span></div></div></div>
+          <div class="note">${I("triangle-alert")}<span>买家情绪：平静 → <b style="color:var(--bad)">不满</b>。回复没有致歉，也没有确认少了哪一件；用了中文。</span></div>
+          <div class="msg"><img class="av" src="assets/m-01.jpg" alt=""><div class="body">
+            <div class="bubble">Excuse me? That's all you have to say? I told you there's a piece missing and I can't use the product. What are you going to do about it?</div>
+            <div class="meta-row"><span class="num">21:11</span></div></div></div>
+          <span class="sys">张三正在输入…</span>
+        </div>
+      </div>
+      <div class="tr-side">
+        <div class="side-sec">
+          <h5>当前表现<span class="faint" style="font-weight:400">实时估算，结束后正式打分</span></h5>
+          <div class="dims">
+            <div class="dim">用语合规<span class="bar"><i style="width:90%"></i></span><b class="num">90</b></div>
+            <div class="dim">语言准确<span class="bar"><i class="low" style="width:35%"></i></span><b class="num">35</b></div>
+            <div class="dim">话术规范<span class="bar"><i class="low" style="width:40%"></i></span><b class="num">40</b></div>
+            <div class="dim">沟通有效<span class="bar"><i style="width:55%"></i></span><b class="num">55</b></div>
+            <div class="dim">情绪安抚<span class="bar"><i class="low" style="width:20%"></i></span><b class="num">20</b></div>
+            <div class="dim">问题解决<span class="bar"><i style="width:30%"></i></span><b class="num">30</b></div>
+          </div>
+        </div>
+        <div class="side-sec">
+          <h5>买家设定</h5>
+          <dl class="kv"><dt>类型</dt><dd>老客户 · 精品店主</dd><dt>诉求</dt><dd>套装缺件，要求补发</dd><dt>底线</dt><dd>48 小时内发出</dd></dl>
+        </div>
+        <div class="guide">
+          <h5 style="margin:0;font-size:12px;font-weight:600;color:var(--ink-2)">给张三发指导</h5>
+          <div class="quick"><span>先致歉</span><span>确认缺哪一件</span><span>用英文回复</span><span>给出补发时间</span></div>
+          <div class="area">只有张三能看到，买家看不到</div>
+          <div class="row">${I("lock")}不计入成绩<span class="btn primary sm">发送</span></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  return shell({ nav: teacherNav, user: "王老师", initial: "王", title: "实训跟踪", topExtra: filters, body });
+}
+
+function loginCard({ title = "登录", sub = "使用学校分配的账号" } = {}) {
+  return `<main class="lg-card">
+    <div class="lg-tabs"><span class="on">学生</span><span>教师</span></div>
+    <div><h1>${title}</h1><p class="sub">${sub}</p></div>
+    <label class="field">学号<span class="box focus">s2601001</span></label>
+    <label class="field">密码<span class="box ph">请输入密码${I("eye")}</span></label>
+    <button class="lg-submit">登录</button>
+    <div class="lg-row"><span class="chk"><i></i>记住学号</span><a>忘记密码</a></div>
+  </main>`;
+}
+const loginFoot = `<footer class="lg-foot"><span>版本 1.0.0</span><span class="conn"><span class="dot ok"></span>已连接学校服务器</span></footer>`;
+
+const templates = {
+  "login-A": (img = "assets/scene-a.png", dark = false) => `<div class="login lA${dark ? " dark" : ""}">
+    <img class="scene" src="${img}" alt="" style="object-position:0% 60%">
+    <div class="lg-frame">
+      <header class="lg-brand"><span class="mark">${I("headset")}</span><b>${BRAND}</b></header>
+      <div class="lg-body">
+        <p class="slogan"><span>每一句回复，</span><span>都是一次真实的服务</span></p>
+        ${loginCard()}
+      </div>
+      ${loginFoot}
+    </div></div>`,
+  "login-B": () => `<div class="login lB">
+    <img class="scene" src="assets/scene-b.png" alt="">
+    <div class="lg-frame">
+      <header class="lg-brand"><span class="mark">${I("headset")}</span><b>${BRAND}</b></header>
+      <div class="lg-body">
+        <div class="caption"><b>欢迎回来</b><span>登录后继续处理客户消息</span></div>
+        ${loginCard()}
+      </div>
+      ${loginFoot}
+    </div></div>`,
+  "login-C": () => `<div class="login lC">
+    <div class="hello" aria-hidden="true">
+      <span>Bonjour</span><span>Hallo, wie kann ich helfen?</span><span class="hl">Hello, how can I help you today?<em>英语 · 你的服务语种</em></span>
+      <span>Hola, ¿en qué puedo ayudarte?</span><span>こんにちは</span><span>Olá · Ciao · Merhaba</span><span>안녕하세요 · Привет</span>
+    </div>
+    <div class="lg-frame">
+      <header class="lg-brand"><span class="mark">${I("headset")}</span><b>${BRAND}</b></header>
+      <div class="lg-body"><div></div>${loginCard()}</div>
+      ${loginFoot}
+    </div></div>`,
+  ws: workbench,
+  track: tracking,
+};
+
+document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = el.dataset.img ? templates["login-A"](el.dataset.img, el.dataset.dark === "1") : templates[el.dataset.tpl](); });
+if (window.lucide) lucide.createIcons();
+
+function fit() {
+  document.querySelectorAll(".frame").forEach((frame) => {
+    const screen = frame.querySelector(".screen");
+    const scale = frame.clientWidth / 1440;
+    screen.style.transform = `scale(${scale})`;
+    frame.style.height = `${900 * scale}px`;
+  });
+}
+fit();
+addEventListener("resize", fit);
+</script>
+</body>
+</html>

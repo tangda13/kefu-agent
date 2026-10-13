@@ -1,44 +1,27 @@
-import { FolderUp, Package2, Plus } from "lucide-react";
+import { CircleAlert, CircleCheck, ClipboardList, CopyPlus, Lock, Download, FileUp, FolderUp, Package2, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import {
-  BUSINESS_STAGE_LABELS,
-  CUSTOMER_TYPES,
-  EMOTIONS,
-  NATIONALITIES,
-  PERSONALITIES,
-  SCENARIO_SCRIPT_FIELDS,
-  SUPPORTED_LANGUAGES,
+  BUSINESS_STAGES, BUSINESS_STAGE_LABELS, CUSTOMER_TYPES, EMOTIONS, NATIONALITIES, PERSONALITIES, SCENARIO_SCRIPT_FIELDS, SUPPORTED_LANGUAGES,
 } from "@cecs/contracts";
-import { PageHeader } from "../../components/AppShell";
 import {
-  ApiError,
-  apiGet,
-  apiPost,
-  apiRequestDelete,
-  apiRequestPatch,
-  assetUrl,
-  createPersona,
-  deletePersona,
-  fetchPersonas,
-  fetchScenarios,
-  updatePersona,
-  uploadProductImage,
-  type PersonaTemplate,
-  type ScenarioSummary,
-  type Session,
-  type StoreProduct,
+  ApiError, apiGet, apiPost, apiRequestDelete, apiRequestPatch, assetUrl, createPersona, deletePersona, fetchPersonas, fetchScenarios,
+  updatePersona, uploadProductImage,
+  type PersonaTemplate, type ScenarioSummary, type Session, type StoreProduct,
 } from "../../api/client";
-import { TeacherDialog } from "./widgets";
+import {
+  Bench, Board, Button, Confirm, DataTable, Dialog, Drawer, Field, FilterChips, Flag, HeaderTabs, HelpTip, Input, ListRow, MoreMenu, SearchBox, Select, StageTag,
+  Switch, Tag, Textarea, Toolbar, toast,
+} from "../../ui";
 
-const LANGUAGE_LABELS: Record<string, string> = {
-  "en-US": "英语",
-  "es-ES": "西班牙语",
-  "fr-FR": "法语",
-};
+type ConfigTab = "scenarios" | "personas" | "products";
 
-function errorText(cause: unknown): string {
-  return cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。";
-}
+const LANGUAGE_LABELS: Record<string, string> = { "en-US": "英语", "es-ES": "西班牙语", "fr-FR": "法语" };
+const LANGUAGE_BY_LABEL: Record<string, string> = Object.fromEntries(Object.entries(LANGUAGE_LABELS).map(([code, label]) => [label, code]));
+const PERSONA_COLUMNS = ["姓名", "国籍", "语言", "性格", "情绪", "客户类型", "身份", "消费偏好"] as const;
+const errorText = (cause: unknown) => (cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
+/** 客户类型的分类色：复购老客 1、潜在意向客 2、粉丝客 4，其他（沉睡客）6 */
+const CUSTOMER_TYPE_CAT: Record<string, number> = { 复购老客: 1, 潜在意向客: 2, 粉丝客: 4 };
 
 /** 从资料包相对路径解析商品：{任意}/N.商品名/主图/主图_01.png */
 function groupPackFiles(files: FileList): Map<string, File> {
@@ -50,586 +33,568 @@ function groupPackFiles(files: FileList): Map<string, File> {
     if (mainIndex < 1 || !/\.(png|jpe?g|webp)$/i.test(file.name)) continue;
     const folder = parts[mainIndex - 1]!.replace(/^\d+\./, "").trim();
     if (!folder) continue;
-    const list = byProduct.get(folder) ?? [];
-    list.push(file);
-    byProduct.set(folder, list);
+    byProduct.set(folder, [...(byProduct.get(folder) ?? []), file]);
   }
   const result = new Map<string, File>();
-  for (const [name, list] of byProduct) {
-    list.sort((a, b) => a.name.localeCompare(b.name));
-    result.set(name, list[0]!);
-  }
+  for (const [name, list] of byProduct) result.set(name, list.sort((a, b) => a.name.localeCompare(b.name))[0]!);
   return result;
 }
 
-interface PersonaForm {
-  name: string;
-  nationality: string;
-  identity: string;
-  personality: string;
-  emotion: string;
-  language: string;
-  preference: string;
-  customerType: string;
-}
-
-const EMPTY_PERSONA: PersonaForm = {
-  name: "",
-  nationality: NATIONALITIES[0]!,
-  identity: "",
-  personality: PERSONALITIES[0]!,
-  emotion: EMOTIONS[0]!,
-  language: SUPPORTED_LANGUAGES[0]!,
-  preference: "",
-  customerType: CUSTOMER_TYPES[0]!,
-};
-
 export function LiveScenarioConfig({ session }: { session: Session }) {
+  const [tab, setTab] = useState<ConfigTab>("scenarios");
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([]);
-  const [products, setProducts] = useState<StoreProduct[]>([]);
   const [personas, setPersonas] = useState<PersonaTemplate[]>([]);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [tab, setTab] = useState<"products" | "scenarios" | "personas">("products");
-  const [scriptEditing, setScriptEditing] = useState<ScenarioSummary | null>(null);
-  const [scriptForm, setScriptForm] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
-  const [dialogError, setDialogError] = useState("");
-  const packInputRef = useRef<HTMLInputElement>(null);
-
-  const [productCreating, setProductCreating] = useState(false);
-  const [form, setForm] = useState({ name: "", spec: "", price: "", stock: "" });
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const imagePreview = useMemo(() => (imageFile ? URL.createObjectURL(imageFile) : null), [imageFile]);
-  useEffect(() => () => {
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-  }, [imagePreview]);
-
-  const [productEditing, setProductEditing] = useState<StoreProduct | null>(null);
-  const [productForm, setProductForm] = useState({ name: "", spec: "", price: "", stock: "" });
-
-  const [personaEditing, setPersonaEditing] = useState<{ mode: "create" } | { mode: "edit"; id: string } | null>(null);
-  const [personaForm, setPersonaForm] = useState<PersonaForm>(EMPTY_PERSONA);
+  const [products, setProducts] = useState<StoreProduct[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      const [scenarioList, productList, personaList] = await Promise.all([
-        fetchScenarios(session),
-        apiGet<StoreProduct[]>("/v1/store/products?all=1", session),
-        fetchPersonas(session),
+      const [scenarioList, personaList, productList] = await Promise.all([
+        fetchScenarios(session), fetchPersonas(session), apiGet<StoreProduct[]>("/v1/store/products?all=1", session),
       ]);
       setScenarios(scenarioList);
-      setProducts(productList);
       setPersonas(personaList);
+      setProducts(productList);
     } catch (cause) {
-      setError(errorText(cause));
+      toast.error(errorText(cause));
+    } finally {
+      setLoading(false);
     }
   }, [session]);
-
   useEffect(() => { void load(); }, [load]);
 
-  async function toggleScenario(item: ScenarioSummary) {
-    try {
-      await apiRequestPatch(`/v1/catalog/scenarios/${item.id}`, session, { enabled: !item.enabled });
-      await load();
-    } catch (cause) { setError(errorText(cause)); }
-  }
+  return (
+    <>
+      <HeaderTabs
+        items={[
+          { id: "scenarios", label: "场景", count: scenarios.length },
+          { id: "personas", label: "买家画像", count: personas.length },
+          { id: "products", label: "店铺商品", count: products.length },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+      {tab === "scenarios" ? <ScenarioTab session={session} scenarios={scenarios} reload={load} /> : null}
+      {tab === "personas" ? <PersonaTab session={session} personas={personas} loading={loading} reload={load} /> : null}
+      {tab === "products" ? <ProductTab session={session} products={products} loading={loading} reload={load} /> : null}
+    </>
+  );
+}
 
-  function openScript(item: ScenarioSummary) {
-    setDialogError("");
-    setScriptForm(Object.fromEntries(SCENARIO_SCRIPT_FIELDS.map(({ key }) => [key, item.script?.[key] ?? ""])));
-    setScriptEditing(item);
-  }
+// ---------- 场景 ----------
 
-  async function saveScript() {
-    if (!scriptEditing) return;
-    setBusy(true);
-    setDialogError("");
+function ScenarioTab({ session, scenarios, reload }: { session: Session; scenarios: ScenarioSummary[]; reload: () => Promise<void> }) {
+  const [editing, setEditing] = useState<ScenarioSummary | null>(null);
+
+  async function toggle(item: ScenarioSummary, enabled: boolean) {
     try {
-      await apiRequestPatch(`/v1/catalog/scenarios/${scriptEditing.id}`, session, { script: scriptForm });
-      setNotice(`「${scriptEditing.name}」的剧本已保存，新开始的会话立即使用。`);
-      setScriptEditing(null);
-      await load();
+      await apiRequestPatch(`/v1/catalog/scenarios/${item.id}`, session, { enabled });
+      toast.ok(enabled ? `已启用「${item.name}」` : `已停用「${item.name}」，新建任务时不再出现`);
+      await reload();
     } catch (cause) {
-      setDialogError(errorText(cause));
+      toast.error(errorText(cause));
+    }
+  }
+
+  async function copy(item: ScenarioSummary) {
+    try {
+      const created = await apiPost<{ id: string; name: string }>("/v1/catalog/scenarios", session, { fromId: item.id });
+      toast.ok(`已复制为「${created.name}」，可以接着修改`);
+      await reload();
+      const list = await fetchScenarios(session);
+      setEditing(list.find((row) => row.id === created.id) ?? null);
+    } catch (cause) {
+      toast.error(errorText(cause));
+    }
+  }
+
+  const [keyword, setKeyword] = useState("");
+  const word = keyword.trim().toLowerCase();
+  const matches = (item: ScenarioSummary) => !word || `${item.name} ${item.objective}`.toLowerCase().includes(word);
+
+  return (
+    <Bench>
+      <div className="bench-bar">
+        <SearchBox value={keyword} onChange={setKeyword} placeholder="搜索场景" />
+        <span className="sc-note"><Lock size={13} />学生看不到剧本<HelpTip>剧本（买家目标、隐藏信息、让步底线等）只交给 AI 买家扮演用，学生端任何地方都不显示</HelpTip></span>
+      </div>
+      {/* 四个业务环节四列卡片：卡片上露出剧本完整度（健康度）和被几个任务在用（影响面） */}
+      <div className="sc-cols">
+        {BUSINESS_STAGES.map((stage) => {
+          const all = scenarios.filter((item) => item.stage === stage);
+          const list = all.filter(matches);
+          const enabled = all.filter((item) => item.enabled).length;
+          return (
+            <section key={stage} className="sc-col">
+              <header className="sc-col-head"><StageTag stage={stage} /><span>{all.length} 个 · {enabled === all.length ? "全部启用" : `${enabled} 个启用`}</span></header>
+              {list.map((item) => {
+                const missing = SCENARIO_SCRIPT_FIELDS.filter(({ key }) => !item.script?.[key]?.trim()).length;
+                const tasks = item.taskCount ?? 0;
+                return (
+                  <article
+                    key={item.id}
+                    className={item.enabled ? "sc-card" : "sc-card is-off"}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setEditing(item)}
+                    onKeyDown={(event) => { if (event.key === "Enter") setEditing(item); }}
+                  >
+                    <div className="sc-card-top">
+                      <b>{item.name}</b>
+                      <span onClick={(event) => event.stopPropagation()}>
+                        <Switch checked={item.enabled} label={`启用 ${item.name}`} onChange={(next) => void toggle(item, next)} />
+                      </span>
+                    </div>
+                    <p>{item.objective}</p>
+                    <div className="sc-card-foot">
+                      {missing === 0
+                        ? <span className="is-ok"><CircleCheck size={14} />剧本完整</span>
+                        : <span className="is-warn"><CircleAlert size={14} />剧本缺 {missing} 项</span>}
+                      <span className="sc-card-use"><ClipboardList size={14} />{tasks ? `${tasks} 个任务在用` : "没有任务在用"}</span>
+                    </div>
+                  </article>
+                );
+              })}
+              {list.length === 0 && word ? <p className="sc-none">没有匹配的场景</p> : null}
+              {all.length ? (
+                <MoreMenu
+                  trigger={<><CopyPlus size={15} />复制一个场景</>}
+                  triggerClassName="sc-add"
+                  items={all.map((item) => ({ label: `复制「${item.name}」`, onClick: () => void copy(item) }))}
+                />
+              ) : <p className="sc-none">这个环节还没有场景</p>}
+            </section>
+          );
+        })}
+      </div>
+      {editing ? <ScenarioDrawer session={session} scenario={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} /> : null}
+    </Bench>
+  );
+}
+
+function ScenarioDrawer({ session, scenario, onClose, onSaved }: { session: Session; scenario: ScenarioSummary; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(scenario.name);
+  const [objective, setObjective] = useState(scenario.objective);
+  const [script, setScript] = useState<Record<string, string>>(() => Object.fromEntries(SCENARIO_SCRIPT_FIELDS.map(({ key }) => [key, scenario.script?.[key] ?? ""])));
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    if (!name.trim() || !objective.trim()) return toast.error("名称和训练目标不能为空");
+    setBusy(true);
+    try {
+      await apiRequestPatch(`/v1/catalog/scenarios/${scenario.id}`, session, { name: name.trim(), objective: objective.trim(), script });
+      toast.ok("已保存，之后新开始的接待马上用新剧本");
+      onSaved();
+    } catch (cause) {
+      toast.error(errorText(cause));
     } finally {
       setBusy(false);
     }
   }
 
-  async function toggleProduct(item: StoreProduct) {
+  return (
+    <Drawer
+      title={`编辑场景 · ${BUSINESS_STAGE_LABELS[scenario.stage]}`}
+      width={720}
+      onClose={onClose}
+      footer={<><Button onClick={onClose}>取消</Button><Button variant="primary" loading={busy} onClick={() => void save()}>保存</Button></>}
+    >
+      <div className="form-block">
+        <div className="form-stack">
+          <Field label="场景名称"><Input maxLength={40} value={name} onChange={(event) => setName(event.target.value)} /></Field>
+          <Field label="训练目标" hint="学生在任务里能看到这一句"><Textarea rows={2} maxLength={300} value={objective} onChange={(event) => setObjective(event.target.value)} /></Field>
+        </div>
+      </div>
+      <div className="form-block">
+        <h3>剧本</h3>
+        <p className="form-block-desc">只给 AI 买家看，学生看不到。写得越具体，买家越像真人。</p>
+        <div className="form-stack">
+          {SCENARIO_SCRIPT_FIELDS.map(({ key, label }) => (
+            <Field key={key} label={label}>
+              <Textarea rows={2} maxLength={500} value={script[key] ?? ""} onChange={(event) => setScript({ ...script, [key]: event.target.value })} />
+            </Field>
+          ))}
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
+// ---------- 买家画像 ----------
+
+type PersonaForm = Omit<PersonaTemplate, "id" | "enabled" | "avatarUrl" | "conversationCount">;
+const EMPTY_PERSONA: PersonaForm = {
+  name: "", nationality: NATIONALITIES[0]!, identity: "", personality: PERSONALITIES[0]!, emotion: EMOTIONS[0]!,
+  language: SUPPORTED_LANGUAGES[0]!, preference: "", customerType: CUSTOMER_TYPES[0]!,
+};
+
+function PersonaTab({ session, personas, loading, reload }: { session: Session; personas: PersonaTemplate[]; loading: boolean; reload: () => Promise<void> }) {
+  const [keyword, setKeyword] = useState("");
+  const [type, setType] = useState("");
+  const [editing, setEditing] = useState<PersonaTemplate | "new" | null>(null);
+  const [removing, setRemoving] = useState<PersonaTemplate | null>(null);
+  const [importResult, setImportResult] = useState<{ created: number; failed: Array<{ row: number; reason: string }> } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const visible = useMemo(() => {
+    const word = keyword.trim().toLowerCase();
+    return personas.filter((item) => (!type || item.customerType === type) && (!word || `${item.name} ${item.nationality} ${item.identity}`.toLowerCase().includes(word)));
+  }, [personas, keyword, type]);
+
+  function downloadTemplate() {
+    const sheet = XLSX.utils.aoa_to_sheet([
+      [...PERSONA_COLUMNS],
+      ["Emily Carter", "美国", "英语", "理性谨慎", "平静", "潜在意向客", "三十岁的健身教练，注重产品耐用性", "偏好高性价比，关注物流时效，习惯先比价再下单"],
+    ]);
+    sheet["!cols"] = PERSONA_COLUMNS.map((_, index) => ({ wch: index >= 6 ? 36 : 12 }));
+    const notes = XLSX.utils.aoa_to_sheet([
+      ["列", "可填的值"],
+      ["国籍", NATIONALITIES.join("、")],
+      ["语言", Object.values(LANGUAGE_LABELS).join("、")],
+      ["性格", PERSONALITIES.join("、")],
+      ["情绪", EMOTIONS.join("、")],
+      ["客户类型", CUSTOMER_TYPES.join("、")],
+    ]);
+    notes["!cols"] = [{ wch: 10 }, { wch: 80 }];
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, "买家画像");
+    XLSX.utils.book_append_sheet(book, notes, "填写说明");
+    XLSX.writeFile(book, "买家画像导入模板.xlsx");
+  }
+
+  /* D4：按模板批量导入，先在本地逐行检查，能导的交给服务端，结果逐行回显 */
+  async function importFile(file: File | undefined) {
+    if (!file) return;
     try {
-      await apiRequestPatch(`/v1/store/products/${item.id}`, session, { enabled: item.enabled === false });
-      await load();
-    } catch (cause) { setError(errorText(cause)); }
-  }
-
-  async function removeProduct(item: StoreProduct) {
-    if (!window.confirm(`确定删除商品「${item.name}」吗？`)) return;
-    try {
-      await apiRequestDelete(`/v1/store/products/${item.id}`, session);
-      setNotice(`商品「${item.name}」已删除`);
-      await load();
-    } catch (cause) { setError(errorText(cause)); }
-  }
-
-  function openProductCreate() {
-    setForm({ name: "", spec: "", price: "", stock: "" });
-    setImageFile(null);
-    setDialogError("");
-    setProductCreating(true);
-  }
-
-  function openProductEdit(item: StoreProduct) {
-    setProductEditing(item);
-    setProductForm({ name: item.name, spec: item.spec, price: String(item.price), stock: String(item.stock) });
-    setDialogError("");
-  }
-
-  async function saveProductEdit() {
-    if (!productEditing || busy) return;
-    const price = Number(productForm.price);
-    const stock = Number(productForm.stock);
-    if (!productForm.name.trim() || !productForm.spec.trim() || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) {
-      setDialogError("请填写有效的商品名称、规格、正数价格与非负整数库存。");
-      return;
-    }
-    setBusy(true);
-    setDialogError("");
-    try {
-      await apiRequestPatch(`/v1/store/products/${productEditing.id}`, session, {
-        name: productForm.name.trim(),
-        spec: productForm.spec.trim(),
-        price,
-        stock,
+      const book = XLSX.read(await file.arrayBuffer());
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(book.Sheets[book.SheetNames[0]!]!, { defval: "" });
+      const failed: Array<{ row: number; reason: string }> = [];
+      const valid: Array<{ row: number; body: PersonaForm }> = [];
+      rows.forEach((raw, index) => {
+        const cell = (key: string) => String(raw[key] ?? "").trim();
+        const row = index + 2;
+        const body: PersonaForm = {
+          name: cell("姓名"), nationality: cell("国籍"), language: LANGUAGE_BY_LABEL[cell("语言")] ?? cell("语言"), personality: cell("性格"),
+          emotion: cell("情绪"), customerType: cell("客户类型"), identity: cell("身份"), preference: cell("消费偏好"),
+        };
+        if (!body.name && !body.identity) return;
+        const problem = !body.name ? "姓名没填"
+          : !(NATIONALITIES as readonly string[]).includes(body.nationality) ? `国籍「${body.nationality}」不在可选范围`
+            : !(SUPPORTED_LANGUAGES as readonly string[]).includes(body.language) ? `语言「${cell("语言")}」不在可选范围`
+              : !(PERSONALITIES as readonly string[]).includes(body.personality) ? `性格「${body.personality}」不在可选范围`
+                : !(EMOTIONS as readonly string[]).includes(body.emotion) ? `情绪「${body.emotion}」不在可选范围`
+                  : !(CUSTOMER_TYPES as readonly string[]).includes(body.customerType) ? `客户类型「${body.customerType}」不在可选范围`
+                    : !body.identity || !body.preference ? "身份和消费偏好都要填" : "";
+        if (problem) failed.push({ row, reason: problem });
+        else valid.push({ row, body });
       });
-      setNotice(`商品「${productForm.name.trim()}」已更新`);
-      setProductEditing(null);
-      await load();
-    } catch (cause) { setDialogError(errorText(cause)); } finally { setBusy(false); }
+      let created = 0;
+      if (valid.length) {
+        const result = await apiPost<{ created: string[]; failed: Array<{ index: number; reason: string }> }>(
+          "/v1/catalog/personas/import", session, { personas: valid.map((item) => item.body) },
+        );
+        created = result.created.length;
+        for (const item of result.failed) failed.push({ row: valid[item.index]!.row, reason: item.reason });
+      }
+      setImportResult({ created, failed: failed.sort((a, b) => a.row - b.row) });
+      await reload();
+    } catch (cause) {
+      toast.error(cause instanceof ApiError ? cause.message : "读不了这个文件，请用模板里的格式");
+    }
   }
 
-  async function addProduct() {
-    if (busy) return;
-    const price = Number(form.price);
-    if (!form.name.trim() || !form.spec.trim() || !Number.isFinite(price) || price <= 0) {
-      setDialogError("请填写商品名称、规格与正数价格。");
-      return;
-    }
-    setBusy(true);
-    setDialogError("");
+  async function toggle(item: PersonaTemplate, enabled: boolean) {
     try {
-      const created = await apiPost<{ id: string }>("/v1/store/products", session, {
-        name: form.name.trim(), spec: form.spec.trim(), price, stock: Number(form.stock) || 0,
-      });
-      if (imageFile) await uploadProductImage(session, created.id, imageFile);
-      setProductCreating(false);
-      setNotice(`商品「${form.name.trim()}」已上架，学生端即时生效`);
-      await load();
-    } catch (cause) { setDialogError(errorText(cause)); } finally { setBusy(false); }
+      await updatePersona(session, item.id, { enabled });
+      await reload();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    }
+  }
+
+  return (
+    <Bench>
+      <Toolbar
+        actions={
+          <>
+            <Button variant="ghost" icon={Download} onClick={downloadTemplate}>下载模板</Button>
+            <Button icon={FileUp} onClick={() => fileRef.current?.click()}>批量导入</Button>
+            <Button variant="primary" icon={Plus} onClick={() => setEditing("new")}>新建画像</Button>
+            <input ref={fileRef} type="file" hidden accept=".xlsx,.xls,.csv" onChange={(event) => { void importFile(event.target.files?.[0]); event.target.value = ""; }} />
+          </>
+        }
+      >
+        <SearchBox value={keyword} onChange={setKeyword} placeholder="搜索姓名、国籍或身份" />
+        <FilterChips
+          items={[{ id: "", label: "全部", count: personas.length }, ...CUSTOMER_TYPES.map((item) => ({ id: item, label: item, count: personas.filter((row) => row.customerType === item).length }))]}
+          value={type}
+          onChange={setType}
+        />
+      </Toolbar>
+      {loading ? <Board><p className="board-quiet">正在读取…</p></Board> : visible.length === 0 ? (
+        <Board><p className="board-quiet">{keyword || type ? "没有符合条件的画像" : "还没有画像，点「新建画像」或按模板批量导入"}</p></Board>
+      ) : (
+        <div className="card-grid">
+          {visible.map((row) => (
+            <article key={row.id} className={row.enabled ? "pc-card" : "pc-card is-off"} role="button" tabIndex={0}
+              onClick={() => setEditing(row)} onKeyDown={(event) => { if (event.key === "Enter") setEditing(row); }}>
+              <div className="pc-card-top">
+                {/* 头像在前端 public/avatars 下，和工作台里的买家头像同一套，直接用相对路径 */}
+                {row.avatarUrl ? <img src={row.avatarUrl} alt="" /> : <span className="pc-card-ph">{row.name.slice(0, 1)}</span>}
+                <div><b title={row.name}>{row.name}</b><span>{row.identity}</span></div>
+                <span className="pc-card-ops" onClick={(event) => event.stopPropagation()}>
+                  <MoreMenu items={[{ label: "删除", danger: true, onClick: () => setRemoving(row) }]} />
+                </span>
+              </div>
+              <div className="pc-card-tags">
+                <span className={`ui-tag is-cat-${CUSTOMER_TYPE_CAT[row.customerType] ?? 6}`}>{row.customerType}</span>
+                <span className="ui-tag is-neutral">{row.personality}</span>
+                <span className="ui-tag is-neutral">{row.emotion}</span>
+              </div>
+              <div className="pc-card-foot">
+                <span>{row.nationality} · {LANGUAGE_LABELS[row.language] ?? row.language} · {row.conversationCount ? `接待 ${row.conversationCount} 次` : "还没接待过"}</span>
+                <span onClick={(event) => event.stopPropagation()}>
+                  <Switch checked={row.enabled} label={`启用 ${row.name}`} onChange={(next) => void toggle(row, next)} />
+                </span>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      {editing ? <PersonaDialog session={session} persona={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} /> : null}
+      {removing ? (
+        <Confirm title="删除画像" danger confirmText="删除"
+          onConfirm={() => void deletePersona(session, removing.id).then(() => { toast.ok("已删除"); setRemoving(null); return reload(); }).catch((cause) => toast.error(errorText(cause)))}
+          onClose={() => setRemoving(null)}>
+          删除「{removing.name}」后不会再被抽到，已经发生的接待不受影响。只是暂时不想用的话，关掉「启用」就行。
+        </Confirm>
+      ) : null}
+      {importResult ? (
+        <Dialog title="导入结果" onClose={() => setImportResult(null)} footer={<Button variant="primary" onClick={() => setImportResult(null)}>好的</Button>}>
+          <p>导入 {importResult.created} 个{importResult.failed.length ? `，${importResult.failed.length} 行没导入：` : "，全部成功。"}</p>
+          {importResult.failed.length ? (
+            <DataTable
+              rows={importResult.failed}
+              rowKey={(row) => String(row.row)}
+              columns={[
+                { key: "row", title: "Excel 行号", width: 100, render: (row) => `第 ${row.row} 行` },
+                { key: "reason", title: "原因", render: (row) => row.reason },
+              ]}
+            />
+          ) : null}
+        </Dialog>
+      ) : null}
+    </Bench>
+  );
+}
+
+function PersonaDialog({ session, persona, onClose, onSaved }: { session: Session; persona: PersonaTemplate | null; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState<PersonaForm>(() => {
+    if (!persona) return EMPTY_PERSONA;
+    const { id: _id, enabled: _enabled, avatarUrl: _avatar, conversationCount: _count, ...rest } = persona;
+    return rest;
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (key: keyof PersonaForm) => (event: { target: { value: string } }) => setForm({ ...form, [key]: event.target.value });
+
+  async function save() {
+    if (!form.name.trim() || !form.identity.trim() || !form.preference.trim()) return toast.error("姓名、身份和消费偏好都要填");
+    setBusy(true);
+    const body = { ...form, name: form.name.trim(), identity: form.identity.trim(), preference: form.preference.trim() };
+    try {
+      if (persona) await updatePersona(session, persona.id, body);
+      else await createPersona(session, body);
+      toast.ok(persona ? "已保存" : "已新建");
+      onSaved();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      title={persona ? "编辑画像" : "新建画像"}
+      width={640}
+      onClose={onClose}
+      footer={<><Button onClick={onClose}>取消</Button><Button variant="primary" loading={busy} onClick={() => void save()}>保存</Button></>}
+    >
+      <div className="form-stack">
+        <div className="form-grid-3">
+          <Field label="姓名"><Input autoFocus value={form.name} placeholder="Emily Carter" onChange={set("name")} /></Field>
+          <Field label="国籍"><Select value={form.nationality} onChange={set("nationality")}>{NATIONALITIES.map((item) => <option key={item}>{item}</option>)}</Select></Field>
+          <Field label="语言"><Select value={form.language} onChange={set("language")}>{SUPPORTED_LANGUAGES.map((item) => <option key={item} value={item}>{LANGUAGE_LABELS[item] ?? item}</option>)}</Select></Field>
+          <Field label="性格"><Select value={form.personality} onChange={set("personality")}>{PERSONALITIES.map((item) => <option key={item}>{item}</option>)}</Select></Field>
+          <Field label="一开始的情绪"><Select value={form.emotion} onChange={set("emotion")}>{EMOTIONS.map((item) => <option key={item}>{item}</option>)}</Select></Field>
+          <Field label="客户类型"><Select value={form.customerType} onChange={set("customerType")}>{CUSTOMER_TYPES.map((item) => <option key={item}>{item}</option>)}</Select></Field>
+        </div>
+        <Field label="身份"><Input value={form.identity} placeholder="三十岁的健身教练，注重产品耐用性" onChange={set("identity")} /></Field>
+        <Field label="消费偏好"><Textarea rows={3} value={form.preference} placeholder="偏好高性价比，关注物流时效，习惯先比价再下单" onChange={set("preference")} /></Field>
+      </div>
+    </Dialog>
+  );
+}
+
+// ---------- 店铺商品 ----------
+
+function ProductTab({ session, products, loading, reload }: { session: Session; products: StoreProduct[]; loading: boolean; reload: () => Promise<void> }) {
+  const [keyword, setKeyword] = useState("");
+  const [editing, setEditing] = useState<StoreProduct | "new" | null>(null);
+  const [removing, setRemoving] = useState<StoreProduct | null>(null);
+  const [importing, setImporting] = useState(false);
+  const packRef = useRef<HTMLInputElement>(null);
+  const [filter, setFilter] = useState<"all" | "noimage" | "off">("all");
+  const visible = products.filter((item) => !keyword.trim() || `${item.name} ${item.spec}`.toLowerCase().includes(keyword.trim().toLowerCase()));
+  const shown = visible.filter((item) => filter === "all" || (filter === "noimage" ? !item.imageUrl : item.enabled === false));
+
+  async function toggle(item: StoreProduct, enabled: boolean) {
+    try {
+      await apiRequestPatch(`/v1/store/products/${item.id}`, session, { enabled });
+      toast.ok(enabled ? "已上架" : "已下架，学生端不再显示");
+      await reload();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    }
   }
 
   async function importPack(files: FileList | null) {
-    if (!files || files.length === 0 || busy) return;
+    if (!files?.length) return;
     const grouped = groupPackFiles(files);
-    if (grouped.size === 0) {
-      setError("未识别到商品：请选择包含「商品文件夹/主图/图片」结构的资料包目录。");
-      return;
-    }
-    setBusy(true);
-    setError("");
+    if (grouped.size === 0) return toast.error("没找到商品。资料包里每个商品要有一个文件夹，里面放「主图」文件夹");
+    setImporting(true);
     let created = 0;
-    let failed = 0;
+    let skipped = 0;
     const existing = new Set(products.map((item) => item.name));
     for (const [name, file] of grouped) {
-      if (existing.has(name)) { failed += 1; continue; }
+      if (existing.has(name)) { skipped += 1; continue; }
       try {
-        const product = await apiPost<{ id: string }>("/v1/store/products", session, {
-          name, spec: "均码 / 常规款（待完善）", price: 9.9, stock: 100,
-        });
+        const product = await apiPost<{ id: string }>("/v1/store/products", session, { name, spec: "均码 / 常规款（待完善）", price: 9.9, stock: 100 });
         await uploadProductImage(session, product.id, file);
         created += 1;
       } catch {
-        failed += 1;
+        skipped += 1;
       }
     }
-    setNotice(`批量导入完成：新增 ${created} 个商品${failed ? `，跳过/失败 ${failed} 个（可能重名）` : ""}。价格默认 9.9，可点「编辑」修改。`);
-    setBusy(false);
-    await load();
+    setImporting(false);
+    toast.ok(`导入 ${created} 个商品${skipped ? `，跳过 ${skipped} 个（重名或失败）` : ""}。价格默认 9.9，记得改`);
+    await reload();
   }
-
-  /* ---------- 买家画像 ---------- */
-
-  function openPersonaCreate() {
-    setPersonaForm(EMPTY_PERSONA);
-    setDialogError("");
-    setPersonaEditing({ mode: "create" });
-  }
-
-  function openPersonaEdit(item: PersonaTemplate) {
-    setPersonaForm({
-      name: item.name,
-      nationality: item.nationality,
-      identity: item.identity,
-      personality: item.personality,
-      emotion: item.emotion,
-      language: item.language,
-      preference: item.preference,
-      customerType: item.customerType,
-    });
-    setDialogError("");
-    setPersonaEditing({ mode: "edit", id: item.id });
-  }
-
-  async function savePersona() {
-    if (!personaEditing || busy) return;
-    if (!personaForm.name.trim() || !personaForm.identity.trim() || !personaForm.preference.trim()) {
-      setDialogError("请填写买家姓名、身份与消费偏好。");
-      return;
-    }
-    setBusy(true);
-    setDialogError("");
-    try {
-      if (personaEditing.mode === "create") {
-        await createPersona(session, { ...personaForm, name: personaForm.name.trim(), identity: personaForm.identity.trim(), preference: personaForm.preference.trim() });
-        setNotice(`画像「${personaForm.name.trim()}」已创建`);
-      } else {
-        await updatePersona(session, personaEditing.id, { ...personaForm, name: personaForm.name.trim(), identity: personaForm.identity.trim(), preference: personaForm.preference.trim() });
-        setNotice(`画像「${personaForm.name.trim()}」已更新`);
-      }
-      setPersonaEditing(null);
-      await load();
-    } catch (cause) { setDialogError(errorText(cause)); } finally { setBusy(false); }
-  }
-
-  async function togglePersona(item: PersonaTemplate) {
-    try {
-      await updatePersona(session, item.id, { enabled: !item.enabled });
-      await load();
-    } catch (cause) { setError(errorText(cause)); }
-  }
-
-  async function removePersona(item: PersonaTemplate) {
-    if (!window.confirm(`确定删除画像「${item.name}」吗？已生成的会话快照不受影响。`)) return;
-    try {
-      await deletePersona(session, item.id);
-      setNotice(`画像「${item.name}」已删除`);
-      await load();
-    } catch (cause) { setError(errorText(cause)); }
-  }
-
-  const enabledPersonas = personas.filter((item) => item.enabled).length;
-  const enabledProducts = products.filter((item) => item.enabled !== false).length;
-  const enabledScenarios = scenarios.filter((item) => item.enabled).length;
 
   return (
-    <div className="page">
-      <PageHeader
-        title="场景配置"
-        description="维护实训场景、店铺商品库与买家画像模板；三者共同驱动学生端的商品页签、订单生成与买家对话。"
+    <Bench>
+      <Toolbar
         actions={
-          tab === "products" ? (
-            <>
-              <button className="secondary-button" disabled={busy} onClick={() => packInputRef.current?.click()}>
-                <FolderUp size={16} /> 批量导入资料包
-              </button>
-              <button className="primary-button" onClick={openProductCreate}>
-                <Plus size={16} /> 添加商品
-              </button>
-            </>
-          ) : tab === "personas" ? (
-            <button className="primary-button" onClick={openPersonaCreate}>
-              <Plus size={16} /> 新建画像
-            </button>
-          ) : undefined
+          <>
+            <Button icon={FolderUp} loading={importing} onClick={() => packRef.current?.click()}>导入资料包</Button>
+            <Button variant="primary" icon={Plus} onClick={() => setEditing("new")}>添加商品</Button>
+            {/* @ts-expect-error 非标准属性：整目录选择 */}
+            <input ref={packRef} type="file" hidden webkitdirectory="" multiple onChange={(event) => { void importPack(event.target.files); event.target.value = ""; }} />
+          </>
         }
-      />
-      <div className="segmented-tabs page-tabs">
-        <button className={tab === "products" ? "active" : ""} onClick={() => setTab("products")}>商品库<span>{products.length}</span></button>
-        <button className={tab === "scenarios" ? "active" : ""} onClick={() => setTab("scenarios")}>场景库<span>{scenarios.length}</span></button>
-        <button className={tab === "personas" ? "active" : ""} onClick={() => setTab("personas")}>买家画像<span>{personas.length}</span></button>
-      </div>
-      <input
-        ref={packInputRef}
-        type="file"
-        style={{ display: "none" }}
-        // @ts-expect-error 非标准属性：整目录选择
-        webkitdirectory=""
-        multiple
-        onChange={(event) => { void importPack(event.target.files); event.target.value = ""; }}
-      />
-      {notice ? <p className="form-notice" role="status">{notice}</p> : null}
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
-
-      {tab === "products" ? (
-      <section className="panel data-panel">
-        <div className="panel-heading">
-          <div>
-            <h2>商品库</h2>
-            <p>{products.length} 个商品 · {enabledProducts} 个在售 · 上架商品即时同步学生端</p>
-          </div>
-        </div>
-        {products.length === 0 ? (
-          <div className="tt-empty">
-            <Package2 size={26} aria-hidden="true" />
-            <strong>商品库还是空的</strong>
-            <p>点击右上角「添加商品」逐个录入，或用「批量导入资料包」一次导入整套商品与主图。</p>
-          </div>
-        ) : (
-          <table>
-            <thead><tr><th>主图</th><th>商品</th><th>价格</th><th>销量 / 库存</th><th>在售</th><th>操作</th></tr></thead>
-            <tbody>
-              {products.map((item) => (
-                <tr key={item.id} className={item.enabled === false ? "tch-row-muted" : undefined}>
-                  <td>
-                    {item.imageUrl ? (
-                      <img className="product-photo" src={assetUrl(item.imageUrl) ?? undefined} alt={item.name} />
-                    ) : (
-                      <span className="product-thumb" style={{ background: item.tone }}><Package2 size={18} /></span>
-                    )}
-                  </td>
-                  <td><strong>{item.name}</strong><small>{item.spec}</small></td>
-                  <td>USD {item.price}</td>
-                  <td>{item.sales} / {item.stock}</td>
-                  <td>
-                    <span className="tt-switch-cell">
-                      <button
-                        className={item.enabled !== false ? "toggle on" : "toggle"}
-                        role="switch"
-                        aria-checked={item.enabled !== false}
-                        aria-label={item.enabled !== false ? `下架 ${item.name}` : `上架 ${item.name}`}
-                        onClick={() => void toggleProduct(item)}
-                      />
-                      <small>{item.enabled !== false ? "在售" : "已下架"}</small>
-                    </span>
-                  </td>
-                  <td className="tch-actions">
-                    <button className="text-button" onClick={() => openProductEdit(item)}>编辑</button>
-                    <button className="text-button tch-danger" onClick={() => void removeProduct(item)}>删除</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-      ) : tab === "scenarios" ? (
-      <section className="panel data-panel">
-        <div className="panel-heading">
-          <div>
-            <h2>场景库</h2>
-            <p>{scenarios.length} 个场景 · {enabledScenarios} 个启用中 · 停用后不可再被新任务选择，已下发任务不受影响</p>
-          </div>
-        </div>
-        <table>
-          <thead><tr><th>编号</th><th>场景</th><th>业务环节</th><th>剧本</th><th>启用</th></tr></thead>
-          <tbody>
-            {scenarios.map((item) => (
-              <tr key={item.id} className={item.enabled ? undefined : "tch-row-muted"}>
-                <td>{item.id}</td>
-                <td className="tt-obj-cell"><strong>{item.name}</strong><small>{item.objective}</small></td>
-                <td><span className="status-pill">{BUSINESS_STAGE_LABELS[item.stage]}</span></td>
-                <td>
-                  <button className="text-button" onClick={() => openScript(item)}>
-                    {item.script?.buyerGoal ? "查看 / 修改" : "未设置，去填写"}
-                  </button>
-                </td>
-                <td>
-                  <span className="tt-switch-cell">
-                    <button
-                      className={item.enabled ? "toggle on" : "toggle"}
-                      role="switch"
-                      aria-checked={item.enabled}
-                      aria-label={item.enabled ? `停用场景 ${item.name}` : `启用场景 ${item.name}`}
-                      onClick={() => void toggleScenario(item)}
-                    />
-                    <small>{item.enabled ? "已启用" : "已停用"}</small>
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+      >
+        <SearchBox value={keyword} onChange={setKeyword} placeholder="搜索商品" />
+        <FilterChips
+          items={[
+            { id: "all", label: "全部", count: products.length },
+            { id: "noimage", label: "缺图片", count: products.filter((item) => !item.imageUrl).length },
+            { id: "off", label: "已下架", count: products.filter((item) => item.enabled === false).length },
+          ]}
+          value={filter}
+          onChange={setFilter}
+        />
+      </Toolbar>
+      {loading ? <Board><p className="board-quiet">正在读取…</p></Board> : shown.length === 0 ? (
+        <Board><p className="board-quiet">{keyword || filter !== "all" ? "没有匹配的商品" : "店铺还没有商品，点「添加商品」或导入资料包"}</p></Board>
       ) : (
-      <section className="panel data-panel">
-        <div className="panel-heading">
-          <div>
-            <h2>买家画像模板</h2>
-            <p>{personas.length} 个模板 · {enabledPersonas} 个启用中 · 会话开始时按任务规则从启用模板随机组合，学生不可见</p>
+        <div className="card-grid">
+          {shown.map((row) => (
+            <article key={row.id} className={row.enabled === false ? "gd-card is-off" : "gd-card"} role="button" tabIndex={0}
+              onClick={() => setEditing(row)} onKeyDown={(event) => { if (event.key === "Enter") setEditing(row); }}>
+              <div className="gd-card-img" style={row.imageUrl ? undefined : { background: `color-mix(in srgb, ${row.tone} 14%, #fff)`, color: row.tone }}>
+                {row.imageUrl ? <img src={assetUrl(row.imageUrl) ?? undefined} alt="" /> : <Package2 size={40} strokeWidth={1.3} />}
+                {row.enabled === false ? <span className="ui-tag is-neutral gd-card-state">已下架</span> : null}
+                {!row.imageUrl ? <span className="ui-tag is-warn gd-card-flag">缺图片</span> : null}
+                <span className="gd-card-ops" onClick={(event) => event.stopPropagation()}>
+                  <Switch checked={row.enabled !== false} label={`上架 ${row.name}`} onChange={(next) => void toggle(row, next)} />
+                  <MoreMenu items={[{ label: "删除", danger: true, onClick: () => setRemoving(row) }]} />
+                </span>
+              </div>
+              <div className="gd-card-body">
+                <b title={row.name}>{row.name}</b>
+                <span className="gd-card-spec">{row.spec}</span>
+                <div className="gd-card-row">
+                  <span className="gd-card-price">${Number(row.price).toFixed(2)}</span>
+                  <span className={row.stock < 100 ? "gd-card-stock is-low" : "gd-card-stock"}>已售 {row.sales} · 库存 {row.stock}</span>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      {editing ? <ProductDialog session={session} product={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} /> : null}
+      {removing ? (
+        <Confirm title="删除商品" danger confirmText="删除"
+          onConfirm={() => void apiRequestDelete(`/v1/store/products/${removing.id}`, session).then(() => { toast.ok("已删除"); setRemoving(null); return reload(); }).catch((cause) => toast.error(errorText(cause)))}
+          onClose={() => setRemoving(null)}>
+          删除「{removing.name}」？已经生成的订单不受影响。只是暂时不卖的话，关掉「上架」就行。
+        </Confirm>
+      ) : null}
+    </Bench>
+  );
+}
+
+function ProductDialog({ session, product, onClose, onSaved }: { session: Session; product: StoreProduct | null; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({ name: product?.name ?? "", spec: product?.spec ?? "", price: product ? String(product.price) : "", stock: product ? String(product.stock) : "100" });
+  const [image, setImage] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const preview = useMemo(() => (image ? URL.createObjectURL(image) : null), [image]);
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+  const current = preview ?? (product?.imageUrl ? assetUrl(product.imageUrl) : null);
+
+  async function save() {
+    const price = Number(form.price);
+    const stock = Number(form.stock);
+    if (!form.name.trim() || !form.spec.trim()) return toast.error("名称和规格要填");
+    if (!Number.isFinite(price) || price <= 0) return toast.error("价格要大于 0");
+    if (!Number.isInteger(stock) || stock < 0) return toast.error("库存填 0 或正整数");
+    setBusy(true);
+    try {
+      const body = { name: form.name.trim(), spec: form.spec.trim(), price, stock };
+      const id = product ? product.id : (await apiPost<{ id: string }>("/v1/store/products", session, body)).id;
+      if (product) await apiRequestPatch(`/v1/store/products/${product.id}`, session, body);
+      if (image) await uploadProductImage(session, id, image);
+      toast.ok(product ? "已保存" : "已上架");
+      onSaved();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      title={product ? "编辑商品" : "添加商品"}
+      width={640}
+      onClose={onClose}
+      footer={<><Button onClick={onClose}>取消</Button><Button variant="primary" loading={busy} onClick={() => void save()}>{product ? "保存" : "上架"}</Button></>}
+    >
+      <div className="product-form">
+        <label className="product-image-pick">
+          {current ? <img src={current} alt="" /> : <span><Package2 size={22} />主图</span>}
+          <input type="file" hidden accept="image/png,image/jpeg,image/webp" onChange={(event) => setImage(event.target.files?.[0] ?? null)} />
+          <em>{current ? "点击更换" : "点击上传"}</em>
+        </label>
+        <div className="form-stack">
+          <Field label="商品名称"><Input autoFocus value={form.name} placeholder="Bluetooth Speaker" onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
+          <Field label="规格"><Input value={form.spec} placeholder="Black / IPX7" onChange={(event) => setForm({ ...form, spec: event.target.value })} /></Field>
+          <div className="form-grid-2">
+            <Field label="价格（美元）"><Input type="number" min={0} step={0.1} value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /></Field>
+            <Field label="库存"><Input type="number" min={0} value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} /></Field>
           </div>
         </div>
-        {personas.length === 0 ? (
-          <div className="tt-empty">
-            <Package2 size={26} aria-hidden="true" />
-            <strong>暂无画像模板</strong>
-            <p>点击右上角「新建画像」创建第一个买家画像模板。</p>
-          </div>
-        ) : (
-          <table>
-            <thead><tr><th>编号</th><th>买家</th><th>国籍 / 语言</th><th>性格 / 情绪</th><th>客户类型</th><th>启用</th><th>操作</th></tr></thead>
-            <tbody>
-              {personas.map((item) => (
-                <tr key={item.id} className={item.enabled ? undefined : "tch-row-muted"}>
-                  <td>{item.id}</td>
-                  <td><strong>{item.name}</strong><small>{item.identity}</small></td>
-                  <td>{item.nationality} · {LANGUAGE_LABELS[item.language] ?? item.language}</td>
-                  <td>{item.personality} · {item.emotion}</td>
-                  <td><span className="status-pill">{item.customerType}</span></td>
-                  <td>
-                    <span className="tt-switch-cell">
-                      <button
-                        className={item.enabled ? "toggle on" : "toggle"}
-                        role="switch"
-                        aria-checked={item.enabled}
-                        aria-label={item.enabled ? `停用画像 ${item.name}` : `启用画像 ${item.name}`}
-                        onClick={() => void togglePersona(item)}
-                      />
-                      <small>{item.enabled ? "已启用" : "已停用"}</small>
-                    </span>
-                  </td>
-                  <td className="tch-actions">
-                    <button className="text-button" onClick={() => openPersonaEdit(item)}>编辑</button>
-                    <button className="text-button tch-danger" onClick={() => void removePersona(item)}>删除</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-      )}
-
-      {scriptEditing ? (
-        <TeacherDialog
-          title={`场景剧本 · ${scriptEditing.name}`}
-          subtitle="剧本决定 AI 买家想要什么、隐瞒了什么、什么会让买家更不满、最多接受到哪一步、什么时候离开。学生看不到剧本。"
-          size="wide"
-          onClose={() => setScriptEditing(null)}
-          footer={
-            <>
-              <button className="secondary-button" onClick={() => setScriptEditing(null)}>取消</button>
-              <button className="primary-button" onClick={() => void saveScript()} disabled={busy}>{busy ? "保存中…" : "保存剧本"}</button>
-            </>
-          }
-        >
-          {dialogError ? <p className="form-error" role="alert">{dialogError}</p> : null}
-          {SCENARIO_SCRIPT_FIELDS.map(({ key, label }) => (
-            <label key={key}>{label}
-              <textarea rows={2} maxLength={500} value={scriptForm[key] ?? ""} onChange={(event) => setScriptForm({ ...scriptForm, [key]: event.target.value })} />
-            </label>
-          ))}
-        </TeacherDialog>
-      ) : null}
-      {productCreating ? (
-        <TeacherDialog
-          title="添加商品"
-          subtitle="保存后立即上架，学生端工作台与商品页签即时生效"
-          size="wide"
-          onClose={() => setProductCreating(false)}
-          footer={
-            <>
-              <button className="secondary-button" onClick={() => setProductCreating(false)}>取消</button>
-              <button className="primary-button" onClick={() => void addProduct()} disabled={busy}>
-                {busy ? "保存中…" : "保存并上架"}
-              </button>
-            </>
-          }
-        >
-          {dialogError ? <p className="form-error" role="alert">{dialogError}</p> : null}
-          <div className="tt-grid-2">
-            <label>商品名称<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="如 Bluetooth Speaker" autoFocus /></label>
-            <label>规格<input value={form.spec} onChange={(e) => setForm({ ...form, spec: e.target.value })} placeholder="如 Black / IPX7" /></label>
-          </div>
-          <div className="tt-grid-2">
-            <label>价格（USD）<input type="number" min="0" step="0.1" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></label>
-            <label>库存<input type="number" min="0" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} /></label>
-          </div>
-          <label>
-            商品主图（可选）
-            <span className="tt-upload">
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
-              />
-              <span className="secondary-button compact" role="button">选择图片</span>
-              {imagePreview ? <img className="tt-img-preview" src={imagePreview} alt="主图预览" /> : null}
-              <em>{imageFile ? imageFile.name : "未选择，将使用占位底色"}</em>
-            </span>
-          </label>
-        </TeacherDialog>
-      ) : null}
-
-      {productEditing ? (
-        <TeacherDialog
-          title={`编辑商品 · ${productEditing.name}`}
-          onClose={() => setProductEditing(null)}
-          footer={
-            <>
-              <button className="secondary-button" onClick={() => setProductEditing(null)}>取消</button>
-              <button className="primary-button" onClick={() => void saveProductEdit()} disabled={busy}>{busy ? "保存中…" : "保存"}</button>
-            </>
-          }
-        >
-          {dialogError ? <p className="form-error" role="alert">{dialogError}</p> : null}
-          <label>名称<input value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} /></label>
-          <label>规格<input value={productForm.spec} onChange={(e) => setProductForm({ ...productForm, spec: e.target.value })} /></label>
-          <div className="tch-dialog-grid">
-            <label>价格（USD）<input type="number" min="0" step="0.1" value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} /></label>
-            <label>库存<input type="number" min="0" value={productForm.stock} onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })} /></label>
-          </div>
-        </TeacherDialog>
-      ) : null}
-
-      {personaEditing ? (
-        <TeacherDialog
-          title={personaEditing.mode === "create" ? "新建买家画像" : "编辑买家画像"}
-          subtitle="画像与任务规则、国籍姓名池共同决定每次会话的买家人设，学生不可见"
-          size="xl"
-          onClose={() => setPersonaEditing(null)}
-          footer={
-            <>
-              <button className="secondary-button" onClick={() => setPersonaEditing(null)}>取消</button>
-              <button className="primary-button" onClick={() => void savePersona()} disabled={busy}>
-                {busy ? "保存中…" : personaEditing.mode === "create" ? "创建画像" : "保存"}
-              </button>
-            </>
-          }
-        >
-          {dialogError ? <p className="form-error" role="alert">{dialogError}</p> : null}
-          <div className="tt-grid-3">
-            <label>买家姓名<input value={personaForm.name} onChange={(e) => setPersonaForm({ ...personaForm, name: e.target.value })} placeholder="如 Emily Carter" autoFocus /></label>
-            <label>国籍
-              <select value={personaForm.nationality} onChange={(e) => setPersonaForm({ ...personaForm, nationality: e.target.value })}>
-                {NATIONALITIES.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </label>
-            <label>语言
-              <select value={personaForm.language} onChange={(e) => setPersonaForm({ ...personaForm, language: e.target.value })}>
-                {SUPPORTED_LANGUAGES.map((item) => <option key={item} value={item}>{LANGUAGE_LABELS[item] ?? item}</option>)}
-              </select>
-            </label>
-            <label>性格
-              <select value={personaForm.personality} onChange={(e) => setPersonaForm({ ...personaForm, personality: e.target.value })}>
-                {PERSONALITIES.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </label>
-            <label>初始情绪
-              <select value={personaForm.emotion} onChange={(e) => setPersonaForm({ ...personaForm, emotion: e.target.value })}>
-                {EMOTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </label>
-            <label>客户类型
-              <select value={personaForm.customerType} onChange={(e) => setPersonaForm({ ...personaForm, customerType: e.target.value })}>
-                {CUSTOMER_TYPES.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </label>
-          </div>
-          <label>买家身份<input value={personaForm.identity} onChange={(e) => setPersonaForm({ ...personaForm, identity: e.target.value })} placeholder="如 三十岁的健身教练，注重产品耐用性" /></label>
-          <label>消费偏好<textarea rows={3} value={personaForm.preference} onChange={(e) => setPersonaForm({ ...personaForm, preference: e.target.value })} placeholder="如 偏好高性价比，关注物流时效，习惯先比价再下单" /></label>
-        </TeacherDialog>
-      ) : null}
-    </div>
+      </div>
+    </Dialog>
   );
 }

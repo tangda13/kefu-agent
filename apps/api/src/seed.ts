@@ -1,4 +1,5 @@
 import { forbiddenTerms, personaTemplates, scenarioScripts, standardPhrases, storeProducts, trainingScenarios } from "@cecs/domain";
+import { getSetting, setSetting } from "./settings";
 import type { Db } from "./db";
 import { hashPassword } from "./security";
 
@@ -23,6 +24,9 @@ export async function seedCatalog(db: Db): Promise<void> {
       await db.query("update scenarios set script = $2 where id = $1 and script is null", [scenario.id, JSON.stringify(script)]);
     }
   }
+  // D5：内置画像只在首次初始化时写入，老师删掉的不会在重启后回来
+  const personaSeeded = await getSetting<number>(db, "personaSeedVersion");
+  if (personaSeeded !== null && personaSeeded >= CATALOG_SEED_VERSION) return;
   for (const persona of personaTemplates) {
     await db.query(
       `insert into persona_templates
@@ -43,9 +47,15 @@ export async function seedCatalog(db: Db): Promise<void> {
       ],
     );
   }
+  await setSetting(db, "personaSeedVersion", CATALOG_SEED_VERSION);
 }
 
+/** 内置画像与商品的版本：扩充内置数据时加 1，只写入一次（D5） */
+export const CATALOG_SEED_VERSION = 1;
+
 export async function seedStoreProducts(db: Db): Promise<void> {
+  const seeded = await getSetting<number>(db, "productSeedVersion");
+  if (seeded !== null && seeded >= CATALOG_SEED_VERSION) return;
   for (const product of storeProducts) {
     await db.query(
       `insert into store_products (id, name, spec, price, sales, stock, tone)
@@ -53,9 +63,18 @@ export async function seedStoreProducts(db: Db): Promise<void> {
       [product.id, product.name, product.spec, product.price, product.sales, product.stock, product.tone],
     );
   }
+  await setSetting(db, "productSeedVersion", CATALOG_SEED_VERSION);
 }
 
+/** 内置词库的版本：扩充内置词条时加 1，下次启动只写入一次（E6）。 */
+export const CONTENT_SEED_VERSION = 2;
+
+/**
+ * 内置违规词与标准话术。按版本只写入一次：管理员删除的词条，重启后不会被补回来（E6 修复“删除后复活”）。
+ */
 export async function seedContentTerms(db: Db): Promise<void> {
+  const seeded = await getSetting<number>(db, "contentSeedVersion");
+  if (seeded !== null && seeded >= CONTENT_SEED_VERSION) return;
   for (const term of forbiddenTerms) {
     await db.query(
       "insert into content_terms (kind, text) values ('forbidden', $1) on conflict do nothing",
@@ -68,6 +87,7 @@ export async function seedContentTerms(db: Db): Promise<void> {
       [phrase],
     );
   }
+  await setSetting(db, "contentSeedVersion", CONTENT_SEED_VERSION);
 }
 
 export async function seedAdmin(

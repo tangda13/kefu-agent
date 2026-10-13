@@ -1,607 +1,392 @@
-import { Copy, FileSpreadsheet, KeyRound, Pencil, Plus, Search, Trash2, UploadCloud, UsersRound } from "lucide-react";
+import { Download, FileUp, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PageHeader } from "../../components/AppShell";
 import {
-  ApiError,
-  createClass,
-  deleteClass,
-  fetchClasses,
-  fetchClassStudents,
-  importStudents,
-  renameClass,
-  deleteStudent,
-  resetStudentPassword,
-  setStudentStatus,
-  updateStudent,
-  type ClassStudent,
-  type ClassSummary,
-  type ImportResult,
-  type Session,
+  ApiError, createClass, deleteClass, deleteStudent, fetchClassStudents, fetchClasses, renameClass, resetStudentPassword,
+  setStudentGroup, setStudentStatus, updateStudent,
+  type ClassStudent, type ClassSummary, type Session,
 } from "../../api/client";
-import { copyText, TeacherDialog } from "./widgets";
+import { ImportStudentsDialog, PasswordNotice } from "../../components/AccountDialogs";
+import {
+  Bench, Board, Button, Confirm, DataTable, Dialog, Field, FilterChips, Flag, HeaderTabs, Input, MoreMenu, SearchBox, Select, Tag, toast,
+} from "../../ui";
 
-function errorText(cause: unknown): string {
-  return cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。";
+const errorText = (cause: unknown) => (cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
+const NO_GROUP = "__none";
+const ATTENTION = "__attention";
+const DAY = 86_400_000;
+
+/** 需要老师关注的学生：低于 60 分（红）、7 天以上没练或还没开始（橙）；已停用的不算 */
+function attention(row: ClassStudent): { kind: "low" | "idle" | "never"; text: string } | null {
+  if (row.status !== "active") return null;
+  if (row.averageScore != null && row.averageScore < 60) return { kind: "low", text: "低于 60 分" };
+  if (!row.lastActiveAt) return row.tasksTotal ? { kind: "never", text: row.mustChangePassword ? "还没登录" : "还没练过" } : null;
+  const days = Math.floor((Date.now() - new Date(row.lastActiveAt).getTime()) / DAY);
+  return days >= 7 ? { kind: "idle", text: `${days} 天没练` } : null;
+}
+
+/** 最近活跃：今天显示时间，7 天内显示“N 天前”，更早显示日期 */
+function activeText(iso: string | null): string {
+  if (!iso) return "还没练过";
+  const date = new Date(iso);
+  const days = Math.floor((Date.now() - date.getTime()) / 86_400_000);
+  if (days < 1 && new Date().getDate() === date.getDate()) return `今天 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  if (days < 7) return `${Math.max(days, 1)} 天前`;
+  return date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 }
 
 export function LiveClasses({ session }: { session: Session }) {
   const [classes, setClasses] = useState<ClassSummary[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [classId, setClassId] = useState("");
   const [students, setStudents] = useState<ClassStudent[]>([]);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [newClassName, setNewClassName] = useState("");
-  const [importing, setImporting] = useState(false);
-  const [importText, setImportText] = useState("");
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [renameValue, setRenameValue] = useState("");
-  const [studentQuery, setStudentQuery] = useState("");
-  const [dialogError, setDialogError] = useState("");
-  const [passwordReset, setPasswordReset] = useState<{ name: string; username: string; password: string } | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [editingStudent, setEditingStudent] = useState<{ id: string; username: string; displayName: string; classId: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [keyword, setKeyword] = useState("");
+  const [group, setGroup] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [dialog, setDialog] = useState<
+    | { kind: "newClass" | "rename" | "deleteClass" | "import" | "group" }
+    | { kind: "edit" | "reset" | "disable" | "remove"; student: ClassStudent }
+    | null
+  >(null);
+  const [passwords, setPasswords] = useState<{ title: string; rows: Array<{ name: string; account: string; password: string }> } | null>(null);
 
   const loadClasses = useCallback(async () => {
     try {
       const list = await fetchClasses(session);
       setClasses(list);
-      setSelectedId((current) => current ?? list[0]?.id ?? null);
+      setClassId((current) => (list.some((item) => item.id === current) ? current : list[0]?.id ?? ""));
     } catch (cause) {
-      setError(errorText(cause));
+      toast.error(errorText(cause));
     }
   }, [session]);
-
-  useEffect(() => {
-    void loadClasses();
-  }, [loadClasses]);
-
-  useEffect(() => {
-    if (!selectedId) {
+  const loadStudents = useCallback(async () => {
+    if (!classId) {
       setStudents([]);
+      setLoading(false);
       return;
     }
-    let cancelled = false;
-    fetchClassStudents(session, selectedId)
-      .then((rows) => {
-        if (!cancelled) setStudents(rows);
-      })
-      .catch((cause) => {
-        if (!cancelled) setError(errorText(cause));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [session, selectedId, notice]);
-
-  const selected = classes.find((item) => item.id === selectedId) ?? null;
-  const visibleStudents = useMemo(() => {
-    const keyword = studentQuery.trim().toLowerCase();
-    if (!keyword) return students;
-    return students.filter((row) =>
-      row.displayName.toLowerCase().includes(keyword) || row.username.toLowerCase().includes(keyword),
-    );
-  }, [students, studentQuery]);
-
-  async function submitNewClass() {
-    if (!newClassName.trim() || busy) return;
-    setBusy(true);
-    setDialogError("");
+    setLoading(true);
     try {
-      const created = await createClass(session, newClassName.trim());
-      setNewClassName("");
-      setCreating(false);
-      await loadClasses();
-      setSelectedId(created.id);
-      setNotice(`班级「${created.name}」已创建，可继续批量导入学生`);
+      setStudents(await fetchClassStudents(session, classId));
     } catch (cause) {
-      setDialogError(errorText(cause));
+      toast.error(errorText(cause));
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
-  }
+  }, [session, classId]);
+  useEffect(() => { void loadClasses(); }, [loadClasses]);
+  useEffect(() => { void loadStudents(); setSelected([]); setGroup(""); }, [loadStudents]);
 
-  async function submitImport() {
-    if (!selectedId || busy) return;
-    const rows = importText
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [username = "", displayName = "", password = ""] = line.split(/[,，\t]/).map((part) => part.trim());
-        return password ? { username, displayName, password } : { username, displayName };
-      });
-    if (rows.length === 0) {
-      setDialogError("请按每行「账号,姓名」或「账号,姓名,初始密码」填写导入名单。");
-      return;
-    }
-    setBusy(true);
-    setDialogError("");
+  const current = classes.find((item) => item.id === classId) ?? null;
+  const groups = useMemo(() => [...new Set(students.map((row) => row.groupName).filter(Boolean) as string[])].sort(), [students]);
+  const visible = useMemo(() => {
+    const word = keyword.trim().toLowerCase();
+    return students.filter((row) => {
+      if (group === NO_GROUP && row.groupName) return false;
+      if (group === ATTENTION && !attention(row)) return false;
+      if (group && group !== NO_GROUP && group !== ATTENTION && row.groupName !== group) return false;
+      return !word || `${row.displayName} ${row.username}`.toLowerCase().includes(word);
+    });
+  }, [students, keyword, group]);
+  const allChecked = visible.length > 0 && visible.every((row) => selected.includes(row.id));
+  const scored = students.filter((row) => row.averageScore != null);
+  const classAverage = scored.length ? Math.round(scored.reduce((sum, row) => sum + row.averageScore!, 0) / scored.length) : null;
+  const weekActive = students.filter((row) => row.lastActiveAt && Date.now() - new Date(row.lastActiveAt).getTime() < 7 * DAY).length;
+  const idleCount = students.filter((row) => attention(row)?.kind === "idle").length;
+
+  async function run(action: () => Promise<unknown>, message: string, reloadClasses = false) {
     try {
-      const result = await importStudents(session, selectedId, rows);
-      setImportResult(result);
-      setImportText("");
-      setNotice(`导入完成：成功 ${result.created.length} 人，失败 ${result.failed.length} 人`);
-      await loadClasses();
+      await action();
+      toast.ok(message);
+      setDialog(null);
+      if (reloadClasses) await loadClasses();
+      await loadStudents();
     } catch (cause) {
-      setDialogError(errorText(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function closeImport() {
-    setImporting(false);
-    setImportResult(null);
-    setDialogError("");
-  }
-
-  async function copyImportResult() {
-    if (!importResult) return;
-    const lines = importResult.created
-      .map((row) => `${row.username}\t${row.displayName}\t${row.initialPassword ?? "使用导入时指定的密码"}`)
-      .join("\n");
-    if (await copyText(`账号\t姓名\t初始密码\n${lines}`)) {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      toast.error(errorText(cause));
     }
   }
 
   async function resetPassword(student: ClassStudent) {
-    if (busy) return;
-    if (!window.confirm(`确定重置 ${student.displayName}（${student.username}）的密码吗？原密码将立即失效。`)) return;
-    setBusy(true);
-    setError("");
     try {
       const { temporaryPassword } = await resetStudentPassword(session, student.id);
-      setPasswordReset({ name: student.displayName, username: student.username, password: temporaryPassword });
+      setDialog(null);
+      setPasswords({ title: "密码已重置", rows: [{ name: student.displayName, account: student.username, password: temporaryPassword }] });
+      await loadStudents();
     } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitRename() {
-    if (!selected || !renameValue.trim() || busy) return;
-    setBusy(true);
-    setDialogError("");
-    try {
-      await renameClass(session, selected.id, renameValue.trim());
-      setRenaming(false);
-      setNotice(`班级已重命名为「${renameValue.trim()}」`);
-      await loadClasses();
-    } catch (cause) {
-      setDialogError(errorText(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeClass() {
-    if (!selected || busy) return;
-    if (!window.confirm(`确定删除班级「${selected.name}」吗？只有没有学生的空班级可以删除。`)) return;
-    setBusy(true);
-    setError("");
-    try {
-      await deleteClass(session, selected.id);
-      setNotice(`班级「${selected.name}」已删除`);
-      setSelectedId(null);
-      await loadClasses();
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function toggleStudent(student: ClassStudent) {
-    if (busy) return;
-    const next = student.status === "active" ? "disabled" : "active";
-    if (next === "disabled" && !window.confirm(`确定停用 ${student.displayName}（${student.username}）吗？停用后该学生将无法登录，实训数据保留。`)) return;
-    setBusy(true);
-    setError("");
-    try {
-      await setStudentStatus(session, student.id, next);
-      setNotice(`${student.displayName} 已${next === "active" ? "启用" : "停用"}`);
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitStudentEdit() {
-    if (!editingStudent || busy) return;
-    const original = students.find((row) => row.id === editingStudent.id);
-    const displayName = editingStudent.displayName.trim();
-    if (!displayName) {
-      setDialogError("姓名不能为空。");
-      return;
-    }
-    const patch: { displayName?: string; classId?: string } = {};
-    if (original && displayName !== original.displayName) patch.displayName = displayName;
-    if (editingStudent.classId !== selectedId) patch.classId = editingStudent.classId;
-    if (!patch.displayName && !patch.classId) {
-      setEditingStudent(null);
-      return;
-    }
-    setBusy(true);
-    setDialogError("");
-    try {
-      await updateStudent(session, editingStudent.id, patch);
-      const target = classes.find((item) => item.id === patch.classId);
-      setNotice(target ? `${displayName} 已转到「${target.name}」` : `已更新 ${displayName} 的姓名`);
-      setEditingStudent(null);
-      await loadClasses();
-    } catch (cause) {
-      setDialogError(errorText(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeStudent(student: ClassStudent) {
-    if (busy) return;
-    if (!window.confirm(`确定删除 ${student.displayName}（${student.username}）吗？仅没有任何实训记录的账号可以删除，删除后不可恢复。`)) return;
-    setBusy(true);
-    setError("");
-    try {
-      await deleteStudent(session, student.id);
-      setNotice(`已删除 ${student.displayName}`);
-      await loadClasses();
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setBusy(false);
+      toast.error(errorText(cause));
     }
   }
 
   function exportRoster() {
-    if (!selected) return;
-    const header = "账号,姓名,状态,待改密\n";
-    const body = students
-      .map((row) => `${row.username},${row.displayName},${row.status === "active" ? "启用" : "停用"},${row.mustChangePassword ? "是" : "否"}`)
-      .join("\n");
+    if (!current) return;
+    const header = "学号,姓名,分组,完成任务,参训任务,平均分,最近活跃,状态\n";
+    const body = students.map((row) => [
+      row.username, row.displayName, row.groupName ?? "", row.tasksDone, row.tasksTotal, row.averageScore ?? "",
+      row.lastActiveAt ? new Date(row.lastActiveAt).toLocaleString("zh-CN") : "", row.status === "active" ? "正常" : "已停用",
+    ].join(",")).join("\n");
     const blob = new Blob(["﻿" + header + body], { type: "text/csv;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${selected.name}-名单.csv`;
+    link.download = `${current.name}-名单.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
   }
 
-  return (
-    <div className="page">
-      <PageHeader
-        title="班级与学生管理"
-        description="创建班级、批量导入学生、重置密码与名单导出。"
-        actions={
-          <>
-            <button className="secondary-button" onClick={exportRoster} disabled={!selected || students.length === 0}>
-              <FileSpreadsheet size={16} /> 导出名单
-            </button>
-            <button className="primary-button" onClick={() => { setNewClassName(""); setDialogError(""); setCreating(true); }}>
-              <Plus size={16} /> 新建班级
-            </button>
-          </>
-        }
-      />
-      {notice ? <p className="form-notice" role="status">{notice}</p> : null}
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
+  const classMenu = (
+    <MoreMenu
+      label="班级操作"
+      items={[
+        { label: "新建班级", onClick: () => setDialog({ kind: "newClass" }) },
+        { label: "重命名班级", disabled: !current, onClick: () => setDialog({ kind: "rename" }) },
+        { label: "删除班级", danger: true, disabled: !current, onClick: () => setDialog({ kind: "deleteClass" }) },
+      ]}
+    />
+  );
 
-      <div className="classes-layout">
-        <aside className="panel class-list">
-          <div className="panel-heading compact-heading">
-            <div>
-              <h2>班级列表</h2>
-              <p>{classes.length} 个教学班</p>
-            </div>
-          </div>
-          {classes.length === 0 ? (
-            <div className="tt-empty">
-              <UsersRound size={24} aria-hidden="true" />
-              <strong>还没有班级</strong>
-              <p>点击右上角「新建班级」创建第一个教学班。</p>
-            </div>
-          ) : null}
-          {classes.map((item) => (
-            <button
-              className={item.id === selectedId ? "class-item active" : "class-item"}
-              key={item.id}
-              onClick={() => setSelectedId(item.id)}
-            >
-              <span>
-                <strong>{item.name}</strong>
-                <small>{item.studentCount} 人</small>
-              </span>
-              <em>{item.id === selectedId ? "当前" : "查看"}</em>
-            </button>
-          ))}
-        </aside>
-        <section className="panel data-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>{selected ? selected.name : "请选择班级"}</h2>
-              <p>{selected ? `${students.length} 名学生` : "从左侧选择或新建一个班级"}</p>
-            </div>
-            {selected && (
-              <div className="tch-heading-actions">
-                <button className="secondary-button compact" onClick={() => { setRenameValue(selected.name); setDialogError(""); setRenaming(true); }}>
-                  <Pencil size={14} /> 重命名
-                </button>
-                <button
-                  className="secondary-button compact"
-                  onClick={removeClass}
-                  disabled={students.length > 0}
-                  title={students.length > 0 ? "班级内仍有学生，无法删除" : "删除该班级"}
-                >
-                  <Trash2 size={14} /> 删除班级
-                </button>
-                <button className="primary-button compact" onClick={() => { setImportResult(null); setDialogError(""); setImporting(true); }}>
-                  <UploadCloud size={15} /> 批量导入学生
-                </button>
+  return (
+    <>
+      {classes.length > 0 && classes.length <= 6 ? (
+        <HeaderTabs items={classes.map((item) => ({ id: item.id, label: item.name, count: item.studentCount }))} value={classId} onChange={setClassId} />
+      ) : null}
+      <Bench>
+        {classes.length === 0 ? (
+          <Board><p className="board-quiet">还没有班级。新建一个班级，再把学生名单导进来。 <Button variant="primary" icon={Plus} onClick={() => setDialog({ kind: "newClass" })}>新建班级</Button></p></Board>
+        ) : (
+          <>
+            <Board>
+              <div className="classbar">
+                <div className="k"><small>学生</small><b>{students.length}</b></div>
+                <span className="sep" />
+                <div className="k"><small>本周练过</small><b>{weekActive}</b></div>
+                <span className="sep" />
+                <div className="k"><small>平均分</small><b className={classAverage == null ? "is-dash" : undefined}>{classAverage ?? "—"}</b></div>
+                <span className="sep" />
+                <div className="k"><small>7 天以上没练</small><b className={idleCount ? "is-warn" : undefined}>{idleCount}</b></div>
+                <div className="end">
+                  {classes.length > 6 ? (
+                    <Select className="toolbar-select" value={classId} onChange={(event) => setClassId(event.target.value)}>
+                      {classes.map((item) => <option key={item.id} value={item.id}>{item.name}（{item.studentCount} 人）</option>)}
+                    </Select>
+                  ) : null}
+                  <Button variant="ghost" icon={Download} disabled={students.length === 0} onClick={exportRoster}>导出名单</Button>
+                  <Button icon={FileUp} onClick={() => setDialog({ kind: "import" })}>导入学生</Button>
+                  {classMenu}
+                </div>
               </div>
-            )}
-          </div>
-          {selected && students.length > 0 ? (
-            <div className="tch-toolbar">
-              <div className="tch-search">
-                <Search size={14} aria-hidden="true" />
-                <input
-                  value={studentQuery}
-                  placeholder="搜索姓名或账号"
-                  onChange={(event) => setStudentQuery(event.target.value)}
+            </Board>
+            {selected.length > 0 ? (
+              <div className="selection-bar">
+                <strong>已选 {selected.length} 人</strong>
+                <Button size="sm" onClick={() => setDialog({ kind: "group" })}>分到组…</Button>
+                <Button size="sm" variant="ghost" onClick={() => void run(() => setStudentGroup(session, classId, selected, null), "已移出分组").then(() => setSelected([]))}>移出分组</Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelected([])}>取消选择</Button>
+              </div>
+            ) : (
+              <div className="bench-bar">
+                <SearchBox value={keyword} onChange={setKeyword} placeholder="搜索姓名或学号" />
+                <FilterChips
+                  items={[
+                    { id: "", label: "全部", count: students.length },
+                    ...groups.map((name) => ({ id: name, label: name, count: students.filter((row) => row.groupName === name).length })),
+                    ...(groups.length ? [{ id: NO_GROUP, label: "未分组", count: students.filter((row) => !row.groupName).length }] : []),
+                    { id: ATTENTION, label: "需要关注", count: students.filter((row) => attention(row)).length },
+                  ]}
+                  value={group}
+                  onChange={setGroup}
                 />
               </div>
-              <span className="tch-count">
-                启用 {students.filter((row) => row.status === "active").length} · 停用 {students.filter((row) => row.status !== "active").length}
-              </span>
-            </div>
-          ) : null}
-          {selected && students.length === 0 ? (
-            <div className="tt-empty">
-              <UsersRound size={24} aria-hidden="true" />
-              <strong>班级暂无学生</strong>
-              <p>点击右上角「批量导入学生」，按「账号,姓名」格式一次导入全班名单，系统会自动生成初始密码。</p>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>学生</th>
-                  <th>账号</th>
-                  <th>状态</th>
-                  <th>待改密</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleStudents.map((row) => (
-                  <tr key={row.id} className={row.status !== "active" ? "tch-row-muted" : undefined}>
-                    <td>
-                      <span className="student-cell">
-                        <span className="avatar small">{row.displayName[0]}</span>
-                        <strong>{row.displayName}</strong>
+            )}
+            <Board>
+              <DataTable
+                loading={loading}
+                rows={visible}
+                rowKey={(row) => row.id}
+                empty={keyword || group ? "没有符合条件的学生" : <>这个班还没有学生。<Button variant="text" onClick={() => setDialog({ kind: "import" })}>导入名单</Button></>}
+                columns={[
+                  {
+                    key: "check", width: 36,
+                    title: <input type="checkbox" aria-label="全选" checked={allChecked} onChange={() => setSelected(allChecked ? [] : visible.map((row) => row.id))} />,
+                    render: (row) => (
+                      <input
+                        type="checkbox" aria-label={`选择 ${row.displayName}`} checked={selected.includes(row.id)}
+                        onChange={() => setSelected((list) => (list.includes(row.id) ? list.filter((id) => id !== row.id) : [...list, row.id]))}
+                      />
+                    ),
+                  },
+                  {
+                    key: "name", title: "学生",
+                    render: (row) => (
+                      <span className={row.status === "active" ? undefined : "is-muted-cell"}>
+                        <span className="cell-title">{row.displayName}{row.status !== "active" ? <Tag>已停用</Tag> : null}</span>
+                        <span className="cell-meta">{row.username}</span>
                       </span>
-                    </td>
-                    <td>{row.username}</td>
-                    <td>
-                      <em className={row.status === "active" ? "state-done" : "state-warning"}>
-                        {row.status === "active" ? "启用" : "停用"}
-                      </em>
-                    </td>
-                    <td>{row.mustChangePassword ? "是" : "否"}</td>
-                    <td className="tch-actions">
-                      <button
-                        className="text-button"
-                        onClick={() => { setDialogError(""); setEditingStudent({ id: row.id, username: row.username, displayName: row.displayName, classId: selectedId ?? "" }); }}
-                        disabled={busy}
-                      >
-                        <Pencil size={14} /> 编辑
-                      </button>
-                      <button className="text-button" onClick={() => resetPassword(row)} disabled={busy}>
-                        <KeyRound size={14} /> 重置密码
-                      </button>
-                      <button
-                        className={row.status === "active" ? "text-button tch-danger" : "text-button"}
-                        onClick={() => toggleStudent(row)}
-                        disabled={busy}
-                      >
-                        {row.status === "active" ? "停用" : "启用"}
-                      </button>
-                      <button className="text-button tch-danger" onClick={() => removeStudent(row)} disabled={busy}>
-                        <Trash2 size={14} /> 删除
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {selected && students.length > 0 && visibleStudents.length === 0 ? (
-                  <tr><td colSpan={5}><span className="muted">没有匹配「{studentQuery}」的学生。</span></td></tr>
-                ) : null}
-              </tbody>
-            </table>
-          )}
-        </section>
+                    ),
+                  },
+                  { key: "group", title: "分组", width: 110, render: (row) => (row.groupName ? <Flag tone="plain">{row.groupName}</Flag> : <span className="faint">—</span>) },
+                  {
+                    key: "tasks", title: "完成任务", width: 160,
+                    render: (row) => (row.tasksTotal
+                      ? <span className="cell-bar"><span><i style={{ width: `${(row.tasksDone / row.tasksTotal) * 100}%` }} /></span>{row.tasksDone} / {row.tasksTotal}</span>
+                      : <span className="faint">还没有任务</span>),
+                  },
+                  { key: "score", title: "平均分", width: 80, align: "right", render: (row) => (row.averageScore == null ? <span className="faint">—</span> : <span className={row.averageScore < 60 ? "strong-num is-bad" : "strong-num"}>{row.averageScore}</span>) },
+                  {
+                    key: "active", title: "最近练习", width: 130,
+                    render: (row) => {
+                      const flag = attention(row);
+                      if (!flag) return <span>{activeText(row.lastActiveAt)}</span>;
+                      return <Flag tone={flag.kind === "low" ? "bad" : "warn"}>{flag.text}</Flag>;
+                    },
+                  },
+                  {
+                    key: "ops", title: "", width: 48, align: "right",
+                    render: (row) => (
+                      <MoreMenu items={[
+                        { label: "编辑 / 转班", onClick: () => setDialog({ kind: "edit", student: row }) },
+                        { label: "重置密码", onClick: () => setDialog({ kind: "reset", student: row }) },
+                        row.status === "active"
+                          ? { label: "停用账号", onClick: () => setDialog({ kind: "disable", student: row }) }
+                          : { label: "恢复账号", onClick: () => void run(() => setStudentStatus(session, row.id, "active"), `${row.displayName} 已恢复`) },
+                        { label: "删除", danger: true, onClick: () => setDialog({ kind: "remove", student: row }) },
+                      ]} />
+                    ),
+                  },
+                ]}
+              />
+            </Board>
+          </>
+        )}
+      </Bench>
+
+      {dialog?.kind === "newClass" ? (
+        <NameDialog title="新建班级" label="班级名称" placeholder="例如：跨境电商2602班" confirmText="新建" onClose={() => setDialog(null)}
+          onSubmit={async (name) => {
+            try {
+              const created = await createClass(session, name);
+              toast.ok(`已新建「${created.name}」，接着导入学生名单`);
+              setDialog(null);
+              await loadClasses();
+              setClassId(created.id);
+            } catch (cause) {
+              toast.error(errorText(cause));
+            }
+          }}
+        />
+      ) : null}
+      {dialog?.kind === "rename" && current ? (
+        <NameDialog title="重命名班级" label="班级名称" initial={current.name} confirmText="保存" onClose={() => setDialog(null)}
+          onSubmit={(name) => run(() => renameClass(session, current.id, name), "已重命名", true)} />
+      ) : null}
+      {dialog?.kind === "deleteClass" && current ? (
+        students.length > 0 ? (
+          <Confirm title="不能删除" confirmText="知道了" onConfirm={() => setDialog(null)} onClose={() => setDialog(null)}>
+            「{current.name}」还有 {students.length} 名学生。先把学生转到别的班或删除，才能删除班级。
+          </Confirm>
+        ) : (
+          <Confirm title="删除班级" danger confirmText="删除" onConfirm={() => void run(() => deleteClass(session, current.id), `已删除「${current.name}」`, true)} onClose={() => setDialog(null)}>
+            确定删除「{current.name}」吗？
+          </Confirm>
+        )
+      ) : null}
+      {dialog?.kind === "import" && current ? (
+        <ImportStudentsDialog session={session} classId={current.id} className={current.name} onClose={() => setDialog(null)}
+          onImported={() => { void loadClasses(); void loadStudents(); }} />
+      ) : null}
+      {dialog?.kind === "group" ? (
+        <NameDialog
+          title={`把 ${selected.length} 人分到组`}
+          label="组名"
+          hint={groups.length ? `已有：${groups.join("、")}。输入已有组名就是加入，输入新名字就是建新组。` : "例如：第一组。之后可以按组筛选、导出。"}
+          suggestions={groups}
+          confirmText="确定"
+          onClose={() => setDialog(null)}
+          onSubmit={(name) => run(() => setStudentGroup(session, classId, selected, name), `已分到「${name}」`).then(() => setSelected([]))}
+        />
+      ) : null}
+      {dialog?.kind === "edit" ? (
+        <EditStudentDialog student={dialog.student} classes={classes} classId={classId} onClose={() => setDialog(null)}
+          onSubmit={(patch, message) => run(() => updateStudent(session, dialog.student.id, patch), message, Boolean(patch.classId))} />
+      ) : null}
+      {dialog?.kind === "reset" ? (
+        <Confirm title="重置密码" confirmText="重置" onConfirm={() => void resetPassword(dialog.student)} onClose={() => setDialog(null)}>
+          重置 {dialog.student.displayName}（{dialog.student.username}）的密码后，原密码立即失效。
+        </Confirm>
+      ) : null}
+      {dialog?.kind === "disable" ? (
+        <Confirm title="停用账号" danger confirmText="停用" onConfirm={() => void run(() => setStudentStatus(session, dialog.student.id, "disabled"), `${dialog.student.displayName} 已停用`)} onClose={() => setDialog(null)}>
+          停用后 {dialog.student.displayName} 不能登录，练习记录和成绩都保留，之后可以恢复。
+        </Confirm>
+      ) : null}
+      {dialog?.kind === "remove" ? (
+        <Confirm title="删除学生" danger confirmText="删除" onConfirm={() => void run(() => deleteStudent(session, dialog.student.id), `已删除 ${dialog.student.displayName}`, true)} onClose={() => setDialog(null)}>
+          只有还没练过的账号能删除，删除后不能恢复。已经有记录的学生请用「停用账号」。
+        </Confirm>
+      ) : null}
+      {passwords ? <PasswordNotice title={passwords.title} rows={passwords.rows} onClose={() => setPasswords(null)} /> : null}
+    </>
+  );
+}
+
+function NameDialog({ title, label, hint, placeholder, initial = "", suggestions, confirmText, onClose, onSubmit }: {
+  title: string; label: string; hint?: string; placeholder?: string; initial?: string; suggestions?: string[]; confirmText: string;
+  onClose: () => void; onSubmit: (name: string) => Promise<unknown> | void;
+}) {
+  const [value, setValue] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!value.trim()) return;
+    setBusy(true);
+    try {
+      await onSubmit(value.trim());
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      title={title}
+      onClose={onClose}
+      footer={<><Button onClick={onClose}>取消</Button><Button variant="primary" loading={busy} disabled={!value.trim()} onClick={() => void submit()}>{confirmText}</Button></>}
+    >
+      <Field label={label} hint={hint}>
+        <Input autoFocus value={value} placeholder={placeholder} list={suggestions?.length ? "name-dialog-options" : undefined}
+          onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void submit(); }} />
+      </Field>
+      {suggestions?.length ? <datalist id="name-dialog-options">{suggestions.map((item) => <option key={item} value={item} />)}</datalist> : null}
+    </Dialog>
+  );
+}
+
+function EditStudentDialog({ student, classes, classId, onClose, onSubmit }: {
+  student: ClassStudent; classes: ClassSummary[]; classId: string; onClose: () => void;
+  onSubmit: (patch: { displayName?: string; classId?: string }, message: string) => Promise<unknown>;
+}) {
+  const [name, setName] = useState(student.displayName);
+  const [target, setTarget] = useState(classId);
+  const [busy, setBusy] = useState(false);
+  async function submit() {
+    const patch: { displayName?: string; classId?: string } = {};
+    if (name.trim() && name.trim() !== student.displayName) patch.displayName = name.trim();
+    if (target !== classId) patch.classId = target;
+    if (!patch.displayName && !patch.classId) return onClose();
+    setBusy(true);
+    const moved = classes.find((item) => item.id === patch.classId);
+    await onSubmit(patch, moved ? `${name.trim()} 已转到「${moved.name}」` : "已保存");
+    setBusy(false);
+  }
+  return (
+    <Dialog
+      title={`编辑 · ${student.username}`}
+      onClose={onClose}
+      footer={<><Button onClick={onClose}>取消</Button><Button variant="primary" loading={busy} onClick={() => void submit()}>保存</Button></>}
+    >
+      <div className="form-stack">
+        <Field label="姓名"><Input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field>
+        <Field label="所在班级" hint="转班后会自动收到新班级已下发的任务，原来的分组会清空">
+          <Select value={target} onChange={(event) => setTarget(event.target.value)}>
+            {classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </Select>
+        </Field>
       </div>
-
-      {creating ? (
-        <TeacherDialog
-          title="新建班级"
-          subtitle="创建后可立即批量导入该班学生"
-          onClose={() => setCreating(false)}
-          footer={
-            <>
-              <button className="secondary-button" onClick={() => setCreating(false)}>取消</button>
-              <button className="primary-button" onClick={submitNewClass} disabled={busy || !newClassName.trim()}>
-                {busy ? "创建中…" : "创建班级"}
-              </button>
-            </>
-          }
-        >
-          {dialogError ? <p className="form-error" role="alert">{dialogError}</p> : null}
-          <label>
-            班级名称
-            <input
-              value={newClassName}
-              onChange={(event) => setNewClassName(event.target.value)}
-              placeholder="例如：跨境电商2602班"
-              autoFocus
-              onKeyDown={(event) => { if (event.key === "Enter") void submitNewClass(); }}
-            />
-          </label>
-        </TeacherDialog>
-      ) : null}
-
-      {renaming && selected ? (
-        <TeacherDialog
-          title="重命名班级"
-          onClose={() => setRenaming(false)}
-          footer={
-            <>
-              <button className="secondary-button" onClick={() => setRenaming(false)}>取消</button>
-              <button className="primary-button" onClick={submitRename} disabled={busy || !renameValue.trim()}>保存</button>
-            </>
-          }
-        >
-          {dialogError ? <p className="form-error" role="alert">{dialogError}</p> : null}
-          <label>
-            班级名称
-            <input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} autoFocus />
-          </label>
-        </TeacherDialog>
-      ) : null}
-
-      {importing && selected ? (
-        <TeacherDialog
-          title={`批量导入学生 · ${selected.name}`}
-          subtitle={importResult ? "导入完成，初始密码仅本次显示，请立即复制保存" : "每行一名学生，格式：账号,姓名[,初始密码]（逗号或制表符分隔；不填密码则自动生成，自填密码不少于 8 位）"}
-          size="xl"
-          onClose={closeImport}
-          footer={
-            importResult ? (
-              <>
-                <button className="secondary-button" onClick={() => setImportResult(null)}>继续导入</button>
-                <button className="primary-button" onClick={closeImport}>完成</button>
-              </>
-            ) : (
-              <>
-                <button className="secondary-button" onClick={closeImport}>取消</button>
-                <button className="primary-button" onClick={submitImport} disabled={busy || !importText.trim()}>
-                  {busy ? "导入中…" : "导入"}
-                </button>
-              </>
-            )
-          }
-        >
-          {dialogError ? <p className="form-error" role="alert">{dialogError}</p> : null}
-          {importResult ? (
-            <>
-              <div className="tt-weight-head">
-                <span className="tt-weight-total">成功 {importResult.created.length} 人</span>
-                {importResult.failed.length > 0 ? (
-                  <span className="tt-weight-total bad">失败 {importResult.failed.length} 人</span>
-                ) : null}
-                {importResult.created.length > 0 ? (
-                  <button className="text-button" onClick={copyImportResult}>
-                    <Copy size={13} /> {copied ? "已复制" : "复制全部账号密码"}
-                  </button>
-                ) : null}
-              </div>
-              {importResult.created.length > 0 ? (
-                <div className="tt-import-list">
-                  <div className="tt-import-row head"><span>账号</span><span>姓名</span><span>初始密码</span></div>
-                  {importResult.created.map((row) => (
-                    <div key={row.username} className="tt-import-row">
-                      <span>{row.username}</span>
-                      <span>{row.displayName}</span>
-                      <strong>{row.initialPassword ?? "使用导入时指定的密码"}</strong>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {importResult.failed.length > 0 ? (
-                <p className="form-error">
-                  失败：{importResult.failed.map((row) => `${row.username}（${row.reason}）`).join("、")}
-                </p>
-              ) : null}
-              <p className="muted tch-dialog-hint">学生首次登录后会被要求修改初始密码。</p>
-            </>
-          ) : (
-            <textarea
-              rows={9}
-              value={importText}
-              onChange={(event) => setImportText(event.target.value)}
-              placeholder={"s2602001,王小明\ns2602002,刘小红"}
-              autoFocus
-            />
-          )}
-        </TeacherDialog>
-      ) : null}
-
-      {editingStudent ? (
-        <TeacherDialog
-          title={`编辑学生 · ${editingStudent.username}`}
-          subtitle="可修改姓名，或转到您有权限管理的其他班级；转班后自动获得新班级已下发的任务"
-          onClose={() => setEditingStudent(null)}
-          footer={
-            <>
-              <button className="secondary-button" onClick={() => setEditingStudent(null)}>取消</button>
-              <button className="primary-button" onClick={submitStudentEdit} disabled={busy}>
-                {busy ? "保存中…" : "保存"}
-              </button>
-            </>
-          }
-        >
-          {dialogError ? <p className="form-error" role="alert">{dialogError}</p> : null}
-          <label>
-            姓名
-            <input
-              value={editingStudent.displayName}
-              onChange={(event) => setEditingStudent({ ...editingStudent, displayName: event.target.value })}
-              autoFocus
-            />
-          </label>
-          <label>
-            所在班级
-            <select
-              value={editingStudent.classId}
-              onChange={(event) => setEditingStudent({ ...editingStudent, classId: event.target.value })}
-            >
-              {classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </label>
-        </TeacherDialog>
-      ) : null}
-
-      {passwordReset ? (
-        <TeacherDialog
-          title={`重置密码 · ${passwordReset.name}`}
-          subtitle="临时密码仅本次显示，请立即复制并转告学生；学生登录后需自行修改"
-          onClose={() => setPasswordReset(null)}
-          footer={<button className="primary-button" onClick={() => setPasswordReset(null)}>我已保存</button>}
-        >
-          <div className="tt-pass-box">
-            <div>
-              <span>账号 {passwordReset.username}</span>
-              <strong>{passwordReset.password}</strong>
-            </div>
-            <button
-              className="secondary-button compact"
-              onClick={async () => {
-                if (await copyText(`${passwordReset.username} 临时密码：${passwordReset.password}`)) {
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 2000);
-                }
-              }}
-            >
-              <Copy size={13} /> {copied ? "已复制" : "复制"}
-            </button>
-          </div>
-        </TeacherDialog>
-      ) : null}
-    </div>
+    </Dialog>
   );
 }

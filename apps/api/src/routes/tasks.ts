@@ -396,7 +396,8 @@ export function registerTaskRoutes(
              from task_classes tc join classes c on c.id = tc.class_id
              where tc.task_id = t.id), '[]'::json) as classes,
            (select count(*) from task_progress tp where tp.task_id = t.id) as student_total,
-           (select count(*) from task_progress tp where tp.task_id = t.id and tp.status = 'done') as student_done
+           (select count(*) from task_progress tp where tp.task_id = t.id and tp.status = 'done') as student_done,
+           (select round(avg(tp.score)) from task_progress tp where tp.task_id = t.id and tp.score is not null) as average_score
          from tasks t ${scopeFilter}
          order by t.created_at desc`,
         params,
@@ -421,6 +422,7 @@ export function registerTaskRoutes(
         classes: row.classes,
         studentTotal: Number(row.student_total),
         studentDone: Number(row.student_done),
+        averageScore: row.average_score == null ? null : Number(row.average_score),
         createdAt: row.created_at,
       }));
     },

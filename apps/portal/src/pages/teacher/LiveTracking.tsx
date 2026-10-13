@@ -1,19 +1,15 @@
-import { AlertTriangle, Clock, MessageCircleMore, MonitorPlay, Search, Send, UsersRound } from "lucide-react";
+import { Archive, Clock, Download, Lightbulb, List, Lock, MonitorPlay, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ASSESSMENT_DIMENSIONS } from "@cecs/contracts";
-import { PageHeader } from "../../components/AppShell";
 import {
-  ApiError,
-  apiGet,
-  apiPost,
-  apiRequestPatch,
-  assetUrl,
-  type BuyerPublicView,
-  type ConversationMessage,
-  type Session,
+  ApiError, apiGet, apiPost, apiRequestPatch, assetUrl,
+  type BuyerPublicView, type ConversationMessage, type Session,
 } from "../../api/client";
 import { BuyerAvatar } from "../../components/BuyerAvatar";
-import { formatIdle, scoreBand } from "./widgets";
+import {
+  Bench, Board, Button, Drawer, Empty, Field, FilterChips, HeaderTabs, Input, MoreMenu, SearchBox, Tag, Textarea, Toolbar, toast,
+} from "../../ui";
+import { formatIdle, takeReplaySearch, takeTrackingTab } from "./widgets";
 
 interface TrackingItem {
   conversationId: string;
@@ -32,625 +28,622 @@ interface TrackingItem {
   startedAt: string;
   /** 自由练习（无任务）会话：可监控可介入，但不计入考核统计 */
   practice: boolean;
-  /** 挂起：学生已暂离（近 10 分钟无消息且超出买家等待 30 分钟介入窗口），不触发预警 */
+  /** 暂离：近 10 分钟无消息，且不在买家等待 30 分钟内的介入窗口 */
   suspended: boolean;
-  /** 预警：买家等待 3-30 分钟（学生大概率在线，介入有意义） */
+  /** 需介入：买家等待 3–30 分钟 */
   alert: boolean;
+  /** 超过 1 天没有任何消息：收进“已中断”一行，不再提醒 */
+  stale?: boolean;
+  /* “现场”面板：只给老师看的买家性格、当前情绪、走势和场景剧本 */
+  personality?: string | null;
+  emotion?: string | null;
+  satisfactionTrend?: number[];
+  scoreTrend?: number[];
+  objective?: string | null;
+  buyerGoal?: string | null;
+  bottomLine?: string | null;
 }
+
+const LANGUAGE_NAMES: Record<string, string> = { "en-US": "英语", "es-ES": "西班牙语", "fr-FR": "法语" };
 
 interface TeacherAssessment {
   id: string;
   conversationId: string;
   studentName: string;
+  username: string;
   buyerName: string;
   scenarioName: string;
+  taskName: string | null;
   scores: Record<string, number>;
   total: number;
   comment: string;
   suggestions: string[] | null;
+  aiScores: Record<string, number> | null;
+  aiTotal: number | null;
+  teacherComment: string | null;
+  reviewedAt: string | null;
+  practice: boolean;
+  weights: Record<string, number>;
   createdAt: string;
 }
 
-function errorText(cause: unknown): string {
-  return cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。";
-}
+const errorText = (cause: unknown) => (cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
+const SENDER_LABELS: Record<string, string> = { buyer: "买家", student: "学生", teacher: "老师" };
+const KIND_LABELS: Record<string, string> = { product: "[商品卡片]", coupon: "[优惠券]", order: "[订单]", invite: "[邀评]", image: "[图片]", video: "[视频]", file: "[文件]", voice: "[语音]" };
+const time = (iso: string) => new Date(iso).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 
-const SENDER_LABELS: Record<string, string> = { buyer: "买家", student: "学生", teacher: "教师" };
-
-const KIND_MARKS: Record<string, string> = {
-  product: "🛍 ",
-  coupon: "🎟 ",
-  order: "📦 ",
-  invite: "🧾 ",
-  image: "🖼 ",
-  video: "🎬 ",
-  file: "📎 ",
-};
-
-/* 常用指导语：教师自主介入的快捷入口 */
+/* 常用指导语：一键填入，老师可以再改 */
 const GUIDANCE_PRESETS = [
-  "先安抚客户情绪，再给出解决方案",
-  "注意平台合规用语，避免绝对化承诺",
-  "给出明确的物流 / 售后时间节点",
-  "关注买家真实诉求，避免机械推销",
+  "先安抚买家情绪，再给解决方案",
+  "注意合规用语，不要做绝对化承诺",
+  "给出明确的物流 / 售后时间",
+  "先弄清买家真正想要什么",
 ];
 
-function MessageBubble({ message }: { message: ConversationMessage }) {
+/** 与服务端 weightedTotal 一致：有任务权重按权重，否则六项等权 */
+function previewTotal(scores: Record<string, number>, weights: Record<string, number>): number {
+  const ids = ASSESSMENT_DIMENSIONS.map((dim) => dim.id);
+  const weightOf = (id: string) => (Number(weights[id]) > 0 ? Number(weights[id]) : 0);
+  const sum = ids.reduce((acc, id) => acc + weightOf(id), 0);
+  return sum > 0
+    ? Math.round(ids.reduce((acc, id) => acc + (scores[id] ?? 0) * weightOf(id), 0) / sum)
+    : Math.round(ids.reduce((acc, id) => acc + (scores[id] ?? 0), 0) / ids.length);
+}
+
+function StudentMark({ name }: { name: string }) {
+  return <span className="mon-stu" aria-hidden="true">{name.slice(0, 1)}</span>;
+}
+
+/** 消息气泡：买家在左（带头像），学生在右（品牌色），老师指导是插在时间线里的橙色提示条 */
+function MessageBubble({ message, buyer, studentName }: { message: ConversationMessage; buyer?: BuyerPublicView | null; studentName?: string }) {
   if (message.sender === "teacher") {
-    return <div className="rec-note">教师指导 · {message.content}</div>;
+    return <div className="mon-guide"><Lightbulb size={14} />老师指导：{message.content} · {time(message.createdAt)}</div>;
   }
+  const audioUrl = message.kind === "voice" ? (message.payload as { audioUrl?: string } | null)?.audioUrl : undefined;
+  const mark = KIND_LABELS[message.kind ?? ""];
   const mine = message.sender === "student";
-  const audioUrl =
-    message.kind === "voice" ? (message.payload as { audioUrl?: string } | null)?.audioUrl : undefined;
-  const mark = message.kind === "voice" ? "🎤 " : KIND_MARKS[message.kind ?? "text"] ?? "";
   return (
-    <div className={mine ? "rec-msg me" : "rec-msg"}>
+    <div className={mine ? "mon-msg is-me" : "mon-msg"}>
+      {mine ? <StudentMark name={studentName ?? "学"} /> : <BuyerAvatar buyer={buyer ?? null} size="tiny" />}
       <div>
-        <p className="rec-bubble">
-          {mark}
+        <p>
+          {mark ? <span className="chat-kind">{mark}</span> : null}
           {message.content}
-          {audioUrl ? (
-            <button
-              className="text-button"
-              onClick={() => {
-                const url = assetUrl(audioUrl);
-                if (url) void new Audio(url).play();
-              }}
-            >
-              播放
-            </button>
-          ) : null}
+          {audioUrl ? <button type="button" className="chat-play" onClick={() => { const url = assetUrl(audioUrl); if (url) void new Audio(url).play(); }}>播放</button> : null}
         </p>
-        <small>
-          {SENDER_LABELS[message.sender] ?? message.sender} · {new Date(message.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
-        </small>
+        <small>{mine ? studentName ?? "学生" : SENDER_LABELS[message.sender] ?? message.sender} · {time(message.createdAt)}</small>
       </div>
     </div>
   );
 }
 
-export function LiveTracking({ session }: { session: Session }) {
-  const [tab, setTab] = useState<"live" | "replay">("live");
+export function LiveTracking({ session, onNavigate }: { session: Session; onNavigate?: (page: string) => void }) {
+  const [tab, setTab] = useState<"live" | "replay">(takeTrackingTab);
   const [items, setItems] = useState<TrackingItem[]>([]);
-  const [railFilter, setRailFilter] = useState<"all" | "alert" | "suspended">("all");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ConversationMessage[] | null>(null);
-  const [intervention, setIntervention] = useState("");
-  const [sending, setSending] = useState(false);
-
   const [assessments, setAssessments] = useState<TeacherAssessment[]>([]);
-  const [replayQuery, setReplayQuery] = useState("");
-  const [reviewing, setReviewing] = useState<TeacherAssessment | null>(null);
-  const [reviewMessages, setReviewMessages] = useState<ConversationMessage[] | null>(null);
-  const [reviewTotal, setReviewTotal] = useState("");
-  const [reviewComment, setReviewComment] = useState("");
-  const [reviewBusy, setReviewBusy] = useState(false);
-  const [reviewError, setReviewError] = useState("");
 
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
-
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const pinnedRef = useRef(true);
-
-  /* 会话列表：8 秒轮询（满足 ≤10 秒刷新红线） */
+  /* 会话列表 8 秒轮询（参数要求 ≤10 秒刷新）；切到回放页也保持，页签上的数字才是准的 */
   useEffect(() => {
-    if (tab !== "live") return;
     let cancelled = false;
-    const tick = () => {
-      apiGet<TrackingItem[]>("/v1/teacher/tracking", session)
-        .then((rows) => {
-          if (!cancelled) setItems(rows);
-        })
-        .catch((cause) => {
-          if (!cancelled) setError(errorText(cause));
-        });
-    };
+    const tick = () => apiGet<TrackingItem[]>("/v1/teacher/tracking", session).then((rows) => { if (!cancelled) setItems(rows); }).catch(() => undefined);
     tick();
     const timer = window.setInterval(tick, 8000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [tab, session]);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [session]);
 
-  /* 选中会话的消息流：随选择加载 + 同频自动刷新 */
+  const loadAssessments = useCallback(
+    () => apiGet<TeacherAssessment[]>("/v1/teacher/assessments", session).then(setAssessments).catch((cause) => toast.error(errorText(cause))),
+    [session],
+  );
+  useEffect(() => { void loadAssessments(); }, [loadAssessments]);
+
+  const live = items.filter((item) => !item.suspended).length;
+  const pending = assessments.filter((item) => !item.reviewedAt).length;
+
+  return (
+    <>
+      <HeaderTabs
+        items={[
+          { id: "live", label: "实时监控", count: live },
+          { id: "replay", label: "回放与评分", count: pending || undefined },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+      {tab === "live"
+        ? <LiveConsole session={session} items={items} onReplay={() => setTab("replay")} onNavigate={onNavigate} />
+        : <Replay session={session} rows={assessments} reload={loadAssessments} />}
+    </>
+  );
+}
+
+// ---------- 实时监控 ----------
+
+/** 满意度走势：两轮以上才画 */
+function Sparkline({ values }: { values: number[] }) {
+  if (values.length < 2) return null;
+  const width = 240;
+  const height = 40;
+  const points = values.map((value, index) => `${(index / (values.length - 1)) * width},${height - 4 - (Math.max(0, Math.min(100, value)) / 100) * (height - 8)}`);
+  const down = values[values.length - 1]! < values[0]!;
+  const color = down ? "var(--c-danger)" : "var(--c-brand)";
+  return (
+    <svg className="mon-spark" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={`0,${height} ${points.join(" ")} ${width},${height}`} fill={down ? "var(--c-danger-wash)" : "var(--c-brand-soft)"} stroke="none" />
+      <polyline points={points.join(" ")} fill="none" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+const EMOTION_TONE: Record<string, "danger" | "warn" | "neutral"> = { 愤怒: "danger", 不满: "danger", 焦虑: "warn", 犹豫: "warn" };
+
+interface TrackingToday { activeToday: number; pendingReviews: number; notPracticedToday: number; studentTotal: number }
+
+function LiveConsole({ session, items, onReplay, onNavigate }: { session: Session; items: TrackingItem[]; onReplay: () => void; onNavigate?: (page: string) => void }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ConversationMessage[] | null>(null);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [snapshot, setSnapshot] = useState<TrackingItem | null>(null);
+  const [showStale, setShowStale] = useState(false);
+  const [today, setToday] = useState<TrackingToday | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const pinnedRef = useRef(true);
+
+  /* 按紧急程度分组：需介入（买家等 3–30 分钟）→ 进行中 → 暂离；超过 1 天没动的收进“已中断”一行 */
+  const byRecent = (a: TrackingItem, b: TrackingItem) => new Date(b.lastAt ?? b.startedAt).getTime() - new Date(a.lastAt ?? a.startedAt).getTime();
+  const groups = useMemo(() => {
+    const active = items.filter((item) => !item.suspended);
+    return {
+      alert: active.filter((item) => item.alert).sort((a, b) => b.idleSeconds - a.idleSeconds),
+      going: active.filter((item) => !item.alert).sort(byRecent),
+      away: items.filter((item) => item.suspended && !item.stale).sort(byRecent),
+      stale: items.filter((item) => item.suspended && item.stale).sort(byRecent),
+    };
+  }, [items]);
+  const students = new Set([...groups.alert, ...groups.going].map((item) => item.username)).size;
+  const hasCurrent = groups.alert.length + groups.going.length + groups.away.length > 0;
+
   useEffect(() => {
-    if (tab !== "live" || !selectedId) {
-      setMessages(null);
-      return;
-    }
-    let cancelled = false;
-    const load = () => {
-      apiGet<ConversationMessage[]>(`/v1/teacher/conversations/${selectedId}/messages`, session)
-        .then((rows) => {
-          if (!cancelled) setMessages(rows);
-        })
-        .catch((cause) => {
-          if (!cancelled) setError(errorText(cause));
-        });
-    };
-    pinnedRef.current = true;
-    load();
-    const timer = window.setInterval(load, 8000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [tab, selectedId, session]);
+    if (selectedId) return;
+    const first = groups.alert[0] ?? groups.going[0] ?? groups.away[0];
+    if (first) setSelectedId(first.conversationId);
+  }, [groups, selectedId]);
 
-  /* 新消息到达时，若视图停留在底部则自动跟随 */
+  useEffect(() => {
+    if (hasCurrent) return;
+    apiGet<TrackingToday>("/v1/teacher/tracking/today", session).then(setToday).catch(() => undefined);
+  }, [hasCurrent, session]);
+
+  const selected = items.find((item) => item.conversationId === selectedId) ?? null;
+  useEffect(() => { if (selected) setSnapshot(selected); }, [selected]);
+  const closed = selectedId != null && !selected;
+  const view = selected ?? (closed && snapshot?.conversationId === selectedId ? snapshot : null);
+
+  const loadMessages = useCallback(async () => {
+    if (!selectedId) return;
+    try {
+      setMessages(await apiGet<ConversationMessage[]>(`/v1/teacher/conversations/${selectedId}/messages`, session));
+    } catch {
+      /* 轮询失败下次再试 */
+    }
+  }, [selectedId, session]);
+  useEffect(() => {
+    setMessages(null);
+    if (!selectedId) return;
+    pinnedRef.current = true;
+    void loadMessages();
+    const timer = window.setInterval(() => void loadMessages(), 8000);
+    return () => window.clearInterval(timer);
+  }, [selectedId, loadMessages]);
   useEffect(() => {
     const el = bodyRef.current;
     if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  /* 进行中 / 挂起分组：预警优先，其余按最后活动倒序 */
-  const liveItems = useMemo(
-    () =>
-      items
-        .filter((item) => !item.suspended)
-        .sort(
-          (a, b) =>
-            Number(b.alert) - Number(a.alert) ||
-            new Date(b.lastAt ?? b.startedAt).getTime() - new Date(a.lastAt ?? a.startedAt).getTime(),
-        ),
-    [items],
-  );
-  const suspendedItems = useMemo(
-    () =>
-      items
-        .filter((item) => item.suspended)
-        .sort((a, b) => new Date(b.lastAt ?? b.startedAt).getTime() - new Date(a.lastAt ?? a.startedAt).getTime()),
-    [items],
-  );
-  const railItems =
-    railFilter === "suspended"
-      ? suspendedItems
-      : railFilter === "alert"
-        ? liveItems.filter((item) => item.alert)
-        : liveItems;
-  const alerts = liveItems.filter((item) => item.alert).length;
-  const onlineStudents = new Set(liveItems.map((item) => item.username)).size;
-
-  /* 首次载入自动选中第一个进行中会话（预警优先排序）；只有挂起会话时不自动选中 */
-  useEffect(() => {
-    if (tab !== "live") return;
-    if (!selectedId && liveItems.length > 0) setSelectedId(liveItems[0]!.conversationId);
-  }, [tab, liveItems, selectedId]);
-
-  const selected = items.find((item) => item.conversationId === selectedId) ?? null;
-  /* 会话结束后保留快照，头部信息与回放不消失 */
-  const [snapshot, setSnapshot] = useState<TrackingItem | null>(null);
-  useEffect(() => {
-    if (selected) setSnapshot(selected);
-  }, [selected]);
-  const selectedClosed = selectedId != null && !selected;
-  const view = selected ?? (selectedClosed && snapshot?.conversationId === selectedId ? snapshot : null);
-
-  async function intervene() {
-    if (!selectedId || !intervention.trim() || sending) return;
+  async function send() {
+    if (!selectedId || !draft.trim() || sending) return;
     setSending(true);
-    setError("");
     try {
-      await apiPost(`/v1/teacher/conversations/${selectedId}/intervene`, session, {
-        content: intervention.trim(),
-      });
-      setIntervention("");
-      setNotice("指导已发送，学生会话中即时可见。");
+      await apiPost(`/v1/teacher/conversations/${selectedId}/intervene`, session, { content: draft.trim() });
+      setDraft("");
       pinnedRef.current = true;
-      const rows = await apiGet<ConversationMessage[]>(`/v1/teacher/conversations/${selectedId}/messages`, session);
-      setMessages(rows);
+      await loadMessages();
+      toast.ok("已发给学生，买家看不到");
     } catch (cause) {
-      setError(errorText(cause));
+      toast.error(errorText(cause));
     } finally {
       setSending(false);
     }
   }
 
-  /* 回放与评分 */
-  const loadAssessments = useCallback(() => {
-    apiGet<TeacherAssessment[]>("/v1/teacher/assessments", session)
-      .then(setAssessments)
-      .catch((cause) => setError(errorText(cause)));
-  }, [session]);
-
-  useEffect(() => {
-    if (tab !== "replay") return;
-    loadAssessments();
-  }, [tab, loadAssessments]);
-
-  useEffect(() => {
-    if (!reviewing) {
-      setReviewMessages(null);
-      return;
-    }
-    let cancelled = false;
-    apiGet<ConversationMessage[]>(`/v1/teacher/conversations/${reviewing.conversationId}/messages`, session)
-      .then((rows) => {
-        if (!cancelled) setReviewMessages(rows);
-      })
-      .catch((cause) => {
-        if (!cancelled) setReviewError(errorText(cause));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [reviewing, session]);
-
-  function openReview(item: TeacherAssessment) {
-    setReviewing(item);
-    setReviewTotal(String(item.total));
-    setReviewComment(item.comment ?? "");
-    setReviewError("");
-  }
-
-  async function submitReview() {
-    if (!reviewing || reviewBusy) return;
-    const total = reviewTotal.trim() === "" ? undefined : Number(reviewTotal);
-    if (total !== undefined && (!Number.isFinite(total) || total < 0 || total > 100)) {
-      setReviewError("总分须在 0-100 之间。");
-      return;
-    }
-    setReviewBusy(true);
-    setReviewError("");
-    try {
-      await apiRequestPatch(`/v1/teacher/assessments/${reviewing.id}`, session, {
-        total,
-        comment: reviewComment.trim() || undefined,
-      });
-      setNotice(`已保存对 ${reviewing.studentName} 的复核，学生成绩同步更新。`);
-      setReviewing(null);
-      loadAssessments();
-    } catch (cause) {
-      setReviewError(errorText(cause));
-    } finally {
-      setReviewBusy(false);
-    }
-  }
-
-  /* 会话卡：进行中/挂起共用。红色只留给真预警（买家等待 3-30 分钟）；挂起卡整体降饱和 */
-  function renderSession(item: TrackingItem) {
-    const waiting = item.lastSender === "buyer" && !item.suspended;
-    const idleTone = item.alert ? "hot" : waiting && item.idleSeconds > 60 ? "warn" : "";
-    const className = [
-      "tt-session",
-      item.conversationId === selectedId ? "active" : "",
-      item.suspended ? "suspended" : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
+  const queueItem = (item: TrackingItem) => {
+    const waiting = item.lastSender === "buyer";
+    const wait = item.suspended ? formatIdle(item.idleSeconds)
+      : waiting && item.idleSeconds >= 60 ? `等 ${formatIdle(item.idleSeconds)}`
+        : item.idleSeconds < 60 ? "刚刚" : `${formatIdle(item.idleSeconds)}前`;
+    const waitCls = item.alert ? "is-bad" : waiting && item.idleSeconds >= 60 && !item.suspended ? "is-warn" : "";
     return (
-      <button key={item.conversationId} className={className} onClick={() => setSelectedId(item.conversationId)}>
-        <span className="tt-session-top">
-          <span className="avatar small">{item.studentName.slice(0, 1)}</span>
-          <span className="tt-session-name">
-            <strong>{item.studentName}</strong>
-            <small>{item.username}</small>
-          </span>
-          {item.practice ? <em className="tt-practice">练习</em> : null}
-          {item.alert ? <em className="tt-flag">需介入</em> : null}
-          <em className={idleTone ? `tt-idle ${idleTone}` : "tt-idle"}>
-            {item.suspended ? `暂离 ${formatIdle(item.idleSeconds)}` : waiting ? `等 ${formatIdle(item.idleSeconds)}` : formatIdle(item.idleSeconds)}
-          </em>
+      <button
+        key={item.conversationId}
+        type="button"
+        className={item.conversationId === selectedId ? "mon-qi is-on" : "mon-qi"}
+        onClick={() => setSelectedId(item.conversationId)}
+      >
+        <BuyerAvatar buyer={item.buyer} />
+        <span className="mon-qi-main">
+          <span className="mon-qi-name">{item.studentName}{item.practice ? <small>练习</small> : null}</span>
+          <span className="mon-qi-meta">{item.buyer.name} · {item.scenarioName}</span>
         </span>
-        <span className="tt-session-mid">
-          <span>{item.scenarioName} · {item.buyer.name}</span>
-          {item.studentTurns > 0 ? (
-            <>
-              <i aria-hidden="true" />
-              <em>第 {item.studentTurns} 轮</em>
-            </>
-          ) : null}
-          {item.liveScore != null ? (
-            <>
-              <i aria-hidden="true" />
-              <em className={item.liveScore < 60 ? "tt-score-chip low" : "tt-score-chip"}>{item.liveScore} 分</em>
-            </>
-          ) : null}
-        </span>
-        <span className={item.alert ? "tt-session-snippet waiting" : "tt-session-snippet"}>
-          {item.lastContent
-            ? `${SENDER_LABELS[item.lastSender ?? ""] ?? "系统"}：${item.lastContent}`
-            : "会话刚开始，暂无消息"}
+        <span className="mon-qi-side">
+          <span className={`mon-qi-wait ${waitCls}`}>{wait}</span>
+          <span className="mon-qi-score">得分 <b className={item.liveScore != null && item.liveScore < 60 ? "is-bad" : undefined}>{item.liveScore ?? "—"}</b></span>
         </span>
       </button>
     );
+  };
+
+  if (!hasCurrent && !view) {
+    return (
+      <div className="mon-empty">
+        <div className="mon-empty-box">
+          <div className="mon-empty-icon"><MonitorPlay size={28} /></div>
+          <h3>现在没有学生在接待</h3>
+          <p>学生打开客服工作台开始接待后，会话会出现在这里，你可以旁观并随时发指导。</p>
+          {today ? (
+            <div className="board mon-today">
+              <div><small>今天接待过</small><b>{today.activeToday}<span> 人</span></b><button type="button" className="board-link" onClick={() => onNavigate?.("classes")}>看名单 →</button></div>
+              <div><small>等你复核</small><b className={today.pendingReviews ? "is-bad" : undefined}>{today.pendingReviews}<span> 份</span></b><button type="button" className="board-link" onClick={onReplay}>去复核 →</button></div>
+              <div><small>今天还没练</small><b className={today.notPracticedToday ? "is-warn" : undefined}>{today.notPracticedToday}<span> 人</span></b><button type="button" className="board-link" onClick={() => onNavigate?.("classes")}>看是谁 →</button></div>
+            </div>
+          ) : null}
+          {groups.stale.length ? <p className="mon-empty-note">另有 {groups.stale.length} 个会话超过 1 天没动，已经不再提醒。</p> : null}
+        </div>
+      </div>
+    );
   }
 
-  const visibleAssessments = useMemo(() => {
-    const keyword = replayQuery.trim().toLowerCase();
-    if (!keyword) return assessments;
-    return assessments.filter((item) =>
-      `${item.studentName} ${item.scenarioName} ${item.buyerName}`.toLowerCase().includes(keyword),
-    );
-  }, [assessments, replayQuery]);
+  /* 已用时：开始到最后一条消息（暂离的会话不再累计） */
+  const elapsed = view ? Math.max(1, Math.round((new Date(view.lastAt ?? view.startedAt).getTime() - new Date(view.startedAt).getTime()) / 60000)) : 0;
+  const trend = view?.satisfactionTrend ?? [];
+  const emotionTone = view?.emotion ? EMOTION_TONE[view.emotion] ?? "neutral" : "neutral";
 
   return (
-    <div className="page tracking-page">
-      <PageHeader
-        title="实训跟踪"
-        description="左侧选择学生会话即可实时旁观对话；无论是否预警，都可以随时介入指导。"
-        actions={
-          tab === "live" ? (
-            <span className="tt-live-indicator"><i aria-hidden="true" /> 实时监控中 · 8 秒自动刷新</span>
-          ) : undefined
-        }
-      />
-      {notice ? <p className="form-notice" role="status">{notice}</p> : null}
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
-      <div className="segmented-tabs page-tabs">
-        <button className={tab === "live" ? "active" : ""} onClick={() => setTab("live")}>实时监控<span>{items.length}</span></button>
-        <button className={tab === "replay" ? "active" : ""} onClick={() => setTab("replay")}>回放与评分<span>{assessments.length}</span></button>
-      </div>
-
-      {tab === "live" ? (
-        <>
-          <section className="tt-stats">
-            <article>
-              <span className="tt-stat-icon"><UsersRound size={17} /></span>
-              <div><strong>{onlineStudents}</strong><span>正在接待的学生</span></div>
-            </article>
-            <article>
-              <span className="tt-stat-icon"><MessageCircleMore size={17} /></span>
-              <div><strong>{liveItems.length}</strong><span>进行中会话</span></div>
-            </article>
-            <article className={alerts > 0 ? "alert" : ""}>
-              <span className="tt-stat-icon"><AlertTriangle size={17} /></span>
-              <div><strong>{alerts}</strong><span>待介入（买家等待 3-30 分钟）</span></div>
-            </article>
-            <article>
-              <span className="tt-stat-icon"><Clock size={17} /></span>
-              <div><strong>{suspendedItems.length}</strong><span>挂起会话（学生暂离）</span></div>
-            </article>
-          </section>
-
-          <section className="panel tt-console">
-            <aside className="tt-sessions">
-              <div className="tt-sessions-head">
-                <div className="rec-seg" role="group" aria-label="会话筛选">
-                  <button className={railFilter === "all" ? "active" : ""} onClick={() => setRailFilter("all")}>进行中 {liveItems.length}</button>
-                  <button className={railFilter === "alert" ? "active" : ""} onClick={() => setRailFilter("alert")}>需介入 {alerts}</button>
-                  <button className={railFilter === "suspended" ? "active" : ""} onClick={() => setRailFilter("suspended")}>挂起 {suspendedItems.length}</button>
-                </div>
-              </div>
-              <div className="tt-session-list">
-                {railItems.map(renderSession)}
-                {railItems.length === 0 ? (
-                  <div className="tt-empty">
-                    <MonitorPlay size={24} aria-hidden="true" />
-                    <strong>
-                      {railFilter === "suspended"
-                        ? "暂无挂起会话"
-                        : railFilter === "alert"
-                          ? "没有待介入的会话"
-                          : "当前没有进行中的会话"}
-                    </strong>
-                    <p>
-                      {railFilter === "suspended"
-                        ? "学生超过 30 分钟无消息往来的会话会归入挂起，不计预警。"
-                        : railFilter === "alert"
-                          ? "买家等待 3-30 分钟的进行中会话会自动标记为需介入。"
-                          : "学生进入客服工作台开始接待后，会话会实时出现在这里。"}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            </aside>
-
-            <div className="tt-viewer">
-              {view ? (
-                <>
-                  <div className="tt-viewer-head">
-                    <div className="tt-viewer-who">
-                      <BuyerAvatar buyer={view.buyer} />
-                      <div>
-                        <div className="tt-viewer-title">
-                          <strong>{view.studentName} × {view.buyer.name}</strong>
-                          <span>{view.scenarioName}</span>
-                        </div>
-                        <div className="tt-viewer-meta">
-                          {view.practice ? <em className="tt-practice">自由练习 · 不计入考核</em> : null}
-                          {!selectedClosed && view.suspended ? <em className="tt-suspended-chip">挂起 · 学生暂离</em> : null}
-                          {view.stage ? <em>{view.stage}</em> : null}
-                          <em>{view.buyer.nationality}</em>
-                          <em>{view.buyer.customerType}</em>
-                          <span>开始于 {new Date(view.startedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="tt-viewer-stats">
-                      <div>
-                        <strong className={view.liveScore != null && view.liveScore < 60 ? "low" : undefined}>
-                          {view.liveScore ?? "—"}
-                        </strong>
-                        <span>实时得分</span>
-                      </div>
-                      {view.satisfaction != null ? (
-                        <div><strong>{view.satisfaction}</strong><span>买家满意度</span></div>
-                      ) : null}
-                      <div><strong>{view.studentTurns}</strong><span>学生轮次</span></div>
-                      <div>
-                        <strong className={!selectedClosed && view.alert ? "low" : undefined}>
-                          {selectedClosed ? "已结束" : formatIdle(view.idleSeconds)}
-                        </strong>
-                        <span>{selectedClosed ? "会话状态" : view.lastSender === "buyer" ? "买家等待" : "距上条消息"}</span>
-                      </div>
-                    </div>
-                  </div>
-                  {selectedClosed ? (
-                    <div className="tt-closed-banner">
-                      <AlertTriangle size={14} aria-hidden="true" />
-                      该会话已结束。评分生成后可在「回放与评分」页签中查看完整回放并复核成绩。
-                    </div>
-                  ) : null}
-                  <div
-                    ref={bodyRef}
-                    className="tt-viewer-body"
-                    onScroll={(event) => {
-                      const el = event.currentTarget;
-                      pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-                    }}
-                  >
-                    {(messages ?? []).map((message) => <MessageBubble key={message.id} message={message} />)}
-                    {messages === null ? <p className="muted" style={{ textAlign: "center" }}>加载对话…</p> : null}
-                    {messages && messages.length === 0 ? <p className="muted" style={{ textAlign: "center" }}>会话刚开始，暂无消息。</p> : null}
-                  </div>
-                  {!selectedClosed ? (
-                    <div className="tt-intervene">
-                      <div className="tt-intervene-hints">
-                        {GUIDANCE_PRESETS.map((preset) => (
-                          <button key={preset} type="button" onClick={() => setIntervention(preset)}>{preset}</button>
-                        ))}
-                      </div>
-                      <div className="tt-intervene-row">
-                        <input
-                          value={intervention}
-                          onChange={(event) => setIntervention(event.target.value)}
-                          placeholder="输入指导内容，回车发送，学生会话中即时可见（买家不受影响）"
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") void intervene();
-                          }}
-                        />
-                        <button className="primary-button compact" onClick={() => void intervene()} disabled={sending || !intervention.trim()}>
-                          <Send size={14} /> {sending ? "发送中…" : "介入指导"}
-                        </button>
-                      </div>
-                      <small>介入不打断买家对话；无论是否触发预警，都可以随时发送指导。</small>
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <div className="tt-viewer-empty">
-                  <MonitorPlay size={28} aria-hidden="true" />
-                  <strong>选择左侧会话开始监控</strong>
-                  <p>点击左侧任一学生会话即可实时旁观对话内容，并随时发送介入指导。</p>
-                </div>
-              )}
-            </div>
-          </section>
-        </>
-      ) : (
-        <section className="panel data-panel">
-          <div className="tch-toolbar">
-            <div className="tch-search">
-              <Search size={14} aria-hidden="true" />
-              <input
-                value={replayQuery}
-                placeholder="搜索学生、场景或买家"
-                onChange={(event) => setReplayQuery(event.target.value)}
-              />
-            </div>
-            <span className="tch-count">共 {visibleAssessments.length} 条评分记录</span>
-          </div>
-          <table>
-            <thead><tr><th>学生</th><th>场景 / 买家</th><th>总分</th><th>AI 评语</th><th>时间</th><th>操作</th></tr></thead>
-            <tbody>
-              {visibleAssessments.map((item) => {
-                const band = scoreBand(item.total);
-                return (
-                  <tr key={item.id}>
-                    <td><strong>{item.studentName}</strong></td>
-                    <td>{item.scenarioName}<small>{item.buyerName}</small></td>
-                    <td>
-                      <span className="tt-total-cell">
-                        <strong>{item.total}</strong>
-                        <em className={`rec-band ${band.cls}`}>{band.label}</em>
-                      </span>
-                    </td>
-                    <td className="comment-cell">{item.comment || "—"}</td>
-                    <td>{new Date(item.createdAt).toLocaleString("zh-CN")}</td>
-                    <td className="tch-actions">
-                      <button className="text-button" onClick={() => openReview(item)}>回放与复核</button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {visibleAssessments.length === 0 ? (
-                <tr>
-                  <td colSpan={6}>
-                    <span className="muted">
-                      {assessments.length === 0 ? "暂无评分记录：学生完成实训、会话结束后自动生成。" : "没有匹配的评分记录。"}
-                    </span>
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      {reviewing ? (
-        <div className="rec-modal-overlay" onClick={() => setReviewing(null)}>
-          <div className="rec-modal" role="dialog" aria-modal="true" aria-label="回放与复核" onClick={(event) => event.stopPropagation()}>
-            <div className="rec-modal-head">
-              <div className="rec-modal-title">
-                <strong>回放与复核 · {reviewing.studentName}</strong>
-                <p>{reviewing.scenarioName} · 买家 {reviewing.buyerName} · {new Date(reviewing.createdAt).toLocaleString("zh-CN")}</p>
-              </div>
-              <em className={`rec-band big ${scoreBand(reviewing.total).cls}`}>AI 评分 {reviewing.total}</em>
-              <button className="secondary-button compact" onClick={() => setReviewing(null)}>关闭</button>
-            </div>
-            <div className="rec-modal-body tt-review-body">
-              <div className="rec-chat">
-                {(reviewMessages ?? []).map((message) => <MessageBubble key={message.id} message={message} />)}
-                {reviewMessages === null ? <p className="muted rec-chat-hint">加载完整对话…</p> : null}
-                {reviewMessages && reviewMessages.length === 0 ? <p className="muted rec-chat-hint">该会话没有消息记录。</p> : null}
-              </div>
-              <div className="rec-analysis">
-                {reviewError ? <p className="form-error" role="alert">{reviewError}</p> : null}
-                <div className="rec-side-title">六维评分</div>
-                <div className="tt-dim-lines">
-                  {ASSESSMENT_DIMENSIONS.map((dim) => {
-                    const value = reviewing.scores?.[dim.id];
-                    return (
-                      <div key={dim.id} className="tt-dim-line">
-                        <span>{dim.label}</span>
-                        <span className="rec-bar"><b style={{ width: `${value ?? 0}%` }} /></span>
-                        <strong>{value ?? "—"}</strong>
-                      </div>
-                    );
-                  })}
-                </div>
-                {reviewing.comment ? (
-                  <>
-                    <div className="rec-side-title">AI 评语</div>
-                    <div className="rec-quote">{reviewing.comment}</div>
-                  </>
-                ) : null}
-                {reviewing.suggestions?.length ? (
-                  <>
-                    <div className="rec-side-title">AI 改进建议（学生端可见）</div>
-                    <ol className="rec-tips">
-                      {reviewing.suggestions.map((tip, index) => <li key={index}>{tip}</li>)}
-                    </ol>
-                  </>
-                ) : null}
-                <div className="rec-side-title">人工复核</div>
-                <div className="tt-review-form">
-                  <label>
-                    总分（0-100，可依据回放自主调整）
-                    <div className="tt-review-total">
-                      <input type="number" min={0} max={100} value={reviewTotal} onChange={(event) => setReviewTotal(event.target.value)} />
-                      <span className="muted" style={{ fontSize: 12 }}>AI 原始评分 {reviewing.total} 分</span>
-                    </div>
-                  </label>
-                  <label>
-                    复核评语（学生端可见）
-                    <textarea rows={4} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} />
-                  </label>
-                  <div className="tt-review-actions">
-                    <button className="primary-button" onClick={() => void submitReview()} disabled={reviewBusy}>
-                      {reviewBusy ? "保存中…" : "保存复核"}
-                    </button>
-                    <span className="muted">保存后学生端成绩同步更新，操作留存审计记录。</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+    <div className="mon">
+      <aside className="mon-queue">
+        <div className="mon-queue-head"><span className="mon-dot" />{students} 人在接待<span>每 8 秒刷新</span></div>
+        <div className="mon-queue-list">
+          {groups.alert.length ? <div className="mon-grp is-bad">需介入<span>{groups.alert.length} · 买家在等回复</span></div> : null}
+          {groups.alert.map(queueItem)}
+          {groups.going.length ? <div className="mon-grp">进行中<span>{groups.going.length}</span></div> : null}
+          {groups.going.map(queueItem)}
+          {groups.away.length ? <div className="mon-grp">暂离<span>{groups.away.length} · 10 分钟以上没动</span></div> : null}
+          {groups.away.map(queueItem)}
+          {groups.stale.length ? (
+            <>
+              <button type="button" className="mon-fold" onClick={() => setShowStale((value) => !value)}>
+                <Archive size={14} />已中断 {groups.stale.length} 个 · 超过 1 天没动<span>{showStale ? "收起" : "展开"}</span>
+              </button>
+              {showStale ? groups.stale.map(queueItem) : null}
+            </>
+          ) : null}
         </div>
-      ) : null}
+      </aside>
+
+      <section className="mon-conv">
+        {view ? (
+          <>
+            <header className="mon-conv-head">
+              <b>{view.studentName}</b>
+              <span>正在接待 {view.buyer.name} · {view.scenarioName} · {new Date(view.startedAt).toDateString() === new Date().toDateString() ? time(view.startedAt) : new Date(view.startedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 开始</span>
+              <span className="mon-conv-state">
+                {view.practice ? <Tag>自由练习，不计成绩</Tag> : null}
+                {closed ? <Tag>已结束</Tag>
+                  : view.alert ? <Tag tone="danger">买家等了 {formatIdle(view.idleSeconds)}</Tag>
+                    : view.suspended ? <Tag>暂离 {formatIdle(view.idleSeconds)}</Tag>
+                      : view.lastSender === "buyer" && view.idleSeconds >= 60 ? <Tag tone="warn">买家等了 {formatIdle(view.idleSeconds)}</Tag> : null}
+              </span>
+            </header>
+            {closed ? <div className="console-closed">这个会话已经结束。评分出来后，可以在「回放与评分」里看完整对话并复核。</div> : null}
+            <div
+              ref={bodyRef}
+              className="mon-msgs"
+              onScroll={(event) => {
+                const el = event.currentTarget;
+                pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+              }}
+            >
+              {messages === null ? <p className="console-hint">正在读取对话…</p> : messages.length === 0 ? <p className="console-hint">刚开始，还没有消息</p>
+                : messages.map((message) => <MessageBubble key={message.id} message={message} buyer={view.buyer} studentName={view.studentName} />)}
+              {!closed && !view.suspended && view.lastSender === "buyer" && view.idleSeconds >= 60 ? (
+                <div className="mon-typing">学生还没有回复 · {formatIdle(view.idleSeconds)}</div>
+              ) : null}
+            </div>
+            {closed ? (
+              <footer className="mon-ended"><span>这次接待已经结束</span><button type="button" className="board-link" onClick={onReplay}>去回放与评分复核 →</button></footer>
+            ) : (
+              /* 指导输入（D-30）：一个整体的输入框——发给谁 / 写什么 / 常用指导 + 发送；学生暂离时上方提示 */
+              <footer className="mon-compose">
+                {view.suspended ? (
+                  <div className="mon-away"><Clock size={14} />{view.studentName}已暂离 {formatIdle(view.idleSeconds)}，指导会在他回到工作台后看到</div>
+                ) : null}
+                <div className="mon-box">
+                  <div className="mon-box-who"><Lightbulb size={14} />发给 <b>{view.studentName}</b> · 只有学生能看到，买家看不到</div>
+                  <textarea
+                    ref={inputRef}
+                    rows={2}
+                    maxLength={300}
+                    value={draft}
+                    placeholder="写一条指导，比如：先安抚买家，再问清少了哪一件"
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        void send();
+                      }
+                    }}
+                  />
+                  <div className="mon-box-bar">
+                    <MoreMenu
+                      trigger={<><List size={14} />常用指导</>}
+                      triggerClassName="mon-quick"
+                      items={GUIDANCE_PRESETS.map((preset) => ({ label: preset, onClick: () => { setDraft(preset); inputRef.current?.focus(); } }))}
+                    />
+                    <span className="mon-keys">Enter 发送 · Shift + Enter 换行</span>
+                    <Button variant="primary" size="sm" icon={Send} loading={sending} disabled={!draft.trim()} onClick={() => void send()}>发送指导</Button>
+                  </div>
+                </div>
+              </footer>
+            )}
+          </>
+        ) : (
+          <div className="console-blank"><MonitorPlay size={28} /><p>从左边选一个会话旁观</p></div>
+        )}
+      </section>
+
+      <aside className="mon-panel">
+        {view ? (
+          <>
+            <div className="mon-pb">
+              <h5>现场</h5>
+              <div className="mon-figs">
+                <div><small>实时得分</small><b className={view.liveScore != null && view.liveScore < 60 ? "is-bad" : undefined}>{view.liveScore ?? "—"}</b></div>
+                <div><small>买家满意度</small><b className={view.satisfaction != null && view.satisfaction < 40 ? "is-bad" : view.satisfaction != null && view.satisfaction < 60 ? "is-warn" : undefined}>{view.satisfaction ?? "—"}{view.satisfaction != null ? <span>/ 100</span> : null}</b></div>
+                <div><small>轮次</small><b>{view.studentTurns}</b></div>
+                <div><small>已用时</small><b>{elapsed < 60 ? elapsed : elapsed < 1440 ? Math.floor(elapsed / 60) : Math.floor(elapsed / 1440)}<span>{elapsed < 60 ? "分钟" : elapsed < 1440 ? "小时" : "天"}</span></b></div>
+              </div>
+              {trend.length >= 2 ? (
+                <>
+                  <span className="mon-cap">满意度走势 · 从 {trend[0]} {trend[trend.length - 1]! < trend[0]! ? "降到" : "升到"} {trend[trend.length - 1]}</span>
+                  <Sparkline values={trend} />
+                </>
+              ) : <span className="mon-cap">满意度走势在第 2 轮之后出现</span>}
+            </div>
+            <div className="mon-pb">
+              <h5>买家</h5>
+              <div className="mon-buyer">
+                <BuyerAvatar buyer={view.buyer} />
+                <div><b>{view.buyer.name}</b><span>{view.buyer.nationality} · {LANGUAGE_NAMES[view.buyer.language] ?? view.buyer.language} · {view.buyer.customerType}</span></div>
+              </div>
+              <dl className="mon-kv">
+                {view.personality ? <><dt>性格</dt><dd>{view.personality}</dd></> : null}
+                {view.emotion ? <><dt>当前情绪</dt><dd><Tag tone={emotionTone}>{view.emotion}</Tag></dd></> : null}
+                {view.stage ? <><dt>对话阶段</dt><dd>{view.stage}</dd></> : null}
+                <dt>身份</dt><dd>{view.buyer.identity}</dd>
+              </dl>
+            </div>
+            {view.objective || view.buyerGoal || view.bottomLine ? (
+              <div className="mon-pb">
+                <h5>场景目标<span className="mon-lock"><Lock size={12} />只有老师能看到</span></h5>
+                <div className="mon-goal">
+                  {view.objective ? <p><b>学生要做到：</b>{view.objective}</p> : null}
+                  {view.buyerGoal ? <p><b>买家想要：</b>{view.buyerGoal}</p> : null}
+                  {view.bottomLine ? <p><b>买家底线：</b>{view.bottomLine}</p> : null}
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </aside>
     </div>
+  );
+}
+
+// ---------- 回放与评分 ----------
+
+function Replay({ session, rows, reload }: { session: Session; rows: TeacherAssessment[]; reload: () => Promise<unknown> }) {
+  const [keyword, setKeyword] = useState(takeReplaySearch);
+  const [filter, setFilter] = useState<"pending" | "low" | "reviewed" | "all">(() => (keyword ? "all" : "pending"));
+  const [reviewing, setReviewing] = useState<TeacherAssessment | null>(null);
+
+  const visible = useMemo(() => {
+    const word = keyword.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (filter === "pending" && row.reviewedAt) return false;
+      if (filter === "reviewed" && !row.reviewedAt) return false;
+      if (filter === "low" && row.total >= 60) return false;
+      return !word || `${row.studentName} ${row.username} ${row.scenarioName} ${row.buyerName} ${row.taskName ?? ""}`.toLowerCase().includes(word);
+    });
+  }, [rows, keyword, filter]);
+  const reviewedCount = rows.filter((row) => row.reviewedAt).length;
+  const when = (iso: string) => {
+    const date = new Date(iso);
+    const days = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 86400000);
+    const clock = date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+    return days === 0 ? `今天 ${clock}` : days === 1 ? `昨天 ${clock}` : date.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  };
+
+  return (
+    <Bench>
+      <Toolbar>
+        <FilterChips
+          items={[
+            { id: "pending", label: "待复核", count: rows.length - reviewedCount },
+            { id: "low", label: "低于 60 分", count: rows.filter((row) => row.total < 60).length },
+            { id: "reviewed", label: "已复核", count: reviewedCount },
+            { id: "all", label: "全部", count: rows.length },
+          ]}
+          value={filter}
+          onChange={setFilter}
+        />
+        <SearchBox value={keyword} onChange={setKeyword} placeholder="搜索学生、任务或场景" />
+      </Toolbar>
+      <Board>
+        {visible.length === 0 ? (
+          <p className="board-quiet">{rows.length === 0 ? "还没有评分。学生结束一次接待后，AI 会自动评分并出现在这里。" : filter === "pending" ? "都复核过了" : "没有符合条件的记录"}</p>
+        ) : (
+          <>
+            <div className="rv-row is-head"><span>总分</span><span>学生 · 评语</span><span>六项能力</span><span>时间</span><span /></div>
+            {visible.map((row) => {
+              const band = row.total < 60 ? "is-bad" : row.total >= 80 ? "is-good" : "";
+              return (
+                <div key={row.id} className="rv-row" role="button" tabIndex={0} onClick={() => setReviewing(row)} onKeyDown={(event) => { if (event.key === "Enter") setReviewing(row); }}>
+                  <span className={`rv-score ${band}`}><b>{row.total}</b><small>{row.reviewedAt ? "已复核" : "AI 评分"}</small></span>
+                  <span className="rv-main">
+                    <span className="rv-who"><b>{row.studentName}</b>{row.practice ? <Tag>练习</Tag> : null}<span>{row.taskName ? `${row.taskName} · ` : ""}{row.scenarioName} · 买家 {row.buyerName}</span></span>
+                    <span className="rv-comment">{row.teacherComment || row.comment || "—"}</span>
+                  </span>
+                  <span className="rv-dims" title={ASSESSMENT_DIMENSIONS.map((dim) => `${dim.label} ${row.scores?.[dim.id] ?? "—"}`).join("　")}>
+                    {ASSESSMENT_DIMENSIONS.map((dim) => {
+                      const value = Number(row.scores?.[dim.id] ?? 0);
+                      return <i key={dim.id} className={value < 60 ? "is-low" : undefined} style={{ height: `${Math.max(12, ((value - 30) / 70) * 100)}%` }} />;
+                    })}
+                  </span>
+                  <span className="rv-time">{when(row.createdAt)}</span>
+                  <span className="rv-op">
+                    <Button size="sm" variant={row.reviewedAt ? "ghost" : undefined} onClick={(event) => { event.stopPropagation(); setReviewing(row); }}>{row.reviewedAt ? "查看" : "复核"}</Button>
+                  </span>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </Board>
+      {reviewing ? (
+        <ReviewDrawer
+          session={session}
+          item={reviewing}
+          onClose={() => setReviewing(null)}
+          onSaved={() => { setReviewing(null); void reload(); }}
+        />
+      ) : null}
+    </Bench>
+  );
+}
+
+function ReviewDrawer({ session, item, onClose, onSaved }: { session: Session; item: TeacherAssessment; onClose: () => void; onSaved: () => void }) {
+  const [messages, setMessages] = useState<ConversationMessage[] | null>(null);
+  const [scores, setScores] = useState<Record<string, string>>(() => Object.fromEntries(ASSESSMENT_DIMENSIONS.map((dim) => [dim.id, String(item.scores?.[dim.id] ?? "")])));
+  const [comment, setComment] = useState(item.teacherComment ?? "");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    apiGet<ConversationMessage[]>(`/v1/teacher/conversations/${item.conversationId}/messages`, session).then(setMessages).catch((cause) => toast.error(errorText(cause)));
+  }, [item.conversationId, session]);
+
+  const numeric = Object.fromEntries(Object.entries(scores).map(([id, value]) => [id, Number(value)]));
+  const invalid = ASSESSMENT_DIMENSIONS.find((dim) => scores[dim.id] === "" || !Number.isFinite(numeric[dim.id]) || numeric[dim.id]! < 0 || numeric[dim.id]! > 100);
+  const total = invalid ? null : previewTotal(numeric, item.weights);
+  const aiScores = item.aiScores ?? item.scores;
+  const aiTotal = item.aiTotal ?? item.total;
+
+  async function save() {
+    if (invalid) return toast.error(`「${invalid.label}」要填 0–100`);
+    setBusy(true);
+    try {
+      await apiRequestPatch(`/v1/teacher/assessments/${item.id}`, session, { scores: numeric, teacherComment: comment.trim() });
+      toast.ok("已保存，学生那边的成绩同步更新");
+      onSaved();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function exportReplay() {
+    const lines = [
+      `${item.studentName}（${item.username}）· ${item.taskName ?? "自由练习"} · ${item.scenarioName}`,
+      `买家：${item.buyerName}　时间：${new Date(item.createdAt).toLocaleString("zh-CN")}`,
+      "",
+      "【对话】",
+      ...(messages ?? []).map((message) => `${time(message.createdAt)} ${SENDER_LABELS[message.sender] ?? message.sender}：${KIND_LABELS[message.kind ?? ""] ?? ""}${message.content}`),
+      "",
+      `【评分】总分 ${item.total}${item.reviewedAt ? `（AI 原始 ${aiTotal}）` : ""}`,
+      ...ASSESSMENT_DIMENSIONS.map((dim) => `${dim.label}：${item.scores?.[dim.id] ?? "—"}`),
+      "",
+      `【AI 评语】${item.comment || "—"}`,
+      ...(item.teacherComment ? [`【老师评语】${item.teacherComment}`] : []),
+    ];
+    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/plain;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `回放-${item.studentName}-${item.scenarioName}.txt`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  return (
+    <Drawer
+      title={`${item.studentName} · ${item.scenarioName}`}
+      width={1040}
+      flush
+      onClose={onClose}
+      footer={
+        <>
+          <Button icon={Download} variant="ghost" disabled={!messages} onClick={exportReplay}>导出回放</Button>
+          <span className="drawer-spacer" />
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" loading={busy} onClick={() => void save()}>保存复核</Button>
+        </>
+      }
+    >
+      <div className="review">
+        <div className="review-chat">
+          <p className="review-chat-meta">{item.taskName ?? "自由练习"} · 买家 {item.buyerName} · {new Date(item.createdAt).toLocaleString("zh-CN")}</p>
+          {messages === null ? <p className="console-hint">正在读取对话…</p> : messages.length === 0 ? <Empty>这次接待没有消息</Empty> : messages.map((message) => <MessageBubble key={message.id} message={message} studentName={item.studentName} />)}
+        </div>
+        <div className="review-side">
+          <div className="review-total">
+            <span>总分</span>
+            <strong>{total ?? "—"}</strong>
+            <em>{total != null && total !== aiTotal ? `AI 原始 ${aiTotal}` : "AI 评分"}{Object.values(item.weights ?? {}).some((value) => value > 0) ? " · 按任务权重计算" : " · 六项等权"}</em>
+          </div>
+          <div className="review-dims">
+            {ASSESSMENT_DIMENSIONS.map((dim) => {
+              const changed = scores[dim.id] !== String(aiScores?.[dim.id] ?? "");
+              return (
+                <label key={dim.id} className="review-dim">
+                  <span>{dim.label}{item.weights?.[dim.id] ? <small>{item.weights[dim.id]}%</small> : null}</span>
+                  <input
+                    type="range" min={0} max={100}
+                    value={Number(scores[dim.id]) || 0}
+                    onChange={(event) => setScores((current) => ({ ...current, [dim.id]: event.target.value }))}
+                  />
+                  <Input
+                    className="num-input review-dim-input"
+                    type="number" min={0} max={100}
+                    value={scores[dim.id]}
+                    onChange={(event) => setScores((current) => ({ ...current, [dim.id]: event.target.value }))}
+                  />
+                  <em>{changed ? `AI ${aiScores?.[dim.id] ?? "—"}` : ""}</em>
+                </label>
+              );
+            })}
+          </div>
+          <div className="review-block">
+            <h4>AI 评语</h4>
+            <p>{item.comment || "—"}</p>
+            {item.suggestions?.length ? (
+              <ol>{item.suggestions.map((tip, index) => <li key={index}>{tip}</li>)}</ol>
+            ) : null}
+          </div>
+          <Field label="老师评语" hint="学生在「我的记录」里会看到，和 AI 评语分开显示">
+            <Textarea rows={4} maxLength={500} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="写给学生的话，可以不填" />
+          </Field>
+        </div>
+      </div>
+    </Drawer>
   );
 }

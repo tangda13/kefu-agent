@@ -1,13 +1,36 @@
-import { ArrowRight, Eye, EyeOff, LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { BrandMark, useBrand } from "../brand";
+import sceneImage from "../assets/login/scene.webp";
 import type { UserRole } from "@cecs/contracts";
 import { ApiError, changePassword, login, type Session } from "../api/client";
 
-const roleCopy: Record<UserRole, { eyebrow: string; title: string; subtitle: string; account: string; accountHint: string }> = {
-  student: { eyebrow: "STUDENT DESKTOP", title: "把每一次沟通，\n练成真实业务能力", subtitle: "AI 模拟海外买家 · 售前售中售后全流程沉浸式实训", account: "账号 / 学号", accountHint: "请输入账号 / 学号" },
-  teacher: { eyebrow: "TEACHER DESKTOP", title: "看见训练过程，\n给出及时指导", subtitle: "任务下发 · 实时跟踪 · 多维考核与复盘", account: "教师账号", accountHint: "请输入教师账号" },
-  admin: { eyebrow: "CLOUD ADMIN", title: "稳定运行，\n从每一项配置开始", subtitle: "国内云管理端 · AI 与语音服务 · 备份与运维", account: "管理员账号", accountHint: "请输入管理员账号" },
+const roleCopy: Record<UserRole, { account: string; accountHint: string; remember: string }> = {
+  student: { account: "学号", accountHint: "请输入学号", remember: "记住学号" },
+  teacher: { account: "教师账号", accountHint: "请输入教师账号", remember: "记住账号" },
+  admin: { account: "管理员账号", accountHint: "请输入管理员账号", remember: "记住账号" },
 };
+
+const REMEMBER_KEY = "cecs.login.remember";
+
+function readRemembered(): Partial<Record<UserRole, string>> {
+  try {
+    return JSON.parse(localStorage.getItem(REMEMBER_KEY) ?? "{}") as Partial<Record<UserRole, string>>;
+  } catch {
+    return {};
+  }
+}
+
+function writeRemembered(role: UserRole, username: string | null) {
+  const next = readRemembered();
+  if (username) next[role] = username;
+  else delete next[role];
+  try {
+    localStorage.setItem(REMEMBER_KEY, JSON.stringify(next));
+  } catch {
+    /* 存不了就不记 */
+  }
+}
 
 const roleLabel: Record<UserRole, string> = { student: "学生", teacher: "教师", admin: "管理员" };
 
@@ -16,7 +39,9 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
   const tabbed = initialRole !== "admin";
   const [activeRole, setActiveRole] = useState<UserRole>(initialRole);
   const [showPassword, setShowPassword] = useState(false);
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(() => readRemembered()[initialRole] ?? "");
+  const [remember, setRemember] = useState(() => Boolean(readRemembered()[initialRole]));
+  const { brand, online } = useBrand();
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -31,6 +56,8 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
   function switchRole(next: UserRole) {
     if (busy || next === activeRole) return;
     setActiveRole(next);
+    setUsername(readRemembered()[next] ?? "");
+    setRemember(Boolean(readRemembered()[next]));
     setError("");
     setSwitchTo(null);
     setHint("");
@@ -45,6 +72,7 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
     setBusy(true);
     try {
       const session = await login(username.trim(), password, activeRole);
+      writeRemembered(activeRole, remember ? username.trim() : null);
       if (session.user.mustChangePassword) {
         setPendingSession(session);
       } else {
@@ -89,91 +117,82 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
     }
   }
 
-  return (
-    <main className="login-shell">
-      <section className="login-story">
-        <div className="story-grid" aria-hidden="true" />
-        <div className="brand-lockup login-brand">
-          <span className="brand-mark">K</span>
-          <span><strong>跨境电商客服</strong><small>AI 实训平台</small></span>
-        </div>
-        <div className="story-copy">
-          <span className="eyebrow light">{copy.eyebrow}</span>
-          <h1>{copy.title.split("\n").map((line) => <span key={line}>{line}</span>)}</h1>
-          <p>{copy.subtitle}</p>
-          <div className="story-proof">
-            <div><strong>4</strong><span>业务环节</span></div>
-            <div><strong>20+</strong><span>买家画像</span></div>
-            <div><strong>6</strong><span>能力维度</span></div>
-          </div>
-        </div>
-        <p className="story-foot">Learn the conversation. Master the service.</p>
-      </section>
+  const passwordToggle = (
+    <button type="button" className="login-eye" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "隐藏密码" : "显示密码"}>
+      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+    </button>
+  );
 
-      <section className="login-panel">
-        <div className="login-card">
-          {pendingSession ? (
-            <>
-              <span className="eyebrow">首次登录</span>
-              <h2>请设置新密码</h2>
-              <p className="muted">当前为临时密码，设置新密码后继续</p>
-              <form onSubmit={submitPasswordChange}>
-                <label>
-                  <span>新密码</span>
-                  <div className="input-wrap"><LockKeyhole size={18} /><input type={showPassword ? "text" : "password"} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} aria-label="新密码" autoComplete="new-password" /></div>
-                </label>
-                <label>
-                  <span>确认新密码</span>
-                  <div className="input-wrap"><LockKeyhole size={18} /><input type={showPassword ? "text" : "password"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} aria-label="确认新密码" autoComplete="new-password" /><button type="button" className="icon-button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "隐藏密码" : "显示密码"}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
-                </label>
-                {error ? <p className="form-error" role="alert">{error}</p> : null}
-                <button className="primary-button login-submit" type="submit" disabled={busy}>{busy ? "提交中…" : "设置并进入"} <ArrowRight size={18} /></button>
-              </form>
-            </>
-          ) : (
-            <>
-              {tabbed ? (
-                <div className="login-tabs" role="tablist" aria-label="登录身份">
-                  <button type="button" role="tab" aria-selected={activeRole === "student"} className={activeRole === "student" ? "login-tab active" : "login-tab"} onClick={() => switchRole("student")}>学生登录</button>
-                  <button type="button" role="tab" aria-selected={activeRole === "teacher"} className={activeRole === "teacher" ? "login-tab active" : "login-tab"} onClick={() => switchRole("teacher")}>教师登录</button>
+  return (
+    <main className="login-scene">
+      <img className="login-scene-image" src={sceneImage} alt="" aria-hidden="true" decoding="async" />
+      <div className="login-frame">
+        <header className="login-brand">
+          <BrandMark size={26} />
+          <strong>{brand.name}</strong>
+        </header>
+        <div className="login-body">
+          <p className="login-slogan" aria-hidden="true"><span>每一句回复，</span><span>都是一次真实的服务</span></p>
+          <section className="login-card">
+            {pendingSession ? (
+              <form onSubmit={submitPasswordChange} noValidate>
+                <div>
+                  <h1>设置新密码</h1>
+                  <p className="login-lede">首次登录需要把临时密码改成你自己的密码</p>
                 </div>
-              ) : (
-                <>
-                  <span className="eyebrow">安全登录</span>
-                  <h2>管理端登录</h2>
-                  <p className="muted">请输入分配给您的账号信息</p>
-                </>
-              )}
-              <form onSubmit={submit}>
-                <label>
-                  <span>{copy.account}</span>
-                  <div className="input-wrap"><UserRound size={18} /><input value={username} onChange={(event) => setUsername(event.target.value)} placeholder={copy.accountHint} aria-label={copy.account} autoComplete="username" /></div>
+                <label className="login-field">新密码
+                  <span className="login-input"><input type={showPassword ? "text" : "password"} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="至少 8 位" autoComplete="new-password" />{passwordToggle}</span>
                 </label>
-                <label>
-                  <span>密码</span>
-                  <div className="input-wrap"><LockKeyhole size={18} /><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="请输入密码" aria-label="密码" autoComplete="current-password" /><button type="button" className="icon-button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "隐藏密码" : "显示密码"}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
+                <label className="login-field">确认新密码
+                  <span className="login-input"><input type={showPassword ? "text" : "password"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="再输入一次" autoComplete="new-password" /></span>
+                </label>
+                {error ? <p className="login-error" role="alert">{error}</p> : null}
+                <button className="login-submit" type="submit" disabled={busy}>{busy ? "提交中…" : "设置并进入"}</button>
+              </form>
+            ) : (
+              <form onSubmit={submit} noValidate>
+                {tabbed ? (
+                  <div className="login-roles" role="tablist" aria-label="登录身份">
+                    {(["student", "teacher"] as const).map((role) => (
+                      <button key={role} type="button" role="tab" aria-selected={activeRole === role} className={activeRole === role ? "is-active" : undefined} onClick={() => switchRole(role)}>{roleLabel[role]}</button>
+                    ))}
+                  </div>
+                ) : null}
+                <div>
+                  <h1>{tabbed ? "登录" : "管理端登录"}</h1>
+                  <p className="login-lede">{tabbed ? "使用学校分配的账号" : "使用管理员账号"}</p>
+                </div>
+                <label className="login-field">{copy.account}
+                  <span className="login-input"><input value={username} onChange={(event) => setUsername(event.target.value)} placeholder={copy.accountHint} autoComplete="username" aria-invalid={Boolean(error) || undefined} /></span>
+                </label>
+                <label className="login-field">密码
+                  <span className="login-input"><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="请输入密码" autoComplete="current-password" aria-invalid={Boolean(error) || undefined} />{passwordToggle}</span>
                 </label>
                 {error ? (
-                  <p className="form-error" role="alert">
+                  <p className="login-error" role="alert">
                     {error}
-                    {switchTo ? (
-                      <button type="button" className="text-button" onClick={() => switchRole(switchTo)}>
-                        切换到{roleLabel[switchTo]}登录
-                      </button>
-                    ) : null}
+                    {switchTo ? <button type="button" className="login-link" onClick={() => switchRole(switchTo)}>切换到{roleLabel[switchTo]}登录</button> : null}
                   </p>
                 ) : null}
-                <button className="primary-button login-submit" type="submit" disabled={busy}>{busy ? "登录中…" : "登 录"}</button>
-                <div className="login-forgot">
-                  <button type="button" className="text-button" onClick={() => setHint(activeRole === "student" ? "请联系您的任课教师重置密码。" : "请联系平台管理员重置密码。")}>忘记密码？</button>
-                  {hint ? <p className="muted">{hint}</p> : null}
+                <button className="login-submit" type="submit" disabled={busy}>{busy ? "登录中…" : "登录"}</button>
+                <div className="login-row">
+                  <label className="login-check"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />{copy.remember}</label>
+                  <button type="button" className="login-link" onClick={() => setHint(activeRole === "student" ? "请联系任课教师重置密码。" : activeRole === "teacher" ? "请联系平台管理员重置密码。" : "请在服务器上运行重置密码命令，见运维手册。")}>忘记密码</button>
                 </div>
+                {hint ? <p className="login-hint">{hint}</p> : null}
               </form>
-            </>
-          )}
-          <div className="security-note"><ShieldCheck size={18} /><span>账号权限由服务端校验，所有关键操作均留存审计记录</span></div>
+            )}
+          </section>
         </div>
-      </section>
+        <footer className="login-foot">
+          <span />
+          {online === false ? (
+            <span className="login-conn is-off"><i />无法连接服务器，请检查网络</span>
+          ) : online ? (
+            <span className="login-conn"><i />已连接服务器</span>
+          ) : <span />}
+        </footer>
+      </div>
     </main>
   );
 }

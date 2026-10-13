@@ -203,7 +203,7 @@ export async function bootstrapProfiles(
   await db.query(
     `insert into llm_profiles (name, preset_key, base_url, api_key_enc, model, extra_body, is_default)
      values ($1, 'custom', $2, $3, $4, $5, true)`,
-    [`${host}（导入自${source.from}）`, legacyBaseUrl(source.baseUrl), sealer.seal(source.apiKey), source.model, JSON.stringify(extraBody)],
+    [host, legacyBaseUrl(source.baseUrl), sealer.seal(source.apiKey), source.model, JSON.stringify(extraBody)],
   );
   // 旧配置里的明文 Key 不再保留
   if (saved) await db.query("delete from app_settings where key = 'llm'");

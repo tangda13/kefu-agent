@@ -17,6 +17,8 @@ export interface SessionState {
   directive?: string;
   liveScore?: number;
   scores?: number[];
+  /** 每轮买家满意度（实训跟踪画走势，最多 50 个） */
+  satisfactions?: number[];
   memory?: string;
   turnCount?: number;
   /** 学生发言轮数（导演按 N 轮一次运行时计数用） */
@@ -37,6 +39,7 @@ export async function directTurn(
 ): Promise<SessionState> {
   const { data } = await gateway.completeJson("director", buildDirectorMessages(input), directorOutputSchema, { conversationId });
   const scores = [...(state.scores ?? []), data.turnScore].slice(-50);
+  const satisfactions = typeof data.satisfaction === "number" ? [...(state.satisfactions ?? []), data.satisfaction].slice(-50) : state.satisfactions;
   return {
     ...state,
     emotion: (EMOTIONS as readonly string[]).includes(data.emotion) ? data.emotion : state.emotion,
@@ -46,6 +49,7 @@ export async function directTurn(
     memory: data.memory ? data.memory.slice(0, 600) : state.memory,
     liveScore: data.turnScore,
     scores,
+    satisfactions,
     turnCount: (state.turnCount ?? 0) + 1,
     resolved: data.resolved === true,
     updatedAt: new Date().toISOString(),

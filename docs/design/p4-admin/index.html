@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>管理端版式</title>
+<style>
+:root { --doc-bg:#ecedef; --doc-ink:#1c1d1f; --doc-ink-2:#5f6368; --doc-line:#d9dce1; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--doc-bg); color: var(--doc-ink); font: 400 14px/1.6 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+.doc h2 { margin: 48px 0 6px; font-size: 18px; font-weight: 600; }
+.doc .lede { margin: 0 0 20px; color: var(--doc-ink-2); max-width: 920px; }
+.principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0 8px; }
+.principles div { background: #fff; border: 1px solid var(--doc-line); border-radius: 8px; padding: 14px 16px; font-size: 13px; color: var(--doc-ink-2); }
+.principles b { display: block; margin-bottom: 4px; color: var(--doc-ink); font-size: 14px; }
+.cap { display: flex; justify-content: space-between; margin: 20px 0 8px; font-size: 13px; color: var(--doc-ink-2); }
+.cap b { color: var(--doc-ink); }
+.frame { position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--doc-line); box-shadow: 0 12px 40px -16px rgba(0,0,0,.18); background: #fff; }
+.screen { position: absolute; top: 0; left: 0; width: 1440px; height: 900px; transform-origin: 0 0; overflow: hidden; }
+
+/* ===== 令牌（同 tokens.css） ===== */
+.s { --canvas:#f5f6f7; --surface:#fff; --surface-2:#f7f8f9; --hover:#f1f2f4; --line:#e6e8eb; --line-2:#d5d8dd; --ink:#1c1d1f; --ink-2:#5f6368; --ink-3:#8a8f98; --accent:#246bc7; --accent-wash:#eaf1fb; --ok:#1f7a4a; --ok-wash:#e8f4ee; --warn:#a15c07; --warn-wash:#fdf3e2; --bad:#b4342b; --bad-wash:#fbecea;
+  background: var(--surface); color: var(--ink); font: 400 13px/1.55 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.s svg { width: 18px; height: 18px; stroke-width: 1.75; flex: none; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-2); } .faint { color: var(--ink-3); }
+.app { display: grid; grid-template-columns: 232px 1fr; height: 100%; }
+.side { display: flex; flex-direction: column; padding: 14px 12px; border-right: 1px solid var(--line); background: var(--surface); }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 18px; font-size: 14px; font-weight: 700; }
+.mark { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; background: var(--ink); color: #fff; }
+.mark svg { width: 15px; height: 15px; }
+.nav { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 6px; color: var(--ink-2); font-size: 14px; }
+.nav svg { color: var(--ink-3); }
+.nav.on { background: var(--hover); color: var(--ink); font-weight: 600; }
+.nav.on svg { color: var(--ink); }
+.grow { flex: 1; }
+.foot { border-top: 1px solid var(--line); padding-top: 8px; }
+.main { display: flex; flex-direction: column; min-width: 0; }
+
+/* 新：标题与页签合一的页头 */
+.head { display: flex; align-items: flex-end; gap: 28px; height: 56px; padding: 0 40px; border-bottom: 1px solid var(--line); flex: none; }
+.head h1 { margin: 0 0 15px; font-size: 16px; font-weight: 600; white-space: nowrap; }
+.head .tabs { display: flex; gap: 22px; align-self: stretch; align-items: flex-end; }
+.head .tab { padding-bottom: 15px; border-bottom: 2px solid transparent; color: var(--ink-2); font-size: 14px; white-space: nowrap; }
+.head .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.head .tab .n { color: var(--ink-3); font-weight: 400; margin-left: 4px; }
+.head .right { margin-left: auto; display: flex; align-items: center; gap: 14px; margin-bottom: 12px; color: var(--ink-2); }
+.av { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--hover); font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.body { flex: 1; overflow: hidden; padding: 32px 40px; }
+
+/* 系统总览 · 新 */
+.hero { display: flex; align-items: center; gap: 16px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+.hero .ring { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--warn-wash); color: var(--warn); }
+.hero .ring svg { width: 22px; height: 22px; }
+.hero h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.hero p { margin: 2px 0 0; color: var(--ink-2); }
+.hero .meta { margin-left: auto; text-align: right; font-size: 12px; color: var(--ink-3); line-height: 1.7; }
+.callout { display: flex; align-items: center; gap: 12px; margin-top: 20px; padding: 12px 16px; border-radius: 8px; background: var(--bad-wash); color: var(--bad); }
+.callout b { color: var(--bad); }
+.callout span { color: var(--ink-2); }
+.callout .btn { margin-left: auto; }
+.callout .btn + .btn { margin-left: 0; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line-2); background: #fff; color: var(--ink); white-space: nowrap; font-size: 13px; }
+.btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 500; }
+.btn.ghost { border-color: transparent; color: var(--ink-2); }
+.btn svg { width: 14px; height: 14px; }
+.figures { display: grid; grid-template-columns: repeat(5, 1fr); padding: 28px 0; border-bottom: 1px solid var(--line); }
+.figures div { padding-left: 24px; border-left: 1px solid var(--line); }
+.figures div:first-child { padding-left: 0; border-left: 0; }
+.figures small { display: block; color: var(--ink-2); font-size: 12px; }
+.figures b { display: block; margin-top: 4px; font-size: 28px; font-weight: 500; line-height: 1.2; letter-spacing: -.01em; }
+.figures em { font-style: normal; font-size: 12px; color: var(--ink-3); }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; padding-top: 28px; }
+.sec h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.sec h3 .act { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--ink-2); }
+.sec .desc { margin: 0 0 12px; color: var(--ink-3); font-size: 12px; }
+.svc { display: grid; grid-template-columns: 10px 96px minmax(0, 1fr); align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid var(--line); }
+.svc:first-of-type { border-top: 0; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.dot.bad { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-wash); } .dot.warn { background: var(--warn); }
+.svc b { font-weight: 500; }
+.svc span { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gauge { padding: 10px 0; border-top: 1px solid var(--line); }
+.gauge:first-of-type { border-top: 0; }
+.gauge .row { display: flex; align-items: baseline; gap: 8px; }
+.gauge .row b { font-weight: 500; }
+.gauge .row .v { margin-left: auto; font-size: 15px; font-weight: 600; }
+.gauge .row .v.bad { color: var(--bad); } .gauge .row .v.ok { color: var(--ok); }
+.gauge .bar { position: relative; height: 6px; margin: 8px 0 4px; border-radius: 3px; background: var(--hover); }
+.gauge .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--ink); }
+.gauge .bar i.bad { background: var(--bad); }
+.gauge .bar .req { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); }
+.gauge .sub { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-3); }
+
+/* AI 与语音服务 · 新：设置页式左说明右内容 */
+.setting { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 48px; padding: 28px 0; border-top: 1px solid var(--line); }
+.setting:first-child { border-top: 0; padding-top: 0; }
+.setting .label h3 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
+.setting .label p { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.6; }
+.setting .label .btn { margin-top: 14px; }
+.model { display: grid; grid-template-columns: 36px minmax(0, 1fr) 150px 120px; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+.model:first-child { border-top: 0; padding-top: 0; }
+.logo { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); font-weight: 700; font-size: 13px; color: var(--ink-2); }
+.logo.ds { background: #eef2fb; color: #3a5bc7; border-color: #dfe6f7; }
+.logo.fl { background: #f2f0fa; color: #6b4fbb; border-color: #e4def6; }
+.model .t { display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px; }
+.model .d { color: var(--ink-3); font-size: 12px; }
+.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+.tag.acc { background: var(--accent-wash); color: var(--accent); }
+.st { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.st .dot { width: 6px; height: 6px; }
+.ops { display: flex; justify-content: flex-end; gap: 4px; }
+.ops .btn { height: 28px; padding: 0 10px; font-size: 12px; }
+.route { display: grid; grid-template-columns: 150px minmax(0, 1fr) 24px minmax(0, 1fr); align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.route:first-child { border-top: 0; padding-top: 0; }
+.route b { font-weight: 500; }
+.route small { display: block; color: var(--ink-3); font-size: 12px; }
+.sel { display: flex; align-items: center; justify-content: space-between; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 6px; font-size: 13px; white-space: nowrap; overflow: hidden; }
+.sel svg { width: 14px; height: 14px; color: var(--ink-3); }
+.arrow { color: var(--ink-3); text-align: center; font-size: 12px; }
+.quota { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+.quota small { display: block; color: var(--ink-2); font-size: 12px; }
+.quota b { display: block; margin: 4px 0 8px; font-size: 22px; font-weight: 500; }
+.quota .bar { height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; }
+.quota .bar i { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
+.quota em { display: block; margin-top: 6px; font-style: normal; font-size: 12px; color: var(--ink-3); }
+
+.before { width: 100%; display: block; border-radius: 10px; border: 1px solid var(--doc-line); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pair figure { margin: 0; }
+.pair figcaption { font-size: 12px; color: var(--doc-ink-2); margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>管理端版式：从“卡片墙”到“一张纸”</h1>
+  <p class="lede">现在的问题不在颜色和字号，而在结构：灰底上铺满带边框的白卡片，每块信息都装在一个盒子里，并排的盒子高度对不齐就留下空洞；标题、页签、统计条、卡片层层叠叠，看起来全是要填的表单。下面这版换一种组织方式，色彩和字体沿用已定的「墨白」，只改版式。</p>
+  <div class="principles">
+    <div><b>1. 一张纸，不要卡片墙</b>内容区直接是白底，用留白和细分隔线分区，不再把每块内容装进带边框的盒子。只有弹窗、抽屉、提示这类浮在上面的东西才有边框和阴影。</div>
+    <div><b>2. 先结论，再明细</b>每页第一屏回答“现在怎么样”：系统总览先说“运行正常，1 项待处理”，再列数据；性能验收用进度条和红线直接看出差多少，而不是一张五列表格。</div>
+    <div><b>3. 标题和页签合一</b>页名和页签放在同一条页头里，省掉一整条横带；统计数字去掉方框，大号数字之间只用一条竖线分开。</div>
+    <div><b>4. 设置页用左右两栏</b>左栏写这一节是什么、为什么要配，右栏放内容（Stripe、Vercel 的设置页都是这样）。读的人先懂再操作，不再是一屏表单。</div>
+    <div><b>5. 列表不是表格</b>模型、服务这类条目少的列表用“图标 + 名称 + 状态 + 操作”的行，不要表头；只有真正需要横向对比的数据（成绩、用量明细）才用表格。</div>
+    <div><b>6. 对齐一条网格</b>页面左右统一留 40px，所有分区共用同一组列宽，左右两栏顶部对齐、高度各自跟内容走，不会再出现你圈出来的空洞。</div>
+  </div>
+
+  <h2>系统总览</h2>
+  <div class="pair">
+    <figure><img class="before" src="../h1/assets/before-admin-overview-p4.png" alt=""><figcaption>现在：标题和页签分两层，五个统计框 + 四张卡片，右栏比左栏高留出空洞</figcaption></figure>
+    <figure><img class="before" src="../h1/assets/before-admin-models-p4.png" alt=""><figcaption>现在：AI 与语音服务，一张表格从左拉到右，右半边大量空白</figcaption></figure>
+  </div>
+  <div class="cap"><b>改后 · 系统总览</b><span>先结论（状态 + 待处理），再数字，再服务和性能两栏</span></div>
+  <div class="frame"><div class="screen s" data-tpl="overview"></div></div>
+
+  <h2>AI 与语音服务</h2>
+  <div class="cap"><b>改后 · 模型（设置页左右两栏）</b><span>左栏说明这一节做什么，右栏是内容；模型是“图标 + 名称 + 状态”的行，不是表格</span></div>
+  <div class="frame"><div class="screen s" data-tpl="models"></div></div>
+</div>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const I = (n) => `<i data-lucide="${n}"></i>`;
+const shell = (active, title, tabs, body) => `<div class="app">
+  <nav class="side">
+    <div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>
+    ${[["layout-grid","系统总览"],["sliders-horizontal","AI 与语音服务"],["user-cog","账号与权限"],["library-big","内容资源库"],["shield-check","数据与备份"]].map(([i,l]) => `<div class="nav${l===active?" on":""}">${I(i)}${l}</div>`).join("")}
+    <div class="grow"></div><div class="foot"><div class="nav">${I("book-open")}使用帮助</div></div>
+  </nav>
+  <div class="main">
+    <header class="head"><h1>${title}</h1><div class="tabs">${tabs.map(([l,on,n]) => `<span class="tab${on?" on":""}">${l}${n!=null?`<span class="n">${n}</span>`:""}</span>`).join("")}</div>
+      <div class="right">${I("bell")}<span class="av">系</span>系统管理员 ${I("chevron-down")}</div></header>
+    <div class="body">${body}</div>
+  </div></div>`;
+
+const overview = () => shell("系统总览", "系统总览", [["运行状态", true], ["品牌设置"]], `
+  <div class="hero">
+    <span class="ring">${I("triangle-alert")}</span>
+    <div><h2>系统基本正常，有 1 项需要处理</h2><p>数据库、对话模型、语音服务运行正常；数据备份没有按时执行。</p></div>
+    <div class="meta">服务端 开发版 · 数据库结构 025<br>已连续运行 3 天 6 小时 · 刚刚检测</div>
+  </div>
+  <div class="callout">${I("database")}<b>定时备份没有按时执行</b><span>最近一次备份在 07/23 02:01，请检查服务器上的备份工具。</span><span class="btn">立即备份</span><span class="btn ghost">查看备份</span></div>
+  <div class="figures">
+    <div><small>学生账号</small><b class="num">2</b><em>容量 200 人</em></div>
+    <div><small>教师账号</small><b class="num">1</b><em>1 个班级</em></div>
+    <div><small>累计对话</small><b class="num">40</b><em>今日 6 次</em></div>
+    <div><small>累计消息</small><b class="num">99</b><em>&nbsp;</em></div>
+    <div><small>已完成评分</small><b class="num">3</b><em>&nbsp;</em></div>
+  </div>
+  <div class="cols">
+    <section class="sec">
+      <h3>服务状态<span class="act">重新检测</span></h3>
+      <p class="desc">每次打开本页时实时检测</p>
+      <div class="svc"><i class="dot"></i><b>数据库</b><span>连接正常，响应 1 毫秒</span></div>
+      <div class="svc"><i class="dot"></i><b>对话模型</b><span>Flow · DeepSeek V4 Flash · 近 1 小时 152 次对话，失败 0 次</span></div>
+      <div class="svc"><i class="dot"></i><b>语音服务</b><span>已配置 · 近 24 小时没有使用</span></div>
+      <div class="svc"><i class="dot bad"></i><b>数据备份</b><span>最近一次 07/23 02:01 · 每日 2:00 自动备份</span></div>
+    </section>
+    <section class="sec">
+      <h3>性能验收<span class="act">共 213 次请求 · 导出明细 · 运行 100 次验收</span></h3>
+      <p class="desc">竖线是参数要求的红线</p>
+      <div class="gauge"><div class="row"><b>首字 3 秒内</b><span class="faint">要求 ≥ 99%</span><span class="v bad num">72.8%</span></div><div class="bar"><i class="bad" style="width:72.8%"></i><span class="req" style="left:99%"></span></div><div class="sub"><span>中位 1.4 秒 · 最慢 21.4 秒</span><span>差 26.2 个百分点</span></div></div>
+      <div class="gauge"><div class="row"><b>首字 10 秒内</b><span class="faint">要求 100%</span><span class="v bad num">87.8%</span></div><div class="bar"><i class="bad" style="width:87.8%"></i><span class="req" style="left:99.6%"></span></div></div>
+      <div class="gauge"><div class="row"><b>输出速度</b><span class="faint">要求 ≥ 20 字/秒</span><span class="v ok num">244 字/秒</span></div><div class="bar"><i style="width:100%"></i><span class="req" style="left:8%"></span></div></div>
+      <div class="gauge"><div class="row"><b>语音朗读 / 识别</b><span class="faint">要求 ≤ 5 秒</span><span class="v ok num">2.2 / 1.9 秒</span></div><div class="bar"><i style="width:44%"></i><span class="req" style="left:100%"></span></div></div>
+    </section>
+  </div>`);
+
+const model = (logo, cls, name, def, sub, ttft) => `<div class="model"><span class="logo ${cls}">${logo}</span><div><div class="t">${name}${def ? '<span class="tag acc">默认</span>' : ""}</div><div class="d">${sub}</div></div><span class="st"><i class="dot"></i>正常 · 首字 ${ttft}</span><div class="ops"><span class="btn ghost">测试</span><span class="btn">编辑</span></div></div>`;
+const route = (n, h, a, b) => `<div class="route"><div><b>${n}</b><small>${h}</small></div><span class="sel">${a}${I("chevron-down")}</span><span class="arrow">备用</span><span class="sel">${b}${I("chevron-down")}</span></div>`;
+const models = () => shell("AI 与语音服务", "AI 与语音服务", [["模型", true, 5], ["语音服务"], ["用量与额度"]], `
+  <div class="setting">
+    <div class="label"><h3>模型</h3><p>接入的大模型服务。密钥只加密保存在服务器上；测试通过的模型才能设为默认，或分配给下面的用途。</p><span class="btn primary">${I("plus")}新增模型</span></div>
+    <div>
+      ${model("F", "fl", "Flow · DeepSeek V4 Flash", true, "deepseek-v4-flash · flowapi.robusta.top · sk-k****axfE", "0.9 秒")}
+      ${model("F", "fl", "Flow · DeepSeek V4 Pro", false, "deepseek-v4-pro · flowapi.robusta.top · sk-k****axfE", "1.4 秒")}
+      ${model("D", "ds", "DeepSeek Flash", false, "deepseek-flash · api.deepseek.com · sk-a****9b79", "0.5 秒")}
+      ${model("D", "ds", "DeepSeek V4 Pro", false, "deepseek-v4-pro · api.deepseek.com · sk-a****9b79", "1.1 秒")}
+    </div>
+  </div>
+  <div class="setting">
+    <div class="label"><h3>用途分配</h3><p>不同任务用不同模型：对话要快，评分要稳。主模型连续出错 3 次，自动改用备用模型 5 分钟。</p><span class="btn ghost">随机性、回复长度等高级设置</span></div>
+    <div>
+      ${route("买家对话", "最看重回复速度", "Flow · DeepSeek V4 Flash", "Flow · DeepSeek V4 Pro")}
+      ${route("情绪与剧情推进", "可用便宜、快速的模型", "Flow · DeepSeek V4 Flash", "不设备用")}
+      ${route("六维评分", "看重稳定和准确", "Flow · DeepSeek V4 Pro", "Flow · DeepSeek V4 Flash")}
+      ${route("辅助生成", "回复建议、邮件草稿、翻译", "Flow · DeepSeek V4 Flash", "不设备用")}
+    </div>
+  </div>
+  <div class="setting">
+    <div class="label"><h3>本月用量</h3><p>按各模型填写的单价折算。设置了上限后，达到提醒线会在管理端顶部提醒。</p></div>
+    <div class="quota">
+      <div><small>本月费用</small><b class="num">¥0.00</b><div class="bar"><i style="width:0%"></i></div><em>未设上限 · 设置</em></div>
+      <div><small>模型 tokens</small><b class="num">214,677</b><div class="bar"><i style="width:0%"></i></div><em>未设上限</em></div>
+      <div><small>调用次数</small><b class="num">291</b><div class="bar"><i style="width:0%"></i></div><em>失败 0 · 用了备用 0</em></div>
+    </div>
+  </div>`);
+
+const T = { overview, models };
+document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
+if (window.lucide) lucide.createIcons();
+function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${900 * k}px`; }); }
+fit(); addEventListener("resize", fit);
+</script>
+</body>
+</html>

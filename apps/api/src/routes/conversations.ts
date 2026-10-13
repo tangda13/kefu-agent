@@ -320,7 +320,7 @@ export function registerConversationRoutes(
 
       // 服务端生成画像快照：DB 启用模板（教师可维护）打底 + 任务随机规则约束 + 真随机姓名
       const templatesResult = await db.query(
-        "select id, identity, preference, customer_type from persona_templates where enabled",
+        "select id, identity, preference, customer_type, nationality, personality, emotion, language from persona_templates where enabled",
       );
       const persona = composePersonaWithRule(
         templatesResult.rows.map((row) => ({
@@ -328,6 +328,10 @@ export function registerConversationRoutes(
           identity: row.identity,
           preference: row.preference,
           customerType: row.customer_type,
+          nationality: row.nationality,
+          personality: row.personality,
+          emotion: row.emotion,
+          language: row.language,
         })),
         personaRule,
       );

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   composePersona,
+  composePersonaWithRule,
   emailTemplates,
   forbiddenTerms,
   personaTemplates,
@@ -15,8 +16,10 @@ describe("seed catalogs", () => {
     expect(new Set(trainingScenarios.map((item) => item.stage))).toHaveLength(4);
     expect(personaTemplates.length).toBeGreaterThanOrEqual(20);
     expect(emailTemplates.length).toBeGreaterThanOrEqual(4);
-    expect(forbiddenTerms.length).toBeGreaterThanOrEqual(100);
-    expect(standardPhrases.length).toBeGreaterThanOrEqual(50);
+    expect(forbiddenTerms.length).toBeGreaterThanOrEqual(120);
+    expect(new Set(forbiddenTerms).size).toBe(forbiddenTerms.length);
+    expect(standardPhrases.length).toBeGreaterThanOrEqual(60);
+    expect(new Set(standardPhrases).size).toBe(standardPhrases.length);
   });
 
   it("does not expose hidden persona labels in the student view", () => {
@@ -47,3 +50,21 @@ describe("seed catalogs", () => {
   });
 });
 
+describe("画像模板字段生效（D3）", () => {
+  const template = { id: "T1", identity: "健身教练", preference: "看重耐用", customerType: "粉丝客", nationality: "德国", personality: "敏感挑剔", emotion: "不满", language: "en-US" };
+  it("规则没约束的字段沿用模板值", () => {
+    const persona = composePersonaWithRule([template], {});
+    expect(persona.nationality).toBe("德国");
+    expect(persona.personality).toBe("敏感挑剔");
+    expect(persona.emotion).toBe("不满");
+    expect(persona.language).toBe("en-US");
+    expect(persona.customerType).toBe("粉丝客");
+  });
+  it("规则约束的字段按规则抽，国籍被换掉时语言跟着新国籍走", () => {
+    const persona = composePersonaWithRule([template], { nationalityPool: ["法国"], emotionPool: ["平静"] });
+    expect(persona.nationality).toBe("法国");
+    expect(persona.emotion).toBe("平静");
+    expect(persona.personality).toBe("敏感挑剔");
+    expect(persona.language).toBe("fr-FR");
+  });
+});

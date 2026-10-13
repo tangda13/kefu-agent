@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>教师端版式</title>
+<style>
+:root { --doc-bg:#ecedef; --doc-ink:#1c1d1f; --doc-ink-2:#5f6368; --doc-line:#d9dce1; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--doc-bg); color: var(--doc-ink); font: 400 14px/1.6 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+.doc h2 { margin: 56px 0 6px; font-size: 18px; font-weight: 600; }
+.doc .lede { margin: 0 0 20px; color: var(--doc-ink-2); max-width: 960px; }
+.diag { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0 8px; }
+.diag div { background: #fff; border: 1px solid var(--doc-line); border-radius: 8px; padding: 14px 16px; font-size: 13px; color: var(--doc-ink-2); }
+.diag b { display: block; margin-bottom: 4px; color: var(--doc-ink); font-size: 14px; }
+.diag .fix { color: #1f7a4a; }
+.cap { display: flex; justify-content: space-between; gap: 24px; margin: 20px 0 8px; font-size: 13px; color: var(--doc-ink-2); }
+.cap b { color: var(--doc-ink); white-space: nowrap; }
+.frame { position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--doc-line); box-shadow: 0 12px 40px -16px rgba(0,0,0,.18); background: #fff; }
+.screen { position: absolute; top: 0; left: 0; width: 1440px; height: 900px; transform-origin: 0 0; overflow: hidden; }
+.before { width: 100%; display: block; border-radius: 10px; border: 1px solid var(--doc-line); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pair figure { margin: 0; }
+.pair figcaption { font-size: 12px; color: var(--doc-ink-2); margin-top: 6px; }
+
+/* ===== 令牌（同 tokens.css） ===== */
+.s { --canvas:#f5f6f7; --surface:#fff; --surface-2:#f7f8f9; --hover:#f1f2f4; --line:#e6e8eb; --line-2:#d5d8dd; --ink:#1c1d1f; --ink-2:#5f6368; --ink-3:#8a8f98; --accent:#246bc7; --accent-wash:#eaf1fb; --ok:#1f7a4a; --ok-wash:#e8f4ee; --warn:#a15c07; --warn-wash:#fdf3e2; --bad:#b4342b; --bad-wash:#fbecea;
+  background: var(--surface); color: var(--ink); font: 400 13px/1.55 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.s svg { width: 18px; height: 18px; stroke-width: 1.75; flex: none; }
+.num { font-variant-numeric: tabular-nums; }
+.app { display: grid; grid-template-columns: 232px 1fr; height: 100%; }
+.side { display: flex; flex-direction: column; padding: 14px 12px; border-right: 1px solid var(--line); background: var(--surface); }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 18px; font-size: 14px; font-weight: 700; }
+.mark { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; background: var(--ink); color: #fff; }
+.mark svg { width: 15px; height: 15px; }
+.nav { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 6px; color: var(--ink-2); font-size: 14px; }
+.nav svg { color: var(--ink-3); }
+.nav.on { background: var(--hover); color: var(--ink); font-weight: 600; }
+.nav.on svg { color: var(--ink); }
+.nav .badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; }
+.grow { flex: 1; }
+.foot { border-top: 1px solid var(--line); padding-top: 8px; }
+.main { display: flex; flex-direction: column; min-width: 0; background: var(--canvas); }
+.head { display: flex; align-items: flex-end; gap: 28px; height: 56px; padding: 0 40px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; }
+.head h1 { margin: 0 0 15px; font-size: 16px; font-weight: 600; white-space: nowrap; }
+.head .tabs { display: flex; gap: 22px; align-self: stretch; align-items: flex-end; }
+.head .tab { padding-bottom: 15px; border-bottom: 2px solid transparent; color: var(--ink-2); font-size: 14px; white-space: nowrap; }
+.head .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.head .tab .n { color: var(--ink-3); font-weight: 400; margin-left: 4px; }
+.head .right { margin-left: auto; display: flex; align-items: center; gap: 14px; margin-bottom: 12px; color: var(--ink-2); }
+.av { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--hover); font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.body { flex: 1; overflow: hidden; padding: 28px 40px; }
+/* 关键：内容限宽，表格不再被拉散 */
+.wrap { max-width: 1120px; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line-2); background: #fff; color: var(--ink); white-space: nowrap; font-size: 13px; }
+.btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 500; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+.btn svg { width: 14px; height: 14px; }
+.search { display: flex; align-items: center; gap: 8px; width: 240px; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 6px; background: #fff; color: var(--ink-3); }
+.search svg { width: 14px; height: 14px; }
+.bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.bar-row .r { margin-left: auto; display: flex; gap: 8px; }
+.chips { display: flex; gap: 6px; }
+.chip { height: 28px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--line-2); background: #fff; color: var(--ink-2); font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.chip.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.chip i { font-style: normal; opacity: .65; }
+
+/* 白色内容板：一个页面一到两块，不是卡片墙 */
+.board { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.board + .board, .board + .duo, .duo + .board { margin-top: 16px; }
+.bhead { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.bhead h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.bhead .n { color: var(--ink-3); }
+.bhead .link { margin-left: auto; color: var(--ink-2); font-size: 12px; display: inline-flex; align-items: center; gap: 2px; }
+.bhead .link svg { width: 14px; height: 14px; }
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.duo > .board { margin-top: 0 !important; }
+
+/* 总览：待办 */
+.greet { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+.greet h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.greet span { color: var(--ink-3); }
+.todo { display: grid; grid-template-columns: repeat(3, 1fr); }
+.todo > div { display: flex; gap: 14px; padding: 18px 20px; border-left: 1px solid var(--line); }
+.todo > div:first-child { border-left: 0; }
+.todo .big { font-size: 30px; font-weight: 600; line-height: 1; min-width: 36px; }
+.todo .big.bad { color: var(--bad); } .todo .big.warn { color: var(--warn); } .todo .big.zero { color: var(--ink-3); font-weight: 400; }
+.todo b { display: block; font-weight: 600; font-size: 14px; }
+.todo p { margin: 3px 0 8px; color: var(--ink-2); font-size: 12px; }
+.todo a { color: var(--accent); font-size: 12px; text-decoration: none; }
+
+/* 任务行 */
+.trow { display: grid; grid-template-columns: minmax(0, 1fr) 220px 80px 110px 28px; align-items: center; gap: 20px; padding: 14px 20px; border-top: 1px solid var(--line); }
+.trow:first-child, .bhead + .trow { border-top: 0; }
+.trow.th { padding-top: 10px; padding-bottom: 10px; color: var(--ink-3); font-size: 12px; background: var(--surface-2); border-top: 0; border-bottom: 1px solid var(--line); }
+.trow .name { font-weight: 600; font-size: 14px; }
+.trow .meta { color: var(--ink-3); font-size: 12px; margin-top: 2px; }
+.prog { display: grid; gap: 6px; }
+.prog .top { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-2); }
+.prog .top b { color: var(--ink); font-size: 13px; }
+.prog .track { height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; }
+.prog .track i { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
+.score { font-size: 16px; font-weight: 600; text-align: right; }
+.score.bad { color: var(--bad); } .score.none { color: var(--ink-3); font-weight: 400; font-size: 13px; }
+.due { font-size: 12px; text-align: right; color: var(--ink-2); }
+.due.warn { color: var(--warn); font-weight: 600; } .due.bad { color: var(--bad); font-weight: 600; }
+.more { color: var(--ink-3); text-align: right; }
+
+/* 成绩分布与能力 */
+.dist { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; align-items: end; height: 150px; padding: 20px 20px 0; }
+.dist div { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 6px; font-size: 12px; color: var(--ink-2); }
+.dist i { width: 100%; max-width: 48px; background: var(--ink); border-radius: 3px 3px 0 0; }
+.dist i.bad { background: var(--bad); }
+.axis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; padding: 6px 20px 16px; border-top: 1px solid var(--line); margin: 0 20px; font-size: 12px; color: var(--ink-3); text-align: center; }
+.dims { padding: 14px 20px 16px; display: grid; gap: 11px; }
+.dim { display: grid; grid-template-columns: 84px minmax(0, 1fr) 30px 40px; gap: 12px; align-items: center; font-size: 13px; }
+.dim .track { position: relative; height: 6px; background: var(--hover); border-radius: 3px; }
+.dim .track i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ink); border-radius: 3px; }
+.dim.weak .track i { background: var(--bad); }
+.dim .track b { position: absolute; top: -4px; width: 2px; height: 14px; background: var(--ink-3); }
+.dim strong { text-align: right; font-weight: 600; }
+.dim em { font-style: normal; font-size: 12px; color: var(--ok); }
+.dim em.down { color: var(--bad); }
+.dim.weak span:first-child { color: var(--bad); font-weight: 600; }
+.note { padding: 0 20px 16px; color: var(--ink-2); font-size: 12px; }
+
+/* 表格（限宽后） */
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-weight: 400; font-size: 12px; color: var(--ink-3); padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+td { padding: 11px 14px; border-top: 1px solid var(--line); vertical-align: middle; }
+tr:first-child td { border-top: 0; }
+th.r, td.r { text-align: right; }
+td .n1 { font-weight: 600; } td .n2 { color: var(--ink-3); font-size: 12px; }
+.mini { display: flex; align-items: center; gap: 8px; }
+.mini .track { width: 80px; height: 5px; background: var(--hover); border-radius: 3px; overflow: hidden; }
+.mini .track i { display: block; height: 100%; background: var(--ink); }
+.pill { display: inline-flex; height: 20px; padding: 0 7px; align-items: center; border-radius: 4px; font-size: 12px; background: var(--hover); color: var(--ink-2); }
+.pill.warn { background: var(--warn-wash); color: var(--warn); }
+.pill.bad { background: var(--bad-wash); color: var(--bad); }
+.ck { width: 14px; height: 14px; border: 1px solid var(--line-2); border-radius: 3px; display: inline-block; vertical-align: middle; }
+.classbar { display: flex; align-items: center; gap: 28px; padding: 16px 20px; }
+.classbar .k small { display: block; font-size: 12px; color: var(--ink-3); }
+.classbar .k b { font-size: 20px; font-weight: 600; }
+.classbar .k b.warn { color: var(--warn); }
+.classbar .sep { width: 1px; align-self: stretch; background: var(--line); }
+
+/* 报表：需要关注 */
+.attn { display: grid; grid-template-columns: 1fr 1fr 1fr; }
+.attn > div { padding: 14px 20px; border-left: 1px solid var(--line); }
+.attn > div:first-child { border-left: 0; }
+.attn h4 { margin: 0 0 8px; font-size: 13px; font-weight: 600; display: flex; gap: 6px; align-items: center; }
+.attn h4 .c { color: var(--bad); }
+.attn ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 13px; }
+.attn li { display: flex; justify-content: space-between; }
+.attn li span:last-child { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); }
+.kpis > div { padding: 16px 20px; border-left: 1px solid var(--line); }
+.kpis > div:first-child { border-left: 0; }
+.kpis small { display: block; font-size: 12px; color: var(--ink-3); }
+.kpis b { font-size: 26px; font-weight: 600; }
+.kpis em { font-style: normal; font-size: 12px; color: var(--ok); margin-left: 6px; }
+
+/* 空状态：收起成一句话 */
+.empty-steps { display: grid; grid-template-columns: repeat(3, 1fr); }
+.empty-steps > div { padding: 20px; border-left: 1px solid var(--line); }
+.empty-steps > div:first-child { border-left: 0; }
+.empty-steps .no { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; background: var(--ink); color: #fff; font-size: 12px; font-weight: 600; }
+.empty-steps .no.done { background: var(--ok); }
+.empty-steps b { display: block; margin: 10px 0 4px; font-size: 14px; }
+.empty-steps p { margin: 0 0 12px; color: var(--ink-2); font-size: 12px; }
+.quiet { padding: 18px 20px; color: var(--ink-3); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>教师端版式：先告诉老师“现在该做什么”</h1>
+  <p class="lede">管理端的“一张纸”适合设置页，但照搬到教师端就出了问题：教师端是每天要用的工作台，信息量大、要做判断。全部白底、细线、同样的灰字，什么都一样重，眼睛找不到落点；宽屏下表格被拉得很散；没数据的时候整页都是空图表。下面是诊断和改法，颜色、字体、外壳不变。示例里的数据按一个 45 人的班级编的，只用来看版式。</p>
+
+  <div class="diag">
+    <div><b>1. 没有主次：每样东西一样重</b>数字、任务、图表、说明文字全是同一个分量，老师打开总览不知道先看哪。<br><span class="fix">改：总览第一屏只回答“现在要我处理什么”——待复核几份、几个学生卡住了、哪个任务快截止，每项能直接点过去。其他都往后放。</span></div>
+    <div><b>2. 宽屏下表格被拉散</b>1920 宽的屏幕上，任务名在最左、操作在最右，中间一大片空白，眼睛要来回扫。<br><span class="fix">改：内容区限宽 1120，列少而紧；每行只有一个大数字（完成人数或成绩），其他都是灰色小字。</span></div>
+    <div><b>3. 页面“浮”着，没有边界</b>纯白底上只有细线，内容和留白分不开，看起来像没排完。<br><span class="fix">改：教师端回到浅灰底 + 少量白色内容板（一页一到两块，不是卡片墙），每块有一个标题行，边界清楚。</span></div>
+    <div><b>4. 没数据时满屏空图表</b>开学前几周全是“暂无”“—”和空柱子，占了大半屏。<br><span class="fix">改：没数据的模块收起成一句话；总览在刚开始时换成“开课三步”引导，一步做完打一个勾。</span></div>
+    <div><b>5. 颜色和标签在抢注意力</b>蓝色开关、每行一个灰框标签、行内长句提示，比内容本身还显眼。<br><span class="fix">改：颜色只留给要老师注意的东西（红 = 低分、逾期；橙 = 快截止、多日没练）；开关和标签都降成灰色；说明文字放进空状态或悬停提示。</span></div>
+    <div><b>6. 操作太多太散</b>每行“查看 / 编辑 / …”三个按钮，整列都是操作词。<br><span class="fix">改：整行可点开详情，行尾只留一个“…”。主操作每页只有一个黑按钮。</span></div>
+  </div>
+
+  <h2>数据总览</h2>
+  <div class="pair">
+    <figure><img class="before" src="assets/before-22.png" alt=""><figcaption>现在：五个数字一样大，任务列表和空图表平铺，看不出先做什么</figcaption></figure>
+    <figure><img class="before" src="assets/before-23.png" alt=""><figcaption>现在：任务表格在宽屏下被拉散，每行三个操作词</figcaption></figure>
+  </div>
+  <div class="cap"><b>改后 · 数据总览（有数据时）</b><span>第一块是“需要你处理”的三件事，红/橙数字直接告诉哪里有问题；第二块是进行中的任务；最后才是成绩和能力</span></div>
+  <div class="frame"><div class="screen s" data-tpl="overview"></div></div>
+  <div class="cap"><b>改后 · 数据总览（刚开课、还没有成绩时）</b><span>不显示空图表，换成三步引导；已完成的步骤打勾</span></div>
+  <div class="frame"><div class="screen s" data-tpl="overviewEmpty"></div></div>
+
+  <h2>实训任务</h2>
+  <div class="cap"><b>改后 · 实训任务</b><span>每行一个重点：完成人数进度条；截止时间换成“还剩 1 天”并按紧急程度上色；整行点开详情，行尾只有“…”</span></div>
+  <div class="frame"><div class="screen s" data-tpl="tasks"></div></div>
+
+  <h2>班级与学生</h2>
+  <div class="pair">
+    <figure><img class="before" src="assets/before-24.png" alt=""><figcaption>现在：名单只有几列却铺满整屏，看不出谁需要关注</figcaption></figure>
+    <figure><img class="before" src="assets/before-27.png" alt=""><figcaption>现在：考核报表没数据时空图表占满，排名表 14 列挤在一起</figcaption></figure>
+  </div>
+  <div class="cap"><b>改后 · 班级与学生</b><span>顶部一行班级概况；分组做成筛选标签；“7 天没练”“低于 60 分”直接标出来，老师一眼找到要找的学生</span></div>
+  <div class="frame"><div class="screen s" data-tpl="classes"></div></div>
+
+  <h2>考核报表</h2>
+  <div class="cap"><b>改后 · 考核报表</b><span>先四个核心数字（带较训前的变化），再“需要关注的学生”，然后分布和能力，排名表只留成绩和最弱项</span></div>
+  <div class="frame"><div class="screen s" data-tpl="reports"></div></div>
+</div>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const I = (n) => `<i data-lucide="${n}"></i>`;
+const shell = (active, title, tabs, body, badge) => `<div class="app">
+  <nav class="side">
+    <div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>
+    ${[["layout-dashboard","数据总览"],["clipboard-list","实训任务"],["users-round","班级与学生"],["megaphone","通知公告"],["message-square-more","实训跟踪"],["file-bar-chart","考核报表"],["boxes","场景配置"]].map(([i,l]) => `<div class="nav${l===active?" on":""}">${I(i)}${l}${badge && badge[l] ? `<span class="badge">${badge[l]}</span>` : ""}</div>`).join("")}
+    <div class="grow"></div><div class="foot"><div class="nav">${I("book-open")}使用帮助</div></div>
+  </nav>
+  <div class="main">
+    <header class="head"><h1>${title}</h1><div class="tabs">${tabs.map(([l,on,n]) => `<span class="tab${on?" on":""}">${l}${n!=null?`<span class="n">${n}</span>`:""}</span>`).join("")}</div>
+      <div class="right">${I("bell")}<span class="av">王</span>王老师 ${I("chevron-down")}</div></header>
+    <div class="body"><div class="wrap">${body}</div></div>
+  </div></div>`;
+const badge = { "实训跟踪": 5 };
+
+const prog = (done, total) => `<div class="prog"><div class="top"><span><b class="num">${done}</b> / ${total} 人完成</span><span class="num">${Math.round(done/total*100)}%</span></div><div class="track"><i style="width:${done/total*100}%"></i></div></div>`;
+const task = (name, meta, done, total, score, due, dueCls) => `<div class="trow">
+  <div><div class="name">${name}</div><div class="meta">${meta}</div></div>
+  ${prog(done, total)}
+  <div class="score ${score == null ? "none" : score < 60 ? "bad" : ""} num">${score ?? "未评分"}</div>
+  <div class="due ${dueCls || ""}">${due}</div>
+  <div class="more">${I("ellipsis")}</div></div>`;
+
+const dims = (rows) => `<div class="dims">${rows.map(([l, v, base, weak]) => `<div class="dim${weak ? " weak" : ""}"><span>${l}</span><span class="track"><i style="width:${v}%"></i>${base != null ? `<b style="left:${base}%"></b>` : ""}</span><strong class="num">${v}</strong><em class="${v - base < 0 ? "down" : ""}">${base != null ? (v - base >= 0 ? "+" : "") + (v - base) : ""}</em></div>`).join("")}</div>`;
+const DIMS = [["违规用语合规", 84, 70], ["语法准确性", 77, 66], ["话术规范", 80, 71], ["沟通有效性", 74, 63], ["客户情绪安抚", 68, 60, 1], ["问题解决", 62, 58, 1]];
+
+const overview = () => shell("数据总览", "数据总览", [], `
+  <div class="greet"><h2>下午好，王老师</h2><span>跨境电商2601班 · 45 人 · 本周 38 人练过</span></div>
+  <div class="board"><div class="todo">
+    <div><span class="big bad num">3</span><div><b>份评分等你复核</b><p>其中 1 份低于 60 分（张三 · 货损退款协商）</p><a>去复核 →</a></div></div>
+    <div><span class="big warn num">2</span><div><b>位学生的买家在等回复</b><p>李四已经让买家等了 6 分钟</p><a>去实训跟踪 →</a></div></div>
+    <div><span class="big warn num">12</span><div><b>人还没完成「售后差评挽回」</b><p>明天 18:00 截止</p><a>查看名单 →</a></div></div>
+  </div></div>
+  <div class="board">
+    <div class="bhead"><h3>进行中的任务</h3><span class="n">4</span><span class="link">全部任务 ${I("chevron-right")}</span></div>
+    ${task("售后差评挽回", "跨境电商2601班 · 售后处理 · 2 个场景", 33, 45, 71, "还剩 1 天", "warn")}
+    ${task("售中物流同步演练", "跨境电商2601班 · 售中处理 · 1 个场景", 20, 45, 76, "还剩 4 天")}
+    ${task("新品推广首训", "跨境电商2601班 · 售前沟通 · 2 个场景", 41, 45, 82, "10/20 截止")}
+    ${task("画像规则验证", "跨境电商2601班 · 售后处理 · 1 个场景", 3, 45, null, "不设截止")}
+  </div>
+  <div class="duo">
+    <div class="board"><div class="bhead"><h3>成绩分布</h3><span class="n">40 人有成绩</span></div>
+      <div class="dist"><div>3<i class="bad" style="height:12%"></i></div><div>7<i style="height:28%"></i></div><div>15<i style="height:62%"></i></div><div>11<i style="height:45%"></i></div><div>4<i style="height:16%"></i></div></div>
+      <div class="axis"><span>&lt;60</span><span>60–70</span><span>70–80</span><span>80–90</span><span>90+</span></div></div>
+    <div class="board"><div class="bhead"><h3>六项能力</h3><span class="n">全班平均 · 竖线是训前</span><span class="link">看报表 ${I("chevron-right")}</span></div>${dims(DIMS)}</div>
+  </div>`, badge);
+
+const overviewEmpty = () => shell("数据总览", "数据总览", [], `
+  <div class="greet"><h2>下午好，王老师</h2><span>跨境电商2601班 · 45 人</span></div>
+  <div class="board">
+    <div class="bhead"><h3>开课三步</h3><span class="n">做完这三步，学生就能开始练了</span></div>
+    <div class="empty-steps">
+      <div><span class="no done">✓</span><b>导入学生名单</b><p>45 人已导入，38 人已经登录过。</p><span class="btn ghost">查看名单</span></div>
+      <div><span class="no">2</span><b>下发第一个任务</b><p>选班级和场景，几分钟就能配好。建议先从“依次进线”开始。</p><span class="btn primary">${I("plus")}新建任务</span></div>
+      <div><span class="no">3</span><b>看学生练习</b><p>学生开始接待后，可以在实训跟踪里旁观，随时发指导。</p><span class="btn">去实训跟踪</span></div>
+    </div>
+  </div>
+  <div class="board"><div class="bhead"><h3>成绩与能力</h3></div><div class="quiet">学生完成第一个任务、出了评分后，这里会显示成绩分布和全班六项能力。</div></div>`);
+
+const tasks = () => shell("实训任务", "实训任务", [["进行中", true, 4], ["未开始", false, 1], ["已结束", false, 6]], `
+  <div class="bar-row"><span class="search">${I("search")}搜索任务</span><div class="r"><span class="btn primary">${I("plus")}新建任务</span></div></div>
+  <div class="board">
+    <div class="trow th"><span>任务</span><span>完成情况</span><span style="text-align:right">平均分</span><span style="text-align:right">截止</span><span></span></div>
+    ${task("售后差评挽回", "跨境电商2601班 · 售后处理 · 2 个场景 · 买家依次进线", 33, 45, 71, "还剩 1 天", "warn")}
+    ${task("售中物流同步演练", "跨境电商2601班 · 售中处理 · 1 个场景 · 每 5 分钟进线一位", 20, 45, 76, "还剩 4 天")}
+    ${task("新品推广首训", "跨境电商2601班 · 售前沟通 · 2 个场景", 41, 45, 82, "10/20 截止")}
+    ${task("催付话术练习", "跨境电商2602班 · 售中处理 · 1 个场景", 9, 42, 57, "已逾期 1 天", "bad")}
+    ${task("画像规则验证", "跨境电商2601班 · 售后处理 · 1 个场景", 3, 45, null, "不设截止")}
+  </div>`, badge);
+
+const stu = (name, id, group, done, total, score, active, tag) => `<tr>
+  <td><span class="ck"></span></td>
+  <td><div class="n1">${name}</div><div class="n2">${id}</div></td>
+  <td>${group ? `<span class="pill">${group}</span>` : `<span class="n2">—</span>`}</td>
+  <td><div class="mini"><span class="track"><i style="width:${done/total*100}%"></i></span><span class="num">${done} / ${total}</span></div></td>
+  <td class="r num" style="font-weight:600;${score != null && score < 60 ? "color:var(--bad)" : ""}">${score ?? `<span class="n2">—</span>`}</td>
+  <td>${tag ? `<span class="pill ${tag[0]}">${tag[1]}</span>` : active}</td>
+  <td class="r" style="color:var(--ink-3)">${I("ellipsis")}</td></tr>`;
+const classes = () => shell("班级与学生", "班级与学生", [["跨境电商2601班", true, 45], ["跨境电商2602班", false, 42]], `
+  <div class="board" style="margin-bottom:16px"><div class="classbar">
+    <div class="k"><small>学生</small><b class="num">45</b></div><div class="sep"></div>
+    <div class="k"><small>本周练过</small><b class="num">38</b></div><div class="sep"></div>
+    <div class="k"><small>平均分</small><b class="num">74</b></div><div class="sep"></div>
+    <div class="k"><small>7 天以上没练</small><b class="num warn">4</b></div>
+    <div style="margin-left:auto;display:flex;gap:8px"><span class="btn ghost">${I("download")}导出名单</span><span class="btn">${I("file-up")}导入学生</span><span class="btn ghost">${I("ellipsis")}</span></div>
+  </div></div>
+  <div class="bar-row"><span class="search">${I("search")}搜索姓名或学号</span>
+    <div class="chips"><span class="chip on">全部 <i>45</i></span><span class="chip">第一组 <i>8</i></span><span class="chip">第二组 <i>9</i></span><span class="chip">第三组 <i>9</i></span><span class="chip">未分组 <i>19</i></span><span class="chip">需要关注 <i>6</i></span></div></div>
+  <div class="board"><table>
+    <tr><th style="width:36px"><span class="ck"></span></th><th>学生</th><th style="width:110px">分组</th><th style="width:170px">完成任务</th><th class="r" style="width:80px">平均分</th><th style="width:130px">最近练习</th><th style="width:40px"></th></tr>
+    ${stu("张三", "s2601001", "第一组", 3, 4, 82, "今天 14:20")}
+    ${stu("李四", "s2601002", "第一组", 1, 4, 54, "", ["bad", "低于 60 分"])}
+    ${stu("王小明", "s2601003", "第二组", 4, 4, 88, "昨天")}
+    ${stu("刘小红", "s2601004", "第二组", 0, 4, null, "", ["warn", "9 天没练"])}
+    ${stu("陈一鸣", "s2601005", "", 2, 4, 76, "3 天前")}
+    ${stu("赵思琪", "s2601006", "第三组", 3, 4, 79, "今天 10:05")}
+    ${stu("孙浩然", "s2601007", "第三组", 2, 4, 71, "2 天前")}
+    ${stu("周雨桐", "s2601008", "", 0, 4, null, "", ["warn", "还没登录"])}
+    ${stu("吴子轩", "s2601009", "第一组", 4, 4, 91, "今天 09:48")}
+  </table></div>`, badge);
+
+const reports = () => shell("考核报表", "考核报表", [], `
+  <div class="bar-row"><span class="btn" style="width:200px;justify-content:space-between">跨境电商2601班 ${I("chevron-down")}</span><span class="btn" style="width:200px;justify-content:space-between">全部任务综合 ${I("chevron-down")}</span>
+    <div class="r"><span class="btn ghost">${I("file-spreadsheet")}导出 Excel</span><span class="btn primary">${I("download")}导出 PDF</span></div></div>
+  <div class="board"><div class="kpis">
+    <div><small>平均分</small><b class="num">74</b><em>较训前 +9</em></div>
+    <div><small>及格率</small><b class="num">93%</b></div>
+    <div><small>优良率（80 分以上）</small><b class="num">33%</b></div>
+    <div><small>参评学生</small><b class="num">40</b><span class="n2"> / 45</span></div>
+  </div></div>
+  <div class="board"><div class="bhead"><h3>需要关注的学生</h3></div><div class="attn">
+    <div><h4><span class="c">●</span>低于 60 分 · 3 人</h4><ul><li><span>李四</span><span>54</span></li><li><span>何嘉怡</span><span>57</span></li><li><span>林子豪</span><span>58</span></li></ul></div>
+    <div><h4><span class="c">●</span>比训前退步 · 2 人</h4><ul><li><span>郑可欣</span><span>66 → 61</span></li><li><span>黄俊杰</span><span>70 → 68</span></li></ul></div>
+    <div><h4><span class="c" style="color:var(--warn)">●</span>还没有成绩 · 5 人</h4><ul><li><span>刘小红</span><span>9 天没练</span></li><li><span>周雨桐</span><span>还没登录</span></li><li><span style="color:var(--accent)">另外 3 人</span><span></span></li></ul></div>
+  </div></div>
+  <div class="duo">
+    <div class="board"><div class="bhead"><h3>成绩分布</h3><span class="n">每人一个综合成绩</span></div>
+      <div class="dist"><div>3<i class="bad" style="height:12%"></i></div><div>7<i style="height:28%"></i></div><div>15<i style="height:62%"></i></div><div>11<i style="height:45%"></i></div><div>4<i style="height:16%"></i></div></div>
+      <div class="axis"><span>&lt;60</span><span>60–70</span><span>70–80</span><span>80–90</span><span>90+</span></div></div>
+    <div class="board"><div class="bhead"><h3>六项能力</h3><span class="n">竖线是训前测评 · 红色是最弱两项</span></div>${dims(DIMS)}</div>
+  </div>`, badge);
+
+const T = { overview, overviewEmpty, tasks, classes, reports };
+document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
+if (window.lucide) lucide.createIcons();
+function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${900 * k}px`; }); }
+fit(); addEventListener("resize", fit);
+</script>
+</body>
+</html>

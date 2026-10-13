@@ -231,6 +231,14 @@ export interface ClassStudent {
   status: "active" | "disabled";
   mustChangePassword: boolean;
   createdAt: string;
+  /** 班内分组，null = 未分组 */
+  groupName: string | null;
+  tasksTotal: number;
+  tasksDone: number;
+  /** 任务口径平均分，没有成绩时为 null */
+  averageScore: number | null;
+  /** 最近一次发消息的时间 */
+  lastActiveAt: string | null;
 }
 
 export interface ImportResult {
@@ -247,6 +255,8 @@ export interface ScenarioSummary {
   enabled: boolean;
   /** 场景剧本（J5）：买家目标、隐藏信息、情绪触发点、让步底线、结束条件 */
   script: Partial<Record<"buyerGoal" | "hiddenInfo" | "emotionTriggers" | "bottomLine" | "endConditions", string>> | null;
+  /** 被几个未关闭的任务使用（场景卡片显示影响面） */
+  taskCount?: number;
 }
 
 export interface TeacherTask {
@@ -267,9 +277,13 @@ export interface TeacherTask {
   /** 接待节奏（买家自动进线策略） */
   arrivalMode: "sequential" | "interval" | "all_at_once";
   arrivalIntervalMinutes: number | null;
+  /** 买家画像随机规则（空对象 = 完全随机） */
+  personaRule?: Record<string, string[] | undefined>;
   classes: Array<{ id: string; name: string }>;
   studentTotal: number;
   studentDone: number;
+  /** 已出成绩学生的任务平均分，没有成绩时为 null */
+  averageScore: number | null;
   createdAt: string;
 }
 
@@ -297,6 +311,8 @@ export const createClass = (session: Session, name: string) =>
   apiPost<ClassSummary>("/v1/classes", session, { name });
 export const fetchClassStudents = (session: Session, classId: string) =>
   apiGet<ClassStudent[]>(`/v1/classes/${classId}/students`, session);
+export const setStudentGroup = (session: Session, classId: string, studentIds: string[], groupName: string | null) =>
+  apiRequestPut<{ updated: number }>(`/v1/classes/${classId}/groups`, session, { studentIds, groupName });
 export const importStudents = (
   session: Session,
   classId: string,
@@ -859,6 +875,9 @@ export interface TeacherAnnouncement {
   createdAt: string;
   expiresAt: string | null;
   expired: boolean;
+  /** 收到的学生数 / 其中看到过的（学生端顶栏显示过即算已读） */
+  recipientCount?: number;
+  readCount?: number;
 }
 
 export interface StudentAnnouncement {
@@ -953,7 +972,7 @@ export interface MailDraft {
   savedAt: string;
 }
 
-export type ReadMarkKind = "mail" | "guidance";
+export type ReadMarkKind = "mail" | "guidance" | "notice";
 
 export const fetchReviewReplies = (session: Session) =>
   apiGet<Record<string, ReviewReplyRecord>>("/v1/student/review-replies", session);
@@ -1013,6 +1032,9 @@ export interface PersonaTemplate {
   preference: string;
   customerType: string;
   enabled: boolean;
+  /** 列表接口附带：画像卡片头像、被用来接待过几次 */
+  avatarUrl?: string;
+  conversationCount?: number;
 }
 
 export const fetchPersonas = (session: Session) =>
@@ -1023,3 +1045,111 @@ export const updatePersona = (session: Session, personaId: string, payload: Part
   apiRequestPatch<PersonaTemplate>(`/v1/catalog/personas/${personaId}`, session, payload);
 export const deletePersona = (session: Session, personaId: string) =>
   apiRequestDelete(`/v1/catalog/personas/${personaId}`, session);
+
+// ---------- 平台品牌（H6 / D-21） ----------
+
+export interface BrandSettings {
+  name: string;
+  /** data URL；null 表示使用内置客服耳麦图标 */
+  logo: string | null;
+}
+
+/** 登录前调用，不需要会话 */
+export async function fetchPublicBrand(): Promise<BrandSettings> {
+  const response = await fetch(`${API_BASE}/v1/public/brand`);
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as BrandSettings;
+}
+
+export const saveBrand = (session: Session, patch: { name?: string; logo?: string | null }) =>
+  apiRequestPut<BrandSettings>("/v1/admin/brand", session, patch);
+
+// ---------- 管理端：系统总览、告警、内容库（E4–E6） ----------
+
+export type ServiceStatus = "ok" | "warn" | "error" | "off";
+
+export interface AdminAlert {
+  level: "warn" | "danger";
+  title: string;
+  detail: string;
+  /** 对应的管理端页面 id */
+  page: "providers" | "backup" | "system";
+}
+
+export interface AdminSystemOverview {
+  version: { server: string; schema: string; uptimeSeconds: number };
+  services: Array<{ key: string; name: string; status: ServiceStatus; detail: string }>;
+  alerts: AdminAlert[];
+  counts: { students: number; teachers: number; conversations: number; messages: number; assessments: number };
+}
+
+export const fetchAdminSystem = (session: Session) => apiGet<AdminSystemOverview>("/v1/admin/system", session);
+export const fetchAdminAlerts = (session: Session) => apiGet<AdminAlert[]>("/v1/admin/alerts", session);
+
+export interface ContentTerm {
+  id: number;
+  text: string;
+  enabled: boolean;
+}
+
+export type ContentKind = "forbidden" | "phrase";
+
+export const fetchContentTerms = (session: Session, kind: ContentKind) =>
+  apiGet<ContentTerm[]>(`/v1/admin/content?kind=${kind}`, session);
+export const addContentTerm = (session: Session, kind: ContentKind, text: string) =>
+  apiPost("/v1/admin/content", session, { kind, text });
+export const setContentTermEnabled = (session: Session, id: number, enabled: boolean) =>
+  apiRequestPatch(`/v1/admin/content/${id}`, session, { enabled });
+export const importContentTerms = (session: Session, kind: ContentKind, texts: string[]) =>
+  apiPost<{ added: number; skipped: number }>("/v1/admin/content/import", session, { kind, texts });
+export const deleteContentTerm = (session: Session, id: number) => apiRequestDelete(`/v1/admin/content/${id}`, session);
+
+export interface AuditEntry {
+  id: number;
+  action: string;
+  target: string | null;
+  actor: string | null;
+  created_at: string;
+}
+export const fetchAudit = (session: Session, limit = 30) => apiGet<AuditEntry[]>(`/v1/admin/audit?limit=${limit}`, session);
+
+export interface BackupFile {
+  fileName: string;
+  size: number;
+  createdAt: string;
+}
+export const fetchBackups = (session: Session) => apiGet<BackupFile[]>("/v1/admin/backups", session);
+export const createBackup = (session: Session) => apiPost<{ fileName: string; size: number; removed: number }>("/v1/admin/backups", session);
+export interface BackupSchedule {
+  enabled: boolean;
+  hour: number;
+  /** 保留最近几份 */
+  keep: number;
+  keepOptions: number[];
+}
+export const fetchBackupSchedule = (session: Session) => apiGet<BackupSchedule>("/v1/admin/backup-schedule", session);
+export const saveBackupSchedule = (session: Session, schedule: Pick<BackupSchedule, "enabled" | "hour" | "keep">) =>
+  apiRequestPut<BackupSchedule>("/v1/admin/backup-schedule", session, schedule);
+
+/** 音色试听：返回可直接播放的 mp3 地址（用完需 revokeObjectURL） */
+export async function previewVoice(session: Session, speaker: string): Promise<string> {
+  const response = await fetch(`${API_BASE}/v1/admin/voice/preview`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${session.accessToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ speaker }),
+  });
+  if (!response.ok) await parseError(response);
+  return URL.createObjectURL(await response.blob());
+}
+
+/** 带鉴权下载文件（备份、导出），浏览器另存 */
+export async function downloadWithAuth(session: Session, path: string, fileName: string): Promise<void> {
+  const response = await fetch(`${API_BASE}${path}`, { headers: { authorization: `Bearer ${session.accessToken}` } });
+  if (!response.ok) await parseError(response);
+  const blob = await response.blob();
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}

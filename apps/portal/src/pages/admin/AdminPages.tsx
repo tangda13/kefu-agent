@@ -4,13 +4,27 @@ import { MetricCard, PageHeader } from "../../components/AppShell";
 import type { Session } from "../../api/client";
 import { AdminAccounts, AdminBackup, AdminContent, AdminSystem } from "./AdminLive";
 import { AdminModels } from "./AdminModels";
+import { AdminBrand } from "./AdminBrand";
+import { useState } from "react";
+import { HeaderTabs } from "../../ui";
 
-export function AdminPages({ page, session }: { page: string; session?: Session | null }) {
+export function AdminPages({ page, session, onNavigate }: { page: string; session?: Session | null; onNavigate?: (page: string) => void }) {
   if (page === "providers") return session ? <AdminModels session={session} /> : <Providers />;
   if (page === "accounts") return session ? <AdminAccounts session={session} /> : <Accounts />;
   if (page === "content") return session ? <AdminContent session={session} /> : <ContentLibrary />;
   if (page === "backup") return session ? <AdminBackup session={session} /> : <Backup />;
-  return session ? <AdminSystem session={session} /> : <SystemOverview />;
+  return session ? <SystemPage session={session} onNavigate={onNavigate} /> : <SystemOverview />;
+}
+
+/** 系统总览：运行状态 + 品牌设置（参数 3.1 只有五个模块，品牌设置归在系统总览下，D-21） */
+function SystemPage({ session, onNavigate }: { session: Session; onNavigate?: (page: string) => void }) {
+  const [tab, setTab] = useState<"status" | "brand">("status");
+  return (
+    <>
+      <HeaderTabs items={[{ id: "status", label: "运行状态" }, { id: "brand", label: "品牌设置" }]} value={tab} onChange={setTab} />
+      {tab === "status" ? <AdminSystem session={session} onNavigate={onNavigate} /> : <AdminBrand session={session} />}
+    </>
+  );
 }
 
 function SystemOverview() {

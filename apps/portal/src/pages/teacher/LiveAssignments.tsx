@@ -1,35 +1,54 @@
-import { Check, Plus, Search } from "lucide-react";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { ASSESSMENT_DIMENSIONS, BUSINESS_STAGES, BUSINESS_STAGE_LABELS, type BusinessStage } from "@cecs/contracts";
-import { PageHeader } from "../../components/AppShell";
+import { Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ApiError,
-  createTask,
-  deleteTask,
-  fetchClasses,
-  fetchScenarios,
-  fetchTeacherTasks,
-  updateTask,
-  type ClassSummary,
-  type ScenarioSummary,
-  type Session,
-  type TeacherTask,
+  ASSESSMENT_DIMENSIONS, BUSINESS_STAGES, BUSINESS_STAGE_LABELS, CUSTOMER_TYPES, EMOTIONS, NATIONALITIES, PERSONALITIES,
+  type BusinessStage,
+} from "@cecs/contracts";
+import {
+  ApiError, createTask, deleteTask, fetchClasses, fetchScenarios, fetchTeacherTasks, updateTask,
+  type ClassSummary, type ScenarioSummary, type Session, type TeacherTask,
 } from "../../api/client";
-import { TeacherDialog } from "./widgets";
+import {
+  Bench, Board, Button, ChipSelect, Confirm, Drawer, Field, HeaderTabs, Input, KeyValues, MoreMenu, SearchBox, Segmented, Select,
+  Status, toast,
+} from "../../ui";
+import { TaskRow, TaskRowHead } from "./TaskRow";
 
-const INTERACTION_LABELS: Record<string, string> = {
-  text_voice: "文字 + 语音",
-  text: "仅文字",
-  voice: "仅语音",
-};
+const INTERACTION_LABELS: Record<string, string> = { text_voice: "文字和语音", text: "只用文字", voice: "只用语音" };
+const LANGUAGE_LABELS: Record<string, string> = { "en-US": "英语", "es-ES": "西班牙语", "fr-FR": "法语" };
+const ARRIVAL_LABELS = { sequential: "一位接一位", interval: "按间隔进线", all_at_once: "同时进线" } as const;
 
-type StatusFilter = "all" | "published" | "closed";
+type ArrivalMode = keyof typeof ARRIVAL_LABELS;
+type CompletionRule = "all_scenarios" | "conversation_count";
+type TaskTab = "active" | "upcoming" | "closed";
 
-const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
-  { id: "all", label: "全部" },
-  { id: "published", label: "进行中" },
-  { id: "closed", label: "已结束" },
-];
+interface PersonaRule {
+  nationalityPool?: string[];
+  personalityPool?: string[];
+  emotionPool?: string[];
+  languages?: string[];
+  customerTypes?: string[];
+}
+
+interface TaskForm {
+  name: string;
+  businessStage: BusinessStage;
+  classIds: string[];
+  scenarioIds: string[];
+  interactionMode: string;
+  timeLimit: string;
+  startAt: string;
+  deadline: string;
+  completionRule: CompletionRule;
+  requiredCount: string;
+  passScore: string;
+  arrivalMode: ArrivalMode;
+  arrivalInterval: string;
+  weights: Record<string, number>;
+  rule: Required<PersonaRule>;
+}
+
+const errorText = (cause: unknown) => (cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
 
 function defaultWeights(): Record<string, number> {
   const base = Math.floor(100 / ASSESSMENT_DIMENSIONS.length);
@@ -40,10 +59,6 @@ function defaultWeights(): Record<string, number> {
   return weights;
 }
 
-function errorText(cause: unknown): string {
-  return cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。";
-}
-
 function toLocalInput(iso: string | null): string {
   if (!iso) return "";
   const date = new Date(iso);
@@ -51,606 +66,430 @@ function toLocalInput(iso: string | null): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+const dateText = (iso: string | null, fallback: string) =>
+  iso ? new Date(iso).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : fallback;
+
+function emptyForm(): TaskForm {
+  return {
+    name: "", businessStage: "pre_sale", classIds: [], scenarioIds: [], interactionMode: "text_voice",
+    timeLimit: "30", startAt: "", deadline: "", completionRule: "all_scenarios", requiredCount: "1", passScore: "",
+    arrivalMode: "sequential", arrivalInterval: "5", weights: defaultWeights(),
+    rule: { nationalityPool: [], personalityPool: [], emotionPool: [], languages: [], customerTypes: [] },
+  };
+}
+
+function formFromTask(task: TeacherTask): TaskForm {
+  const rule = (task.personaRule ?? {}) as PersonaRule;
+  return {
+    name: task.name, businessStage: task.businessStage, classIds: task.classes.map((item) => item.id), scenarioIds: task.scenarioIds,
+    interactionMode: task.interactionMode, timeLimit: task.timeLimitMinutes ? String(task.timeLimitMinutes) : "",
+    startAt: toLocalInput(task.startAt), deadline: toLocalInput(task.deadline),
+    completionRule: task.completionRule ?? "all_scenarios", requiredCount: String(task.requiredCount ?? 1),
+    passScore: task.passScore != null ? String(task.passScore) : "", arrivalMode: task.arrivalMode ?? "sequential",
+    arrivalInterval: String(task.arrivalIntervalMinutes ?? 5), weights: { ...defaultWeights(), ...task.scoringWeights },
+    rule: {
+      nationalityPool: rule.nationalityPool ?? [], personalityPool: rule.personalityPool ?? [], emotionPool: rule.emotionPool ?? [],
+      languages: rule.languages ?? [], customerTypes: rule.customerTypes ?? [],
+    },
+  };
+}
+
+function taskState(task: TeacherTask): TaskTab {
+  if (task.status === "closed") return "closed";
+  if (task.startAt && new Date(task.startAt).getTime() > Date.now()) return "upcoming";
+  return "active";
+}
+
+function ruleSummary(rule: PersonaRule | undefined): string {
+  if (!rule) return "完全随机";
+  const parts = [
+    rule.nationalityPool?.length ? `国籍 ${rule.nationalityPool.join("、")}` : "",
+    rule.personalityPool?.length ? `性格 ${rule.personalityPool.join("、")}` : "",
+    rule.emotionPool?.length ? `情绪 ${rule.emotionPool.join("、")}` : "",
+    rule.languages?.length ? `语言 ${rule.languages.map((item) => LANGUAGE_LABELS[item] ?? item).join("、")}` : "",
+    rule.customerTypes?.length ? `客户类型 ${rule.customerTypes.join("、")}` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join("；") : "完全随机";
+}
+
 export function LiveAssignments({ session }: { session: Session }) {
   const [tasks, setTasks] = useState<TeacherTask[]>([]);
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([]);
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState("");
-  const [formError, setFormError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const [name, setName] = useState("");
-  const [businessStage, setBusinessStage] = useState<BusinessStage>("pre_sale");
-  const [classIds, setClassIds] = useState<string[]>([]);
-  const [scenarioIds, setScenarioIds] = useState<string[]>([]);
-  const [interactionMode, setInteractionMode] = useState("text_voice");
-  const [timeLimit, setTimeLimit] = useState<number>(30);
-  const [startAt, setStartAt] = useState("");
-  const [deadline, setDeadline] = useState("");
-  const [weights, setWeights] = useState<Record<string, number>>(defaultWeights);
-  /* 完成标准：覆盖全部场景 / 完成 N 次会话；达标线 0 = 不设线（完成即达标） */
-  const [completionRule, setCompletionRule] = useState<"all_scenarios" | "conversation_count">("all_scenarios");
-  const [requiredCount, setRequiredCount] = useState<number>(1);
-  const [passScore, setPassScore] = useState<number>(0);
-  /* 接待节奏：买家自动进线策略（依次 / 固定间隔并发 / 全部同时），是任务难度参数 */
-  const [arrivalMode, setArrivalMode] = useState<"sequential" | "interval" | "all_at_once">("sequential");
-  const [arrivalInterval, setArrivalInterval] = useState<number>(5);
-
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [query, setQuery] = useState("");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const [editing, setEditing] = useState<TeacherTask | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editStartAt, setEditStartAt] = useState("");
-  const [editDeadline, setEditDeadline] = useState("");
-  const [editTimeLimit, setEditTimeLimit] = useState<number>(0);
-  const [editCompletionRule, setEditCompletionRule] = useState<"all_scenarios" | "conversation_count">("all_scenarios");
-  const [editRequiredCount, setEditRequiredCount] = useState<number>(1);
-  const [editPassScore, setEditPassScore] = useState<number>(0);
-  const [editArrivalMode, setEditArrivalMode] = useState<"sequential" | "interval" | "all_at_once">("sequential");
-  const [editArrivalInterval, setEditArrivalInterval] = useState<number>(5);
-  const [editBusy, setEditBusy] = useState(false);
-  const [editError, setEditError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<TaskTab>("active");
+  const [keyword, setKeyword] = useState("");
+  const [viewing, setViewing] = useState<TeacherTask | null>(null);
+  const [editing, setEditing] = useState<TeacherTask | "new" | null>(null);
+  const [closing, setClosing] = useState<TeacherTask | null>(null);
+  const [removing, setRemoving] = useState<TeacherTask | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [taskList, classList, scenarioList] = await Promise.all([
-        fetchTeacherTasks(session),
-        fetchClasses(session),
-        fetchScenarios(session),
-      ]);
+      const [taskList, classList, scenarioList] = await Promise.all([fetchTeacherTasks(session), fetchClasses(session), fetchScenarios(session)]);
       setTasks(taskList);
       setClasses(classList);
       setScenarios(scenarioList);
     } catch (cause) {
-      setError(errorText(cause));
+      toast.error(errorText(cause));
+    } finally {
+      setLoading(false);
     }
   }, [session]);
+  useEffect(() => { void load(); }, [load]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const enabledScenarios = useMemo(() => scenarios.filter((item) => item.enabled), [scenarios]);
-  const stageScenarios = useMemo(
-    () => enabledScenarios.filter((item) => item.stage === businessStage),
-    [enabledScenarios, businessStage],
-  );
-  const scenarioNames = useMemo(
-    () => new Map(scenarios.map((item) => [item.id, item.name])),
-    [scenarios],
-  );
-  const weightSum = useMemo(
-    () => Object.values(weights).reduce((sum, value) => sum + value, 0),
-    [weights],
-  );
-
+  const scenarioNames = useMemo(() => new Map(scenarios.map((item) => [item.id, item.name])), [scenarios]);
+  const counts = useMemo(() => {
+    const result: Record<TaskTab, number> = { active: 0, upcoming: 0, closed: 0 };
+    for (const task of tasks) result[taskState(task)] += 1;
+    return result;
+  }, [tasks]);
   const visible = useMemo(() => {
-    const keyword = query.trim().toLowerCase();
-    return tasks.filter((task) => {
-      if (statusFilter !== "all" && task.status !== statusFilter) return false;
-      if (!keyword) return true;
-      const haystack = `${task.name} ${task.classes.map((item) => item.name).join(" ")}`.toLowerCase();
-      return haystack.includes(keyword);
-    });
-  }, [tasks, statusFilter, query]);
+    const word = keyword.trim().toLowerCase();
+    return tasks.filter((task) => taskState(task) === tab && (!word || `${task.name} ${task.classes.map((item) => item.name).join(" ")}`.toLowerCase().includes(word)));
+  }, [tasks, tab, keyword]);
 
-  function toggle(list: string[], value: string): string[] {
-    return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
-  }
-
-  function openCreate() {
-    setName("");
-    setBusinessStage("pre_sale");
-    setClassIds([]);
-    setScenarioIds([]);
-    setInteractionMode("text_voice");
-    setTimeLimit(30);
-    setStartAt("");
-    setDeadline("");
-    setWeights(defaultWeights());
-    setCompletionRule("all_scenarios");
-    setRequiredCount(1);
-    setPassScore(0);
-    setArrivalMode("sequential");
-    setArrivalInterval(5);
-    setFormError("");
-    setCreating(true);
-  }
-
-  async function submit() {
-    if (busy) return;
-    setFormError("");
-    if (!name.trim()) return setFormError("请填写任务名称。");
-    if (classIds.length === 0) return setFormError("请至少选择一个下发班级。");
-    if (scenarioIds.length === 0) return setFormError("请至少选择一个实训场景。");
-    if (weightSum !== 100) return setFormError(`评分权重合计须为 100，当前 ${weightSum}。`);
-    if (startAt && deadline && new Date(startAt).getTime() >= new Date(deadline).getTime()) {
-      return setFormError("开始时间必须早于截止时间。");
-    }
-    if (completionRule === "conversation_count" && (requiredCount < 1 || requiredCount > 50)) {
-      return setFormError("需完成会话次数须为 1-50。");
-    }
-    if (arrivalMode === "interval" && (arrivalInterval < 1 || arrivalInterval > 120)) {
-      return setFormError("进线间隔须为 1-120 分钟。");
-    }
-    setBusy(true);
+  async function setStatus(task: TeacherTask, status: "published" | "closed") {
     try {
-      await createTask(session, {
-        name: name.trim(),
-        businessStage,
-        scenarioIds,
-        classIds,
-        interactionMode,
-        timeLimitMinutes: timeLimit > 0 ? timeLimit : undefined,
-        startAt: startAt ? new Date(startAt).toISOString() : undefined,
-        deadline: deadline ? new Date(deadline).toISOString() : undefined,
-        scoringWeights: weights,
-        completionRule,
-        requiredCount: completionRule === "conversation_count" ? requiredCount : undefined,
-        passScore: passScore > 0 ? passScore : null,
-        arrivalMode,
-        arrivalIntervalMinutes: arrivalMode === "interval" ? arrivalInterval : undefined,
-      });
-      setNotice(
-        startAt && new Date(startAt).getTime() > Date.now()
-          ? `任务「${name.trim()}」已创建，将于 ${new Date(startAt).toLocaleString("zh-CN")} 对学生开放`
-          : `任务「${name.trim()}」已下发，所选班级学生即刻可见`,
-      );
-      setCreating(false);
+      await updateTask(session, task.id, { status });
+      toast.ok(status === "closed" ? `「${task.name}」已结束` : `「${task.name}」已重新开启`);
+      setClosing(null);
       await load();
     } catch (cause) {
-      setFormError(errorText(cause));
+      toast.error(errorText(cause));
+    }
+  }
+
+  async function remove() {
+    if (!removing) return;
+    try {
+      await deleteTask(session, removing.id);
+      toast.ok(`已删除「${removing.name}」`);
+      setRemoving(null);
+      await load();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    }
+  }
+
+  return (
+    <>
+      <HeaderTabs
+        items={[
+          { id: "active", label: "进行中", count: counts.active },
+          { id: "upcoming", label: "未开始", count: counts.upcoming },
+          { id: "closed", label: "已结束", count: counts.closed },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+      <Bench>
+        <div className="bench-bar">
+          <SearchBox value={keyword} onChange={setKeyword} placeholder="搜索任务或班级" />
+          <div className="bench-bar-end"><Button variant="primary" icon={Plus} onClick={() => setEditing("new")}>新建任务</Button></div>
+        </div>
+        <Board>
+          <TaskRowHead timeLabel={tab === "upcoming" ? "开放时间" : "截止"} />
+          {loading ? <p className="board-quiet">正在读取…</p> : visible.length === 0 ? (
+            <p className="board-quiet">{keyword ? "没有匹配的任务" : tab === "active" ? "没有进行中的任务。点「新建任务」给班级下发一个。" : tab === "upcoming" ? "没有预约开放的任务。新建任务时设置“开放时间”，就会先出现在这里。" : "还没有结束的任务"}</p>
+          ) : visible.map((row) => (
+            <TaskRow
+              key={row.id}
+              task={row}
+              showOpenTime={tab === "upcoming"}
+              onOpen={() => setViewing(row)}
+              menu={
+                <MoreMenu items={[
+                  { label: "编辑", onClick: () => setEditing(row) },
+                  row.status === "closed"
+                    ? { label: "重新开启", onClick: () => void setStatus(row, "published") }
+                    : { label: "结束任务", onClick: () => setClosing(row) },
+                  { label: "删除", danger: true, onClick: () => setRemoving(row) },
+                ]} />
+              }
+            />
+          ))}
+        </Board>
+      </Bench>
+
+      {viewing ? (
+        <Drawer
+          title={viewing.name}
+          width={480}
+          onClose={() => setViewing(null)}
+          footer={<Button onClick={() => { setEditing(viewing); setViewing(null); }}>编辑</Button>}
+        >
+          <KeyValues
+            items={[
+              { label: "状态", value: { active: <Status tone="ok">进行中</Status>, upcoming: <Status tone="warn">未开始</Status>, closed: <Status>已结束</Status> }[taskState(viewing)] },
+              { label: "班级", value: viewing.classes.map((item) => item.name).join("、") || "—" },
+              { label: "业务环节", value: BUSINESS_STAGE_LABELS[viewing.businessStage] },
+              { label: "场景", value: viewing.scenarioIds.map((id) => scenarioNames.get(id) ?? id).join("、") || "—" },
+              { label: "完成情况", value: `${viewing.studentDone} / ${viewing.studentTotal} 人完成` },
+              { label: "开放时间", value: viewing.startAt ? new Date(viewing.startAt).toLocaleString("zh-CN") : "下发后立即开放" },
+              { label: "截止时间", value: viewing.deadline ? new Date(viewing.deadline).toLocaleString("zh-CN") : "不设截止" },
+              { label: "单次限时", value: viewing.timeLimitMinutes ? `${viewing.timeLimitMinutes} 分钟` : "不限时" },
+              { label: "回复方式", value: INTERACTION_LABELS[viewing.interactionMode] ?? viewing.interactionMode },
+              { label: "完成标准", value: viewing.completionRule === "conversation_count" ? `完成 ${viewing.requiredCount ?? 1} 次接待` : `每个场景至少接待一次（共 ${viewing.scenarioIds.length} 个）` },
+              { label: "达标线", value: viewing.passScore != null ? `${viewing.passScore} 分` : "不设，完成即达标" },
+              { label: "买家进线", value: viewing.arrivalMode === "interval" ? `每 ${viewing.arrivalIntervalMinutes ?? 5} 分钟进线一位` : ARRIVAL_LABELS[viewing.arrivalMode ?? "sequential"] },
+              { label: "买家画像", value: ruleSummary(viewing.personaRule as PersonaRule | undefined) },
+              { label: "评分权重", value: ASSESSMENT_DIMENSIONS.map((dim) => `${dim.label} ${viewing.scoringWeights?.[dim.id] ?? 0}%`).join("、") },
+            ]}
+          />
+        </Drawer>
+      ) : null}
+
+      {editing ? (
+        <TaskDrawer
+          session={session}
+          task={editing === "new" ? null : editing}
+          classes={classes}
+          scenarios={scenarios}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); void load(); }}
+        />
+      ) : null}
+
+      {closing ? (
+        <Confirm title="结束任务" confirmText="结束" onConfirm={() => void setStatus(closing, "closed")} onClose={() => setClosing(null)}>
+          结束后学生端不再显示「{closing.name}」，已有成绩保留。之后可以重新开启。
+        </Confirm>
+      ) : null}
+      {removing ? (
+        <Confirm title="删除任务" danger confirmText="删除" onConfirm={() => void remove()} onClose={() => setRemoving(null)}>
+          删除「{removing.name}」会同时清除学生在这个任务下的进度，不能恢复。只想停止的话，用「结束任务」。
+        </Confirm>
+      ) : null}
+    </>
+  );
+}
+
+// ---------- 新建 / 编辑 ----------
+
+function TaskDrawer({ session, task, classes, scenarios, onClose, onSaved }: {
+  session: Session;
+  task: TeacherTask | null;
+  classes: ClassSummary[];
+  scenarios: ScenarioSummary[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const creating = task === null;
+  const [form, setForm] = useState<TaskForm>(() => (task ? formFromTask(task) : emptyForm()));
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = <K extends keyof TaskForm>(key: K, value: TaskForm[K]) => setForm((current) => ({ ...current, [key]: value }));
+  const setRule = (key: keyof PersonaRule, value: string[]) => setForm((current) => ({ ...current, rule: { ...current.rule, [key]: value } }));
+
+  const stageScenarios = scenarios.filter((item) => item.enabled && item.stage === form.businessStage);
+  const weightSum = Object.values(form.weights).reduce((sum, value) => sum + value, 0);
+
+  async function save() {
+    const name = form.name.trim();
+    const timeLimit = Number(form.timeLimit) || 0;
+    const passScore = Number(form.passScore) || 0;
+    const requiredCount = Number(form.requiredCount) || 0;
+    const interval = Number(form.arrivalInterval) || 0;
+    if (!name) return setError("请填写任务名称。");
+    if (creating && form.classIds.length === 0) return setError("请至少选一个班级。");
+    if (creating && form.scenarioIds.length === 0) return setError("请至少选一个场景。");
+    if (creating && weightSum !== 100) return setError(`评分权重合计要等于 100，现在是 ${weightSum}。`);
+    if (form.startAt && form.deadline && new Date(form.startAt) >= new Date(form.deadline)) return setError("开放时间要早于截止时间。");
+    if (form.completionRule === "conversation_count" && (requiredCount < 1 || requiredCount > 50)) return setError("接待次数填 1–50。");
+    if (form.arrivalMode === "interval" && (interval < 1 || interval > 120)) return setError("进线间隔填 1–120 分钟。");
+    if (passScore < 0 || passScore > 100) return setError("达标线填 0–100。");
+    setError("");
+    setBusy(true);
+    const common = {
+      name,
+      timeLimitMinutes: timeLimit > 0 ? timeLimit : null,
+      startAt: form.startAt ? new Date(form.startAt).toISOString() : null,
+      deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
+      completionRule: form.completionRule,
+      requiredCount: form.completionRule === "conversation_count" ? requiredCount : null,
+      passScore: passScore > 0 ? passScore : null,
+      arrivalMode: form.arrivalMode,
+      arrivalIntervalMinutes: form.arrivalMode === "interval" ? interval : null,
+    };
+    try {
+      if (creating) {
+        const rule = Object.fromEntries(Object.entries(form.rule).filter(([, value]) => value.length > 0));
+        await createTask(session, {
+          ...common,
+          timeLimitMinutes: common.timeLimitMinutes ?? undefined,
+          startAt: common.startAt ?? undefined,
+          deadline: common.deadline ?? undefined,
+          businessStage: form.businessStage,
+          classIds: form.classIds,
+          scenarioIds: form.scenarioIds,
+          interactionMode: form.interactionMode,
+          scoringWeights: form.weights,
+          personaRule: rule,
+        });
+        toast.ok(form.startAt && new Date(form.startAt).getTime() > Date.now()
+          ? `已创建，${new Date(form.startAt).toLocaleString("zh-CN")} 对学生开放`
+          : "已下发，学生现在就能看到");
+      } else {
+        await updateTask(session, task.id, common);
+        toast.ok("已保存");
+      }
+      onSaved();
+    } catch (cause) {
+      setError(errorText(cause));
     } finally {
       setBusy(false);
     }
   }
 
-  function openEdit(task: TeacherTask) {
-    setEditing(task);
-    setEditName(task.name);
-    setEditStartAt(toLocalInput(task.startAt));
-    setEditDeadline(toLocalInput(task.deadline));
-    setEditTimeLimit(task.timeLimitMinutes ?? 0);
-    setEditCompletionRule(task.completionRule ?? "all_scenarios");
-    setEditRequiredCount(task.requiredCount ?? 1);
-    setEditPassScore(task.passScore ?? 0);
-    setEditArrivalMode(task.arrivalMode ?? "sequential");
-    setEditArrivalInterval(task.arrivalIntervalMinutes ?? 5);
-    setEditError("");
-  }
-
-  async function saveEdit() {
-    if (!editing || editBusy) return;
-    if (!editName.trim()) return setEditError("任务名称不能为空。");
-    if (editStartAt && editDeadline && new Date(editStartAt).getTime() >= new Date(editDeadline).getTime()) {
-      return setEditError("开始时间必须早于截止时间。");
-    }
-    if (editCompletionRule === "conversation_count" && (editRequiredCount < 1 || editRequiredCount > 50)) {
-      return setEditError("需完成会话次数须为 1-50。");
-    }
-    if (editArrivalMode === "interval" && (editArrivalInterval < 1 || editArrivalInterval > 120)) {
-      return setEditError("进线间隔须为 1-120 分钟。");
-    }
-    setEditBusy(true);
-    setEditError("");
-    try {
-      await updateTask(session, editing.id, {
-        name: editName.trim(),
-        startAt: editStartAt ? new Date(editStartAt).toISOString() : null,
-        deadline: editDeadline ? new Date(editDeadline).toISOString() : null,
-        timeLimitMinutes: editTimeLimit > 0 ? editTimeLimit : null,
-        completionRule: editCompletionRule,
-        requiredCount: editCompletionRule === "conversation_count" ? editRequiredCount : null,
-        passScore: editPassScore > 0 ? editPassScore : null,
-        arrivalMode: editArrivalMode,
-        arrivalIntervalMinutes: editArrivalMode === "interval" ? editArrivalInterval : null,
-      });
-      setNotice(`任务「${editName.trim()}」已更新`);
-      setEditing(null);
-      await load();
-    } catch (cause) {
-      setEditError(errorText(cause));
-    } finally {
-      setEditBusy(false);
-    }
-  }
-
-  async function toggleStatus(task: TeacherTask) {
-    const next = task.status === "published" ? "closed" : "published";
-    if (next === "closed" && !window.confirm(`确定结束任务「${task.name}」吗？结束后学生端将不再显示该任务。`)) return;
-    setError("");
-    try {
-      await updateTask(session, task.id, { status: next });
-      setNotice(next === "closed" ? `任务「${task.name}」已结束` : `任务「${task.name}」已重新开启`);
-      await load();
-    } catch (cause) {
-      setError(errorText(cause));
-    }
-  }
-
-  async function remove(task: TeacherTask) {
-    if (!window.confirm(`确定删除任务「${task.name}」吗？将同时清除学生的任务进度记录，且不可恢复。`)) return;
-    setError("");
-    try {
-      await deleteTask(session, task.id);
-      setNotice(`任务「${task.name}」已删除`);
-      await load();
-    } catch (cause) {
-      setError(errorText(cause));
-    }
-  }
-
   return (
-    <div className="page">
-      <PageHeader
-        title="实训任务"
-        description="创建、下发并跟踪本学期所有实训任务。"
-        actions={
-          <button className="primary-button" onClick={openCreate}>
-            <Plus size={17} /> 新建实训任务
-          </button>
-        }
-      />
-      {notice ? <p className="form-notice" role="status">{notice}</p> : null}
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
-
-      <section className="panel data-panel">
-        <div className="tch-toolbar">
-          <div className="rec-seg" role="group" aria-label="任务状态筛选">
-            {STATUS_FILTERS.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                className={option.id === statusFilter ? "active" : ""}
-                aria-pressed={option.id === statusFilter}
-                onClick={() => setStatusFilter(option.id)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-          <div className="tch-search">
-            <Search size={14} aria-hidden="true" />
-            <input
-              value={query}
-              placeholder="搜索任务名称或班级"
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </div>
-          <span className="tch-count">共 {visible.length} 个任务</span>
+    <Drawer
+      title={creating ? "新建任务" : "编辑任务"}
+      width={720}
+      onClose={onClose}
+      footer={
+        <>
+          {error ? <span className="drawer-error" role="alert">{error}</span> : null}
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" loading={busy} onClick={() => void save()}>{creating ? "下发" : "保存"}</Button>
+        </>
+      }
+    >
+      <div className="form-block">
+        <div className="form-grid-2">
+          <Field label="任务名称"><Input value={form.name} onChange={(event) => set("name", event.target.value)} placeholder="例如：清关延误安抚" autoFocus /></Field>
+          <Field label="业务环节" hint={creating ? undefined : "下发后不能改"}>
+            <Select value={form.businessStage} disabled={!creating} onChange={(event) => setForm((current) => ({ ...current, businessStage: event.target.value as BusinessStage, scenarioIds: [] }))}>
+              {BUSINESS_STAGES.map((stage) => <option key={stage} value={stage}>{BUSINESS_STAGE_LABELS[stage]}</option>)}
+            </Select>
+          </Field>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>任务名称</th>
-              <th>班级</th>
-              <th>业务环节</th>
-              <th>截止时间</th>
-              <th>完成进度</th>
-              <th>状态</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((task) => {
-              const percent = task.studentTotal > 0 ? Math.round((task.studentDone / task.studentTotal) * 100) : 0;
-              const expanded = expandedId === task.id;
-              const weightEntries = ASSESSMENT_DIMENSIONS.filter((dim) => (task.scoringWeights?.[dim.id] ?? 0) > 0);
-              const notStarted = task.status === "published" && task.startAt != null && new Date(task.startAt).getTime() > Date.now();
-              return (
-                <Fragment key={task.id}>
-                  <tr>
-                    <td><strong>{task.name}</strong><small>下发于 {new Date(task.createdAt).toLocaleDateString("zh-CN")}</small></td>
-                    <td>{task.classes.map((item) => item.name).join("、")}</td>
-                    <td><span className="status-pill">{BUSINESS_STAGE_LABELS[task.businessStage]}</span></td>
-                    <td>
-                      {task.deadline ? new Date(task.deadline).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "未设"}
-                      {notStarted ? <small>{new Date(task.startAt!).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} 开放</small> : null}
-                    </td>
-                    <td>
-                      <div className="table-progress">
-                        <span><i style={{ width: `${percent}%` }} /></span>
-                        <small>{task.studentDone}/{task.studentTotal}</small>
-                      </div>
-                    </td>
-                    <td>
-                      <em className={notStarted ? "state-warning" : task.status === "published" ? "state-active" : "state-done"}>
-                        {notStarted ? "未开始" : task.status === "published" ? "进行中" : task.status === "closed" ? "已结束" : "草稿"}
-                      </em>
-                    </td>
-                    <td className="tch-actions">
-                      <button className="text-button" onClick={() => setExpandedId(expanded ? null : task.id)}>{expanded ? "收起" : "详情"}</button>
-                      <button className="text-button" onClick={() => openEdit(task)}>编辑</button>
-                      <button className="text-button" onClick={() => toggleStatus(task)}>{task.status === "published" ? "结束" : "重新开启"}</button>
-                      <button className="text-button tch-danger" onClick={() => remove(task)}>删除</button>
-                    </td>
-                  </tr>
-                  {expanded ? (
-                    <tr className="task-detail-row">
-                      <td colSpan={7}>
-                        <div className="task-detail">
-                          <div><span>实训场景</span><strong>{task.scenarioIds.map((id) => scenarioNames.get(id) ?? id).join("、") || "—"}</strong></div>
-                          <div>
-                            <span>完成标准</span>
-                            <strong>
-                              {task.completionRule === "conversation_count"
-                                ? `完成 ${task.requiredCount ?? 1} 次会话`
-                                : `覆盖全部 ${task.scenarioIds.length} 个场景`}
-                            </strong>
-                          </div>
-                          <div><span>达标线</span><strong>{task.passScore != null ? `${task.passScore} 分` : "不设线"}</strong></div>
-                          <div>
-                            <span>接待节奏</span>
-                            <strong>
-                              {task.arrivalMode === "interval"
-                                ? `每 ${task.arrivalIntervalMinutes ?? 5} 分钟进线一位`
-                                : task.arrivalMode === "all_at_once"
-                                  ? "全部同时进线"
-                                  : "依次进线"}
-                            </strong>
-                          </div>
-                          <div><span>交互模式</span><strong>{INTERACTION_LABELS[task.interactionMode] ?? task.interactionMode}</strong></div>
-                          <div><span>限时</span><strong>{task.timeLimitMinutes != null ? `${task.timeLimitMinutes} 分钟` : "不限时"}</strong></div>
-                          <div><span>开始时间</span><strong>{task.startAt ? new Date(task.startAt).toLocaleString("zh-CN") : "立即开放"}</strong></div>
-                          <div><span>截止时间</span><strong>{task.deadline ? new Date(task.deadline).toLocaleString("zh-CN") : "未设截止"}</strong></div>
-                          <div className="task-detail-weights">
-                            <span>评分重点</span>
-                            {weightEntries.length > 0
-                              ? <div className="chip-row">{weightEntries.map((dim) => <span key={dim.id} className="chip">{dim.label} {task.scoringWeights[dim.id]}%</span>)}</div>
-                              : <strong>六个维度均衡评分</strong>}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </Fragment>
-              );
-            })}
-            {visible.length === 0 ? (
-              <tr><td colSpan={7}><span className="muted">{tasks.length === 0 ? "还没有实训任务，点击右上角「新建实训任务」开始。" : "没有符合筛选条件的任务。"}</span></td></tr>
-            ) : null}
-          </tbody>
-        </table>
-      </section>
+      </div>
 
-      {creating ? (
-        <TeacherDialog
-          title="新建实训任务"
-          subtitle="保存后立即对所选班级下发，学生端任务大厅即刻可见"
-          size="xl"
-          onClose={() => setCreating(false)}
-          footer={
-            <>
-              <button className="secondary-button" onClick={() => setCreating(false)}>取消</button>
-              <button className="primary-button" onClick={submit} disabled={busy || weightSum !== 100}>
-                {busy ? "下发中…" : "保存并下发"}
-              </button>
-            </>
-          }
-        >
-          {formError ? <p className="form-error" role="alert">{formError}</p> : null}
-          <div className="tt-section">基本信息</div>
-          <div className="tt-grid-2">
-            <label>
-              任务名称
-              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：清关延误客户安抚" autoFocus />
-            </label>
-            <label>
-              业务环节
-              <select
-                value={businessStage}
-                onChange={(event) => {
-                  setBusinessStage(event.target.value as BusinessStage);
-                  setScenarioIds([]);
-                }}
-              >
-                {BUSINESS_STAGES.map((stage) => (
-                  <option key={stage} value={stage}>{BUSINESS_STAGE_LABELS[stage]}</option>
-                ))}
-              </select>
-            </label>
+      <div className="form-block">
+        <h3>下发给哪些班级</h3>
+        <ChipSelect
+          options={classes.map((item) => ({ id: item.id, label: item.name, meta: `${item.studentCount} 人` }))}
+          value={form.classIds}
+          onChange={(value) => set("classIds", value)}
+          disabled={!creating}
+          empty="还没有班级，先到「班级与学生」新建"
+        />
+      </div>
+
+      <div className="form-block">
+        <h3>练哪些场景</h3>
+        <p className="form-block-desc">只列出「{BUSINESS_STAGE_LABELS[form.businessStage]}」里已启用的场景。</p>
+        <ChipSelect
+          options={stageScenarios.map((item) => ({ id: item.id, label: item.name }))}
+          value={form.scenarioIds}
+          onChange={(value) => set("scenarioIds", value)}
+          disabled={!creating}
+          empty="这个环节还没有启用的场景，先到「场景配置」启用"
+        />
+      </div>
+
+      <div className="form-block">
+        <h3>时间</h3>
+        <div className="form-grid-2">
+          <Field label="开放时间" hint="留空表示下发后立即开放"><Input type="datetime-local" value={form.startAt} onChange={(event) => set("startAt", event.target.value)} /></Field>
+          <Field label="截止时间" hint="留空表示不设截止"><Input type="datetime-local" value={form.deadline} onChange={(event) => set("deadline", event.target.value)} /></Field>
+          <Field label="单次接待限时" hint="分钟，留空表示不限时"><Input type="number" min={0} value={form.timeLimit} onChange={(event) => set("timeLimit", event.target.value)} /></Field>
+          <Field label="回复方式" hint={creating ? undefined : "下发后不能改"}>
+            <Select value={form.interactionMode} disabled={!creating} onChange={(event) => set("interactionMode", event.target.value)}>
+              {Object.entries(INTERACTION_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+            </Select>
+          </Field>
+        </div>
+      </div>
+
+      <div className="form-block">
+        <h3>完成与达标</h3>
+        <div className="form-grid-2">
+          <Field label="怎样算完成">
+            <Select value={form.completionRule} onChange={(event) => set("completionRule", event.target.value as CompletionRule)}>
+              <option value="all_scenarios">每个场景至少接待一次</option>
+              <option value="conversation_count">接待满指定次数</option>
+            </Select>
+          </Field>
+          {form.completionRule === "conversation_count" ? (
+            <Field label="接待次数"><Input type="number" min={1} max={50} value={form.requiredCount} onChange={(event) => set("requiredCount", event.target.value)} /></Field>
+          ) : (
+            <Field label="达标线" hint="0–100 分，留空表示完成即达标"><Input type="number" min={0} max={100} value={form.passScore} onChange={(event) => set("passScore", event.target.value)} /></Field>
+          )}
+          {form.completionRule === "conversation_count" ? (
+            <Field label="达标线" hint="0–100 分，留空表示完成即达标"><Input type="number" min={0} max={100} value={form.passScore} onChange={(event) => set("passScore", event.target.value)} /></Field>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="form-block">
+        <h3>买家怎么进线</h3>
+        <p className="form-block-desc">决定学生同时要接待几位买家，是控制难度的主要手段。</p>
+        <Segmented
+          items={(Object.keys(ARRIVAL_LABELS) as ArrivalMode[]).map((id) => ({ id, label: ARRIVAL_LABELS[id] }))}
+          value={form.arrivalMode}
+          onChange={(value) => set("arrivalMode", value)}
+        />
+        <p className="form-block-desc form-block-after">
+          {form.arrivalMode === "sequential" ? "上一位接待结束，下一位才进来。适合刚开始练。"
+            : form.arrivalMode === "interval" ? "每隔一段时间进来一位，可能同时接待好几位。"
+              : "开始后所有买家一起进来，考验多会话并行接待。"}
+        </p>
+        {form.arrivalMode === "interval" ? (
+          <Field label="进线间隔" hint="分钟" className="form-narrow-field"><Input type="number" min={1} max={120} value={form.arrivalInterval} onChange={(event) => set("arrivalInterval", event.target.value)} /></Field>
+        ) : null}
+      </div>
+
+      <div className="form-block">
+        <h3>买家画像</h3>
+        <p className="form-block-desc">
+          {creating ? "每次接待都会随机生成一位买家。下面不选就是完全随机，选了就只在选中的范围里抽。" : `下发后不能改。当前：${ruleSummary(form.rule)}`}
+        </p>
+        {creating ? (
+          <div className="rule-grid">
+            <RuleRow label="国籍" options={[...NATIONALITIES]} value={form.rule.nationalityPool} onChange={(value) => setRule("nationalityPool", value)} />
+            <RuleRow label="性格" options={[...PERSONALITIES]} value={form.rule.personalityPool} onChange={(value) => setRule("personalityPool", value)} />
+            <RuleRow label="情绪" options={[...EMOTIONS]} value={form.rule.emotionPool} onChange={(value) => setRule("emotionPool", value)} />
+            <RuleRow label="语言" options={Object.keys(LANGUAGE_LABELS)} labels={LANGUAGE_LABELS} value={form.rule.languages} onChange={(value) => setRule("languages", value)} hint="按国籍" />
+            <RuleRow label="客户类型" options={[...CUSTOMER_TYPES]} value={form.rule.customerTypes} onChange={(value) => setRule("customerTypes", value)} />
           </div>
-          <div className="tt-grid-2">
-            <label>
-              交互模式
-              <select value={interactionMode} onChange={(event) => setInteractionMode(event.target.value)}>
-                <option value="text_voice">文字 + 语音</option>
-                <option value="text">仅文字</option>
-                <option value="voice">仅语音</option>
-              </select>
-            </label>
-            <label>
-              限时（分钟，0 = 不限时）
+        ) : null}
+      </div>
+
+      <div className="form-block">
+        <h3>评分权重</h3>
+        <p className="form-block-desc">
+          {creating
+            ? <>想重点考核哪一项，就把它调高。<span className={weightSum === 100 ? "weight-sum" : "weight-sum is-bad"}>合计 {weightSum} / 100</span>
+              {weightSum !== 100 ? <Button variant="text" size="sm" onClick={() => set("weights", defaultWeights())}>平均分配</Button> : null}</>
+            : "下发后不能改，保证同一任务的成绩可以互相比较。"}
+        </p>
+        <div className="weight-rows">
+          {ASSESSMENT_DIMENSIONS.map((dim) => (
+            <label key={dim.id} className="weight-row">
+              <span>{dim.label}</span>
               <input
-                type="number"
-                min={0}
-                value={timeLimit}
-                onChange={(event) => setTimeLimit(Number(event.target.value))}
+                type="range" min={0} max={60} step={1} disabled={!creating}
+                value={form.weights[dim.id] ?? 0}
+                onChange={(event) => set("weights", { ...form.weights, [dim.id]: Number(event.target.value) })}
               />
+              <strong>{form.weights[dim.id] ?? 0}%</strong>
             </label>
-            <label>
-              开始时间（留空 = 立即开放）
-              <input type="datetime-local" value={startAt} onChange={(event) => setStartAt(event.target.value)} />
-            </label>
-            <label>
-              截止时间（留空 = 不设截止）
-              <input type="datetime-local" value={deadline} onChange={(event) => setDeadline(event.target.value)} />
-            </label>
-          </div>
-          <p className="muted tch-dialog-hint">
-            设置了开始时间的任务会立即出现在学生任务列表中并标注开放时间，但到点前无法进入——适合学期初一次性排好整学期的任务计划。
-          </p>
+          ))}
+        </div>
+      </div>
+    </Drawer>
+  );
+}
 
-          <div className="tt-section">下发班级</div>
-          <div className="tt-chips">
-            {classes.map((item) => {
-              const on = classIds.includes(item.id);
-              return (
-                <label key={item.id} className={on ? "tt-chip on" : "tt-chip"}>
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={() => setClassIds((current) => toggle(current, item.id))}
-                  />
-                  {on ? <Check size={13} aria-hidden="true" /> : null}
-                  {item.name}
-                  <small>{item.studentCount} 人</small>
-                </label>
-              );
-            })}
-            {classes.length === 0 ? <span className="tt-chips-empty">暂无班级，请先到「班级与学生」创建。</span> : null}
-          </div>
-
-          <div className="tt-section">实训场景（{BUSINESS_STAGE_LABELS[businessStage]}）</div>
-          <div className="tt-chips">
-            {stageScenarios.map((item) => {
-              const on = scenarioIds.includes(item.id);
-              return (
-                <label key={item.id} className={on ? "tt-chip on" : "tt-chip"}>
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={() => setScenarioIds((current) => toggle(current, item.id))}
-                  />
-                  {on ? <Check size={13} aria-hidden="true" /> : null}
-                  {item.name}
-                </label>
-              );
-            })}
-            {stageScenarios.length === 0 ? <span className="tt-chips-empty">该环节暂无启用场景，可到「场景配置」启用。</span> : null}
-          </div>
-
-          <div className="tt-section">完成标准</div>
-          <div className="tch-dialog-grid">
-            <label>
-              完成规则
-              <select value={completionRule} onChange={(event) => setCompletionRule(event.target.value as "all_scenarios" | "conversation_count")}>
-                <option value="all_scenarios">覆盖全部所选场景（每个场景至少完成一次会话）</option>
-                <option value="conversation_count">完成指定次数会话</option>
-              </select>
-            </label>
-            {completionRule === "conversation_count" ? (
-              <label>
-                需完成会话次数
-                <input type="number" min={1} max={50} value={requiredCount} onChange={(event) => setRequiredCount(Number(event.target.value))} />
-              </label>
-            ) : null}
-            <label>
-              达标分数线（0 = 不设线，完成即达标）
-              <input type="number" min={0} max={100} value={passScore} onChange={(event) => setPassScore(Number(event.target.value))} />
-            </label>
-            <label>
-              接待节奏（买家进线方式）
-              <select value={arrivalMode} onChange={(event) => setArrivalMode(event.target.value as typeof arrivalMode)}>
-                <option value="sequential">依次进线：上一位客户会话结束后，下一位自动进线</option>
-                <option value="interval">固定间隔：每隔 N 分钟进线一位（可能同时接待多位）</option>
-                <option value="all_at_once">同时进线：开始任务后全部买家一并进线</option>
-              </select>
-            </label>
-            {arrivalMode === "interval" ? (
-              <label>
-                进线间隔（分钟）
-                <input type="number" min={1} max={120} value={arrivalInterval} onChange={(event) => setArrivalInterval(Number(event.target.value))} />
-              </label>
-            ) : null}
-          </div>
-          <p className="muted tch-dialog-hint">
-            学生覆盖完成标准后任务自动标记完成，任务成绩 = 任务内已评会话的平均分；设置了达标线的任务会按成绩显示「达标 / 未达标」。接待节奏决定买家进线的密度，可用来控制任务难度（依次 = 新手友好，固定间隔 / 同时进线 = 考验多会话并行接待）。
-          </p>
-
-          <div className="tt-section">考核维度与权重</div>
-          <div className="tt-weight-head">
-            <span className={weightSum === 100 ? "tt-weight-total" : "tt-weight-total bad"}>
-              合计 {weightSum} / 100
-            </span>
-            <button className="text-button" onClick={() => setWeights(defaultWeights())}>一键均衡分配</button>
-          </div>
-          <div className="tt-weight-grid">
-            {ASSESSMENT_DIMENSIONS.map((dim) => (
-              <label key={dim.id} className="tt-weight-row">
-                <span>{dim.label}</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={60}
-                  value={weights[dim.id] ?? 0}
-                  onChange={(event) =>
-                    setWeights((current) => ({ ...current, [dim.id]: Number(event.target.value) }))
-                  }
-                />
-                <strong>{weights[dim.id] ?? 0}%</strong>
-              </label>
-            ))}
-          </div>
-        </TeacherDialog>
-      ) : null}
-
-      {editing ? (
-        <TeacherDialog
-          title="编辑任务"
-          subtitle="业务环节、场景与评分权重在下发后不可修改，以保证已产生成绩的可比性"
-          onClose={() => setEditing(null)}
-          footer={
-            <>
-              <button className="secondary-button" onClick={() => setEditing(null)}>取消</button>
-              <button className="primary-button" onClick={saveEdit} disabled={editBusy}>{editBusy ? "保存中…" : "保存"}</button>
-            </>
-          }
-        >
-          {editError ? <p className="form-error" role="alert">{editError}</p> : null}
-          <label>
-            任务名称
-            <input value={editName} onChange={(event) => setEditName(event.target.value)} />
-          </label>
-          <label>
-            开始时间（留空 = 立即开放；未到开始时间学生不可进入）
-            <input type="datetime-local" value={editStartAt} onChange={(event) => setEditStartAt(event.target.value)} />
-          </label>
-          <label>
-            截止时间（留空 = 不设截止）
-            <input type="datetime-local" value={editDeadline} onChange={(event) => setEditDeadline(event.target.value)} />
-          </label>
-          <label>
-            限时（分钟，0 = 不限时）
-            <input type="number" min={0} value={editTimeLimit} onChange={(event) => setEditTimeLimit(Number(event.target.value))} />
-          </label>
-          <label>
-            完成规则
-            <select value={editCompletionRule} onChange={(event) => setEditCompletionRule(event.target.value as "all_scenarios" | "conversation_count")}>
-              <option value="all_scenarios">覆盖全部所选场景</option>
-              <option value="conversation_count">完成指定次数会话</option>
-            </select>
-          </label>
-          {editCompletionRule === "conversation_count" ? (
-            <label>
-              需完成会话次数
-              <input type="number" min={1} max={50} value={editRequiredCount} onChange={(event) => setEditRequiredCount(Number(event.target.value))} />
-            </label>
-          ) : null}
-          <label>
-            达标分数线（0 = 不设线，完成即达标）
-            <input type="number" min={0} max={100} value={editPassScore} onChange={(event) => setEditPassScore(Number(event.target.value))} />
-          </label>
-          <label>
-            接待节奏
-            <select value={editArrivalMode} onChange={(event) => setEditArrivalMode(event.target.value as typeof editArrivalMode)}>
-              <option value="sequential">依次进线</option>
-              <option value="interval">固定间隔进线</option>
-              <option value="all_at_once">同时进线</option>
-            </select>
-          </label>
-          {editArrivalMode === "interval" ? (
-            <label>
-              进线间隔（分钟）
-              <input type="number" min={1} max={120} value={editArrivalInterval} onChange={(event) => setEditArrivalInterval(Number(event.target.value))} />
-            </label>
-          ) : null}
-        </TeacherDialog>
-      ) : null}
+function RuleRow({ label, options, labels, value, onChange, hint }: {
+  label: string; options: string[]; labels?: Record<string, string>; value: string[]; onChange: (value: string[]) => void; hint?: string;
+}) {
+  return (
+    <div className="rule-row">
+      <span className="rule-row-label">{label}<small>{value.length ? `已选 ${value.length}` : hint ?? "随机"}</small></span>
+      <ChipSelect options={options.map((id) => ({ id, label: labels?.[id] ?? id }))} value={value} onChange={onChange} />
     </div>
   );
 }

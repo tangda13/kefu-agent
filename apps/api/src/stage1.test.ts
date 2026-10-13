@@ -235,6 +235,27 @@ describe("阶段1：教师建班、导入学生、下发任务的端到端链路
     expect(forbidden.statusCode).toBe(403);
   });
 
+  it("场景剧本不给学生；场景返回被几个任务在用；公告已读人数按学生看到计", async () => {
+    const student = await login("s2501001", "MyPass#01");
+    const forStudent = await app.inject({ method: "GET", url: "/v1/catalog/scenarios", headers: auth(student) });
+    expect(forStudent.json().every((row: { script: unknown }) => row.script === null)).toBe(true);
+    const forTeacher = await app.inject({ method: "GET", url: "/v1/catalog/scenarios", headers: auth(teacher1) });
+    const pre1 = forTeacher.json().find((row: { id: string }) => row.id === "PRE-001");
+    expect(pre1.taskCount).toBe(1);
+
+    await app.inject({ method: "POST", url: "/v1/announcements", headers: auth(teacher1), payload: { title: "周四改到 302 机房", content: "请提前 5 分钟到", classIds: [classId], days: 7 } });
+    const before = (await app.inject({ method: "GET", url: "/v1/announcements", headers: auth(teacher1) })).json()[0];
+    expect(before).toMatchObject({ recipientCount: 2, readCount: 0 });
+    const seen = await app.inject({ method: "GET", url: "/v1/student/announcements", headers: auth(student) });
+    const marked = await app.inject({ method: "POST", url: "/v1/me/read-marks", headers: auth(student), payload: { kind: "notice", ids: seen.json().map((row: { id: string }) => row.id) } });
+    expect(marked.statusCode).toBe(200);
+    const after = (await app.inject({ method: "GET", url: "/v1/announcements", headers: auth(teacher1) })).json()[0];
+    expect(after.readCount).toBe(1);
+
+    const today = await app.inject({ method: "GET", url: "/v1/teacher/tracking/today", headers: auth(teacher1) });
+    expect(today.json()).toMatchObject({ studentTotal: 2, pendingReviews: 0 });
+  });
+
   it("RBAC：未授权教师不可访问他人班级、学生与任务下发", async () => {
     const classes = await app.inject({
       method: "GET",
@@ -713,7 +734,8 @@ describe("模型网关管理（G1–G7）+ 验收统计口径（B2）", () => {
     const ok = await app.inject({ method: "PUT", url: "/v1/admin/llm/default", headers: auth(admin), payload: { profileId } });
     expect(ok.statusCode).toBe(200);
     const system = await app.inject({ method: "GET", url: "/v1/admin/system", headers: auth(admin) });
-    expect(system.json()).toMatchObject({ llmProvider: "DeepSeek 官方", llmModel: "deepseek-flash" });
+    const llmService = (system.json().services as Array<{ key: string; status: string; detail: string }>).find((item) => item.key === "llm");
+    expect(llmService?.detail).toContain("DeepSeek 官方");
   });
 
   it("G4：改了模型后测试状态重置；草稿测试沿用已存 Key", async () => {
@@ -926,5 +948,152 @@ describe("实训对话走模型网关（J1/J4/J5/J6 + B2）", () => {
     expect(metric.every((row) => row.provider === "对话测试" && row.model === "fake-model" && row.outcome === "success" && row.ordered)).toBe(true);
     const usage = (await db.query("select purpose, count(*)::int as n from llm_usage where conversation_id = $1 group by purpose order by purpose", [conversationId])).rows;
     expect(usage).toEqual([{ purpose: "dialogue", n: 2 }, { purpose: "director", n: 1 }]);
+  });
+});
+
+describe("品牌可替换（H6 / D-21）", () => {
+  it("未设置时返回初始名称；管理员可改名称与标识；登录前可读取；非法输入被拒", async () => {
+    const initial = await app.inject({ method: "GET", url: "/v1/public/brand" });
+    expect(initial.statusCode).toBe(200);
+    expect(initial.json()).toEqual({ name: "跨境电商客服AI实训平台", logo: null });
+
+    const anonymous = await app.inject({ method: "PUT", url: "/v1/admin/brand", payload: { name: "X" } });
+    expect(anonymous.statusCode).toBe(401);
+
+    const admin = await login("admin", "Admin#Prod9");
+    const logo = `data:image/png;base64,${Buffer.from("fake-png").toString("base64")}`;
+    const saved = await app.inject({ method: "PUT", url: "/v1/admin/brand", headers: auth(admin), payload: { name: "  某职院客服实训  ", logo } });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toEqual({ name: "某职院客服实训", logo });
+
+    const publicRead = await app.inject({ method: "GET", url: "/v1/public/brand" });
+    expect(publicRead.json()).toEqual({ name: "某职院客服实训", logo });
+
+    const badType = await app.inject({ method: "PUT", url: "/v1/admin/brand", headers: auth(admin), payload: { logo: "data:text/html;base64,PGgxPg==" } });
+    expect(badType.statusCode).toBe(400);
+    const tooBig = await app.inject({ method: "PUT", url: "/v1/admin/brand", headers: auth(admin), payload: { logo: `data:image/png;base64,${Buffer.alloc(300 * 1024).toString("base64")}` } });
+    expect(tooBig.statusCode).toBe(400);
+    const emptyName = await app.inject({ method: "PUT", url: "/v1/admin/brand", headers: auth(admin), payload: { name: "   " } });
+    expect(emptyName.statusCode).toBe(400);
+
+    // 恢复内置图标：只清标识，名称保留
+    const reset = await app.inject({ method: "PUT", url: "/v1/admin/brand", headers: auth(admin), payload: { logo: null } });
+    expect(reset.json()).toEqual({ name: "某职院客服实训", logo: null });
+  });
+});
+
+describe("管理端系统总览与内容库（E4–E6）", () => {
+  it("系统总览实时检测服务并逐条列出告警；内容库可启停、批量导入，导入去重", async () => {
+    const admin = await login("admin", "Admin#Prod9");
+    const system = await app.inject({ method: "GET", url: "/v1/admin/system", headers: auth(admin) });
+    expect(system.statusCode).toBe(200);
+    const body = system.json();
+    expect(body.services.map((item: { key: string }) => item.key)).toEqual(["database", "llm", "voice", "backup"]);
+    expect(body.services[0].status).toBe("ok");
+    expect(body.version.schema).toMatch(/^[0-9]{3}_/);
+    expect(Array.isArray(body.alerts)).toBe(true);
+    const alerts = await app.inject({ method: "GET", url: "/v1/admin/alerts", headers: auth(admin) });
+    expect(alerts.statusCode).toBe(200);
+
+    const list = await app.inject({ method: "GET", url: "/v1/admin/content?kind=forbidden", headers: auth(admin) });
+    const terms = list.json() as Array<{ id: number; text: string; enabled: boolean }>;
+    expect(terms.length).toBeGreaterThanOrEqual(120);
+
+    const disabled = await app.inject({ method: "PATCH", url: `/v1/admin/content/${terms[0]!.id}`, headers: auth(admin), payload: { enabled: false } });
+    expect(disabled.statusCode).toBe(200);
+    const after = (await app.inject({ method: "GET", url: "/v1/admin/content?kind=forbidden", headers: auth(admin) })).json() as Array<{ id: number; enabled: boolean }>;
+    expect(after.find((item) => item.id === terms[0]!.id)?.enabled).toBe(false);
+
+    const imported = await app.inject({
+      method: "POST", url: "/v1/admin/content/import", headers: auth(admin),
+      payload: { kind: "forbidden", texts: ["导入测试词A", "导入测试词A", " ", terms[1]!.text, "导入测试词B"] },
+    });
+    expect(imported.json()).toEqual({ added: 2, skipped: 1 });
+  });
+
+  it("备份保留份数可设置并有上下限；音色列表随厂商返回，非法音色 ID 试听被拒", async () => {
+    const admin = await login("admin", "Admin#Prod9");
+    const initial = (await app.inject({ method: "GET", url: "/v1/admin/backup-schedule", headers: auth(admin) })).json();
+    expect(initial.keep).toBe(14);
+    expect(initial.keepOptions).toContain(30);
+    const saved = await app.inject({ method: "PUT", url: "/v1/admin/backup-schedule", headers: auth(admin), payload: { keep: 30 } });
+    expect(saved.json().keep).toBe(30);
+    const clamped = await app.inject({ method: "PUT", url: "/v1/admin/backup-schedule", headers: auth(admin), payload: { keep: 1 } });
+    expect(clamped.json().keep).toBe(3);
+
+    const providers = (await app.inject({ method: "GET", url: "/v1/admin/providers", headers: auth(admin) })).json();
+    const speakers = providers.voice.vendors[0].speakers as Array<{ id: string; gender: string }>;
+    expect(speakers.some((item) => item.gender === "female")).toBe(true);
+    expect(speakers.some((item) => item.gender === "male")).toBe(true);
+    const bad = await app.inject({ method: "POST", url: "/v1/admin/voice/preview", headers: auth(admin), payload: { speaker: "x y" } });
+    expect(bad.statusCode).toBe(400);
+  });
+});
+
+describe("P4 教师端：分组与名单统计（D8）、逐维度复核（D9/C7）、场景复制与编辑（D6）", () => {
+  it("分组、统计列、逐维度复核按权重重算、教师评语单独返回给学生、场景可复制和改名", async () => {
+    const admin = await login("admin", "Admin#Prod9");
+    const created = await app.inject({ method: "POST", url: "/v1/classes", headers: auth(admin), payload: { name: "P4测试班" } });
+    const classId = created.json().id as string;
+    const imported = await app.inject({
+      method: "POST", url: `/v1/classes/${classId}/students/import`, headers: auth(admin),
+      payload: { students: [{ username: "s-p4-a", displayName: "甲", password: "Student#P4a1" }, { username: "s-p4-b", displayName: "乙", password: "Student#P4b1" }] },
+    });
+    expect(imported.json().created).toHaveLength(2);
+    const roster = (await app.inject({ method: "GET", url: `/v1/classes/${classId}/students`, headers: auth(admin) })).json() as Array<{ id: string; username: string }>;
+    const a = roster.find((row) => row.username === "s-p4-a")!;
+
+    const grouped = await app.inject({ method: "PUT", url: `/v1/classes/${classId}/groups`, headers: auth(admin), payload: { studentIds: [a.id], groupName: "第一组" } });
+    expect(grouped.json().updated).toBe(1);
+
+    // 造一个带权重的任务和一条 AI 评分：沟通有效性占 100%
+    const task = await db.query(
+      `insert into tasks (name, business_stage, scenario_ids, interaction_mode, scoring_weights, status, created_by)
+       values ('P4复核', 'after_sale', '["AFTER-001"]', 'text', $1, 'published', (select id from users where username = 'admin')) returning id`,
+      [JSON.stringify({ effectiveness: 100 })],
+    );
+    const conversation = await db.query(
+      "insert into conversations (task_id, student_id, scenario_id, status) values ($1, $2, 'AFTER-001', 'closed') returning id",
+      [task.rows[0].id, a.id],
+    );
+    const assessment = await db.query(
+      `insert into assessments (conversation_id, student_id, scores, total, comment)
+       values ($1, $2, $3, 70, 'AI 评语') returning id`,
+      [conversation.rows[0].id, a.id, JSON.stringify({ compliance: 70, grammar: 70, professionalism: 70, effectiveness: 70, empathy: 70, resolution: 70 })],
+    );
+
+    const after = (await app.inject({ method: "GET", url: `/v1/classes/${classId}/students`, headers: auth(admin) })).json() as Array<{ username: string; groupName: string | null; averageScore: number | null }>;
+    const rowA = after.find((row) => row.username === "s-p4-a")!;
+    expect(rowA.groupName).toBe("第一组");
+    expect(rowA.averageScore).toBe(70);
+
+    const bad = await app.inject({ method: "PATCH", url: `/v1/teacher/assessments/${assessment.rows[0].id}`, headers: auth(admin), payload: { scores: { effectiveness: 120 } } });
+    expect(bad.statusCode).toBe(400);
+    const reviewed = await app.inject({
+      method: "PATCH", url: `/v1/teacher/assessments/${assessment.rows[0].id}`, headers: auth(admin),
+      payload: { scores: { effectiveness: 90 }, teacherComment: "沟通到位" },
+    });
+    expect(reviewed.statusCode).toBe(200);
+    expect(reviewed.json().total).toBe(90);
+    const saved = await db.query("select total, ai_total, comment, teacher_comment from assessments where id = $1", [assessment.rows[0].id]);
+    expect(Number(saved.rows[0].total)).toBe(90);
+    expect(Number(saved.rows[0].ai_total)).toBe(70);
+    expect(saved.rows[0].comment).toBe("AI 评语");
+    expect(saved.rows[0].teacher_comment).toBe("沟通到位");
+
+    const student = await login("s-p4-a", "Student#P4a1");
+    const records = (await app.inject({ method: "GET", url: "/v1/student/assessments", headers: auth(student) })).json();
+    const record = (records.records ?? records)[0];
+    expect(record.comment).toBe("AI 评语");
+    expect(record.teacherComment).toBe("沟通到位");
+
+    const copied = await app.inject({ method: "POST", url: "/v1/catalog/scenarios", headers: auth(admin), payload: { fromId: "AFTER-001" } });
+    expect(copied.statusCode).toBe(200);
+    const renamed = await app.inject({ method: "PATCH", url: `/v1/catalog/scenarios/${copied.json().id}`, headers: auth(admin), payload: { name: "改过的场景", objective: "新的目标" } });
+    expect(renamed.statusCode).toBe(200);
+    const list = (await app.inject({ method: "GET", url: "/v1/catalog/scenarios", headers: auth(admin) })).json() as Array<{ id: string; name: string; script: unknown }>;
+    const copy = list.find((row) => row.id === copied.json().id)!;
+    expect(copy.name).toBe("改过的场景");
+    expect(copy.script).not.toBeNull();
   });
 });
