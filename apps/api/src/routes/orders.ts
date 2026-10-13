@@ -3,7 +3,8 @@ import { toStudentPersonaView, ensurePersonaAvatar } from "@cecs/domain";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import type { LlmGateway } from "../llm/gateway";
-import { buildSuggestionMessages, suggestionsSchema } from "../prompts/assist";
+import { buildReviewReplyMessages, buildSuggestionMessages, reviewReplySchema, suggestionsSchema } from "../prompts/assist";
+import { loadStoreProfile } from "./store";
 
 const SUGGESTION_TYPES = {
   payment_reminder: "礼貌催付：提醒买家完成付款，说明库存保留时间，不施压",
@@ -87,10 +88,12 @@ export function registerOrderRoutes(
     async (request) => {
       const user = request.user!;
       const result = await db.query(
-        `select a.*, c.persona, c.task_id, s.name as scenario_name
+        `select a.*, c.persona, c.task_id, s.name as scenario_name, s.stage as scenario_stage,
+                t.name as task_name, t.pass_score
          from assessments a
          join conversations c on c.id = a.conversation_id
          left join scenarios s on s.id = c.scenario_id
+         left join tasks t on t.id = c.task_id
          where a.student_id = $1 order by a.created_at desc limit 50`,
         [user.sub],
       );
@@ -98,6 +101,9 @@ export function registerOrderRoutes(
         id: row.id,
         conversationId: row.conversation_id,
         scenarioName: row.scenario_name ?? "通用会话",
+        scenarioStage: row.scenario_stage ?? null,
+        taskName: row.task_name ?? null,
+        passScore: row.task_id == null ? null : Number(row.pass_score ?? 60),
         buyer: toStudentPersonaView(ensurePersonaAvatar(row.persona, row.conversation_id) as never),
         scores: row.scores,
         total: Number(row.total),
@@ -202,6 +208,16 @@ export function registerOrderRoutes(
       const persona = row.persona as Record<string, unknown>;
       const order = row.payload as Record<string, unknown>;
       try {
+        if (type === "review_reply") {
+          const store = await loadStoreProfile(db);
+          const { data } = await gateway.completeJson(
+            "assist",
+            buildReviewReplyMessages({ persona, order, storeName: store.name, signature: store.signature }),
+            reviewReplySchema,
+          );
+          const variants = data.items.slice(0, 3).map((item) => ({ angle: item.angle, text: item.en, zh: item.zh }));
+          return { type, suggestions: variants.map((item) => item.text), variants };
+        }
         const { data } = await gateway.completeJson(
           "assist",
           buildSuggestionMessages({ task: SUGGESTION_TYPES[type], persona, order }),

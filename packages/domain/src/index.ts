@@ -858,6 +858,7 @@ export function generateBuyerOrderHistory(
 
 export { scenarioScripts } from "./scenario-scripts";
 export { productLibrary } from "./product-library";
+export * from "./store";
 
 /**
  * 商品资料卡（D-32）：给买家 AI 的“店铺真实信息”，用来判断客服说得对不对、让追问有依据。

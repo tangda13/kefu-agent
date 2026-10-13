@@ -411,7 +411,64 @@ export interface ConversationSummary {
   unreplied?: boolean;
   visits72h?: number;
   createdAt: string;
+  /** 系统客户标签（按订单规则计算，只读）：粉丝 / 大订单客户 / 普通客户 / 沉睡客户 / 新客 */
+  customerTags?: CustomerTag[];
+  orderStats?: { count: number; total: number; lastPlacedAt: string | null };
+  /** 客服标记（C2）：咨询原因（系统按场景预填 contactReasonSuggested，学生确认后写入 contactReason）、待跟进、客户备注 */
+  contactReason?: string | null;
+  contactReasonSuggested?: string | null;
+  followUp?: boolean;
+  buyerNote?: string | null;
+  buyerNoteAt?: string | null;
+  closedReason?: string | null;
 }
+
+export type CustomerTag = "粉丝" | "大订单客户" | "普通客户" | "沉睡客户" | "新客";
+
+export const CONTACT_REASONS = [
+  "商品咨询", "尺码与规格", "运费与时效", "价格与优惠", "付款问题", "修改订单", "取消订单", "催发货", "物流查询", "清关问题",
+  "丢件与派送失败", "货损", "缺件或错发", "质量问题", "退换货", "退款", "平台纠纷", "评价相关", "店铺回访", "其他",
+] as const;
+
+export interface ServiceMeta {
+  contactReason: string | null;
+  contactReasonSuggested: string | null;
+  followUp: boolean;
+  buyerNote: string | null;
+  buyerNoteAt: string | null;
+}
+
+export const saveServiceMeta = (
+  session: Session,
+  conversationId: string,
+  patch: { contactReason?: string | null; followUp?: boolean; buyerNote?: string | null },
+) => apiRequestPatch<ServiceMeta>(`/v1/conversations/${conversationId}/service-meta`, session, patch);
+
+/** 店铺资料（全平台一份，老师在场景配置 → 店铺商品维护） */
+export interface StoreProfile {
+  name: string;
+  logoUrl: string | null;
+  market: "欧美" | "日韩" | "东南亚" | "中东";
+  currency: string;
+  supportEmail: string;
+  signature: string;
+  tiers: { bigOrderSingle: number; bigOrderYearly: number; dormantDays: number };
+}
+
+export const fetchStoreProfile = (session: Session) => apiGet<StoreProfile>("/v1/store/profile", session);
+export const saveStoreProfile = (session: Session, patch: Partial<StoreProfile>) =>
+  apiRequestPut<StoreProfile>("/v1/store/profile", session, patch);
+
+/** C1 学生四项关键数字 */
+export interface StudentSummary {
+  tasks: { done: number; total: number };
+  average: number | null;
+  baseline: number | null;
+  rank: { position: number | null; classSize: number; change: number | null };
+  conversations: { total: number; practice: number; rounds: number };
+}
+
+export const fetchStudentSummary = (session: Session) => apiGet<StudentSummary>("/v1/student/summary", session);
 
 export interface ConversationMessage {
   id: string;
@@ -672,7 +729,7 @@ export const fetchOrderSuggestions = (
   session: Session,
   orderId: string,
   type: "payment_reminder" | "logistics_update" | "review_reply",
-) => apiPost<{ suggestions: string[] }>(`/v1/orders/${orderId}/suggestions`, session, { type });
+) => apiPost<{ suggestions: string[]; variants?: Array<{ angle: string; text: string; zh: string }> }>(`/v1/orders/${orderId}/suggestions`, session, { type });
 
 export const fetchStoreProducts = (session: Session) =>
   apiGet<StoreProduct[]>("/v1/store/products", session);
@@ -1228,3 +1285,7 @@ export async function downloadWithAuth(session: Session, path: string, fileName:
   link.click();
   URL.revokeObjectURL(link.href);
 }
+
+/** 评价、邮件正文的中文译文（POST /v1/translate，服务端缓存） */
+export const translateText = (session: Session, text: string) =>
+  apiPost<{ translation: string }>("/v1/translate", session, { text }).then((result) => result.translation);

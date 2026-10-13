@@ -35,6 +35,7 @@ import { registerAdminRoutes } from "./routes/admin";
 import { registerAdminLlmRoutes } from "./routes/admin-llm";
 import { registerStudentStateRoutes } from "./routes/student-state";
 import { registerBrandRoutes } from "./routes/brand";
+import { registerStoreRoutes } from "./routes/store";
 
 export interface BuildServerOptions {
   env?: Partial<ApiEnv>;
@@ -152,6 +153,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   registerAdminLlmRoutes(app, db, guard, gateway, sealer);
   registerStudentStateRoutes(app, db, guard);
   registerBrandRoutes(app, db, guard);
+  registerStoreRoutes(app, db, guard);
 
   // D-36 接待自动结束：每分钟扫描一次（超时、2 小时无人发言、任务结束 / 过截止）
   if (process.env.NODE_ENV !== "test") {

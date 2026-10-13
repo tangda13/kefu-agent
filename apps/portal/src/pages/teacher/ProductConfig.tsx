@@ -14,6 +14,7 @@ import {
 import {
   Bench, Board, Button, Confirm, DataTable, Dialog, Drawer, Field, FilterChips, HelpTip, Input, MoreMenu, SearchBox, Segmented, Select, Switch, Textarea, Toolbar, toast,
 } from "../../ui";
+import { StoreCard } from "./StoreProfile";
 
 /** 店铺商品（D-32）：卡片带详情完整度；添加商品先选方式（粘贴链接 / 粘贴文字 / 商品库，另有手动和 Excel） */
 
@@ -68,6 +69,7 @@ export function ProductTab({ session, products, loading, reload }: { session: Se
 
   return (
     <Bench>
+      <StoreCard session={session} />
       <Toolbar actions={<Button variant="primary" icon={Plus} onClick={() => setAdding("ways")}>添加商品</Button>}>
         <SearchBox value={keyword} onChange={setKeyword} placeholder="搜索商品" />
         <FilterChips

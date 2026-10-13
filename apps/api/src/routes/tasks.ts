@@ -7,6 +7,7 @@ import { filterPersonaTemplates, type PersonaRule } from "@cecs/domain";
 import { loadEnabledPersonaTemplates } from "./catalog";
 import type { LlmGateway } from "../llm/gateway";
 import { sweepConversations } from "../lifecycle";
+import { aggregateTaskCentric, type AssessedRow } from "./teacher";
 
 interface CreateTaskBody {
   name?: string;
@@ -441,6 +442,72 @@ export function registerTaskRoutes(
     },
   );
 
+  /* C1 学生四项关键数字：已完成任务、平均分（任务口径，同教师端考核报表）、班级排名（含较上周变化）、累计对话 */
+  app.get(
+    "/v1/student/summary",
+    { preHandler: guard.requireRole("student") },
+    async (request) => {
+      const user = request.user!;
+      const [tasks, me, assessed, talk, baseline] = await Promise.all([
+        db.query(
+          `select count(*)::int as total, count(*) filter (where tp.status = 'done')::int as done
+           from task_progress tp join tasks t on t.id = tp.task_id
+           where tp.student_id = $1 and t.status = 'published'`,
+          [user.sub],
+        ),
+        db.query("select class_id from users where id = $1", [user.sub]),
+        db.query(
+          `select a.student_id, a.total, a.scores, c.task_id, a.created_at
+           from assessments a
+           join conversations c on c.id = a.conversation_id
+           join users u on u.id = a.student_id
+           where c.task_id is not null and u.status = 'active'
+             and u.class_id is not distinct from (select class_id from users where id = $1)`,
+          [user.sub],
+        ),
+        db.query(
+          `select count(distinct c.id)::int as conversations,
+                  count(distinct c.id) filter (where c.task_id is null)::int as practice,
+                  count(m.id)::int as rounds
+           from conversations c
+           join conversation_messages m on m.conversation_id = c.id and m.sender = 'student'
+           where c.student_id = $1`,
+          [user.sub],
+        ),
+        db.query("select total from baseline_assessments where student_id = $1", [user.sub]),
+      ]);
+      const classId = me.rows[0]?.class_id ?? null;
+      const classSize = classId
+        ? Number((await db.query("select count(*)::int as n from users where class_id = $1 and role = 'student' and status = 'active'", [classId])).rows[0]?.n ?? 0)
+        : 1;
+      const rankOf = (rows: AssessedRow[]) => {
+        const ranking = [...aggregateTaskCentric(rows).byStudent.entries()].sort((a, b) => b[1].composite - a[1].composite);
+        const index = ranking.findIndex(([studentId]) => studentId === user.sub);
+        return { position: index >= 0 ? index + 1 : null, composite: index >= 0 ? ranking[index]![1].composite : null };
+      };
+      const rows = assessed.rows as Array<AssessedRow & { created_at: string }>;
+      const now = rankOf(rows);
+      const weekAgo = Date.now() - 7 * 86400_000;
+      const before = rankOf(rows.filter((row) => new Date(row.created_at).getTime() < weekAgo));
+      return {
+        tasks: { done: Number(tasks.rows[0]?.done ?? 0), total: Number(tasks.rows[0]?.total ?? 0) },
+        average: now.composite,
+        baseline: baseline.rows[0] ? Number(baseline.rows[0].total) : null,
+        rank: {
+          position: now.position,
+          classSize,
+          /* 正数 = 名次上升 */
+          change: now.position != null && before.position != null ? before.position - now.position : null,
+        },
+        conversations: {
+          total: Number(talk.rows[0]?.conversations ?? 0),
+          practice: Number(talk.rows[0]?.practice ?? 0),
+          rounds: Number(talk.rows[0]?.rounds ?? 0),
+        },
+      };
+    },
+  );
+
   app.get(
     "/v1/student/tasks",
     { preHandler: guard.requireRole("student") },
@@ -505,18 +572,15 @@ export function registerTaskRoutes(
           score,
           completionRule,
           requiredCount: row.required_count,
-          passScore: row.pass_score,
+          passScore: row.pass_score ?? 60,
           arrivalMode: row.arrival_mode ?? "sequential",
           arrivalIntervalMinutes: row.arrival_interval_minutes,
           progressDone: Math.min(progressDone, requiredTotal),
           requiredTotal,
           conversationCount: Number(row.conversation_count),
           startedScenarioIds: row.started_scenario_ids,
-          /* 达标：任务完成后，无分数线 = 达标；有分数线按成绩判定。未完成为 null */
-          qualified:
-            row.progress_status === "done"
-              ? row.pass_score == null || (score !== null && score >= Number(row.pass_score))
-              : null,
+          /* 达标：任务完成后按达标线判定，老师没设达标线时按 60 分。未完成为 null */
+          qualified: row.progress_status === "done" ? score !== null && score >= Number(row.pass_score ?? 60) : null,
           /* 定时开放：未到开始时间的任务学生可见但不可进入（服务端在创建会话时同样拦截） */
           locked: row.start_at != null && new Date(row.start_at).getTime() > now,
           createdAt: row.created_at,

@@ -1244,3 +1244,88 @@ describe("接待生命周期（D-36）", () => {
     expect(await status(fresh)).toMatchObject({ status: "closed", closed_reason: "task_closed" });
   });
 });
+
+describe("学生端改版：店铺资料、系统客户标签与客服标记（C2）、关键数字（C1）、截止拦截（D1）", () => {
+  let teacher: Session;
+  let student: Session;
+  beforeAll(async () => {
+    teacher = await login("teacher1", "Teach#2026");
+    const id = (await db.query("select id from users where username = 's2501001'")).rows[0].id;
+    const reset = await app.inject({ method: "POST", url: `/v1/students/${id}/reset-password`, headers: auth(teacher) });
+    const pending = await login("s2501001", reset.json().temporaryPassword);
+    await app.inject({
+      method: "POST",
+      url: "/v1/auth/change-password",
+      headers: auth(pending),
+      payload: { currentPassword: reset.json().temporaryPassword, newPassword: "Redo#2026" },
+    });
+    student = await login("s2501001", "Redo#2026");
+  });
+
+  it("店铺资料：默认值、老师可改、学生只读、非法邮箱被拒", async () => {
+    const initial = await app.inject({ method: "GET", url: "/v1/store/profile", headers: auth(student) });
+    expect(initial.json()).toMatchObject({ name: "Aurora Mart", supportEmail: "support@auroramart.com", tiers: { bigOrderSingle: 100 } });
+    const denied = await app.inject({ method: "PUT", url: "/v1/store/profile", headers: auth(student), payload: { name: "X" } });
+    expect(denied.statusCode).toBe(403);
+    const bad = await app.inject({ method: "PUT", url: "/v1/store/profile", headers: auth(teacher), payload: { supportEmail: "not-mail" } });
+    expect(bad.statusCode).toBe(400);
+    const saved = await app.inject({ method: "PUT", url: "/v1/store/profile", headers: auth(teacher), payload: { name: "Nova Shop", tiers: { dormantDays: 120 } } });
+    expect(saved.json()).toMatchObject({ name: "Nova Shop", tiers: { dormantDays: 120, bigOrderSingle: 100 } });
+  });
+
+  it("会话带系统客户标签和预填咨询原因；学生可确认原因、标待跟进、写备注", async () => {
+    const created = await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { scenarioId: "IN-002" } });
+    expect(created.statusCode).toBe(200);
+    const id = created.json().id as string;
+    const list = (await app.inject({ method: "GET", url: "/v1/conversations", headers: auth(student) })).json() as Array<Record<string, unknown>>;
+    const row = list.find((item) => item.id === id)!;
+    expect(Array.isArray(row.customerTags)).toBe(true);
+    expect((row.customerTags as string[]).length).toBeGreaterThan(0);
+    expect(row.contactReasonSuggested).toBe("清关问题");
+    expect(row.contactReason).toBeNull();
+    const invalid = await app.inject({ method: "PATCH", url: `/v1/conversations/${id}/service-meta`, headers: auth(student), payload: { contactReason: "随便写" } });
+    expect(invalid.statusCode).toBe(400);
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/v1/conversations/${id}/service-meta`,
+      headers: auth(student),
+      payload: { contactReason: "物流查询", followUp: true, buyerNote: "周五出差，着急" },
+    });
+    expect(patched.json()).toMatchObject({ contactReason: "物流查询", followUp: true, buyerNote: "周五出差，着急" });
+    const persona = (await db.query("select persona from conversations where id = $1", [id])).rows[0].persona;
+    expect(persona.storeName).toBe("Nova Shop");
+  });
+
+  it("关键数字：已完成任务、班级排名、累计对话", async () => {
+    const summary = await app.inject({ method: "GET", url: "/v1/student/summary", headers: auth(student) });
+    expect(summary.statusCode).toBe(200);
+    const body = summary.json();
+    expect(body.tasks.total).toBeGreaterThanOrEqual(0);
+    expect(body.rank.classSize).toBeGreaterThan(0);
+    expect(body.conversations).toHaveProperty("rounds");
+  });
+
+  it("译文存库：同一段文字第二次直接读库，不再调用模型", async () => {
+    const { createHash } = await import("node:crypto");
+    const text = "Package arrived with a part missing.";
+    await db.query("insert into text_translations (text_hash, source, translation) values ($1, $2, $3)", [
+      createHash("sha256").update(text).digest("hex"), text, "包裹到了但少了一个部件。",
+    ]);
+    const hit = await app.inject({ method: "POST", url: "/v1/translate", headers: auth(student), payload: { text } });
+    expect(hit.json()).toMatchObject({ translation: "包裹到了但少了一个部件。", cached: true });
+  });
+
+  it("过了截止时间的任务不能再进线", async () => {
+    const studentId = (await db.query("select id from users where username = 's2501001'")).rows[0].id;
+    const adminId = (await db.query("select id from users where username = 'admin'")).rows[0].id;
+    const task = await db.query(
+      `insert into tasks (name, business_stage, scenario_ids, interaction_mode, scoring_weights, status, created_by, deadline)
+       values ('已截止', 'in_sale', '["IN-002"]', 'text', '{}', 'published', $1, now() - interval '1 hour') returning id`,
+      [adminId],
+    );
+    await db.query("insert into task_progress (task_id, student_id) values ($1, $2)", [task.rows[0].id, studentId]);
+    const blocked = await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { taskId: task.rows[0].id } });
+    expect(blocked.statusCode).toBe(403);
+    expect(blocked.json().code).toBe("TASK_CLOSED");
+  });
+});

@@ -95,3 +95,24 @@ describe("画像模板字段生效（D3）", () => {
     expect(persona.language).toBe("fr-FR");
   });
 });
+
+describe("系统客户标签与咨询原因（学生端改版 C2）", () => {
+  const now = new Date("2026-10-13T00:00:00Z");
+  it("按金额、最近下单时间和画像价值层打标签", async () => {
+    const { computeCustomerTags } = await import("./store");
+    expect(computeCustomerTags("潜在意向客", [], undefined, now)).toEqual(["新客"]);
+    expect(computeCustomerTags("复购老客", [{ totalAmount: 43, placedAt: "2026-10-01", status: "completed" }], undefined, now)).toEqual(["普通客户"]);
+    expect(computeCustomerTags("复购老客", [{ totalAmount: 119.97, placedAt: "2026-10-01", status: "in_transit" }], undefined, now)).toEqual(["大订单客户"]);
+    expect(computeCustomerTags("粉丝客", [{ totalAmount: 160, placedAt: "2026-09-01", status: "completed" }, { totalAmount: 160, placedAt: "2026-08-01", status: "completed" }], undefined, now)).toEqual(["粉丝", "大订单客户"]);
+    expect(computeCustomerTags("复购老客", [{ totalAmount: 30, placedAt: "2026-01-01", status: "completed" }], undefined, now)).toEqual(["沉睡客户"]);
+    expect(computeCustomerTags("复购老客", [{ totalAmount: 500, placedAt: "2026-10-01", status: "pending_payment" }], undefined, now)).toEqual(["新客"]);
+  });
+  it("由场景名称推断咨询原因", async () => {
+    const { suggestContactReason } = await import("./store");
+    expect(suggestContactReason("清关延误安抚")).toBe("清关问题");
+    expect(suggestContactReason("差评挽回")).toBe("评价相关");
+    expect(suggestContactReason("错发漏发处理")).toBe("缺件或错发");
+    expect(suggestContactReason("沉睡客户唤醒", "customer_care")).toBe("店铺回访");
+    expect(suggestContactReason("自定义场景", "pre_sale")).toBe("商品咨询");
+  });
+});

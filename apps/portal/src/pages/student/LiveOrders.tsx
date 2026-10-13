@@ -7,7 +7,6 @@ import {
   Copy,
   CreditCard,
   Home,
-  MessageSquare,
   Package2,
   PackageCheck,
   Plane,
@@ -17,7 +16,7 @@ import {
   Truck,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PageHeader } from "../../components/AppShell";
+import { TabCount, fmtMonthDayTime, useBuyerTags } from "../../components/StoreHeader";
 import { BuyerAvatar } from "../../components/BuyerAvatar";
 import { SuggestionComposer } from "../../components/SuggestionComposer";
 import { ReviewReply, loadReviewReplies, type StoredReply } from "../../components/ReviewReply";
@@ -31,27 +30,30 @@ import {
   type Session,
   type StudentOrder,
 } from "../../api/client";
+import { Button, HeaderTabs, MoreMenu, Tag } from "../../ui";
+import "../../styles/student-store.css";
 
 type DetailTab = "detail" | "logistics" | "review";
 
 /** 评价管理页跳转过来时预打开的订单 */
 export const OPEN_ORDER_KEY = "cecs.openOrder";
 
+/** 时间范围：null=全部 */
+const ORDER_RANGES: ReadonlyArray<[string, string, number | null]> = [
+  ["all", "全部时间", null],
+  ["7d", "近 7 天", 7],
+  ["30d", "近 30 天", 30],
+  ["90d", "近 90 天", 90],
+];
+
 const STATUS_TABS: ReadonlyArray<[string, string]> = [
-  ["all", "全部订单"],
+  ["all", "全部"],
   ["pending_payment", "待付款"],
   ["paid", "待发货"],
   ["in_transit", "已发货"],
   ["delivered", "已送达"],
   ["completed", "已成功"],
 ];
-
-/** 订单状态 → 状态胶囊配色（默认蓝） */
-const STATUS_PILL: Record<string, string> = {
-  pending_payment: "amber",
-  delivered: "green",
-  completed: "gray",
-};
 
 const RETURN_LABELS: Record<string, string> = {
   requested: "待客户退货",
@@ -296,10 +298,6 @@ function paidAtIso(order: OrderInfo): string | null {
   return new Date(placedMs + (12 + (hashSeed(order.orderNo) % 105)) * 60_000).toISOString();
 }
 
-function StatusPill({ status, label }: { status: string; label: string }) {
-  return <em className={`status-pill ${STATUS_PILL[status] ?? ""}`.trim()}>{label}</em>;
-}
-
 interface TimelineStep {
   key: string;
   label: string;
@@ -383,9 +381,12 @@ export function LiveOrders({ session }: { session: Session }) {
   const [detail, setDetail] = useState<{ id: string; tab: DetailTab } | null>(null);
   const [statusTab, setStatusTab] = useState("all");
   const [query, setQuery] = useState("");
+  const [buyerFilter, setBuyerFilter] = useState("");
+  const [rangeKey, setRangeKey] = useState("all");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [replies, setReplies] = useState<Record<string, StoredReply>>({});
+  const buyerTags = useBuyerTags(session);
 
   const load = useCallback(async () => {
     try {
@@ -411,8 +412,21 @@ export function LiveOrders({ session }: { session: Session }) {
     return map;
   }, [orders]);
 
+  /** 买家筛选项：订单里出现过的买家 */
+  const buyers = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of orders) map.set(item.buyer.id, item.buyer.name);
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [orders]);
+
   const filtered = useMemo(() => {
     let list = statusTab === "all" ? orders : orders.filter((item) => item.detail.status === statusTab);
+    if (buyerFilter) list = list.filter((item) => item.buyer.id === buyerFilter);
+    const days = ORDER_RANGES.find(([key]) => key === rangeKey)?.[2] ?? null;
+    if (days !== null) {
+      const cutoff = Date.now() - days * 86_400_000;
+      list = list.filter((item) => new Date(item.detail.placedAt).getTime() >= cutoff);
+    }
     const keyword = query.trim().toLowerCase();
     if (keyword) {
       list = list.filter((item) =>
@@ -421,7 +435,7 @@ export function LiveOrders({ session }: { session: Session }) {
       );
     }
     return list;
-  }, [orders, statusTab, query]);
+  }, [orders, statusTab, query, buyerFilter, rangeKey]);
 
   const active = detail ? orders.find((item) => item.id === detail.id) ?? null : null;
 
@@ -433,95 +447,135 @@ export function LiveOrders({ session }: { session: Session }) {
 
   /* ---------------- 列表视图 ---------------- */
 
+  /** 状态列：标签 + 一行灰字事实。只有“待付款超过 24 小时”标橙，其余中性 */
+  function statusCell(item: StudentOrder) {
+    const info = item.detail;
+    const now = Date.now();
+    let tone: "neutral" | "warn" = "neutral";
+    let sub = "";
+    let subWarn = false;
+    if (info.returnStatus) {
+      sub = `售后：${RETURN_LABELS[info.returnStatus] ?? info.returnStatus}`;
+    } else if (info.status === "pending_payment") {
+      const hours = (now - new Date(info.placedAt).getTime()) / 3_600_000;
+      if (hours > 24) {
+        tone = "warn";
+        subWarn = true;
+        sub = hours >= 48 ? `已过 ${Math.floor(hours / 24)} 天未付` : "已超过 24 小时未付";
+      }
+    } else if (info.status === "in_transit" && info.logistics) {
+      const node = info.logistics.nodes.find((entry) => entry.current) ?? info.logistics.nodes.filter((entry) => entry.done).pop();
+      if (node) {
+        const days = node.at ? Math.floor((now - new Date(node.at).getTime()) / 86_400_000) : 0;
+        sub = days >= 1 ? `${node.label} · ${days} 天未更新` : node.label;
+      }
+    }
+    return (
+      <div className="od2-st">
+        <Tag tone={tone}>{info.statusLabel}</Tag>
+        {sub ? <small className={subWarn ? "sub-warn" : undefined}>{sub}</small> : null}
+      </div>
+    );
+  }
+
+  function actionsCell(item: StudentOrder) {
+    const info = item.detail;
+    const primary =
+      info.status === "pending_payment"
+        ? { label: "去催付", run: () => openDetail(item.id) }
+        : info.status === "in_transit" && info.logistics
+          ? { label: "查看物流", run: () => openDetail(item.id, "logistics") }
+          : { label: "查看详情", run: () => openDetail(item.id) };
+    const more = [
+      primary.label !== "查看详情" ? { label: "查看详情", onClick: () => openDetail(item.id) } : null,
+      info.logistics && primary.label !== "查看物流" ? { label: "查看物流", onClick: () => openDetail(item.id, "logistics") } : null,
+      info.review ? { label: "查看评价", onClick: () => openDetail(item.id, "review") } : null,
+      { label: "复制订单号", onClick: () => { void navigator.clipboard?.writeText(info.orderNo); setNotice("订单号已复制。"); } },
+    ].filter((entry): entry is { label: string; onClick: () => void } => entry !== null);
+    return (
+      <div className="od2-ac">
+        <Button size="sm" onClick={primary.run}>{primary.label}</Button>
+        <MoreMenu items={more} />
+      </div>
+    );
+  }
+
   function renderList() {
     return (
-      <section className="panel od-list-panel">
-        <div className="od-status-tabs" role="tablist" aria-label="按交易状态筛选">
-          {STATUS_TABS.map(([value, label]) => (
-            <button
-              key={value}
-              role="tab"
-              aria-selected={statusTab === value}
-              className={statusTab === value ? "od-status-tab active" : "od-status-tab"}
-              onClick={() => setStatusTab(value)}
-            >
-              {label}
-              {counts[value] ? <span>{counts[value]}</span> : null}
-            </button>
-          ))}
-        </div>
-        <div className="od-search-bar">
-          <span className="od-search-label">精确查询</span>
-          <div className="od-search-input">
+      <div className="od2">
+        <div className="od2-bar">
+          <label className="sx-search">
             <Search size={14} />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="输入订单编号 / 运单号 / 商品名称 / 买家昵称"
+              placeholder="订单号 / 运单号 / 商品 / 买家"
               aria-label="搜索订单"
             />
-          </div>
-          <span className="muted od-search-count">共 {filtered.length} 笔订单</span>
+          </label>
+          <select className="sx-select" value={buyerFilter} onChange={(event) => setBuyerFilter(event.target.value)} aria-label="按买家筛选">
+            <option value="">买家：全部</option>
+            {buyers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+          <select className="sx-select" value={rangeKey} onChange={(event) => setRangeKey(event.target.value)} aria-label="按下单时间筛选">
+            {ORDER_RANGES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
+          <span className="end">共 {filtered.length} 笔</span>
         </div>
 
-        <div className="od-table-head">
-          <span>宝贝</span><span>单价</span><span>数量</span><span>售后状态</span><span>交易状态</span><span>实收款</span><span>操作</span>
+        <div className="od2-head">
+          <span>商品</span><span>单价</span><span>数量</span><span>实收</span><span>状态</span><span>操作</span>
         </div>
 
         {filtered.map((item) => {
           const info = item.detail;
+          const goods = Math.round(info.unitPrice * info.quantity * 100) / 100;
+          const shipping = Math.max(0, Math.round((info.totalAmount - goods) * 100) / 100);
+          const tag = buyerTags[item.buyer.id]?.join(" · ");
           return (
-            <article key={item.id} className="od-group">
-              <header className="od-group-head">
-                <span>订单号：<b className="od-no">{info.orderNo}</b></span>
-                <CopyButton text={info.orderNo} onCopied={() => setNotice("订单号已复制。")} />
-                <span className="od-group-time">创建时间：{fmtDateTime(info.placedAt)}</span>
-                <span className="od-group-buyer">
-                  <BuyerAvatar buyer={item.buyer} size="tiny" />
+            <article key={item.id} className="od2-group">
+              <header className="od2-g1">
+                <span className="od2-buyer">
+                  <span className="sx-av is-22"><BuyerAvatar buyer={item.buyer} /></span>
                   {item.buyer.name}
-                  <small>{item.buyer.nationality} · {item.buyer.customerType}</small>
+                  <small>{[item.buyer.nationality, tag].filter(Boolean).join(" · ")}</small>
                 </span>
+                <span className="od2-no">{info.orderNo}</span>
+                <CopyButton text={info.orderNo} onCopied={() => setNotice("订单号已复制。")} />
+                <span>{fmtMonthDayTime(info.placedAt)}</span>
               </header>
-              <div className="od-group-row">
-                <div className="od-cell-product">
+              <div className="od2-row">
+                <div className="od2-it">
                   {info.productImage ? (
-                    <img className="od-thumb" src={assetUrl(info.productImage) ?? undefined} alt={info.productName} />
+                    <img src={assetUrl(info.productImage) ?? undefined} alt={info.productName} />
                   ) : (
-                    <span className="od-thumb-fallback"><Package2 size={20} /></span>
+                    <span className="blank"><Package2 size={20} /></span>
                   )}
-                  <div>
-                    <button className="od-product-link" onClick={() => openDetail(item.id)}>{info.productName}</button>
-                    <small>规格：{info.productSpec}</small>
+                  <div style={{ minWidth: 0 }}>
+                    <button type="button" onClick={() => openDetail(item.id)}>{info.productName}</button>
+                    <small>{info.productSpec}</small>
                   </div>
                 </div>
-                <div className="od-cell num">{fmtMoney(info.unitPrice)}</div>
-                <div className="od-cell num">{info.quantity}</div>
-                <div className="od-cell">{info.returnStatus ? <em className="status-pill warn-pill">{RETURN_LABELS[info.returnStatus] ?? info.returnStatus}</em> : <span className="muted">—</span>}</div>
-                <div className="od-cell od-cell-state">
-                  <StatusPill status={info.status} label={info.statusLabel} />
+                <span className="od2-num">{fmtMoney(info.unitPrice)}</span>
+                <span className="od2-num">× {info.quantity}</span>
+                <div className="od2-amt">
+                  <b className="od2-num">{fmtMoney(info.totalAmount)}</b>
+                  <small>含运费 {fmtMoney(shipping)}</small>
                 </div>
-                <div className="od-cell od-cell-money">
-                  <b>{fmtMoney(info.totalAmount)}</b>
-                  <small>(含快递: $0.00)</small>
-                </div>
-                <div className="od-cell od-cell-ops">
-                  <button className="text-button" onClick={() => openDetail(item.id)}>查看详情</button>
-                  {info.logistics ? <button className="text-button" onClick={() => openDetail(item.id, "logistics")}>查看物流</button> : null}
-                  {info.status === "pending_payment" ? <button className="text-button" onClick={() => openDetail(item.id)}>去催付</button> : null}
-                  {info.review ? <button className="text-button" onClick={() => openDetail(item.id, "review")}>查看评价</button> : null}
-                </div>
+                {statusCell(item)}
+                {actionsCell(item)}
               </div>
             </article>
           );
         })}
         {filtered.length === 0 ? (
-          <div className="order-empty">
+          <div className="sx-empty">
             <Package2 size={26} />
             <strong>{orders.length === 0 ? "暂无订单" : "没有符合条件的订单"}</strong>
-            <p>{orders.length === 0 ? "接待售中/售后客户后，这里会同步买家的相关订单。" : "换个状态页签或搜索关键词试试。"}</p>
+            <p>{orders.length === 0 ? "接待售中、售后客户后，买家的订单会出现在这里。" : "换个状态页签、时间范围或关键词试试。"}</p>
           </div>
         ) : null}
-      </section>
+      </div>
     );
   }
 
@@ -588,7 +642,7 @@ export function LiveOrders({ session }: { session: Session }) {
             <div className="od-info-col">
               <h4>买家信息</h4>
               <div className="od-info-row"><span>昵称</span><em className="od-buyer-inline"><BuyerAvatar buyer={current.buyer} size="tiny" />{current.buyer.name}</em></div>
-              <div className="od-info-row"><span>买家类型</span><em>{current.buyer.identity} · {current.buyer.customerType}</em></div>
+              <div className="od-info-row"><span>国家</span><em>{current.buyer.nationality}</em></div>
               <div className="od-info-row"><span>联系电话</span><em>{address.phone}</em></div>
               <div className="od-info-row"><span>邮件</span><em>{maskedEmail(current.buyer.name, info.orderNo)}</em></div>
             </div>
@@ -753,8 +807,8 @@ export function LiveOrders({ session }: { session: Session }) {
     const replied = replies[current.id];
     return (
       <div className="order-detail-body">
-        <div className="od-card">
-          <div className="od-card-title"><Star size={13} /> 买家评价</div>
+        {/* 评价页签不套卡片：评价、商家回复、回复框一路往下排（同评价页） */}
+        <div className="od-rv">
           <div className="review-head">
             <BuyerAvatar buyer={current.buyer} />
             <div>
@@ -787,15 +841,11 @@ export function LiveOrders({ session }: { session: Session }) {
             <p className="rv-original muted">原评价：{info.review.original.content}</p>
           ) : null}
           {replied ? (
-            <div className="rv-replied">
-              <strong>商家回复</strong><small>{fmtDateTime(replied.at)}</small>
+            <div className="rv3-reply">
+              <div className="h"><b>商家回复</b><span className="muted">{fmtDateTime(replied.at)}</span></div>
               <p>{replied.text}</p>
             </div>
           ) : null}
-        </div>
-
-        <div className="od-card">
-          <div className="od-card-title"><MessageSquare size={13} /> {replied ? "再次回复" : "回复评价"}</div>
           <ReviewReply
             session={session}
             orderId={current.id}
@@ -803,7 +853,7 @@ export function LiveOrders({ session }: { session: Session }) {
             conversationOpen={conversationOpen}
             onSent={(text) => {
               setReplies((prev) => ({ ...prev, [current.id]: { text, at: new Date().toISOString() } }));
-              setNotice("回复已发送给买家，可到客服工作台查看买家回应。");
+              setNotice("回复已发布。");
             }}
           />
         </div>
@@ -812,15 +862,18 @@ export function LiveOrders({ session }: { session: Session }) {
   }
 
   return (
-    <div className="page">
-      <PageHeader
-        eyebrow="ORDERS"
-        title={active ? "订单详情" : "订单管理"}
-        description={active ? `订单 ${active.detail.orderNo} · ${active.buyer.name}` : "查看店铺全部订单，进入详情处理催付、物流同步与售后事宜。"}
+    <div className="sx-root">
+      <HeaderTabs
+        value={statusTab}
+        onChange={(next) => { setStatusTab(next); setDetail(null); }}
+        items={STATUS_TABS.map(([value, label]) => ({
+          id: value,
+          label: <>{label}{counts[value] ? <TabCount n={counts[value]!} /> : null}</>,
+        }))}
       />
-      {notice ? <p className="form-notice" role="status">{notice}</p> : null}
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
-      {active ? renderDetail(active) : renderList()}
+      {notice ? <p className="sx-notice" role="status">{notice}</p> : null}
+      {error ? <p className="sx-error" role="alert">{error}</p> : null}
+      {active ? <div className="od2-detail">{renderDetail(active)}</div> : renderList()}
     </div>
   );
 }

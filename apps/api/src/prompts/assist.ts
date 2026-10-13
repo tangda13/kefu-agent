@@ -42,6 +42,38 @@ export function buildSuggestionMessages(input: {
   ];
 }
 
+// ---------- 评价回复（C5：固定 3 版英文，各附中文意思和切入角度） ----------
+export const reviewReplySchema = z.object({
+  items: z
+    .array(z.object({ angle: nonEmpty, en: nonEmpty, zh: nonEmpty }))
+    .min(3),
+});
+
+export function buildReviewReplyMessages(input: {
+  persona: Record<string, unknown>;
+  order: Record<string, unknown>;
+  storeName: string;
+  signature: string;
+}): ChatMessage[] {
+  return [
+    {
+      role: "system",
+      content:
+        `You are a customer service coach for the cross-border online store "${input.storeName}". ` +
+        "Write exactly 3 alternative PUBLIC replies to the buyer's product review (rating and text are in order.review). " +
+        "All replies MUST be in English regardless of the buyer's country. Each reply takes a different angle " +
+        "(e.g. apologise and reship, offer a refund option, invite a private conversation; for positive reviews: thank, invite to buy again, ask to share photos). " +
+        "2-4 sentences each, address the buyer by first name, concrete remedy for reviews of 3 stars or lower, no absolute claims ('best', '100% guaranteed'), no signature line. " +
+        "For each reply also give `angle`: a 4-8 character Simplified Chinese label of the approach, and `zh`: a faithful Simplified Chinese translation. " +
+        'Return ONLY JSON: {"items":[{"angle":"...","en":"...","zh":"..."}, ...]}.',
+    },
+    {
+      role: "user",
+      content: `Buyer: ${JSON.stringify({ name: input.persona.name, nationality: input.persona.nationality })}\nOrder: ${JSON.stringify(input.order)}`,
+    },
+  ];
+}
+
 // ---------- 写信辅助（3 版草稿） ----------
 export const mailDraftsSchema = z.object({
   items: z.array(z.object({ subject: z.string().optional(), body: nonEmpty })).min(3),

@@ -75,6 +75,7 @@ export function buildBuyerSystemPrompt(context: BuyerContext): string {
     `Training scenario: ${context.scenePrompt}`,
     ...scriptLines(context.script),
     Object.keys(context.orderSnapshot).length > 0 ? `Related order info: ${JSON.stringify(context.orderSnapshot)}` : "",
+    persona.storeName ? `You are contacting the customer service of the online store "${persona.storeName}". Refer to it by that name if you mention the store.` : "",
     persona.interestedProduct
       ? `The product you are interested in (you saw it in the store; describe it naturally, you may not remember the exact name): ${JSON.stringify(persona.interestedProduct)}`
       : "",

@@ -15,6 +15,8 @@ import {
   Megaphone,
   MessageSquareMore,
   PackageSearch,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings2,
   ShieldCheck,
   Star,
@@ -22,27 +24,33 @@ import {
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import type { UserRole } from "@cecs/contracts";
 import { BrandMark, useBrand } from "../brand";
 import { ShellSlotContext } from "../ui";
 import type { Session } from "../api/client";
 import { PasswordDialog, ProfileDialog, ProfileMenuItems, UserAvatar } from "./AccountCenter";
+import { StoreDialog } from "./StoreDialog";
 
 export interface NavItem {
   id: string;
   label: string;
   icon: LucideIcon;
+  /** 学生端“店铺后台”分组（D-37）：侧栏分组显示、不显示页名、不显示公告条 */
+  group?: "store";
 }
+
+/** 店铺后台的页面：左右顶格、不显示页名（D-37） */
+export const STORE_PAGES = new Set(["workbench", "orders", "reviews", "mail"]);
 
 export const roleNav: Record<UserRole, NavItem[]> = {
   student: [
     { id: "tasks", label: "任务大厅", icon: LayoutDashboard },
-    { id: "workbench", label: "客服工作台", icon: MessageSquareMore },
-    { id: "orders", label: "订单", icon: PackageSearch },
-    { id: "reviews", label: "评价", icon: Star },
-    { id: "mail", label: "邮件", icon: Mail },
     { id: "records", label: "我的记录", icon: GraduationCap },
+    { id: "workbench", label: "客服工作台", icon: MessageSquareMore, group: "store" },
+    { id: "orders", label: "订单", icon: PackageSearch, group: "store" },
+    { id: "reviews", label: "评价", icon: Star, group: "store" },
+    { id: "mail", label: "邮件", icon: Mail, group: "store" },
   ],
   teacher: [
     { id: "overview", label: "数据总览", icon: BarChart3 },
@@ -192,44 +200,90 @@ function TopbarNotice({ items }: { items?: ShellAnnouncement[] }) {
   );
 }
 
+/** 侧栏折叠：只留图标，偏好存本机（界面偏好，不是业务数据） */
+const SIDE_COLLAPSED_KEY = "cecs.sideCollapsed";
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDE_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** 侧栏“店铺后台”分组标题：店铺标识（上传的图片或店名首字母）+ 店名（来自店铺资料，D-39） */
+function StoreGroupLabel({ store, onOpen }: { store?: { name: string; logoUrl: string | null } | null; onOpen?: () => void }) {
+  const name = store?.name ?? "";
+  return (
+    <button type="button" className="shell-nav-group" title={name ? `店铺后台 · ${name}` : "店铺后台"} onClick={onOpen} disabled={!onOpen}>
+      {/* 折叠时只剩分隔线 + 店铺标识 */}
+      <span className="shell-store-mark">
+        {store?.logoUrl ? <img src={store.logoUrl} alt="" /> : (name.trim()[0] ?? "店").toUpperCase()}
+      </span>
+      <span>店铺后台{name ? ` · ${name}` : ""}</span>
+    </button>
+  );
+}
+
 /** banner：顶栏下方的常驻提醒（如管理端额度告警），没有时不占位 */
-export function AppShell({ role, active, onNavigate, children, onSignOut, userName, userMeta, notifications, announcements, banner, badges, session, onSessionChange }: { role: UserRole; active: string; onNavigate: (id: string) => void; children: ReactNode; onSignOut?: () => void; userName?: string; userMeta?: string; notifications?: ShellNotificationCenter; announcements?: ShellAnnouncement[]; banner?: ReactNode; badges?: Record<string, number>; /** 个人中心（查看资料、改姓名、改密码）需要当前会话；演示模式不传 */ session?: Session | null; onSessionChange?: (next: Session) => void }) {
+export function AppShell({ role, active, onNavigate, children, onSignOut, userName, userMeta, notifications, announcements, banner, badges, session, onSessionChange, store }: { role: UserRole; active: string; onNavigate: (id: string) => void; children: ReactNode; onSignOut?: () => void; userName?: string; userMeta?: string; notifications?: ShellNotificationCenter; announcements?: ShellAnnouncement[]; banner?: ReactNode; badges?: Record<string, number>; /** 个人中心（查看资料、改姓名、改密码）需要当前会话；演示模式不传 */ session?: Session | null; onSessionChange?: (next: Session) => void; /** 学生端侧栏店铺分组标题 */ store?: { name: string; logoUrl: string | null } | null }) {
   const { brand } = useBrand();
   const fallback = identity[role];
   const name = userName ?? fallback.name;
   const meta = userMeta ?? fallback.meta;
   const navigation = roleNav[role];
-  const activeLabel = navigation.find((item) => item.id === active)?.label ?? "";
+  const activeItem = navigation.find((item) => item.id === active);
+  const activeLabel = activeItem?.label ?? "";
+  const storePage = activeItem?.group === "store";
   // 顶栏里给页面放页签的位置（HeaderTabs 渲染到这里）
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const [storeOpen, setStoreOpen] = useState(false);
+  const toggleCollapsed = () =>
+    setCollapsed((value) => {
+      try {
+        localStorage.setItem(SIDE_COLLAPSED_KEY, value ? "0" : "1");
+      } catch {
+        /* 存不了就只在本次生效 */
+      }
+      return !value;
+    });
   return (
-    <div className="shell">
+    <div className={collapsed ? "shell is-collapsed" : "shell"}>
       <aside className="shell-side">
         <div className="shell-brand" title={brand.name}>
           <BrandMark size={24} />
           <strong>{brand.name}</strong>
         </div>
         <nav className="shell-nav" aria-label="主导航">
-          {navigation.map((item) => {
+          {navigation.map((item, index) => {
             const Icon = item.icon;
+            const firstOfStore = item.group === "store" && navigation[index - 1]?.group !== "store";
             return (
-              <button key={item.id} type="button" className={active === item.id ? "is-active" : undefined} aria-current={active === item.id ? "page" : undefined} onClick={() => onNavigate(item.id)}>
+              <Fragment key={item.id}>
+              {firstOfStore ? <StoreGroupLabel store={store} onOpen={session ? () => setStoreOpen(true) : undefined} /> : null}
+              <button type="button" title={collapsed ? item.label : undefined} className={active === item.id ? "is-active" : undefined} aria-current={active === item.id ? "page" : undefined} onClick={() => onNavigate(item.id)}>
                 <Icon size={18} />
                 <span>{item.label}</span>
-                {badges?.[item.id] ? <em className="shell-nav-badge">{badges[item.id]}</em> : null}
+                {badges?.[item.id] ? <em className={item.id === "mail" ? "shell-nav-badge is-soft" : "shell-nav-badge"}>{badges[item.id]}</em> : null}
               </button>
+              </Fragment>
             );
           })}
         </nav>
         <div className="shell-side-foot">
-          <button type="button"><BookOpenCheck size={18} /><span>使用帮助</span></button>
+          <button type="button" title={collapsed ? "使用帮助" : undefined}><BookOpenCheck size={18} /><span>使用帮助</span></button>
+          <button type="button" className="shell-collapse" onClick={toggleCollapsed} aria-label={collapsed ? "展开侧栏" : "收起侧栏"} title={collapsed ? "展开侧栏" : "收起侧栏"}>
+            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+            <span>收起侧栏</span>
+          </button>
         </div>
       </aside>
       <section className="shell-main">
-        <header className="shell-top">
-          <h1 className="shell-title">{activeLabel}</h1>
+        <header className={storePage ? "shell-top is-store" : "shell-top"}>
+          {storePage ? null : <h1 className="shell-title">{activeLabel}</h1>}
           <div className="shell-head-slot" ref={setSlot} />
-          {role === "student" ? <TopbarNotice items={announcements} /> : <span className="shell-top-fill" />}
+          {/* 老师公告只在学习区显示；店铺后台里只留铃铛（D-37） */}
+          {role === "student" && !storePage ? <TopbarNotice items={announcements} /> : <span className="shell-top-fill" />}
           <div className="shell-top-actions">
             <NotificationBell center={notifications} />
             <ProfileMenu name={name} meta={meta} role={role} onSignOut={onSignOut} session={session ?? null} onSessionChange={onSessionChange} />
@@ -240,6 +294,7 @@ export function AppShell({ role, active, onNavigate, children, onSignOut, userNa
           <div className="content-scroll">{children}</div>
         </ShellSlotContext.Provider>
       </section>
+      {storeOpen && session ? <StoreDialog session={session} onClose={() => setStoreOpen(false)} /> : null}
     </div>
   );
 }

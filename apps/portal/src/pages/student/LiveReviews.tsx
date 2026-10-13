@@ -1,31 +1,27 @@
-import { ExternalLink, Package2, Reply, Star } from "lucide-react";
+import { Languages, PackageSearch, Package2, Reply, Search, Star } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PageHeader } from "../../components/AppShell";
 import { BuyerAvatar } from "../../components/BuyerAvatar";
 import { ReviewReply, loadReviewReplies, type StoredReply } from "../../components/ReviewReply";
+import { TabCount, fmtMonthDay, ZhTranslation } from "../../components/StoreHeader";
 import {
   ApiError,
   assetUrl,
+  fetchStoreProfile,
+  fetchStudentOrders,
   fetchStudentReviews,
   type Session,
+  type StoreProfile,
+  type StudentOrder,
   type StudentReview,
 } from "../../api/client";
+import { HeaderTabs, MoreMenu } from "../../ui";
+import "../../styles/student-store.css";
 
 type Grade = "good" | "medium" | "bad";
-type GradeFilter = "all" | Grade;
-
-const GRADE_META: Record<Grade, { label: string; pill: string }> = {
-  good: { label: "好评", pill: "status-pill green" },
-  medium: { label: "中评", pill: "status-pill amber" },
-  bad: { label: "差评", pill: "status-pill warn-pill" },
-};
-
-const FILTERS: ReadonlyArray<[GradeFilter, string]> = [
-  ["all", "全部评价"],
-  ["good", "好评"],
-  ["medium", "中评"],
-  ["bad", "差评"],
-];
+type Tab = "all" | Grade;
+/** 回复状态：普通筛选项，不当成待办（电商平台没有“必须回复评价”的逻辑） */
+type ReplyFilter = "all" | "unreplied" | "replied";
+type Sort = "latest" | "lowest" | "highest";
 
 /** 时间范围：null=累计全部 */
 const TIME_RANGES: ReadonlyArray<[string, string, number | null]> = [
@@ -35,36 +31,65 @@ const TIME_RANGES: ReadonlyArray<[string, string, number | null]> = [
   ["90d", "近 90 天", 90],
 ];
 
-/** 淘宝口径：4-5 星好评、3 星中评、1-2 星差评 */
+/** 4-5 星好评、3 星中评、1-2 星差评 */
 function gradeOf(rating: number): Grade {
   if (rating >= 4) return "good";
   if (rating === 3) return "medium";
   return "bad";
 }
 
-function fmtDateTime(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
+  return (
+    <span className="sx-stars" aria-label={`${rating} 星`}>
+      {[1, 2, 3, 4, 5].map((value) => (
+        <Star
+          key={value}
+          size={size}
+          fill={value <= Math.round(rating) ? "#f2b01e" : "none"}
+          color={value <= Math.round(rating) ? "#f2b01e" : "#c6d2d8"}
+        />
+      ))}
+    </span>
+  );
 }
 
+/**
+ * 评价（第二版，对比稿 p12-student“评价 · 第二版”）：照亚马逊商品页的评价区做成评价流。
+ * 左侧评分概览（平均分、5→1 星占比，点一行筛这一星），右侧每条评价完整展开，
+ * 商家回复缩进显示在评价下面，“回复”就地展开回复框。
+ */
 export function LiveReviews({
   session,
   onOpenOrder,
+  onOpenConversation,
 }: {
   session: Session;
   onOpenOrder?: (orderId: string) => void;
+  /** 联系买家：跳到客服工作台的这位买家会话 */
+  onOpenConversation?: (conversationId: string) => void;
 }) {
   const [records, setRecords] = useState<StudentReview[]>([]);
-  const [filter, setFilter] = useState<GradeFilter>("all");
+  const [orders, setOrders] = useState<Record<string, StudentOrder>>({});
+  const [store, setStore] = useState<StoreProfile | null>(null);
+  const [tab, setTab] = useState<Tab>("all");
+  const [starFilter, setStarFilter] = useState<number | null>(null);
   const [rangeKey, setRangeKey] = useState("all");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [sort, setSort] = useState<Sort>("latest");
+  const [replyFilter, setReplyFilter] = useState<ReplyFilter>("all");
+  const [query, setQuery] = useState("");
   const [replies, setReplies] = useState<Record<string, StoredReply>>({});
-  const [notice, setNotice] = useState("");
+  /** 正在回复 / 编辑回复的评价（订单 id） */
+  const [composing, setComposing] = useState<{ orderId: string; edit: boolean } | null>(null);
+  const [translated, setTranslated] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     try {
       loadReviewReplies(session).then(setReplies).catch(() => undefined);
+      fetchStoreProfile(session).then(setStore).catch(() => undefined);
+      fetchStudentOrders(session)
+        .then((list) => setOrders(Object.fromEntries(list.map((item) => [item.id, item]))))
+        .catch(() => undefined);
       setRecords(await fetchStudentReviews(session));
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
@@ -74,9 +99,6 @@ export function LiveReviews({
   useEffect(() => { void load(); }, [load]);
 
   const range = TIME_RANGES.find(([key]) => key === rangeKey) ?? TIME_RANGES[0]!;
-  const rangeLabel = range[2] === null ? "累计" : range[1];
-
-  /** 先按时间范围过滤，统计与等级页签均基于该结果 */
   const inRange = useMemo(() => {
     const days = range[2];
     if (days === null) return records;
@@ -84,182 +106,219 @@ export function LiveReviews({
     return records.filter((record) => new Date(record.review.at).getTime() >= cutoff);
   }, [records, range]);
 
+
   const stats = useMemo(() => {
     const total = inRange.length;
-    const good = inRange.filter((record) => gradeOf(record.review.rating) === "good").length;
-    const medium = inRange.filter((record) => gradeOf(record.review.rating) === "medium").length;
-    const bad = inRange.filter((record) => gradeOf(record.review.rating) === "bad").length;
-    const unreplied = inRange.filter(
-      (record) => gradeOf(record.review.rating) !== "good" && !replies[record.orderId],
-    ).length;
-    const avg = total ? inRange.reduce((sum, record) => sum + record.review.rating, 0) / total : 0;
-    return { total, good, medium, bad, avg, unreplied, goodRate: total ? Math.round((good / total) * 100) : 0 };
+    const count = (grade: Grade) => inRange.filter((record) => gradeOf(record.review.rating) === grade).length;
+    const byStar = [5, 4, 3, 2, 1].map((star) => ({
+      star,
+      n: inRange.filter((record) => record.review.rating === star).length,
+    }));
+    return {
+      total,
+      good: count("good"),
+      medium: count("medium"),
+      bad: count("bad"),
+      replied: inRange.filter((record) => replies[record.orderId]).length,
+      avg: total ? inRange.reduce((sum, record) => sum + record.review.rating, 0) / total : 0,
+      byStar,
+    };
   }, [inRange, replies]);
 
-  const filtered = filter === "all" ? inRange : inRange.filter((record) => gradeOf(record.review.rating) === filter);
+  const filtered = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    const list = inRange.filter((record) => {
+      if (replyFilter === "unreplied" && replies[record.orderId]) return false;
+      if (replyFilter === "replied" && !replies[record.orderId]) return false;
+      if ((tab === "good" || tab === "medium" || tab === "bad") && gradeOf(record.review.rating) !== tab) return false;
+      if (starFilter !== null && record.review.rating !== starFilter) return false;
+      if (!keyword) return true;
+      return [record.buyer.name, record.productName, record.orderNo, record.review.content]
+        .some((field) => field.toLowerCase().includes(keyword));
+    });
+    const time = (record: StudentReview) => new Date(record.review.at).getTime();
+    return [...list].sort((a, b) =>
+      sort === "lowest" ? a.review.rating - b.review.rating || time(b) - time(a)
+      : sort === "highest" ? b.review.rating - a.review.rating || time(b) - time(a)
+      : time(b) - time(a),
+    );
+  }, [inRange, tab, starFilter, replyFilter, query, sort, replies]);
+
+  const storeName = store?.name ?? "店铺";
 
   return (
-    <div className="page">
-      <PageHeader
-        eyebrow="REVIEWS"
-        title="评价管理"
-        description="集中查看本店铺累计买家评价并回复买家，支持按时间与等级筛选；回复时可使用 AI 辅助。"
+    <div className="sx-root">
+      <HeaderTabs
+        value={tab}
+        onChange={(next) => { setTab(next); setStarFilter(null); }}
+        items={[
+          { id: "all", label: <>全部<TabCount n={stats.total} /></> },
+          { id: "bad", label: <>差评<TabCount n={stats.bad} /></> },
+          { id: "medium", label: <>中评<TabCount n={stats.medium} /></> },
+          { id: "good", label: <>好评<TabCount n={stats.good} /></> },
+        ]}
       />
-      {notice ? <p className="form-notice" role="status">{notice}</p> : null}
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {error ? <p className="sx-error" role="alert">{error}</p> : null}
 
-      <div className="rv-stats">
-        <div className="rv-stat">
-          <span>{rangeLabel}评价数</span>
-          <strong>{stats.total}</strong>
-          <small>平均 {stats.avg ? stats.avg.toFixed(1) : "—"} 星 · 累计 {records.length} 条</small>
-        </div>
-        <div className="rv-stat">
-          <span>{rangeLabel}好评率</span>
-          <strong className="good">{stats.total ? `${stats.goodRate}%` : "—"}</strong>
-          <small>好评 {stats.good} 条</small>
-        </div>
-        <div className="rv-stat">
-          <span>{rangeLabel}中评</span>
-          <strong className="medium">{stats.medium}</strong>
-          <small>3 星评价</small>
-        </div>
-        <div className="rv-stat">
-          <span>待回复中差评</span>
-          <strong className="bad">{stats.unreplied}</strong>
-          <small>差评共 {stats.bad} 条，建议优先回复</small>
-        </div>
-      </div>
-
-      <section className="panel rv-panel">
-        <div className="od-status-tabs" role="tablist" aria-label="按评价等级筛选">
-          {FILTERS.map(([value, label]) => (
-            <button
-              key={value}
-              role="tab"
-              aria-selected={filter === value}
-              className={filter === value ? "od-status-tab active" : "od-status-tab"}
-              onClick={() => { setFilter(value); setExpandedId(null); }}
-            >
-              {label}
-              {value === "all" ? (stats.total ? <span>{stats.total}</span> : null) : null}
-              {value === "good" ? (stats.good ? <span>{stats.good}</span> : null) : null}
-              {value === "medium" ? (stats.medium ? <span>{stats.medium}</span> : null) : null}
-              {value === "bad" ? (stats.bad ? <span>{stats.bad}</span> : null) : null}
-            </button>
-          ))}
-          <select
-            className="rv-range-select"
-            value={rangeKey}
-            onChange={(event) => { setRangeKey(event.target.value); setExpandedId(null); }}
-            aria-label="按时间筛选评价"
-          >
-            {TIME_RANGES.map(([key, label]) => (
-              <option key={key} value={key}>{label}</option>
-            ))}
-          </select>
-        </div>
-
-        {filtered.map((record) => {
-          const review = record.review;
-          const grade = gradeOf(review.rating);
-          const meta = GRADE_META[grade];
-          const replied = replies[record.orderId];
-          const expanded = expandedId === record.orderId;
-          return (
-            <article key={record.orderId} className="rv-row">
-              <div className="rv-row-main">
-                <BuyerAvatar buyer={record.buyer} />
-                <div className="rv-row-body">
-                  <div className="rv-row-top">
-                    <strong>{record.buyer.name}</strong>
-                    <small>{record.buyer.nationality}</small>
-                    <span className="review-stars">
-                      {[1, 2, 3, 4, 5].map((value) => (
-                        <Star
-                          key={value}
-                          size={14}
-                          fill={value <= review.rating ? "#f2b01e" : "none"}
-                          color={value <= review.rating ? "#f2b01e" : "#c6d2d8"}
-                        />
-                      ))}
-                    </span>
-                    <em className={`${meta.pill} rv-grade`}>{meta.label}</em>
-                    {review.revised ? (
-                      <em className="status-pill rv-grade" title={review.original?.content ?? undefined}>
-                        已改评{typeof review.original?.rating === "number" ? ` · 原 ${review.original.rating} 星` : ""}
-                      </em>
-                    ) : null}
-                    {replied ? <em className="status-pill green rv-grade">已回复</em> : null}
-                    <small className="rv-time">{fmtDateTime(review.at)}</small>
-                  </div>
-                  <p className="rv-content">{review.content}</p>
-                  {review.revised && review.original?.content ? (
-                    <p className="rv-original muted">原评价：{review.original.content}</p>
-                  ) : null}
-                  {replied ? (
-                    <div className="rv-replied">
-                      <strong>商家回复</strong><small>{fmtDateTime(replied.at)}</small>
-                      <p>{replied.text}</p>
-                    </div>
-                  ) : null}
-                  <div className="rv-product">
-                    {record.productImage ? (
-                      <img src={assetUrl(record.productImage) ?? undefined} alt={record.productName} />
-                    ) : (
-                      <span className="rv-product-fallback"><Package2 size={14} /></span>
-                    )}
-                    <span>{record.productName}</span>
-                    <small>订单号 {record.orderNo}</small>
-                    {onOpenOrder ? (
-                      <button className="text-button" onClick={() => onOpenOrder(record.orderId)}>
-                        <ExternalLink size={12} /> 查看订单
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="rv-row-ops">
-                  <button
-                    className={
-                      expanded
-                        ? "secondary-button compact"
-                        : !replied && grade !== "good"
-                          ? "primary-button compact"
-                          : "secondary-button compact"
-                    }
-                    onClick={() => setExpandedId(expanded ? null : record.orderId)}
-                  >
-                    <Reply size={13} /> {expanded ? "收起" : replied ? "再次回复" : "回复"}
-                  </button>
-                </div>
-              </div>
-              {expanded ? (
-                <div className="rv-composer">
-                  <ReviewReply
-                    session={session}
-                    orderId={record.orderId}
-                    conversationId={record.conversationId}
-                    conversationOpen={record.conversationStatus === "active"}
-                    onSent={(text) => {
-                      setReplies((prev) => ({ ...prev, [record.orderId]: { text, at: new Date().toISOString() } }));
-                      setExpandedId(null);
-                      setNotice("回复已发送给买家，可到客服工作台查看买家回应。");
-                    }}
-                  />
-                </div>
-              ) : null}
-            </article>
-          );
-        })}
-
-        {filtered.length === 0 ? (
-          <div className="order-empty">
-            <Star size={26} />
-            <strong>{inRange.length === 0 ? (records.length === 0 ? "暂无评价" : "该时间范围内暂无评价") : "该等级下暂无评价"}</strong>
-            <p>{records.length === 0 ? "买家完成交易或结束服务对话后留下的评价会累计展示在这里。" : "调整时间范围或等级页签查看。"}</p>
+      <div className="rv3">
+        <aside className="rv3-sum">
+          <h3>买家评价</h3>
+          <div className="rv3-avg">
+            <Stars rating={stats.avg} size={18} />
+            <b className="num">{stats.total ? stats.avg.toFixed(1) : "—"}</b>
+            <span>满分 5 星</span>
           </div>
-        ) : null}
-      </section>
+          <div className="rv3-n">共 {stats.total} 条评价</div>
+          <div className="rv3-hist">
+            {stats.byStar.map(({ star, n }) => {
+              const pct = stats.total ? Math.round((n / stats.total) * 100) : 0;
+              return (
+                <button
+                  key={star}
+                  type="button"
+                  className={starFilter === star ? "is-on" : undefined}
+                  disabled={n === 0}
+                  onClick={() => { setStarFilter(starFilter === star ? null : star); setTab("all"); }}
+                >
+                  <span>{star} 星</span>
+                  <i><em style={{ width: `${pct}%` }} /></i>
+                  <span className="num">{pct}%</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="rv3-side-f">
+            <span>好评率 <b className="num">{stats.total ? Math.round((stats.good / stats.total) * 100) : 0}%</b></span>
+            <span>已回复 <b className="num">{stats.replied}</b> / {stats.total}</span>
+          </div>
+        </aside>
+
+        <section className="rv3-list">
+          <div className="rv3-tool">
+            <label className="sx-search">
+              <Search size={14} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="搜索买家、商品或订单号"
+                aria-label="搜索评价"
+              />
+            </label>
+            <select className="sx-select" value={sort} onChange={(event) => setSort(event.target.value as Sort)} aria-label="排序">
+              <option value="latest">最新</option>
+              <option value="lowest">评分最低</option>
+              <option value="highest">评分最高</option>
+            </select>
+            <select className="sx-select" value={replyFilter} onChange={(event) => setReplyFilter(event.target.value as ReplyFilter)} aria-label="回复状态">
+              <option value="all">全部回复状态</option>
+              <option value="unreplied">未回复</option>
+              <option value="replied">已回复</option>
+            </select>
+            <select className="sx-select" value={rangeKey} onChange={(event) => setRangeKey(event.target.value)} aria-label="按时间筛选评价">
+              {TIME_RANGES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+            {starFilter !== null ? (
+              <button type="button" className="rv3-chip" onClick={() => setStarFilter(null)}>{starFilter} 星 ×</button>
+            ) : null}
+            <span className="rv3-count">{filtered.length} 条</span>
+          </div>
+
+          {filtered.map((record) => renderReview(record))}
+          {filtered.length === 0 ? (
+            <div className="sx-empty">
+              <Star size={26} />
+              <strong>{records.length === 0 ? "暂无评价" : "没有符合条件的评价"}</strong>
+            </div>
+          ) : null}
+        </section>
+      </div>
     </div>
   );
+
+  function renderReview(record: StudentReview) {
+    const review = record.review;
+    const info = orders[record.orderId]?.detail;
+    const replied = replies[record.orderId];
+    const open = composing?.orderId === record.orderId;
+    const showZh = translated.has(record.orderId);
+    const toggleZh = () =>
+      setTranslated((prev) => {
+        const next = new Set(prev);
+        if (next.has(record.orderId)) next.delete(record.orderId);
+        else next.add(record.orderId);
+        return next;
+      });
+    const menu = [
+      ...(onOpenConversation ? [{ label: "联系买家", onClick: () => onOpenConversation(record.conversationId) }] : []),
+      { label: "复制订单号", onClick: () => void navigator.clipboard?.writeText(record.orderNo).catch(() => undefined) },
+    ];
+    return (
+      <article key={record.orderId} className="rv3-item">
+        <div className="rv3-who">
+          <span className="sx-av"><BuyerAvatar buyer={record.buyer} /></span>
+          <b>{record.buyer.name}</b>
+        </div>
+        <div className="rv3-line">
+          <Stars rating={review.rating} />
+          <span>{fmtMonthDay(review.at)} · {record.buyer.nationality}</span>
+          {review.revised && typeof review.original?.rating === "number" ? (
+            <span className="rv3-revised">已改评 {review.original.rating}→{review.rating} 星</span>
+          ) : null}
+        </div>
+        <div className="rv3-prod">
+          {record.productImage ? <img src={assetUrl(record.productImage) ?? undefined} alt="" /> : <span className="blank"><Package2 size={12} /></span>}
+          <span>{record.productName}</span>
+          {info?.productSpec ? <span className="muted">· {info.productSpec} ·</span> : <span className="muted">·</span>}
+          <span className="rv3-vp">已购买</span>
+        </div>
+        <p className="rv3-text">{review.content}</p>
+        {showZh ? <ZhTranslation session={session} text={review.content} className="rv3-zh" /> : null}
+        {review.revised && review.original?.content ? (
+          <p className="rv3-orig">改评前：{review.original.content}</p>
+        ) : null}
+
+        {/* 操作紧跟评价正文；商家回复和回复框在操作下面展开 */}
+        <div className="rv3-acts">
+          {!replied ? (
+            <button type="button" className={open ? "is-strong is-on" : "is-strong"} onClick={() => setComposing(open ? null : { orderId: record.orderId, edit: false })}>
+              <Reply size={14} />回复
+            </button>
+          ) : null}
+          <button type="button" onClick={toggleZh}><Languages size={14} />{showZh ? "收起译文" : "查看译文"}</button>
+          {onOpenOrder ? (
+            <button type="button" onClick={() => onOpenOrder(record.orderId)}><PackageSearch size={14} />查看订单</button>
+          ) : null}
+          <MoreMenu items={menu} />
+        </div>
+        {replied && !(open && composing?.edit) ? (
+          <div className="rv3-reply">
+            <div className="h">
+              <span className="rv3-smark">{store?.logoUrl ? <img src={store.logoUrl} alt="" /> : storeName.trim()[0]?.toUpperCase()}</span>
+              <b>{storeName} 的回复</b>
+              <span className="muted">{fmtMonthDay(replied.at)}</span>
+              <button type="button" className="rv3-edit" onClick={() => setComposing({ orderId: record.orderId, edit: true })}>编辑</button>
+            </div>
+            <p>{replied.text}</p>
+          </div>
+        ) : null}
+
+        {open ? (
+          <ReviewReply
+            session={session}
+            orderId={record.orderId}
+            conversationId={record.conversationId}
+            conversationOpen={record.conversationStatus === "active" && !composing?.edit}
+            buyerName={record.buyer.name}
+            initialText={composing?.edit ? replied?.text ?? "" : ""}
+            onCancel={() => setComposing(null)}
+            onSent={(text) => {
+              setReplies((prev) => ({ ...prev, [record.orderId]: { text, at: new Date().toISOString() } }));
+              setComposing(null);
+            }}
+          />
+        ) : null}
+
+      </article>
+    );
+  }
 }

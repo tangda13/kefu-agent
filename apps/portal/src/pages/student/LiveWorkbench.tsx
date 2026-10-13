@@ -1,31 +1,26 @@
 import {
-  BookText,
-  Calculator,
-  CheckCheck,
   CircleAlert,
-  Copy,
+  CheckCheck,
   Film,
   ImagePlus,
   Languages,
-  ListTree,
-  MapPin,
+  Lock,
+  Mail,
+  MessageSquareText,
   Mic,
-  Package2,
   Paperclip,
-  Search,
-  Send,
-  ShoppingCart,
+  SendHorizontal,
   Smile,
-  StickyNote,
   TicketPercent,
   Volume2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BUSINESS_STAGE_LABELS } from "@cecs/contracts";
 import {
   ApiError,
+  apiGet,
   assetUrl,
+  closeConversation,
   createConversation,
   createMyPhrase,
   deleteMyPhrase,
@@ -36,69 +31,46 @@ import {
   fetchPhrases,
   fetchStoreCoupons,
   fetchStoreProducts,
+  fetchStoreProfile,
   fetchStudentTasks,
   fetchWorkbenchStats,
   postConversationMessage,
   recognizeAudio,
   requestMessageTts,
+  saveServiceMeta,
   streamAttachmentMessage,
   streamCardMessage,
   streamVoiceMessage,
   streamConversationOpening,
   streamConversationReply,
   translateMessage,
-  updateOrder,
-  type BuyerPublicView,
   type ConversationMessage,
   type ConversationOrder,
   type ConversationSummary,
   type MyPhrase,
-  type OrderAddress,
+  type ServiceMeta,
   type Session,
   type StoreCoupon,
   type StoreProduct,
+  type StoreProfile,
   type StudentTask,
   type WorkbenchStats,
 } from "../../api/client";
 import { OPEN_CONVERSATION_EVENT, OPEN_CONVERSATION_KEY } from "../../App";
 import { WavRecorder } from "../../api/recorder";
+import { Button, Confirm, Dialog, Switch, Tabs, Textarea, toast } from "../../ui";
+import "../../styles/student-workbench.css";
+import { ConversationRail, type RailTab } from "./workbench/ConversationRail";
+import { CustomerCard } from "./workbench/CustomerCard";
+import { EndCard } from "./workbench/EndCard";
+import { EndButton, FollowUpToggle, ReasonPicker } from "./workbench/HeadControls";
+import { OrdersTab } from "./workbench/OrdersTab";
+import { ProductDrawer } from "./workbench/ProductDrawer";
+import { ProductsTab } from "./workbench/ProductsTab";
+import { ShiftBar } from "./workbench/ShiftBar";
+import { Av, MessageBody, errorMessage, goToPage, hashSeed, isCardKind, timeLabel } from "./workbench/shared";
 
-/* 千牛式两页签：当前会话（活跃会话 + 置顶的待接入新客）/ 最近联系（已结束会话） */
-type RailTab = "current" | "recent";
-type PanelTab = "profile" | "order" | "product" | "coupon";
-type ProductTab = "store" | "browsed";
-
-const CUSTOMER_MAIN_TAG: Record<string, string> = {
-  潜在意向客: "新客",
-  复购老客: "老客户",
-  粉丝客: "粉丝会员",
-  沉睡客: "沉睡客",
-};
-
-const RETURN_LABELS: Record<string, string> = {
-  requested: "待客户退货",
-  returning: "退货运输中",
-  refunded: "已退款",
-};
-
-/** 订单筛选键：售后中优先于物流状态 */
-function orderFilterKey(detail: ConversationOrder["detail"]): string {
-  return detail.returnStatus ? "after_sale" : detail.status;
-}
-
-function orderBadgeLabel(detail: ConversationOrder["detail"]): string {
-  return detail.returnStatus ? "售后中" : detail.statusLabel;
-}
-
-const ORDER_FILTERS = [
-  ["all", "全部"],
-  ["pending_payment", "待付款"],
-  ["paid", "待发货"],
-  ["in_transit", "已发货"],
-  ["delivered", "已送达"],
-  ["after_sale", "售后中"],
-  ["completed", "已完成"],
-] as const;
+type PanelTab = "order" | "product" | "coupon";
 
 const EMOJIS = [
   // 微笑问候
@@ -119,186 +91,58 @@ const EMOJIS = [
 ];
 
 const AUTO_TRANSLATE_KEY = "cecs.autoTranslate";
+const AUTO_PLAY_KEY = "cecs.autoPlay";
+/** 同时接待的上限（默认 3 位） */
+const MAX_CONCURRENT = 3;
 
-function errorText(cause: unknown): string {
-  return cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。";
-}
-
-function timeLabel(iso: string): string {
-  return new Date(iso).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-}
-
-function listTimeLabel(iso: string): string {
-  const date = new Date(iso);
-  if (date.toDateString() === new Date().toDateString()) return timeLabel(iso);
-  return date.toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
-}
-
-/* 未回复会话的已等待时长（千牛式：7分钟 / 58分钟 / 1小时 / 2天） */
-function waitingLabel(iso: string, now: number): string {
-  const minutes = Math.floor((now - new Date(iso).getTime()) / 60_000);
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes}分钟`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}小时`;
-  return `${Math.floor(hours / 24)}天`;
-}
-
-function dateTimeLabel(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function durationLabel(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined) return "—";
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.round(seconds % 60);
-  if (h > 0) return `${h}时${m}分${s}秒`;
-  if (m > 0) return `${m}分${s}秒`;
-  return `${s}秒`;
-}
-
-function fileSizeLabel(size: number): string {
-  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
-  return `${Math.max(1, Math.round(size / 1024))} KB`;
-}
-
-/** 稳定散列：买家浏览记录按会话种子确定，切换会话不变 */
-function hashSeed(text: string): number {
-  let value = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    value = (value * 31 + text.charCodeAt(index)) | 0;
+function readFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
   }
-  return Math.abs(value);
 }
 
-function BuyerAvatar({ buyer, size = "" }: { buyer: BuyerPublicView | null; size?: "" | "tiny" | "xl" }) {
-  if (buyer?.avatarUrl) {
-    return (
-      <span className={`photo-avatar ${size}`.trim()}>
-        <img src={buyer.avatarUrl} alt={`${buyer.name} 头像`} />
-      </span>
-    );
+function writeFlag(key: string, value: boolean): void {
+  try {
+    localStorage.setItem(key, value ? "1" : "0");
+  } catch {
+    /* 偏好存不了也不影响使用 */
   }
-  return <span className={`avatar ${size === "xl" ? "xl" : size === "tiny" ? "tiny" : ""}`.trim()}>{buyer?.name?.slice(0, 1) ?? "?"}</span>;
 }
 
-function mediaUrl(url: string | undefined): string | undefined {
-  if (!url) return undefined;
-  return url.startsWith("blob:") ? url : assetUrl(url) ?? undefined;
+/** 重新拉到的消息和本地状态合并：译文展开状态按（发送方 + 内容）沿用 */
+function mergeRows(current: ConversationMessage[] | null, rows: ConversationMessage[]): ConversationMessage[] {
+  const shown = new Map((current ?? []).filter((item) => item.showTranslation).map((item) => [`${item.sender}|${item.content}`, true]));
+  return rows.map((row) => (shown.has(`${row.sender}|${row.content}`) ? { ...row, showTranslation: true } : row));
 }
 
-function MessageBody({ message, onPlayVoice }: { message: ConversationMessage; onPlayVoice?: (url: string) => void }) {
-  if (message.kind === "voice" && message.payload) {
-    const voice = message.payload as { audioUrl?: string; durationMs?: number; transcript?: string };
-    const seconds = Math.max(1, Math.round((voice.durationMs ?? 0) / 1000));
-    return (
-      <div className="voice-bubble">
-        <button
-          className="voice-play"
-          onClick={() => voice.audioUrl && onPlayVoice?.(voice.audioUrl)}
-          disabled={!voice.audioUrl}
-          aria-label="播放语音"
-        >
-          ▶ {seconds}″
-        </button>
-        {voice.transcript ? <small>{voice.transcript}</small> : null}
-      </div>
-    );
+/** 任务下一位要进线的场景；ok=false 表示没有可进线的了 */
+function pendingScenario(task: StudentTask): { ok: boolean; scenarioId?: string } {
+  const list = task.scenarios ?? [];
+  const started = new Set((task.startedScenarioIds ?? []).filter(Boolean));
+  if (task.completionRule === "conversation_count") {
+    if ((task.conversationCount ?? 0) >= task.requiredTotal) return { ok: false };
+    const unstarted = list.find((item) => !started.has(item.id));
+    const fallback = list.length ? list[Math.floor(Math.random() * list.length)] : undefined;
+    return { ok: true, scenarioId: (unstarted ?? fallback)?.id };
   }
-  if (message.kind === "image" && message.payload) {
-    const media = message.payload as { url?: string; name?: string };
-    return <img className="msg-image" src={mediaUrl(media.url)} alt={media.name ?? "图片"} />;
-  }
-  if (message.kind === "video" && message.payload) {
-    const media = message.payload as { url?: string };
-    return <video className="msg-video" src={mediaUrl(media.url)} controls preload="metadata" />;
-  }
-  if (message.kind === "file" && message.payload) {
-    const media = message.payload as { url?: string; name?: string; size?: number };
-    return (
-      <a className="msg-file" href={mediaUrl(media.url)} target="_blank" rel="noreferrer">
-        <Paperclip size={16} />
-        <span>
-          <strong>{media.name ?? "附件"}</strong>
-          <small>{media.size ? fileSizeLabel(media.size) : ""}</small>
-        </span>
-      </a>
-    );
-  }
-  if (message.kind === "order" && message.payload) {
-    const order = message.payload as {
-      orderNo?: string;
-      productName?: string;
-      productSpec?: string;
-      productImage?: string | null;
-      quantity?: number;
-      totalAmount?: number;
-      currency?: string;
-      statusLabel?: string;
-      returnStatus?: string | null;
-    };
-    return (
-      <div className="card-message order-card-message">
-        {order.productImage ? (
-          <img className="product-photo" src={assetUrl(order.productImage) ?? undefined} alt={order.productName} />
-        ) : (
-          <span className="product-thumb"><Package2 size={22} /></span>
-        )}
-        <div>
-          <strong>{order.productName} ×{order.quantity ?? 1}</strong>
-          <small>#{order.orderNo}</small>
-          <em>{order.currency} {order.totalAmount} · {order.returnStatus ? "售后中" : order.statusLabel}</em>
-        </div>
-      </div>
-    );
-  }
-  if ((message.kind === "product" || message.kind === "invite") && message.payload) {
-    const product = message.payload as unknown as StoreProduct;
-    return (
-      <div className={message.kind === "invite" ? "card-message invite-card" : "card-message"}>
-        {product.imageUrl ? (
-          <img className="product-photo" src={assetUrl(product.imageUrl) ?? undefined} alt={product.name} />
-        ) : (
-          <span className="product-thumb" style={{ background: product.tone }}><Package2 size={22} /></span>
-        )}
-        <div>
-          <strong>{product.name}</strong>
-          <small>SKU {product.id} · {product.spec}</small>
-          <em>USD {product.price}{message.kind === "product" ? ` · 已售 ${product.sales}` : ""}</em>
-          {message.kind === "invite" ? <span className="invite-tag"><ShoppingCart size={11} /> 已邀请下单 · 点击卡片即可下单</span> : null}
-        </div>
-      </div>
-    );
-  }
-  if (message.kind === "coupon" && message.payload) {
-    const coupon = message.payload as unknown as StoreCoupon;
-    return (
-      <div className="card-message coupon">
-        <span className="product-thumb coupon-thumb"><TicketPercent size={22} /></span>
-        <div>
-          <strong>{coupon.title}</strong>
-          <small>{coupon.rule} · {coupon.scope}</small>
-          <em>有效期 {coupon.validDays} 天</em>
-        </div>
-      </div>
-    );
-  }
-  return <p>{message.content}</p>;
+  const unstarted = list.filter((item) => !started.has(item.id));
+  if (list.length === 0 || unstarted.length === 0) return { ok: false };
+  return { ok: true, scenarioId: unstarted[0]!.id };
 }
 
 export function LiveWorkbench({ session, initialTaskId }: { session: Session; initialTaskId?: string | null }) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [closedConversations, setClosedConversations] = useState<ConversationSummary[]>([]);
+  /* 本次接待中刚结束的会话：继续留在“接待中”列表底部的“刚结束”里，切到别的会话后才收走 */
+  const [justEnded, setJustEnded] = useState<ConversationSummary[]>([]);
+  const [closedReasonLocal, setClosedReasonLocal] = useState<Record<string, string>>({});
+  const [closedAtLocal, setClosedAtLocal] = useState<Record<string, number>>({});
+  const [translateFailed, setTranslateFailed] = useState<Set<string>>(new Set());
   const [tasks, setTasks] = useState<StudentTask[]>([]);
   const [stats, setStats] = useState<WorkbenchStats | null>(null);
+  const [tiers, setTiers] = useState<StoreProfile["tiers"] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[] | null>(null);
   const [streamingText, setStreamingText] = useState<string | null>(null);
@@ -309,14 +153,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   /* 任务隔离：会话/进线按任务过滤。"all" 全部 | "practice" 自由练习 | 任务 id 聚焦该任务 */
   const [taskFilter, setTaskFilter] = useState<string>("all");
   const [dataReady, setDataReady] = useState(false);
-  /* 未回复等待时长每 30 秒刷新一次显示 */
-  const [nowTick, setNowTick] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNowTick(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
   const [searchText, setSearchText] = useState("");
-  const [panelTab, setPanelTab] = useState<PanelTab>("profile");
+  const [panelTab, setPanelTab] = useState<PanelTab>("order");
   const [phrases, setPhrases] = useState<string[] | null>(null);
   const [showPhrases, setShowPhrases] = useState(false);
   const [phraseFilter, setPhraseFilter] = useState("");
@@ -328,19 +166,53 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const [showEmoji, setShowEmoji] = useState(false);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [coupons, setCoupons] = useState<StoreCoupon[]>([]);
-  const [productTab, setProductTab] = useState<ProductTab>("store");
-  const [autoTranslate, setAutoTranslate] = useState(() => localStorage.getItem(AUTO_TRANSLATE_KEY) === "1");
-  // 买家结束的会话（本地即时标记，等待列表刷新）
+  const [detailProduct, setDetailProduct] = useState<StoreProduct | null>(null);
+  const [autoTranslate, setAutoTranslate] = useState(() => readFlag(AUTO_TRANSLATE_KEY));
+  const [autoPlay, setAutoPlay] = useState(() => readFlag(AUTO_PLAY_KEY));
+  // 已结束的会话（本地即时标记，等待列表刷新）
   const [closedLocal, setClosedLocal] = useState<Set<string>>(new Set());
-  // 可拖拽分栏宽度（localStorage 持久）
-  const [railWidth, setRailWidth] = useState(() => {
-    const value = Number(localStorage.getItem("cecs.ws.railW"));
-    return value >= 200 && value <= 380 ? value : 252;
-  });
-  const [panelWidth, setPanelWidth] = useState(() => {
-    const value = Number(localStorage.getItem("cecs.ws.panelW"));
-    return value >= 280 && value <= 500 ? value : 328;
-  });
+  const [endConfirm, setEndConfirm] = useState(false);
+  const [ending, setEnding] = useState(false);
+  const [orders, setOrders] = useState<ConversationOrder[] | null>(null);
+
+  const startedForTask = useRef<string | null>(null);
+  const openingRequested = useRef<Set<string>>(new Set());
+  const activeIdRef = useRef<string | null>(null);
+  activeIdRef.current = activeId;
+  const autoTranslateRef = useRef(autoTranslate);
+  autoTranslateRef.current = autoTranslate;
+  const autoPlayRef = useRef(autoPlay);
+  autoPlayRef.current = autoPlay;
+  const railTabRef = useRef(railTab);
+  railTabRef.current = railTab;
+  const closedIdsRef = useRef<Set<string>>(new Set());
+  closedIdsRef.current = new Set(closedConversations.map((item) => item.id));
+  const translatingRef = useRef<Set<string>>(new Set());
+  const listRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const recorderRef = useRef<WavRecorder | null>(null);
+  const [voiceState, setVoiceState] = useState<"idle" | "recording" | "recognizing">("idle");
+  const [pendingVoice, setPendingVoice] = useState<{ blob: Blob; seconds: number } | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // 学生连发批量窗口：发送后 2s 检测窗口，检测到打字则顺延；草稿滞留最多顺延 15s
+  const replyTimers = useRef<Map<string, number>>(new Map());
+  const replyDeadlines = useRef<Map<string, number>>(new Map());
+  const inputRef = useRef("");
+  inputRef.current = input;
+  const messagesCidRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const timers = replyTimers.current;
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers.clear();
+    };
+  }, []);
+
   // 表情/快捷短语面板：点击面板（及其开关按钮）以外的任意位置收起
   const emojiPanelRef = useRef<HTMLDivElement | null>(null);
   const phrasePanelRef = useRef<HTMLDivElement | null>(null);
@@ -359,88 +231,45 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [showEmoji, showPhrases, newPhraseOpen]);
-  // 商品面板：规格属性 / 算价 展开
-  const [specOpen, setSpecOpen] = useState<string | null>(null);
-  const [calcOpen, setCalcOpen] = useState<string | null>(null);
-  const [calcQty, setCalcQty] = useState(1);
-  // 订单页签
-  const [orders, setOrders] = useState<ConversationOrder[] | null>(null);
-  const [orderFilter, setOrderFilter] = useState<string>("all");
-  const [orderSearch, setOrderSearch] = useState("");
-  const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
-  const [orderAction, setOrderAction] = useState<{ id: string; type: "remark" | "address" } | null>(null);
-  const [remarkDraft, setRemarkDraft] = useState("");
-  const [addressDraft, setAddressDraft] = useState<OrderAddress>({ recipient: "", line1: "", city: "", country: "", phone: "" });
-  const [savingOrder, setSavingOrder] = useState(false);
 
-  const startedForTask = useRef<string | null>(null);
-  const openingRequested = useRef<Set<string>>(new Set());
-  const activeIdRef = useRef<string | null>(null);
-  activeIdRef.current = activeId;
-  const autoTranslateRef = useRef(autoTranslate);
-  autoTranslateRef.current = autoTranslate;
-  const translatingRef = useRef<Set<string>>(new Set());
-  const listRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [playingId, setPlayingId] = useState<string | null>(null);
-  const recorderRef = useRef<WavRecorder | null>(null);
-  const [voiceState, setVoiceState] = useState<"idle" | "recording" | "recognizing">("idle");
-  const [pendingVoice, setPendingVoice] = useState<{ blob: Blob; seconds: number } | null>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const videoInputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const railWidthRef = useRef(railWidth);
-  railWidthRef.current = railWidth;
-  const panelWidthRef = useRef(panelWidth);
-  panelWidthRef.current = panelWidth;
-  // 学生连发批量窗口：发送后 2s 检测窗口，检测到打字则顺延；草稿滞留最多顺延 15s
-  const replyTimers = useRef<Map<string, number>>(new Map());
-  const replyDeadlines = useRef<Map<string, number>>(new Map());
-  const inputRef = useRef("");
-  inputRef.current = input;
+  const allKnown = useMemo(() => [...conversations, ...justEnded, ...closedConversations], [conversations, justEnded, closedConversations]);
+  const active = allKnown.find((item) => item.id === activeId) ?? null;
+  const isClosed = active?.status === "closed" || (activeId !== null && closedLocal.has(activeId)) || (activeId !== null && closedIdsRef.current.has(activeId));
+  const closedReason = activeId ? closedReasonLocal[activeId] ?? active?.closedReason ?? null : null;
+  const buyer = active?.buyer ?? null;
 
-  useEffect(() => {
-    const timers = replyTimers.current;
-    return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
-      timers.clear();
-    };
+  /* 更新某条会话的本地副本（咨询原因、待跟进、备注） */
+  const patchConversation = useCallback((id: string, patch: Partial<ConversationSummary>) => {
+    const apply = (list: ConversationSummary[]) => list.map((item) => (item.id === id ? { ...item, ...patch } : item));
+    setConversations(apply);
+    setClosedConversations(apply);
+    setJustEnded(apply);
   }, []);
-
-  // 拖拽调整左右分栏宽度
-  function startResize(side: "rail" | "panel", event: React.MouseEvent) {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = side === "rail" ? railWidthRef.current : panelWidthRef.current;
-    const previousUserSelect = document.body.style.userSelect;
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "col-resize";
-    const onMove = (moveEvent: MouseEvent) => {
-      const delta = moveEvent.clientX - startX;
-      if (side === "rail") setRailWidth(Math.min(380, Math.max(200, startWidth + delta)));
-      else setPanelWidth(Math.min(500, Math.max(280, startWidth - delta)));
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      document.body.style.userSelect = previousUserSelect;
-      document.body.style.cursor = "";
-      localStorage.setItem("cecs.ws.railW", String(railWidthRef.current));
-      localStorage.setItem("cecs.ws.panelW", String(panelWidthRef.current));
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }
-
-  const pool = railTab === "recent" ? closedConversations : conversations;
-  const active = pool.find((item) => item.id === activeId)
-    ?? conversations.find((item) => item.id === activeId)
-    ?? closedConversations.find((item) => item.id === activeId)
-    ?? null;
 
   const loadStats = useCallback(() => {
     fetchWorkbenchStats(session).then(setStats).catch(() => undefined);
   }, [session]);
+
+  const loadClosed = useCallback(() => {
+    return fetchConversations(session, "closed")
+      .then((rows) => {
+        setClosedConversations(rows);
+        return rows;
+      })
+      .catch(() => [] as ConversationSummary[]);
+  }, [session]);
+
+  const markEnded = useCallback((cid: string, reason: string) => {
+    setClosedLocal((current) => new Set(current).add(cid));
+    setClosedReasonLocal((current) => ({ ...current, [cid]: reason }));
+    setClosedAtLocal((current) => ({ ...current, [cid]: Date.now() }));
+    setJustEnded((list) => {
+      if (list.some((item) => item.id === cid)) return list;
+      const base = conversations.find((item) => item.id === cid);
+      return base ? [...list, { ...base, status: "closed", closedReason: reason }] : list;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations]);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -453,23 +282,41 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       setActiveId((current) => current ?? conversationList[0]?.id ?? null);
       setDataReady(true);
       loadStats();
+      // 正在看的会话从“进行中”里消失了（超时被服务端结束 / 买家离开）：补进“刚结束”
+      const current = activeIdRef.current;
+      if (current && railTabRef.current === "current" && !conversationList.some((item) => item.id === current) && !closedIdsRef.current.has(current)) {
+        void loadClosed().then((rows) => {
+          const hit = rows.find((item) => item.id === current);
+          if (hit) {
+            setJustEnded((list) => (list.some((item) => item.id === current) ? list : [...list, hit]));
+            setClosedLocal((set) => new Set(set).add(current));
+          }
+        });
+      }
       return conversationList;
     } catch (cause) {
-      setNotice(errorText(cause));
+      setNotice(errorMessage(cause));
       return [];
     }
-  }, [session, loadStats]);
+  }, [session, loadStats, loadClosed]);
 
   useEffect(() => {
     void loadConversations();
+    void loadClosed();
     fetchStoreProducts(session).then(setProducts).catch(() => undefined);
     fetchStoreCoupons(session).then(setCoupons).catch(() => undefined);
-  }, [loadConversations, session]);
+    fetchStoreProfile(session).then((profile) => setTiers(profile.tiers)).catch(() => undefined);
+  }, [loadConversations, loadClosed, session]);
+
+  // 列表 20 秒校一次：服务端到点结束的会话、新进线的会话都能及时反映
+  useEffect(() => {
+    const timer = window.setInterval(() => void loadConversations(), 20_000);
+    return () => window.clearInterval(timer);
+  }, [loadConversations]);
 
   useEffect(() => {
-    if (railTab !== "recent") return;
-    fetchConversations(session, "closed").then(setClosedConversations).catch(() => undefined);
-  }, [session, railTab]);
+    if (railTab === "recent") void loadClosed();
+  }, [railTab, loadClosed]);
 
   // 顶栏「消息」中的教师指导 → 跳转到对应会话
   useEffect(() => {
@@ -508,21 +355,21 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
 
   useEffect(() => {
     if (!activeId) {
+      messagesCidRef.current = null;
       setMessages(null);
       return;
     }
     let cancelled = false;
+    messagesCidRef.current = null;
     setMessages(null);
+    setPendingVoice(null);
     fetchConversationMessages(session, activeId)
       .then((rows) => {
         if (cancelled) return;
-        setMessages(
-          autoTranslateRef.current
-            ? rows.map((row) => (row.translation ? { ...row, showTranslation: true } : row))
-            : rows,
-        );
+        messagesCidRef.current = activeId;
+        setMessages(rows);
       })
-      .catch((cause) => setNotice(errorText(cause)));
+      .catch((cause) => setNotice(errorMessage(cause)));
     return () => {
       cancelled = true;
     };
@@ -536,10 +383,6 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     }
     let cancelled = false;
     setOrders(null);
-    setExpandedOrder(null);
-    setOrderAction(null);
-    setOrderFilter("all");
-    setOrderSearch("");
     fetchConversationOrders(session, activeId)
       .then((rows) => {
         if (!cancelled) setOrders(rows);
@@ -554,8 +397,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
 
   // 买家进线后主动发起第一条消息
   useEffect(() => {
-    if (!activeId || messages === null || messages.length > 0) return;
-    if (active?.status === "closed") return;
+    if (!activeId || messages === null || messages.length > 0 || messagesCidRef.current !== activeId) return;
+    if (isClosed) return;
     if (openingRequested.current.has(activeId)) return;
     openingRequested.current.add(activeId);
     const cid = activeId;
@@ -573,61 +416,173 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages, streamingText]);
+  }, [messages, streamingText, isClosed]);
 
-  // 自动翻译：开启后为最新买家消息补充译文（服务端缓存复用）
+  // ---------- 买家消息翻译 ----------
+
   const autoTranslateLatest = useCallback(async (cid: string) => {
     try {
       const rows = await fetchConversationMessages(session, cid);
       if (activeIdRef.current !== cid) return;
       const target = [...rows].reverse().find((row) => row.sender === "buyer" && (!row.kind || row.kind === "text"));
-      const withShown = (list: ConversationMessage[]) =>
-        list.map((row) => (row.translation ? { ...row, showTranslation: true } : row));
       if (!target) {
-        setMessages(withShown(rows));
+        setMessages((current) => mergeRows(current, rows));
         return;
       }
       let translation = target.translation;
       if (!translation) translation = (await translateMessage(session, cid, target.id)).translation;
       if (activeIdRef.current !== cid) return;
-      setMessages(
-        withShown(rows).map((row) =>
-          row.id === target.id ? { ...row, translation, showTranslation: true } : row,
-        ),
-      );
+      setMessages((current) => mergeRows(current, rows).map((row) => (row.id === target.id ? { ...row, translation } : row)));
     } catch {
       /* 自动翻译失败静默，学生可手动点翻译 */
     }
   }, [session]);
 
-  // 开启自动翻译后，为已加载的最新买家消息补译
-  useEffect(() => {
-    if (!autoTranslate || !activeId || !messages) return;
-    const target = [...messages].reverse().find(
-      (row) => row.sender === "buyer" && (!row.kind || row.kind === "text") && !row.translation,
+  // 开启自动翻译后，为已加载的买家消息补译（同时最多 4 条在途，服务端缓存复用）
+  const translateMissing = useCallback((cid: string, rows: ConversationMessage[]) => {
+    const targets = rows.filter(
+      (row) => row.sender === "buyer" && (!row.kind || row.kind === "text") && !row.translation
+        && !row.id.startsWith("buyer-") && !row.id.startsWith("local-") && !translatingRef.current.has(row.id),
     );
-    if (!target || target.id.startsWith("buyer-") || target.id.startsWith("local-")) return;
-    if (translatingRef.current.has(target.id)) return;
-    translatingRef.current.add(target.id);
-    translateMessage(session, activeId, target.id)
-      .then(({ translation }) => {
-        setMessages((current) =>
-          (current ?? []).map((row) =>
-            row.id === target.id ? { ...row, translation, showTranslation: true } : row,
-          ),
-        );
-      })
-      .catch(() => undefined)
-      .finally(() => translatingRef.current.delete(target.id));
-  }, [autoTranslate, activeId, messages, session]);
+    for (const target of targets.slice(-4)) {
+      if (translatingRef.current.size >= 4) break;
+      translatingRef.current.add(target.id);
+      translateMessage(session, cid, target.id)
+        .then(({ translation }) => {
+          setMessages((current) => (current ?? []).map((row) => (row.id === target.id ? { ...row, translation } : row)));
+          setTranslateFailed((set) => { const next = new Set(set); next.delete(target.id); return next; });
+        })
+        .catch(() => setTranslateFailed((set) => new Set(set).add(target.id)))
+        .finally(() => translatingRef.current.delete(target.id));
+    }
+  }, [session]);
 
-  function toggleAutoTranslate() {
-    setAutoTranslate((value) => {
-      const next = !value;
-      localStorage.setItem(AUTO_TRANSLATE_KEY, next ? "1" : "0");
-      return next;
-    });
+  useEffect(() => {
+    if (!autoTranslate || !activeId || !messages || messagesCidRef.current !== activeId) return;
+    const pendingIds = messages.filter((row) => translateFailed.has(row.id));
+    translateMissing(activeId, messages.filter((row) => !pendingIds.includes(row)));
+  }, [autoTranslate, activeId, messages, translateMissing, translateFailed]);
+
+  function toggleAutoTranslate(next: boolean) {
+    setAutoTranslate(next);
+    writeFlag(AUTO_TRANSLATE_KEY, next);
   }
+
+  function toggleAutoPlay(next: boolean) {
+    setAutoPlay(next);
+    writeFlag(AUTO_PLAY_KEY, next);
+    if (!next) stopSpeaking();
+  }
+
+  // ---------- 买家消息播报（TTS 音频缓存复用） ----------
+
+  const ttsToken = useRef(0);
+  const ttsQueue = useRef<ConversationMessage[]>([]);
+  const ttsRunning = useRef(false);
+  const ttsResolve = useRef<(() => void) | null>(null);
+
+  function stopSpeaking() {
+    ttsToken.current += 1;
+    ttsQueue.current = [];
+    audioRef.current?.pause();
+    ttsResolve.current?.();
+    ttsResolve.current = null;
+    setPlayingId(null);
+  }
+
+  /** 播报一条买家消息，播完（或被打断）才返回 */
+  async function speak(message: ConversationMessage, cid: string): Promise<void> {
+    const token = ++ttsToken.current;
+    try {
+      let target = message;
+      if (message.id.startsWith("buyer-")) {
+        // 本地气泡还没拿到服务端 id：稍等落库后按内容找回
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const rows = await fetchConversationMessages(session, cid);
+          const found = [...rows].reverse().find((item) => item.sender === "buyer" && item.content === message.content);
+          if (found) {
+            target = found;
+            if (activeIdRef.current === cid) setMessages((current) => mergeRows(current, rows));
+            break;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        }
+        if (target === message) return;
+      }
+      if (token !== ttsToken.current) return;
+      setPlayingId(target.id);
+      const { audioUrl } = await requestMessageTts(session, cid, target.id);
+      if (token !== ttsToken.current) return;
+      audioRef.current?.pause();
+      const audio = new Audio(assetUrl(audioUrl) ?? undefined);
+      audioRef.current = audio;
+      await new Promise<void>((resolve) => {
+        ttsResolve.current = resolve;
+        audio.onended = () => resolve();
+        audio.onerror = () => resolve();
+        audio.play().catch(() => resolve());
+      });
+    } catch (cause) {
+      if (token === ttsToken.current) setNotice(errorMessage(cause));
+    } finally {
+      if (token === ttsToken.current) setPlayingId(null);
+    }
+  }
+
+  async function runTtsQueue(cid: string) {
+    if (ttsRunning.current) return;
+    ttsRunning.current = true;
+    try {
+      while (ttsQueue.current.length > 0 && autoPlayRef.current && activeIdRef.current === cid) {
+        const next = ttsQueue.current.shift()!;
+        await speak(next, cid);
+      }
+    } finally {
+      ttsRunning.current = false;
+    }
+  }
+
+  async function playTts(message: ConversationMessage) {
+    if (!activeId) return;
+    if (playingId === message.id) {
+      stopSpeaking();
+      return;
+    }
+    stopSpeaking();
+    await speak(message, activeId);
+  }
+
+  // 自动播报：会话加载完成后，新到的买家文字消息排队播报（历史消息不播）
+  const seenBuyerTexts = useRef<{ cid: string | null; count: number }>({ cid: null, count: 0 });
+  useEffect(() => {
+    if (!activeId || messages === null || messagesCidRef.current !== activeId) return;
+    const texts = messages.filter((row) => row.sender === "buyer" && (!row.kind || row.kind === "text"));
+    const seen = seenBuyerTexts.current;
+    if (seen.cid !== activeId) {
+      ttsQueue.current = [];
+      seenBuyerTexts.current = { cid: activeId, count: texts.length };
+      return;
+    }
+    if (texts.length > seen.count) {
+      const fresh = texts.slice(seen.count);
+      seenBuyerTexts.current = { cid: activeId, count: texts.length };
+      if (autoPlayRef.current && !isClosed) {
+        ttsQueue.current.push(...fresh);
+        void runTtsQueue(activeId);
+      }
+    } else {
+      seenBuyerTexts.current = { cid: activeId, count: texts.length };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, activeId]);
+
+  // 切换会话时打断正在播的语音
+  useEffect(() => {
+    return () => stopSpeaking();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
+  // ---------- 进线 / 流式回复 ----------
 
   // 任务入口创建首位买家会话（不传场景时服务端取任务首个场景）。
   // 共享自动进线的任务级锁，避免与调度器在同一窗口内重复创建
@@ -642,7 +597,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       setRailTab("current");
       setActiveId(created.id);
     } catch (cause) {
-      setNotice(errorText(cause));
+      if (cause instanceof ApiError && cause.code === "TASK_CLOSED") closedTasksRef.current.add(taskId);
+      setNotice(errorMessage(cause));
     } finally {
       arrivalBusyRef.current.delete(taskId);
       setBusy(false);
@@ -677,8 +633,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         if (activeIdRef.current === cid) setStreamingText(null);
         // 买家离开：会话由客户结束（真实客服无权挂断），刷新列表并保留当前对话展示
         if (extra?.closed) {
-          setClosedLocal((current) => new Set(current).add(cid));
-          fetchConversations(session, "closed").then(setClosedConversations).catch(() => undefined);
+          markEnded(cid, "buyer_left");
+          void loadClosed();
         }
         void loadConversations();
         if (autoTranslateRef.current) void autoTranslateLatest(cid);
@@ -730,7 +686,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
 
   async function send() {
     const text = input.trim();
-    if (!text || !activeId || busy || streamingText !== null) return;
+    if (!text || !activeId || busy || streamingText !== null || !canType) return;
     setInput("");
     const cid = activeId;
     setMessages((current) => [
@@ -741,45 +697,36 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       await postConversationMessage(session, cid, text);
       scheduleReply(cid);
     } catch (cause) {
-      setNotice(errorText(cause));
+      setNotice(errorMessage(cause));
     }
   }
 
-  async function sendCard(type: "product" | "coupon" | "order" | "invite", refId: string) {
+  async function sendCard(type: "product" | "coupon" | "order" | "invite", refId: string, orderPayload?: Record<string, unknown>) {
     if (!activeId || busy || streamingText !== null) return;
     const cid = activeId;
-    let payload: Record<string, unknown> | undefined;
+    let payload: Record<string, unknown> | undefined = orderPayload;
     if (type === "product" || type === "invite") payload = products.find((item) => item.id === refId) as unknown as Record<string, unknown>;
     else if (type === "coupon") payload = coupons.find((item) => item.id === refId) as unknown as Record<string, unknown>;
-    else {
-      const order = (orders ?? []).find((item) => item.id === refId);
-      if (order) {
-        payload = {
-          orderNo: order.detail.orderNo,
-          productName: order.detail.productName,
-          productSpec: order.detail.productSpec,
-          productImage: order.detail.productImage ?? null,
-          quantity: order.detail.quantity,
-          totalAmount: order.detail.totalAmount,
-          currency: order.detail.currency,
-          statusLabel: order.detail.statusLabel,
-          returnStatus: order.detail.returnStatus ?? null,
-        };
-      }
-    }
     setMessages((current) => [
       ...(current ?? []),
-      {
-        id: `local-${Date.now()}`,
-        sender: "student",
-        content: "",
-        kind: type,
-        payload: payload ?? null,
-        createdAt: new Date().toISOString(),
-      },
+      { id: `local-${Date.now()}`, sender: "student", content: "", kind: type, payload: payload ?? null, createdAt: new Date().toISOString() },
     ]);
     setStreamingText("");
     await streamCardMessage(session, cid, type, refId, appendBuyerStream(cid));
+  }
+
+  function sendOrderCard(order: ConversationOrder) {
+    void sendCard("order", order.id, {
+      orderNo: order.detail.orderNo,
+      productName: order.detail.productName,
+      productSpec: order.detail.productSpec,
+      productImage: order.detail.productImage ?? null,
+      quantity: order.detail.quantity,
+      totalAmount: order.detail.totalAmount,
+      currency: order.detail.currency,
+      statusLabel: order.detail.statusLabel,
+      returnStatus: order.detail.returnStatus ?? null,
+    });
   }
 
   async function sendAttachment(kind: "image" | "video" | "file", file: File) {
@@ -811,41 +758,33 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   async function toggleTranslation(message: ConversationMessage) {
     if (!activeId) return;
     if (message.translation) {
-      setMessages((current) =>
-        (current ?? []).map((item) =>
-          item.id === message.id ? { ...item, showTranslation: !item.showTranslation } : item,
-        ),
-      );
+      setMessages((current) => (current ?? []).map((item) => (item.id === message.id ? { ...item, showTranslation: !item.showTranslation } : item)));
       return;
     }
     try {
       let targetId = message.id;
       if (message.id.startsWith("buyer-") || message.id.startsWith("local-")) {
         const rows = await fetchConversationMessages(session, activeId);
-        const target = [...rows]
-          .reverse()
-          .find((item) => item.sender === "buyer" && item.content === message.content);
+        const target = [...rows].reverse().find((item) => item.sender === "buyer" && item.content === message.content);
         if (!target) {
-          setMessages(rows);
+          setMessages((current) => mergeRows(current, rows));
           return;
         }
         targetId = target.id;
-        setMessages(rows);
+        setMessages((current) => mergeRows(current, rows));
       }
       const { translation } = await translateMessage(session, activeId, targetId);
-      setMessages((current) =>
-        (current ?? []).map((item) =>
-          item.id === targetId ? { ...item, translation, showTranslation: true } : item,
-        ),
-      );
+      setMessages((current) => (current ?? []).map((item) => (item.id === targetId ? { ...item, translation, showTranslation: true } : item)));
     } catch (cause) {
-      setNotice(errorText(cause));
+      setNotice(errorMessage(cause));
     }
   }
 
-  // 学生语音输入：按住说话 → 整段识别 → 文字进输入框（可修改后发送）
+  // ---------- 语音输入 ----------
+
+  // 学生语音输入：按住说话 → 整段识别 → 文字进输入框（可修改后发送）；只能语音时松手直接发送
   async function startVoiceInput() {
-    if (!activeId || voiceState !== "idle") return;
+    if (!activeId || voiceState !== "idle" || isClosed) return;
     try {
       const recorder = new WavRecorder();
       await recorder.start();
@@ -865,10 +804,11 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         setNotice("录音过短，请按住说话。");
         return;
       }
-      // 录音完成，交由学生选择：直发语音 / 转文字 / 取消
-      setPendingVoice({ blob: wav, seconds: Math.max(1, Math.round((wav.size - 44) / 32000)) });
+      const seconds = Math.max(1, Math.round((wav.size - 44) / 32000));
+      if (mode === "voice") void sendVoice({ blob: wav, seconds });
+      else setPendingVoice({ blob: wav, seconds });
     } catch (cause) {
-      setNotice(errorText(cause));
+      setNotice(errorMessage(cause));
     } finally {
       setVoiceState("idle");
     }
@@ -883,16 +823,16 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       else setNotice("未识别到有效语音，请重试。");
       setPendingVoice(null);
     } catch (cause) {
-      setNotice(errorText(cause));
+      setNotice(errorMessage(cause));
     } finally {
       setVoiceState("idle");
     }
   }
 
-  async function sendVoice() {
-    if (!activeId || !pendingVoice || streamingText !== null) return;
+  async function sendVoice(voice: { blob: Blob; seconds: number } | null = pendingVoice) {
+    if (!activeId || !voice || streamingText !== null) return;
     const cid = activeId;
-    const { blob, seconds } = pendingVoice;
+    const { blob, seconds } = voice;
     setPendingVoice(null);
     const localUrl = URL.createObjectURL(blob);
     setMessages((current) => [
@@ -917,46 +857,13 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     void audio.play();
   }
 
-  // 买家消息语音播报（TTS 音频缓存复用）
-  async function playTts(message: ConversationMessage) {
-    if (!activeId) return;
-    if (playingId === message.id) {
-      audioRef.current?.pause();
-      setPlayingId(null);
-      return;
-    }
-    try {
-      let targetId = message.id;
-      if (message.id.startsWith("buyer-")) {
-        const rows = await fetchConversationMessages(session, activeId);
-        const target = [...rows].reverse().find((item) => item.sender === "buyer" && item.content === message.content);
-        if (!target) return;
-        targetId = target.id;
-        setMessages(rows);
-        message = target;
-      }
-      setPlayingId(message.id);
-      const { audioUrl } = await requestMessageTts(session, activeId, targetId);
-      audioRef.current?.pause();
-      const audio = new Audio(assetUrl(audioUrl) ?? undefined);
-      audioRef.current = audio;
-      audio.onended = () => setPlayingId(null);
-      await audio.play();
-    } catch (cause) {
-      setNotice(errorText(cause));
-      setPlayingId(null);
-    }
-  }
+  // ---------- 快捷短语 ----------
 
   function openPhrasePanel() {
     setShowPhrases((value) => !value);
     setShowEmoji(false);
-    if (phrases === null) {
-      fetchPhrases(session).then(setPhrases).catch(() => setPhrases([]));
-    }
-    if (myPhrases === null) {
-      fetchMyPhrases(session).then(setMyPhrases).catch(() => setMyPhrases([]));
-    }
+    if (phrases === null) fetchPhrases(session).then(setPhrases).catch(() => setPhrases([]));
+    if (myPhrases === null) fetchMyPhrases(session).then(setMyPhrases).catch(() => setMyPhrases([]));
   }
 
   async function saveNewPhrase() {
@@ -970,7 +877,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       setNewPhraseOpen(false);
       setPhraseFilter("");
     } catch (cause) {
-      setNotice(errorText(cause));
+      setNotice(errorMessage(cause));
     } finally {
       setPhraseSaving(false);
     }
@@ -981,38 +888,76 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     try {
       await deleteMyPhrase(session, phraseId);
     } catch (cause) {
-      setNotice(errorText(cause));
+      setNotice(errorMessage(cause));
     }
   }
 
-  // 订单操作：备注 / 改地址
-  function openOrderAction(order: ConversationOrder, type: "remark" | "address") {
-    setOrderAction({ id: order.id, type });
-    if (type === "remark") setRemarkDraft(order.detail.remark ?? "");
-    else
-      setAddressDraft(
-        order.detail.address ?? { recipient: active?.buyer.name ?? "", line1: "", city: "", country: "", phone: "" },
-      );
-  }
+  // ---------- 客服标记（咨询原因 / 待跟进 / 客户备注）与结束接待 ----------
 
-  async function saveOrderAction() {
-    if (!orderAction) return;
-    setSavingOrder(true);
+  async function saveMeta(patch: { contactReason?: string | null; followUp?: boolean; buyerNote?: string | null }) {
+    if (!activeId) return;
+    const cid = activeId;
+    const before = active;
+    // 先在界面上生效，失败再退回
+    patchConversation(cid, {
+      ...(patch.contactReason !== undefined ? { contactReason: patch.contactReason } : {}),
+      ...(patch.followUp !== undefined ? { followUp: patch.followUp } : {}),
+      ...(patch.buyerNote !== undefined ? { buyerNote: patch.buyerNote, buyerNoteAt: new Date().toISOString() } : {}),
+    });
     try {
-      const patch =
-        orderAction.type === "remark" ? { remark: remarkDraft } : { address: addressDraft };
-      const { detail } = await updateOrder(session, orderAction.id, patch);
-      setOrders((current) => (current ?? []).map((item) => (item.id === orderAction.id ? { ...item, detail } : item)));
-      setOrderAction(null);
+      const saved: ServiceMeta = await saveServiceMeta(session, cid, patch);
+      patchConversation(cid, {
+        contactReason: saved.contactReason,
+        contactReasonSuggested: saved.contactReasonSuggested,
+        followUp: saved.followUp,
+        buyerNote: saved.buyerNote,
+        buyerNoteAt: saved.buyerNoteAt,
+      });
     } catch (cause) {
-      setNotice(errorText(cause));
-    } finally {
-      setSavingOrder(false);
+      if (before) {
+        patchConversation(cid, {
+          contactReason: before.contactReason,
+          followUp: before.followUp,
+          buyerNote: before.buyerNote,
+          buyerNoteAt: before.buyerNoteAt,
+        });
+      }
+      toast.error(errorMessage(cause));
     }
   }
 
-  function copyOrderNo(orderNo: string) {
-    void navigator.clipboard?.writeText(orderNo).catch(() => undefined);
+  async function endConversation() {
+    if (!activeId) return;
+    const cid = activeId;
+    setEnding(true);
+    try {
+      await closeConversation(session, cid);
+      const timer = replyTimers.current.get(cid);
+      if (timer) window.clearTimeout(timer);
+      replyTimers.current.delete(cid);
+      markEnded(cid, "student_ended");
+      setStreamingText(null);
+      setEndConfirm(false);
+      void loadClosed();
+      void loadConversations();
+    } catch (cause) {
+      setEndConfirm(false);
+      setNotice(errorMessage(cause));
+    } finally {
+      setEnding(false);
+    }
+  }
+
+  // 本场时间到：服务端每分钟扫一次超时会话，这里隔一会儿多刷几次让界面跟上
+  function refreshAfterTimeUp() {
+    void loadConversations();
+    void loadClosed();
+    [10_000, 30_000, 65_000].forEach((delay) =>
+      window.setTimeout(() => {
+        void loadConversations();
+        void loadClosed();
+      }, delay),
+    );
   }
 
   /* 买家自动进线（取代手动「接入」，真实客服没有"放客户进来"的动作）：
@@ -1020,26 +965,16 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
      - sequential 依次进线：该任务没有进行中的会话时，下一位隔 3-8 秒进线
      - interval 固定间隔：距该任务最近一次进线超过 N 分钟即再进一位（可并发堆积）
      - all_at_once 同时进线：还有待进线场景就逐个补齐（每位隔几秒，模拟陆续涌入）
+     同时接待上限 3 位；任务已截止/关闭（TASK_CLOSED）后不再进线。
      待开始(todo)的任务仍由任务大厅「开始任务」触发首位买家；仅工作台打开时调度（在岗才有客户进线） */
   const arrivalBusyRef = useRef<Set<string>>(new Set());
   const arrivalNotBeforeRef = useRef<Map<string, number>>(new Map());
+  const closedTasksRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!dataReady) return;
-    const activeOfTask = (taskId: string) =>
-      conversations.filter((item) => item.taskId === taskId && !closedLocal.has(item.id)).length;
-    const nextScenario = (task: StudentTask): { ok: boolean; scenarioId?: string } => {
-      const list = task.scenarios ?? [];
-      const started = new Set((task.startedScenarioIds ?? []).filter(Boolean));
-      if (task.completionRule === "conversation_count") {
-        if ((task.conversationCount ?? 0) >= task.requiredTotal) return { ok: false };
-        const unstarted = list.find((item) => !started.has(item.id));
-        const fallback = list.length ? list[Math.floor(Math.random() * list.length)] : undefined;
-        return { ok: true, scenarioId: (unstarted ?? fallback)?.id };
-      }
-      const unstarted = list.filter((item) => !started.has(item.id));
-      if (list.length === 0 || unstarted.length === 0) return { ok: false };
-      return { ok: true, scenarioId: unstarted[0]!.id };
-    };
+    const openList = conversations.filter((item) => !closedLocal.has(item.id));
+    const activeOfTask = (taskId: string) => openList.filter((item) => item.taskId === taskId).length;
+    const nextScenario = pendingScenario;
     const arrive = async (task: StudentTask, scenarioId?: string) => {
       if (arrivalBusyRef.current.has(task.id)) return;
       arrivalBusyRef.current.add(task.id);
@@ -1065,9 +1000,15 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
           },
         });
         await loadConversations();
-      } catch {
-        /* 创建失败（如场景被停用）：退避 60 秒再试，避免每个周期反复冲击服务器 */
-        arrivalNotBeforeRef.current.set(task.id, Date.now() + 60_000);
+      } catch (cause) {
+        if (cause instanceof ApiError && cause.code === "TASK_CLOSED") {
+          // 任务已截止或被关闭：不再进线，提示一次
+          closedTasksRef.current.add(task.id);
+          toast.error(cause.message);
+        } else {
+          /* 创建失败（如场景被停用）：退避 60 秒再试，避免每个周期反复冲击服务器 */
+          arrivalNotBeforeRef.current.set(task.id, Date.now() + 60_000);
+        }
       } finally {
         arrivalBusyRef.current.delete(task.id);
       }
@@ -1075,6 +1016,12 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     const evaluate = () => {
       for (const task of tasks) {
         if (task.locked || task.progressStatus !== "in_progress") continue;
+        if (closedTasksRef.current.has(task.id)) continue;
+        if (task.deadline && Date.now() > new Date(task.deadline).getTime()) continue;
+        if (openList.length >= MAX_CONCURRENT) {
+          arrivalNotBeforeRef.current.delete(task.id);
+          continue;
+        }
         const next = nextScenario(task);
         if (!next.ok) {
           arrivalNotBeforeRef.current.delete(task.id);
@@ -1114,43 +1061,60 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataReady, tasks, conversations, closedLocal, session]);
 
-  /* 任务过滤条：进行中/待办任务 + 有会话的任务；有练习会话时提供「自由练习」项 */
-  const taskNameById = useMemo(() => new Map(tasks.map((task) => [task.id, task.name])), [tasks]);
-  const filterChips = useMemo(() => {
-    const withConversation = new Set(
-      [...conversations, ...closedConversations].map((item) => item.taskId).filter(Boolean) as string[],
-    );
-    return tasks.filter(
-      (task) => (task.progressStatus !== "done" && !task.locked) || withConversation.has(task.id),
-    );
-  }, [tasks, conversations, closedConversations]);
-  const practiceExists = useMemo(
-    () => [...conversations, ...closedConversations].some((item) => !item.taskId),
-    [conversations, closedConversations],
-  );
+  // ---------- 派生数据 ----------
 
-  const visibleConversations = useMemo(() => {
-    let list = pool;
+  const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+  const inProgressTasks = useMemo(() => tasks.filter((task) => !task.locked && task.progressStatus === "in_progress"), [tasks]);
+
+  const visibleActive = useMemo(() => {
+    let list = conversations.filter((item) => !closedLocal.has(item.id));
     if (taskFilter === "practice") list = list.filter((item) => !item.taskId);
     else if (taskFilter !== "all") list = list.filter((item) => item.taskId === taskFilter);
-    const query = searchText.trim().toLowerCase();
-    if (query) list = list.filter((item) => item.buyer.name.toLowerCase().includes(query));
     return list;
-  }, [pool, taskFilter, searchText]);
-
-  const filteredAssignedCount = useMemo(() => {
-    if (taskFilter === "practice") return conversations.filter((item) => !item.taskId).length;
-    if (taskFilter !== "all") return conversations.filter((item) => item.taskId === taskFilter).length;
-    return conversations.length;
-  }, [conversations, taskFilter]);
-
-  const visibleOrders = useMemo(() => {
-    let list = orders ?? [];
-    if (orderFilter !== "all") list = list.filter((item) => orderFilterKey(item.detail) === orderFilter);
-    const query = orderSearch.trim().toLowerCase();
-    if (query) list = list.filter((item) => item.detail.orderNo.toLowerCase().includes(query));
+  }, [conversations, closedLocal, taskFilter]);
+  const visibleRecent = useMemo(() => {
+    const ids = new Set(conversations.map((item) => item.id));
+    let list = closedConversations.filter((item) => !ids.has(item.id));
+    if (taskFilter === "practice") list = list.filter((item) => !item.taskId);
+    else if (taskFilter !== "all") list = list.filter((item) => item.taskId === taskFilter);
     return list;
-  }, [orders, orderFilter, orderSearch]);
+  }, [closedConversations, conversations, taskFilter]);
+
+  // 本场信息栏：聚焦哪个任务、倒计时从哪场会话开始算
+  const activeOpen = active && !isClosed ? active : null;
+  const filterTask = taskFilter !== "all" && taskFilter !== "practice" ? taskById.get(taskFilter) ?? null : null;
+  const focusTask: StudentTask | null = activeOpen
+    ? (activeOpen.taskId ? taskById.get(activeOpen.taskId) ?? null : null)
+    : filterTask ?? inProgressTasks[0] ?? null;
+  const practiceNow = activeOpen ? !activeOpen.taskId : taskFilter === "practice";
+  const timingConv = useMemo(() => {
+    if (!focusTask) return null;
+    if (activeOpen && activeOpen.taskId === focusTask.id) return activeOpen;
+    const list = conversations.filter((item) => item.taskId === focusTask.id && !closedLocal.has(item.id));
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null;
+  }, [focusTask, activeOpen, conversations, closedLocal]);
+
+  const switchable = useMemo(() => {
+    const list = [...inProgressTasks];
+    if (focusTask && !list.some((task) => task.id === focusTask.id)) list.unshift(focusTask);
+    return list;
+  }, [inProgressTasks, focusTask]);
+
+  // 当前会话所属任务的交流方式
+  const mode = (active?.taskId ? taskById.get(active.taskId)?.interactionMode : null) ?? "text_voice";
+  const canType = mode !== "voice";
+  const canVoice = mode !== "text";
+
+  // 列表底部排队信息（按进线节奏）
+  const queueInfo = useMemo(() => {
+    const task = focusTask;
+    if (!task || task.progressStatus !== "in_progress") return null;
+    const openOfTask = conversations.filter((item) => item.taskId === task.id && !closedLocal.has(item.id));
+    const left = pendingScenario(task).ok ? Math.max(0, task.requiredTotal - task.progressDone - openOfTask.length) : 0;
+    const remainTotal = Math.max(0, task.requiredTotal - task.progressDone);
+    if (left <= 0) return remainTotal > 0 ? { text: "排队中 0 人" } : null;
+    return { text: `排队中 ${left} 人` };
+  }, [focusTask, conversations, closedLocal]);
 
   // 买家浏览过的商品：按会话种子稳定抽取（同一会话内不变）
   const browsedProducts = useMemo(() => {
@@ -1163,9 +1127,6 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       .map((entry) => entry.product);
   }, [activeId, products]);
 
-  const buyer = active?.buyer ?? null;
-  const isClosed = active?.status === "closed" || (activeId !== null && closedLocal.has(activeId));
-  const mainTag = buyer ? CUSTOMER_MAIN_TAG[buyer.customerType] ?? buyer.customerType : "";
   const visibleMessages = (messages ?? []).filter((message) => message.sender !== "teacher");
   const composerDisabled = !active || isClosed || streamingText !== null;
 
@@ -1176,251 +1137,220 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   function insertPhrase(text: string) {
     setInput((current) => (current ? `${current} ${text}` : text));
     setShowPhrases(false);
+    textareaRef.current?.focus();
   }
 
+  function appendToInput(text: string) {
+    setInput((current) => (current ? `${current} ${text}` : text));
+    textareaRef.current?.focus();
+  }
+
+  function pickConversation(id: string) {
+    setActiveId(id);
+    setJustEnded((list) => list.filter((item) => item.id === id));
+  }
+
+  function pickTask(taskId: string) {
+    setTaskFilter(taskId);
+    if (taskId === "all") return;
+    const first = conversations.find((item) => item.taskId === taskId && !closedLocal.has(item.id));
+    if (first) pickConversation(first.id);
+  }
+
+  const closedNotice =
+    closedReason === "student_ended" ? "会话已结束，不能再发消息。"
+    : closedReason === "timeout" ? "会话已超时结束，不能再发消息。"
+    : "这位买家已离开，不能再发消息。";
+
+  const panelTabs = [
+    { id: "order" as const, label: "订单", count: orders && orders.length > 0 ? orders.length : undefined },
+    { id: "product" as const, label: "商品" },
+    { id: "coupon" as const, label: "优惠券", count: coupons.length > 0 ? coupons.length : undefined },
+  ];
+
   return (
-    <div className="workbench-page">
-      <header className="workbench-topline">
-        <div className="kpi-strip">
-          <div><span>今日接待</span><strong>{stats?.todayConversations ?? "—"}</strong></div>
-          <div><span>平均响应时长</span><strong>{durationLabel(stats?.avgResponseSeconds)}</strong></div>
-          <div className={stats && stats.unreplied > 0 ? "warn" : ""}><span>未回复</span><strong>{stats?.unreplied ?? "—"}</strong></div>
-          <div><span>满意率</span><strong>{stats?.satisfactionRate != null ? `${stats.satisfactionRate}%` : "—"}</strong></div>
-          <div><span>12 小时响应率</span><strong>{stats?.twelveHourResponseRate != null ? `${stats.twelveHourResponseRate}%` : "—"}</strong></div>
-          <div><span>询单支付金额</span><strong>USD {(stats?.inquiryPaidAmount ?? 0).toFixed(2)}</strong></div>
-          <div><span>付款人数</span><strong>{stats?.paidBuyers ?? "—"}</strong></div>
-          <div><span>询单转化率</span><strong>{stats?.conversionRate != null ? `${stats.conversionRate}%` : "—"}</strong></div>
-        </div>
-        {filterChips.length > 0 || practiceExists ? (
-          <select
-            className="topline-task-filter"
-            value={taskFilter}
-            onChange={(event) => setTaskFilter(event.target.value)}
-            aria-label="按任务筛选会话"
-          >
-            <option value="all">全部任务</option>
-            {filterChips.map((task) => (
-              <option key={task.id} value={task.id}>{task.name}</option>
-            ))}
-            {taskFilter !== "all" && taskFilter !== "practice" && !filterChips.some((task) => task.id === taskFilter) ? (
-              <option value={taskFilter}>{taskNameById.get(taskFilter) ?? "当前任务"}</option>
-            ) : null}
-            {practiceExists ? <option value="practice">自由练习</option> : null}
-          </select>
+    <div className="wbk">
+      <ShiftBar
+        task={focusTask}
+        switchable={switchable}
+        taskFilter={taskFilter}
+        onPickTask={pickTask}
+        practice={practiceNow}
+        startedAt={timingConv ? new Date(timingConv.createdAt).getTime() : null}
+        timerKey={timingConv?.id ?? null}
+        stats={stats}
+        onTimeUp={refreshAfterTimeUp}
+      />
+
+      <ConversationRail
+        tab={railTab}
+        onTab={setRailTab}
+        search={searchText}
+        onSearch={setSearchText}
+        active={visibleActive}
+        justEnded={justEnded}
+        recent={visibleRecent}
+        activeId={activeId}
+        typingId={streamingText !== null ? activeId : null}
+        onPick={pickConversation}
+        queueInfo={queueInfo}
+      />
+
+      <section className="wbk-chat">
+        {notice ? (
+          <div className="wbk-notice" role="alert">
+            <CircleAlert size={16} />
+            <span>{notice}</span>
+            <button type="button" aria-label="关闭提示" onClick={() => setNotice("")}><X size={14} /></button>
+          </div>
         ) : null}
-      </header>
-      {notice ? <div className="provider-notice"><CircleAlert size={17} />{notice}</div> : null}
-      <div
-        className="workbench-grid"
-        style={{ gridTemplateColumns: `${railWidth}px 6px minmax(360px, 1fr) 6px ${panelWidth}px` }}
-      >
-        <aside className="conversation-rail live">
-          <div className="rail-controls">
-            <div className="rail-search">
-              <Search size={15} />
-              <input value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="搜索所有聊天记录…" aria-label="搜索会话" />
-            </div>
-            <div className="rail-tabs">
-              <button className={railTab === "current" ? "active" : ""} onClick={() => setRailTab("current")}>
-                当前会话 <b className="count">{filteredAssignedCount}</b>
-              </button>
-              <button className={railTab === "recent" ? "active" : ""} onClick={() => setRailTab("recent")}>
-                最近联系
-              </button>
-            </div>
+        <div className="wbk-ch">
+          {buyer ? <Av buyer={buyer} size={34} /> : null}
+          <div className="wbk-ch-who">
+            <b title={buyer?.name}>{buyer?.name ?? "请选择会话"}</b>
+            <div className="wbk-sub">{buyer ? buyer.nationality : "从左侧选一位买家开始接待"}</div>
           </div>
-          <div className="buyer-list">
-            {railTab === "current" ? (
-              <>
-                {visibleConversations.map((item) => (
-                  <button
-                    key={item.id}
-                    className={item.id === activeId ? "buyer-card active" : "buyer-card"}
-                    onClick={() => setActiveId(item.id)}
-                  >
-                    <BuyerAvatar buyer={item.buyer} />
-                    <span className="buyer-meta">
-                      <span>
-                        <strong>{item.buyer.name}</strong>
-                        {item.unreplied && item.status !== "closed" && !closedLocal.has(item.id) && item.lastMessage ? (
-                          <small className="waiting" title="买家消息已等待回复的时长">
-                            {waitingLabel(item.lastMessage.createdAt, nowTick)}
-                          </small>
-                        ) : (
-                          <small>{item.lastMessage ? listTimeLabel(item.lastMessage.createdAt) : listTimeLabel(item.createdAt)}</small>
-                        )}
-                      </span>
-                      {/* 沉浸层原则：会话列表不显示任何标签，客户类型等资料在右侧客户资料面板查看 */}
-                      <p>{item.lastMessage ? item.lastMessage.content : "客户已进线…"}</p>
-                    </span>
-                    {item.unreplied ? <i className="unread-dot" aria-label="待回复" /> : null}
-                  </button>
-                ))}
-                {visibleConversations.length === 0 ? <p className="muted rail-empty">暂无会话。</p> : null}
-              </>
-            ) : (
-              <>
-                {visibleConversations.map((item) => (
-                  <button
-                    key={item.id}
-                    className={item.id === activeId ? "buyer-card active" : "buyer-card"}
-                    onClick={() => setActiveId(item.id)}
-                  >
-                    <BuyerAvatar buyer={item.buyer} />
-                    <span className="buyer-meta">
-                      <span>
-                        <strong>{item.buyer.name}</strong>
-                        <small>{item.lastMessage ? listTimeLabel(item.lastMessage.createdAt) : listTimeLabel(item.createdAt)}</small>
-                      </span>
-                      <p>{item.lastMessage ? item.lastMessage.content : "客户已进线…"}</p>
-                    </span>
-                  </button>
-                ))}
-                {visibleConversations.length === 0 ? <p className="muted rail-empty">暂无最近联系。</p> : null}
-              </>
-            )}
-          </div>
-        </aside>
+          {active ? (
+            <div className="wbk-ch-end">
+              <ReasonPicker conversation={active} disabled={isClosed} onPick={(reason) => void saveMeta({ contactReason: reason })} />
+              <FollowUpToggle on={Boolean(active.followUp)} onToggle={() => void saveMeta({ followUp: !active.followUp })} />
+              {isClosed ? <span className="wbk-tag is-closed">已结束</span> : <EndButton onClick={() => setEndConfirm(true)} />}
+            </div>
+          ) : null}
+        </div>
 
-        <div className="col-resizer" role="separator" aria-label="拖动调整会话列表宽度" onMouseDown={(event) => startResize("rail", event)} />
-
-        <section className="chat-stage">
-          <div className="chat-head">
-            <div className="chat-identity">
-              <BuyerAvatar buyer={buyer} />
-              <span>
-                <strong>{buyer?.name ?? "请选择会话"}</strong>
-                <p>{buyer ? `${buyer.nationality} · ${buyer.identity}` : "从左侧选择会话开始接待"}</p>
-              </span>
-              {active?.scenario?.stage ? (
-                <span className="status-pill head-pill">{BUSINESS_STAGE_LABELS[active.scenario.stage as never]}</span>
-              ) : null}
-              {isClosed ? <span className="status-pill head-pill closed-pill">已结束</span> : null}
-            </div>
-          </div>
-          <div className="message-list" ref={listRef}>
-            {active && messages !== null ? (
-              <div className="time-divider"><span>会话已分配给你</span></div>
-            ) : null}
-            {visibleMessages.map((message) => (
-              <div key={message.id} className={`message ${message.sender}`}>
-                {message.sender === "buyer" && <BuyerAvatar buyer={buyer} size="tiny" />}
-                <div>
-                  <MessageBody message={message} onPlayVoice={playVoice} />
-                  {message.sender === "buyer" && (!message.kind || message.kind === "text") ? (
-                    message.showTranslation && message.translation ? (
-                      <div className="msg-translation">
-                        <p>{message.translation}</p>
-                        <button className="translate-link" onClick={() => void toggleTranslation(message)}>隐藏译文</button>
-                      </div>
-                    ) : (
-                      <button className="translate-link" onClick={() => void toggleTranslation(message)}>
-                        <Languages size={12} /> {message.translation ? "显示译文" : "翻译"}
+        <div className="wbk-msgs" ref={listRef}>
+          {active && messages !== null ? <span className="wbk-sys">{timeLabel(active.createdAt)} 会话已分配给你</span> : null}
+          {visibleMessages.map((message) => {
+            const mine = message.sender === "student";
+            const text = !message.kind || message.kind === "text";
+            const translated = !mine && text && Boolean(message.translation) && (autoTranslate || message.showTranslation);
+            const failed = translateFailed.has(message.id);
+            const pending = !mine && text && autoTranslate && !message.translation && !failed;
+            const playing = playingId === message.id;
+            return (
+              <div key={message.id} className={mine ? "wbk-m is-me" : "wbk-m"}>
+                {!mine ? <Av buyer={buyer} size={30} /> : null}
+                <div className="wbk-mbody">
+                  <div className={isCardKind(message) ? "wbk-bub is-card" : "wbk-bub"}>
+                    <MessageBody message={message} onPlayVoice={playVoice} />
+                    {translated ? <div className="wbk-tr">{message.translation}</div> : null}
+                    {pending ? <div className="wbk-tr is-pending">翻译中…</div> : null}
+                    {!mine && text && autoTranslate && failed && !message.translation ? <div className="wbk-tr is-pending">翻译没成功，<button type="button" onClick={() => { setTranslateFailed((set) => { const next = new Set(set); next.delete(message.id); return next; }); }}>重试</button></div> : null}
+                  </div>
+                  <div className="wbk-mt">
+                    {!mine && text ? (
+                      <button type="button" className={playing ? "is-playing" : ""} onClick={() => void playTts(message)} title={playing ? "停止播报" : "播报这条消息"}>
+                        <Volume2 size={12} />{playing ? "播报中" : "播报"}
                       </button>
-                    )
-                  ) : null}
-                  {message.sender === "buyer" && (!message.kind || message.kind === "text") ? (
-                    <button className="translate-link" onClick={() => void playTts(message)}>
-                      <Volume2 size={12} /> {playingId === message.id ? "停止" : "播报"}
-                    </button>
-                  ) : null}
-                  <span>
-                    {timeLabel(message.createdAt)}
-                    {message.sender === "student" ? <CheckCheck size={13} className="read-tick" /> : null}
-                  </span>
+                    ) : null}
+                    {!mine && text && !autoTranslate ? (
+                      <button type="button" onClick={() => void toggleTranslation(message)}>
+                        <Languages size={12} />{message.translation ? (message.showTranslation ? "隐藏译文" : "显示译文") : "翻译"}
+                      </button>
+                    ) : null}
+                    <time>{timeLabel(message.createdAt)}</time>
+                    {mine ? <CheckCheck size={13} className="wbk-tick" /> : null}
+                  </div>
                 </div>
               </div>
-            ))}
-            {streamingText !== null && (
-              <div className="message buyer">
-                <BuyerAvatar buyer={buyer} size="tiny" />
-                <div><p>{streamingText || "…"}</p><span>正在输入…</span></div>
+            );
+          })}
+          {streamingText !== null ? (
+            <div className="wbk-m">
+              <Av buyer={buyer} size={30} />
+              <div className="wbk-mbody">
+                <div className="wbk-bub">{streamingText || "…"}</div>
+                <div className="wbk-mt"><span className="is-typing">对方正在输入…</span></div>
               </div>
-            )}
-            {isClosed ? <div className="time-divider"><span>本次会话已结束 · 客户已离开</span></div> : null}
+            </div>
+          ) : null}
+          {isClosed && messages !== null && active ? (
+            <>
+              <EndCard
+                conversation={active}
+                messages={messages}
+                closedReason={closedReason}
+                endedAt={closedAtLocal[active.id] ?? null}
+              />
+            </>
+          ) : null}
+          {!active && dataReady ? <p className="wbk-chat-empty">{conversations.length === 0 ? "暂无会话" : "选择左侧会话"}</p> : null}
+        </div>
+
+        {isClosed ? (
+          <div className="wbk-closed-bar">
+            <Lock size={16} />{closedNotice}
+            <Button size="sm" variant="ghost" icon={Mail} className="wbk-closed-mail" onClick={() => goToPage("mail", "邮件")}>发邮件跟进</Button>
           </div>
-          <div className="composer">
+        ) : (
+          <div className={mode === "voice" ? "wbk-composer is-voice" : "wbk-composer"}>
             {showPhrases ? (
-              <div className="phrase-panel" ref={phrasePanelRef}>
-                <div className="phrase-head">
+              <div className="wbk-panel wbk-phrase" ref={phrasePanelRef}>
+                <div className="wbk-phrase-head">
                   <input value={phraseFilter} onChange={(event) => setPhraseFilter(event.target.value)} placeholder="搜索快捷短语…" aria-label="搜索快捷短语" />
-                  <button
-                    className="text-button"
-                    onClick={() => {
-                      if (!newPhraseOpen && !newPhraseText.trim() && input.trim()) setNewPhraseText(input.trim());
-                      setNewPhraseOpen(!newPhraseOpen);
-                    }}
-                  >
-                    + 新建
-                  </button>
-                  <button className="text-button" onClick={() => setShowPhrases(false)}>收起</button>
+                  <Button size="sm" variant="text" onClick={() => {
+                    if (!newPhraseOpen && !newPhraseText.trim() && input.trim()) setNewPhraseText(input.trim());
+                    setNewPhraseOpen(!newPhraseOpen);
+                  }}>+ 新建</Button>
+                  <Button size="sm" variant="text" onClick={() => setShowPhrases(false)}>收起</Button>
                 </div>
-                <div className="phrase-list">
-                  {visibleMyPhrases.length > 0 ? <p className="phrase-group">我的短语</p> : null}
+                <div className="wbk-phrase-list">
+                  {visibleMyPhrases.length > 0 ? <p className="wbk-phrase-group">我的短语</p> : null}
                   {visibleMyPhrases.map((item) => (
-                    <div className="phrase-row" key={item.id}>
-                      <button onClick={() => insertPhrase(item.text)}>{item.text}</button>
-                      <button className="phrase-del" title="删除该短语" onClick={() => void removeMyPhrase(item.id)}>×</button>
+                    <div className="wbk-phrase-row" key={item.id}>
+                      <button type="button" onClick={() => insertPhrase(item.text)}>{item.text}</button>
+                      <button type="button" className="is-del" title="删除该短语" aria-label="删除该短语" onClick={() => void removeMyPhrase(item.id)}>×</button>
                     </div>
                   ))}
-                  {visibleMyPhrases.length > 0 && visibleLibraryPhrases.length > 0 ? <p className="phrase-group">标准话术</p> : null}
+                  {visibleMyPhrases.length > 0 && visibleLibraryPhrases.length > 0 ? <p className="wbk-phrase-group">标准话术</p> : null}
                   {visibleLibraryPhrases.map((phrase) => (
-                    <button key={phrase} onClick={() => insertPhrase(phrase)}>{phrase}</button>
+                    <div className="wbk-phrase-row" key={phrase}><button type="button" onClick={() => insertPhrase(phrase)}>{phrase}</button></div>
                   ))}
                   {phrases !== null && myPhrases !== null && phraseQuery && visibleMyPhrases.length === 0 && visibleLibraryPhrases.length === 0 ? (
-                    <div className="phrase-empty">
+                    <div className="wbk-phrase-empty">
                       <p>没有找到包含“{phraseFilter.trim()}”的短语</p>
-                      <button
-                        className="text-button"
-                        onClick={() => {
-                          setNewPhraseText(phraseFilter.trim());
-                          setNewPhraseOpen(true);
-                        }}
-                      >
-                        + 将它保存为新短语
-                      </button>
+                      <Button size="sm" variant="text" onClick={() => { setNewPhraseText(phraseFilter.trim()); setNewPhraseOpen(true); }}>+ 将它保存为新短语</Button>
                     </div>
                   ) : null}
-                  {phrases === null || myPhrases === null ? <p className="muted">加载中…</p> : null}
+                  {phrases === null || myPhrases === null ? <p className="wbk-phrase-group">加载中…</p> : null}
                 </div>
               </div>
             ) : null}
             {showEmoji ? (
-              <div className="emoji-panel" ref={emojiPanelRef} role="listbox" aria-label="选择表情">
+              <div className="wbk-panel wbk-emoji" ref={emojiPanelRef} role="listbox" aria-label="选择表情">
                 {EMOJIS.map((emoji) => (
-                  <button key={emoji} onClick={() => { setInput((current) => current + emoji); setShowEmoji(false); }}>{emoji}</button>
+                  <button key={emoji} type="button" onClick={() => { setInput((current) => current + emoji); setShowEmoji(false); }}>{emoji}</button>
                 ))}
               </div>
             ) : null}
             {pendingVoice ? (
-              <div className="voice-pending">
-                <button className="voice-play" onClick={() => playVoice(URL.createObjectURL(pendingVoice.blob))}>▶ {pendingVoice.seconds}″</button>
-                <button className="primary-button compact" disabled={voiceState === "recognizing"} onClick={() => void sendVoice()}>发送语音</button>
-                <button className="secondary-button compact" disabled={voiceState === "recognizing"} onClick={() => void voiceToText()}>{voiceState === "recognizing" ? "识别中…" : "转文字"}</button>
-                <button className="text-button" onClick={() => setPendingVoice(null)}>取消</button>
+              <div className="wbk-voice-pending">
+                <button type="button" className="wbk-voice-play" onClick={() => playVoice(URL.createObjectURL(pendingVoice.blob))}>▶ {pendingVoice.seconds}″</button>
+                <Button size="sm" variant="primary" disabled={voiceState === "recognizing"} onClick={() => void sendVoice()}>发送语音</Button>
+                <Button size="sm" disabled={voiceState === "recognizing"} onClick={() => void voiceToText()}>{voiceState === "recognizing" ? "识别中…" : "转文字"}</Button>
+                <Button size="sm" variant="text" onClick={() => setPendingVoice(null)}>取消</Button>
               </div>
             ) : null}
-            <div className="composer-tools">
-              <button ref={emojiButtonRef} onClick={() => { setShowEmoji((value) => !value); setShowPhrases(false); }} disabled={composerDisabled} title="发送表情"><Smile size={17} /></button>
-              <button onClick={() => imageInputRef.current?.click()} disabled={composerDisabled} title="发送图片"><ImagePlus size={17} /></button>
-              <button onClick={() => videoInputRef.current?.click()} disabled={composerDisabled} title="发送视频"><Film size={17} /></button>
-              <button onClick={() => fileInputRef.current?.click()} disabled={composerDisabled} title="发送文件"><Paperclip size={17} /></button>
-              <button ref={phraseButtonRef} onClick={openPhrasePanel} disabled={!active} title="快捷短语"><BookText size={17} /></button>
-              <span className="tools-flex" />
-              <button
-                className={autoTranslate ? "auto-translate on" : "auto-translate"}
-                onClick={toggleAutoTranslate}
-                title="自动将买家消息翻译为中文（支持英语、西语、法语等所有语种）"
-              >
-                <Languages size={15} /> 自动翻译<i className={autoTranslate ? "toggle on" : "toggle"} />
-              </button>
-              <span title="当前买家的沟通语言（自动翻译不限语种）">{buyer?.language ?? ""}</span>
+            <div className="wbk-tools">
+              <button ref={emojiButtonRef} type="button" onClick={() => { setShowEmoji((value) => !value); setShowPhrases(false); }} disabled={composerDisabled || !canType} title="发送表情" aria-label="发送表情"><Smile size={18} /></button>
+              <button type="button" onClick={() => imageInputRef.current?.click()} disabled={composerDisabled} title="发送图片" aria-label="发送图片"><ImagePlus size={18} /></button>
+              <button type="button" onClick={() => videoInputRef.current?.click()} disabled={composerDisabled} title="发送视频" aria-label="发送视频"><Film size={18} /></button>
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={composerDisabled} title="发送文件" aria-label="发送文件"><Paperclip size={18} /></button>
+              <button ref={phraseButtonRef} type="button" className="wbk-phrase-btn" onClick={openPhrasePanel} disabled={!active || !canType}><MessageSquareText size={16} />快捷短语</button>
+              <div className="wbk-toggles">
+                <label><Languages size={15} />自动翻译<Switch checked={autoTranslate} onChange={toggleAutoTranslate} label="自动翻译" /></label>
+                <label><Volume2 size={15} />自动播报<Switch checked={autoPlay} onChange={toggleAutoPlay} label="自动播报" /></label>
+              </div>
             </div>
             <input ref={imageInputRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => onAttachmentChosen("image", event)} />
             <input ref={videoInputRef} type="file" hidden accept="video/mp4,video/webm,video/quicktime" onChange={(event) => onAttachmentChosen("video", event)} />
             <input ref={fileInputRef} type="file" hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.zip,.txt,.csv" onChange={(event) => onAttachmentChosen("file", event)} />
             <textarea
+              ref={textareaRef}
+              className="wbk-ta"
               value={input}
+              maxLength={1000}
               onChange={(event) => {
                 setInput(event.target.value);
                 noteTyping();
@@ -1431,372 +1361,138 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
                   void send();
                 }
               }}
-              placeholder={!active ? "请先选择会话" : isClosed ? "会话已结束（客户已离开）" : "在此输入你的消息，Enter 发送，Shift + Enter 换行"}
-              disabled={composerDisabled}
+              placeholder={!active ? "请先选择会话" : !canType ? "这场只能用语音回复，按住下方按钮说话" : "在此输入你的消息，Enter 发送，Shift + Enter 换行"}
+              disabled={composerDisabled || !canType}
             />
-            <div className="composer-actions">
-              <button
-                className={voiceState === "recording" ? "voice-button recording" : "voice-button"}
-                disabled={!active || isClosed || voiceState === "recognizing"}
-                onMouseDown={() => void startVoiceInput()}
-                onMouseUp={() => void stopVoiceInput()}
-                onMouseLeave={() => { if (voiceState === "recording") void stopVoiceInput(); }}
-                onTouchStart={(event) => { event.preventDefault(); void startVoiceInput(); }}
-                onTouchEnd={() => void stopVoiceInput()}
-              >
-                <Mic size={15} />
-                {voiceState === "recording" ? "松开结束" : voiceState === "recognizing" ? "识别中…" : "按住说话"}
-              </button>
-              <span>{input.length} / 1000</span>
-              <button className="primary-button compact" onClick={() => void send()} disabled={composerDisabled}>
-                发送 <Send size={16} />
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <div className="col-resizer" role="separator" aria-label="拖动调整信息面板宽度" onMouseDown={(event) => startResize("panel", event)} />
-
-        <aside className="context-panel">
-          {buyer ? (
-            <div className="panel-buyer-head">
-              <BuyerAvatar buyer={buyer} />
-              <span>
-                <strong>{buyer.name}</strong>
-                <span className="profile-tags inline"><span>{mainTag}</span><span>{buyer.language}</span></span>
-              </span>
-            </div>
-          ) : null}
-          <div className="context-tabs">
-            {([["profile", "客户资料"], ["order", "订单"], ["product", "商品"], ["coupon", "优惠券"]] as const).map(([id, label]) => (
-              <button key={id} className={panelTab === id ? "active" : ""} onClick={() => setPanelTab(id)}>
-                {label}
-                {id === "order" && orders && orders.length > 0 ? <b className="tab-count">{orders.length}</b> : null}
-              </button>
-            ))}
-          </div>
-
-          {panelTab === "profile" ? (
-            buyer ? (
-              <>
-                <section className="buyer-profile">
-                  <BuyerAvatar buyer={buyer} size="xl" />
-                  <h2>{buyer.name}</h2>
-                  <p>{buyer.nationality} · {buyer.identity}</p>
-                  <div className="profile-tags"><span>{mainTag}</span><span>{buyer.language}</span></div>
-                </section>
-                <section className="context-block">
-                  <div className="order-brief">
-                    <div className="order-brief-row"><span>国籍</span><em>{buyer.nationality}</em></div>
-                    <div className="order-brief-row"><span>身份</span><em>{buyer.identity}</em></div>
-                    <div className="order-brief-row"><span>客户类型</span><em>{buyer.customerType}</em></div>
-                    <div className="order-brief-row"><span>沟通语言</span><em>{buyer.language}</em></div>
-                    <div className="order-brief-row"><span>72h 咨询</span><em>{active?.visits72h ?? 0} 条</em></div>
-                    <div className="order-brief-row"><span>历史订单</span><em>{orders ? `${orders.length} 笔` : "—"}</em></div>
-                  </div>
-                </section>
-              </>
-            ) : (
-              <p className="muted panel-empty">选择会话后展示客户资料。</p>
-            )
-          ) : null}
-
-          {panelTab === "order" ? (
-            <div className="order-pane">
-              <div className="order-toolbar">
-                <select value={orderFilter} onChange={(event) => setOrderFilter(event.target.value)} aria-label="订单状态筛选">
-                  {ORDER_FILTERS.map(([id, label]) => (
-                    <option key={id} value={id}>{label}</option>
-                  ))}
-                </select>
-                <div className="order-search">
-                  <Search size={14} />
-                  <input value={orderSearch} onChange={(event) => setOrderSearch(event.target.value)} placeholder="搜索订单ID" aria-label="搜索订单" />
-                </div>
-              </div>
-              <div className="order-list">
-                {visibleOrders.map((order) => {
-                  const detail = order.detail;
-                  const expanded = expandedOrder === order.id;
-                  const action = orderAction?.id === order.id ? orderAction : null;
-                  return (
-                    <article key={order.id} className="order-item">
-                      <header>
-                        <div className="order-badges">
-                          <em className={`order-state st-${orderFilterKey(detail)}`}>{orderBadgeLabel(detail)}</em>
-                          {order.isPrimary ? <em className="order-state primary">本次咨询</em> : null}
-                        </div>
-                        <time>{dateTimeLabel(detail.placedAt)}</time>
-                      </header>
-                      <div className="order-no">
-                        #{detail.orderNo}
-                        <button className="icon-button copy-btn" title="复制订单号" onClick={() => copyOrderNo(detail.orderNo)}><Copy size={13} /></button>
-                      </div>
-                      <div className="order-ops">
-                        <button className="primary-button compact" disabled={composerDisabled} onClick={() => void sendCard("order", order.id)}>发送订单</button>
-                        <button className="secondary-button compact" onClick={() => setExpandedOrder(expanded ? null : order.id)}>{expanded ? "收起详情" : "订单详情"}</button>
-                        <button className="secondary-button compact" onClick={() => openOrderAction(order, "remark")}><StickyNote size={13} /> 备注</button>
-                        <button className="secondary-button compact" onClick={() => openOrderAction(order, "address")}><MapPin size={13} /> 改地址</button>
-                      </div>
-                      <div className="order-product">
-                        {detail.productImage ? (
-                          <img className="product-photo" src={assetUrl(detail.productImage) ?? undefined} alt={detail.productName} />
-                        ) : (
-                          <span className="product-thumb"><Package2 size={20} /></span>
-                        )}
-                        <div>
-                          <strong>{detail.productName} <i>×{detail.quantity}</i></strong>
-                          <small>{detail.productSpec}</small>
-                        </div>
-                      </div>
-                      <footer className="order-total">
-                        <span>{detail.quantity} 件商品</span>
-                        <strong>{detail.currency} {detail.totalAmount}</strong>
-                      </footer>
-                      {detail.returnStatus ? (
-                        <div className="order-return">
-                          <span>退货/退款</span>
-                          <em>{RETURN_LABELS[detail.returnStatus] ?? detail.returnStatus}</em>
-                        </div>
-                      ) : null}
-                      {detail.remark ? <p className="order-remark"><StickyNote size={12} /> {detail.remark}</p> : null}
-                      {expanded ? (
-                        <div className="order-detail">
-                          <div className="order-brief">
-                            <div className="order-brief-row"><span>下单时间</span><em>{dateTimeLabel(detail.placedAt)}</em></div>
-                            <div className="order-brief-row"><span>单价</span><em>{detail.currency} {detail.unitPrice}</em></div>
-                            <div className="order-brief-row"><span>状态</span><em>{orderBadgeLabel(detail)}</em></div>
-                          </div>
-                          {detail.address ? (
-                            <div className="order-brief">
-                              <div className="order-brief-row"><span>收件人</span><em>{detail.address.recipient}</em></div>
-                              <div className="order-brief-row"><span>地址</span><em>{detail.address.line1}, {detail.address.city}, {detail.address.country}</em></div>
-                              <div className="order-brief-row"><span>电话</span><em>{detail.address.phone}</em></div>
-                            </div>
-                          ) : null}
-                          {detail.logistics ? (
-                            <div className="order-brief">
-                              <div className="order-brief-row"><span>承运商</span><em>{detail.logistics.carrier}</em></div>
-                              <div className="order-brief-row"><span>运单号</span><em>{detail.logistics.trackingNo}</em></div>
-                              <div className="logi-nodes">
-                                {detail.logistics.nodes.map((node) => (
-                                  <span key={node.key} className={node.current ? "logi-node current" : node.done ? "logi-node done" : "logi-node"}>{node.label}</span>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-                          {detail.review ? (
-                            <div className="order-brief">
-                              <div className="order-brief-row"><span>买家评价</span><em>{detail.review.rating} 星</em></div>
-                              <p className="review-text">{detail.review.content}</p>
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {action?.type === "remark" ? (
-                        <div className="order-form">
-                          <textarea value={remarkDraft} onChange={(event) => setRemarkDraft(event.target.value)} rows={2} placeholder="给这笔订单添加内部备注…" aria-label="订单备注" />
-                          <div className="order-form-actions">
-                            <button className="primary-button compact" disabled={savingOrder} onClick={() => void saveOrderAction()}>{savingOrder ? "保存中…" : "保存备注"}</button>
-                            <button className="text-button" onClick={() => setOrderAction(null)}>取消</button>
-                          </div>
-                        </div>
-                      ) : null}
-                      {action?.type === "address" ? (
-                        <div className="order-form">
-                          <input value={addressDraft.recipient} onChange={(event) => setAddressDraft({ ...addressDraft, recipient: event.target.value })} placeholder="收件人" aria-label="收件人" />
-                          <input value={addressDraft.line1} onChange={(event) => setAddressDraft({ ...addressDraft, line1: event.target.value })} placeholder="街道地址" aria-label="街道地址" />
-                          <div className="order-form-row">
-                            <input value={addressDraft.city} onChange={(event) => setAddressDraft({ ...addressDraft, city: event.target.value })} placeholder="城市" aria-label="城市" />
-                            <input value={addressDraft.country} onChange={(event) => setAddressDraft({ ...addressDraft, country: event.target.value })} placeholder="国家" aria-label="国家" />
-                          </div>
-                          <input value={addressDraft.phone} onChange={(event) => setAddressDraft({ ...addressDraft, phone: event.target.value })} placeholder="联系电话" aria-label="联系电话" />
-                          <div className="order-form-actions">
-                            <button className="primary-button compact" disabled={savingOrder} onClick={() => void saveOrderAction()}>{savingOrder ? "保存中…" : "保存地址"}</button>
-                            <button className="text-button" onClick={() => setOrderAction(null)}>取消</button>
-                          </div>
-                        </div>
-                      ) : null}
-                    </article>
-                  );
-                })}
-                {orders === null ? <p className="muted panel-empty">加载订单…</p> : null}
-                {orders !== null && visibleOrders.length === 0 ? <p className="muted panel-empty">该客户暂无符合条件的订单。</p> : null}
-              </div>
-            </div>
-          ) : null}
-
-          {panelTab === "product" ? (
-            <div className="product-pane">
-              <div className="rail-tabs sub product-subtabs">
-                <button className={productTab === "store" ? "active" : ""} onClick={() => setProductTab("store")}>全店商品</button>
-                <button className={productTab === "browsed" ? "active" : ""} onClick={() => setProductTab("browsed")}>
-                  买家浏览过{browsedProducts.length > 0 ? <b className="count">{browsedProducts.length}</b> : null}
+            <div className="wbk-bt">
+              {canVoice ? (
+                <button
+                  type="button"
+                  className={voiceState === "recording" ? "wbk-ptt is-recording" : "wbk-ptt"}
+                  disabled={!active || isClosed || voiceState === "recognizing" || streamingText !== null}
+                  onMouseDown={() => void startVoiceInput()}
+                  onMouseUp={() => void stopVoiceInput()}
+                  onMouseLeave={() => { if (voiceState === "recording") void stopVoiceInput(); }}
+                  onTouchStart={(event) => { event.preventDefault(); void startVoiceInput(); }}
+                  onTouchEnd={() => void stopVoiceInput()}
+                >
+                  <Mic size={15} />
+                  {voiceState === "recording" ? "松开结束" : voiceState === "recognizing" ? "识别中…" : "按住说话"}
                 </button>
-              </div>
-              <div className="store-list">
-                {(productTab === "store" ? products : browsedProducts).map((product) => {
-                  const specParts = product.spec.split("/").map((part) => part.trim()).filter(Boolean);
-                  const specExpanded = specOpen === product.id;
-                  const calcExpanded = calcOpen === product.id;
-                  const specText = `${product.name} — SKU ${product.id} · ${product.spec} · USD ${product.price} · In stock: ${product.stock}`;
-                  const quoteText = `${product.name}: ${calcQty} × USD ${product.price} = USD ${(product.price * calcQty).toFixed(2)}`;
-                  return (
-                    <article key={product.id} className="store-card">
-                      {product.imageUrl ? (
-                        <img className="product-photo" src={assetUrl(product.imageUrl) ?? undefined} alt={product.name} />
-                      ) : (
-                        <span className="product-thumb" style={{ background: product.tone }}><Package2 size={22} /></span>
-                      )}
-                      <div>
-                        <strong>{product.name}</strong>
-                        <small>SKU {product.id} · {product.spec}</small>
-                        <div className="store-meta">
-                          <em>USD {product.price}</em>
-                          <small>已售 {product.sales} · 库存 {product.stock}</small>
-                        </div>
-                      </div>
-                      <div className="store-ops">
-                        <button className="primary-button compact" disabled={composerDisabled} onClick={() => void sendCard("product", product.id)}>
-                          发送商品
-                        </button>
-                        <button className="secondary-button compact" disabled={composerDisabled} onClick={() => void sendCard("invite", product.id)}>
-                          <ShoppingCart size={12} /> 邀请下单
-                        </button>
-                        <button
-                          className={specExpanded ? "secondary-button compact op-active" : "secondary-button compact"}
-                          onClick={() => { setSpecOpen(specExpanded ? null : product.id); setCalcOpen(null); }}
-                        >
-                          <ListTree size={12} /> 规格属性
-                        </button>
-                        <button
-                          className={calcExpanded ? "secondary-button compact op-active" : "secondary-button compact"}
-                          onClick={() => { setCalcOpen(calcExpanded ? null : product.id); setSpecOpen(null); setCalcQty(1); }}
-                        >
-                          <Calculator size={12} /> 算价
-                        </button>
-                      </div>
-                      {specExpanded ? (
-                        <div className="store-expand">
-                          <div className="order-brief">
-                            <div className="order-brief-row"><span>SKU 编码</span><em>{product.id}</em></div>
-                            {specParts.map((part, index) => (
-                              <div className="order-brief-row" key={part}><span>规格 {index + 1}</span><em>{part}</em></div>
-                            ))}
-                            <div className="order-brief-row"><span>单价</span><em>USD {product.price}</em></div>
-                            <div className="order-brief-row"><span>库存 / 已售</span><em>{product.stock} / {product.sales}</em></div>
-                          </div>
-                          <button
-                            className="secondary-button compact"
-                            disabled={!active || isClosed}
-                            onClick={() => {
-                              setInput((current) => (current ? `${current} ${specText}` : specText));
-                              setSpecOpen(null);
-                            }}
-                          >
-                            填入规格信息
-                          </button>
-                        </div>
-                      ) : null}
-                      {calcExpanded ? (
-                        <div className="store-expand store-calc">
-                          <label>
-                            数量
-                            <input
-                              type="number"
-                              min={1}
-                              max={999}
-                              value={calcQty}
-                              onChange={(event) => setCalcQty(Math.max(1, Math.min(999, Number(event.target.value) || 1)))}
-                              aria-label="数量"
-                            />
-                          </label>
-                          <span className="calc-total">合计 <strong>USD {(product.price * calcQty).toFixed(2)}</strong></span>
-                          <button
-                            className="secondary-button compact"
-                            disabled={!active || isClosed}
-                            onClick={() => {
-                              setInput((current) => (current ? `${current} ${quoteText}` : quoteText));
-                              setCalcOpen(null);
-                            }}
-                          >
-                            填入报价
-                          </button>
-                        </div>
-                      ) : null}
-                    </article>
-                  );
-                })}
-                {productTab === "browsed" && browsedProducts.length === 0 ? (
-                  <p className="muted panel-empty">暂无浏览记录。</p>
-                ) : null}
-              </div>
+              ) : null}
+              {canType ? (
+                <>
+                  <span className="wbk-cnt num">{input.length} / 1000</span>
+                  <Button variant="primary" size="sm" onClick={() => void send()} disabled={composerDisabled || !input.trim()}>
+                    发送 <SendHorizontal size={15} />
+                  </Button>
+                </>
+              ) : null}
             </div>
-          ) : null}
+          </div>
+        )}
+      </section>
 
+      <aside className="wbk-rp">
+        {active ? (
+          <CustomerCard conversation={active} tiers={tiers} onSaveNote={(note) => saveMeta({ buyerNote: note })} />
+        ) : (
+          <p className="wbk-empty">选择会话后展示客户资料。</p>
+        )}
+        <Tabs items={panelTabs} value={panelTab} onChange={setPanelTab} className="wbk-rtabs" />
+        <div className="wbk-rbody">
+          {panelTab === "order" ? (
+            active ? (
+              <OrdersTab
+                session={session}
+                conversationId={active.id}
+                buyerName={active.buyer.name}
+                orders={orders}
+                setOrders={setOrders}
+                canSend={!composerDisabled}
+                onSend={sendOrderCard}
+                onError={setNotice}
+              />
+            ) : null
+          ) : null}
+          {panelTab === "product" ? (
+            <ProductsTab
+              products={products}
+              browsed={browsedProducts}
+              canSend={!composerDisabled}
+              canFill={Boolean(active) && !isClosed && canType}
+              onSend={(type, id) => void sendCard(type, id)}
+              onFill={appendToInput}
+              onDetail={setDetailProduct}
+            />
+          ) : null}
           {panelTab === "coupon" ? (
-            <div className="store-list">
+            <div className="wbk-coupons">
               {coupons.map((coupon) => (
-                <article key={coupon.id} className="store-card coupon-card">
-                  <span className="product-thumb coupon-thumb"><TicketPercent size={22} /></span>
-                  <div>
-                    <strong>{coupon.title}</strong>
-                    <small>{coupon.rule} · {coupon.scope}</small>
-                    <em>有效期 {coupon.validDays} 天</em>
+                <article key={coupon.id} className="wbk-pc">
+                  <span className="wbk-card-thumb is-coupon is-lg"><TicketPercent size={22} /></span>
+                  <div className="wbk-pc-main">
+                    <b>{coupon.title}</b>
+                    <div className="wbk-pc-m">{coupon.rule} · {coupon.scope}</div>
+                    <div className="wbk-pc-m">有效期 {coupon.validDays} 天</div>
+                    <div className="wbk-pc-ac"><Button size="sm" disabled={composerDisabled} onClick={() => void sendCard("coupon", coupon.id)}>发送</Button></div>
                   </div>
-                  <button
-                    className="secondary-button compact"
-                    disabled={composerDisabled}
-                    onClick={() => void sendCard("coupon", coupon.id)}
-                  >
-                    发送
-                  </button>
                 </article>
               ))}
+              {coupons.length === 0 ? <p className="wbk-empty">店里暂时没有可发的优惠券。</p> : null}
             </div>
           ) : null}
-        </aside>
-      </div>
-      {newPhraseOpen ? (
-        <div className="tch-dialog-overlay" onClick={() => setNewPhraseOpen(false)}>
-          <div
-            className="tch-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="新建快捷短语"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <header>
-              <strong>新建快捷短语</strong>
-              <button className="icon-button" onClick={() => setNewPhraseOpen(false)} aria-label="关闭"><X size={17} /></button>
-            </header>
-            <label>
-              短语内容
-              <textarea
-                value={newPhraseText}
-                onChange={(event) => setNewPhraseText(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void saveNewPhrase();
-                  }
-                  if (event.key === "Escape") setNewPhraseOpen(false);
-                }}
-                placeholder="例如：Thanks for your patience, let me check that for you."
-                maxLength={200}
-                rows={3}
-                autoFocus
-              />
-            </label>
-            <p className="tch-dialog-hint muted">保存后出现在快捷短语面板的“我的短语”分组，仅自己可见 · {newPhraseText.length} / 200</p>
-            <footer>
-              <button className="secondary-button" onClick={() => { setNewPhraseOpen(false); setNewPhraseText(""); }}>取消</button>
-              <button className="primary-button" disabled={!newPhraseText.trim() || phraseSaving} onClick={() => void saveNewPhrase()}>
-                {phraseSaving ? "保存中…" : "保存"}
-              </button>
-            </footer>
-          </div>
         </div>
+      </aside>
+
+      {detailProduct ? (
+        <ProductDrawer
+          product={detailProduct}
+          canSend={!composerDisabled}
+          canFill={Boolean(active) && !isClosed && canType}
+          onClose={() => setDetailProduct(null)}
+          onQuote={appendToInput}
+          onSend={(type) => {
+            void sendCard(type, detailProduct.id);
+            setDetailProduct(null);
+          }}
+        />
+      ) : null}
+
+      {endConfirm ? (
+        <Confirm title="结束这次接待？" confirmText="结束接待" danger busy={ending} onConfirm={() => void endConversation()} onClose={() => setEndConfirm(false)}>
+          结束后买家会离开，这位买家的会话不能再发消息。
+        </Confirm>
+      ) : null}
+
+      {newPhraseOpen ? (
+        <Dialog
+          title="新建快捷短语"
+          onClose={() => setNewPhraseOpen(false)}
+          footer={
+            <>
+              <Button onClick={() => { setNewPhraseOpen(false); setNewPhraseText(""); }}>取消</Button>
+              <Button variant="primary" disabled={!newPhraseText.trim()} loading={phraseSaving} onClick={() => void saveNewPhrase()}>保存</Button>
+            </>
+          }
+        >
+          <Textarea
+            value={newPhraseText}
+            onChange={(event) => setNewPhraseText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void saveNewPhrase();
+              }
+            }}
+            placeholder="例如：Thanks for your patience, let me check that for you."
+            maxLength={200}
+            rows={3}
+            autoFocus
+            aria-label="短语内容"
+          />
+          <p className="wbk-dialog-hint">保存后出现在快捷短语面板的“我的短语”里，仅自己可见 · {newPhraseText.length} / 200</p>
+        </Dialog>
       ) : null}
     </div>
   );

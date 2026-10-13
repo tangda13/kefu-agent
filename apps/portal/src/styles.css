@@ -153,11 +153,35 @@ small { color: var(--c-ink-3); }
 .shell-nav button.is-active svg { color: var(--c-brand-ink); }
 .shell-side-foot { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--c-line); }
 .shell-side-foot button { width: 100%; font-size: var(--fs-body); }
+/* 侧栏折叠：只留图标（64 宽），名称放悬停提示 */
+.shell { transition: grid-template-columns .18s ease; }
+.shell.is-collapsed { grid-template-columns: 64px minmax(0, 1fr); }
+.shell.is-collapsed .shell-side { padding-left: 10px; padding-right: 10px; }
+.shell.is-collapsed .shell-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+.shell.is-collapsed .shell-brand strong,
+.shell.is-collapsed .shell-nav button > span,
+.shell.is-collapsed .shell-side-foot button > span,
+.shell.is-collapsed .shell-nav-group > span:last-child { display: none; }
+.shell.is-collapsed .shell-nav button, .shell.is-collapsed .shell-side-foot button { position: relative; justify-content: center; padding: 0; }
+.shell.is-collapsed .shell-nav-group { justify-content: center; margin: 12px 0 6px; padding-top: 12px; border-top: 1px solid var(--c-line); }
+.shell.is-collapsed .shell-nav-badge { position: absolute; top: 4px; right: 6px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 10px; line-height: 16px; }
+.shell-collapse { color: var(--c-ink-3); }
+/* 侧栏收起后，限宽的内容区跟着放宽（多出的 168 = 232 - 64） */
+.shell.is-collapsed .bench-wrap { max-width: 1288px; }
 .shell-main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
 .shell-main > .content-scroll { flex: 1; }
 .shell-top { position: relative; z-index: 5; flex: none; height: var(--h-topbar); display: flex; align-items: center; gap: 28px; padding: 0 40px 0 40px; border-bottom: 1px solid var(--c-line); background: var(--c-surface); }
 .shell-title { flex: none; font-size: var(--fs-page); font-weight: 600; white-space: nowrap; }
 .shell-head-slot { display: flex; align-self: stretch; }
+.shell-top.is-store { padding-left: 24px; }
+.shell-top.is-store .shell-head-slot { flex: 1; min-width: 0; }
+/* 学生端侧栏“店铺后台”分组标题（D-37 / D-39） */
+.shell-nav-group { border: 0; background: none; text-align: left; cursor: pointer; border-radius: var(--r-sm); padding: 4px 0; display: flex; align-items: center; gap: 8px; margin: 18px 12px 6px; font-size: 12px; font-weight: 500; color: var(--c-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shell-nav-group > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.shell-nav-group:hover:not(:disabled) { color: var(--c-ink); }
+.shell-nav-group:disabled { cursor: default; }
+.shell-store-mark { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 4px; overflow: hidden; background: var(--c-ink); color: #fff; font-size: 10px; font-weight: 700; }
+.shell-store-mark img { width: 100%; height: 100%; object-fit: cover; }
 .shell-head-slot:empty { display: none; }
 .shell-top-fill { flex: 1; }
 .shell-top-actions { display: flex; flex: none; align-items: center; gap: 12px; }
@@ -2078,3 +2102,8 @@ button.toggle:focus-visible { outline: 2px solid var(--blue-focus); outline-offs
 .speaker-picker .ui-select { flex: 1; min-width: 0; }
 .speaker-picker .ui-btn { flex: none; }
 .ui-input.speaker-custom { margin-top: 8px; }
+/* 店铺分组标题是按钮，但不吃导航按钮的高度和内边距；收起侧栏时只留店铺标识 */
+.shell-nav .shell-nav-group { height: auto; margin: 18px 0 6px; padding: 4px 12px; font-size: 12px; font-weight: 500; color: var(--c-ink-3); }
+.shell-nav .shell-nav-group:hover:not(:disabled) { background: var(--c-surface-hover); color: var(--c-ink); }
+.shell.is-collapsed .shell-nav .shell-nav-group { justify-content: center; margin: 12px 0 6px; padding: 12px 0 4px; border-radius: 0; border-top: 1px solid var(--c-line); }
+.shell.is-collapsed .shell-nav .shell-nav-group > .shell-store-mark { display: inline-flex; }

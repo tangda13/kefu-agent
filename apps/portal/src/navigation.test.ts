@@ -5,12 +5,14 @@ describe("document-defined navigation", () => {
   it("keeps the exact student and teacher primary navigation", () => {
     expect(roleNav.student.map((item) => item.label)).toEqual([
       "任务大厅",
+      "我的记录",
       "客服工作台",
       "订单",
       "评价",
       "邮件",
-      "我的记录",
     ]);
+    // D-37：后四项是“店铺后台”分组
+    expect(roleNav.student.filter((item) => item.group === "store").map((item) => item.id)).toEqual(["workbench", "orders", "reviews", "mail"]);
     expect(roleNav.teacher.map((item) => item.label)).toEqual([
       "数据总览",
       "实训任务",

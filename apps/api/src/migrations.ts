@@ -555,4 +555,28 @@ alter table conversations add column if not exists closed_reason text;
 alter table conversations add column if not exists closed_at timestamptz;
 `,
   },
+  {
+    /* 学生端改版（C2）：客服在接待中手动做的三件事——咨询原因（系统按场景预填，学生确认或改正）、待跟进、客户备注。
+       系统客户标签按订单规则实时计算，不落库；店铺资料存 app_settings.store_profile */
+    id: "033_conversation_service_meta",
+    sql: `
+alter table conversations add column if not exists contact_reason text;
+alter table conversations add column if not exists contact_reason_suggested text;
+alter table conversations add column if not exists follow_up boolean not null default false;
+alter table conversations add column if not exists buyer_note text;
+alter table conversations add column if not exists buyer_note_at timestamptz;
+`,
+  },
+  {
+    /* 评价、邮件正文的中文译文：同一段文字只翻一次，存库长期复用（按原文 sha256 去重） */
+    id: "034_text_translations",
+    sql: `
+create table if not exists text_translations (
+  text_hash text primary key,
+  source text not null,
+  translation text not null,
+  created_at timestamptz not null default now()
+);
+`,
+  },
 ];

@@ -1,8 +1,12 @@
+import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { BusinessStage, OrderKind, ScenarioScript } from "@cecs/contracts";
 import {
   buyerHistoryOrderCount,
   composePersonaWithRule,
+  computeCustomerTags,
+  CONTACT_REASONS,
+  suggestContactReason,
   NoMatchingPersonaError,
   ensurePersonaAvatar,
   generateBuyerOrderHistory,
@@ -18,6 +22,8 @@ import type { CallInfo, LlmGateway } from "../llm/gateway";
 import type { VoiceService } from "../voice/service";
 import { buildBuyerMessages } from "../prompts/buyer";
 import { loadEnabledPersonaTemplates } from "./catalog";
+import { loadStoreProfile } from "./store";
+import { once } from "../inflight";
 import { buildTranslationMessages } from "../prompts/assist";
 
 interface ConversationRow {
@@ -260,6 +266,38 @@ async function streamBuyerTurn(options: {
   raw.end();
 }
 
+/** 客服在接待中的标记（C2）：系统客户标签只读，咨询原因 / 待跟进 / 客户备注由学生写 */
+function serviceMetaOf(
+  row: Record<string, unknown>,
+  orders: OrderInfo[],
+  tiers: Parameters<typeof computeCustomerTags>[2],
+) {
+  const persona = (row.persona ?? {}) as { customerType?: string };
+  const orderTotals = orders.map((order) => ({
+    totalAmount: order.totalAmount,
+    placedAt: order.placedAt,
+    status: order.status,
+  }));
+  const paid = orderTotals.filter((order) => order.status !== "pending_payment");
+  return {
+    customerTags: computeCustomerTags(persona.customerType, orderTotals, tiers),
+    orderStats: {
+      count: paid.length,
+      total: Math.round(paid.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0) * 100) / 100,
+      lastPlacedAt: paid.length ? paid.map((order) => order.placedAt).sort().at(-1) ?? null : null,
+    },
+    contactReason: (row.contact_reason as string | null) ?? null,
+    /* 老会话没存预填值时按场景现算 */
+    contactReasonSuggested:
+      (row.contact_reason_suggested as string | null) ??
+      suggestContactReason(row.scenario_name as string | null, row.scenario_stage as string | null),
+    followUp: Boolean(row.follow_up),
+    buyerNote: (row.buyer_note as string | null) ?? null,
+    buyerNoteAt: (row.buyer_note_at as string | null) ?? null,
+    closedReason: (row.closed_reason as string | null) ?? null,
+  };
+}
+
 export function registerConversationRoutes(
   app: FastifyInstance,
   db: Db,
@@ -278,7 +316,7 @@ export function registerConversationRoutes(
       let personaRule: Record<string, unknown> = {};
       if (taskId) {
         const progress = await db.query(
-          `select t.scenario_ids, t.persona_rule, t.start_at from task_progress tp
+          `select t.scenario_ids, t.persona_rule, t.start_at, t.deadline, t.status from task_progress tp
            join tasks t on t.id = tp.task_id
            where tp.task_id = $1 and tp.student_id = $2`,
           [taskId, user.sub],
@@ -293,6 +331,10 @@ export function registerConversationRoutes(
         if (row.start_at && new Date(row.start_at).getTime() > Date.now()) {
           reply.code(403);
           return { code: "TASK_NOT_STARTED", message: "该任务还未到开放时间，请在任务列表标注的开放时间后进入。" };
+        }
+        if (row.status !== "published" || (row.deadline && new Date(row.deadline).getTime() < Date.now())) {
+          reply.code(403);
+          return { code: "TASK_CLOSED", message: "这个任务已经结束或过了截止时间，不能再接待新的买家。" };
         }
         personaRule = (row.persona_rule ?? {}) as Record<string, unknown>;
         const ids = row.scenario_ids as string[];
@@ -348,6 +390,8 @@ export function registerConversationRoutes(
         order = generateOrderForScenario(scenario.stage, Math.random, new Date(), productPool, personaBrief, scenario.orderKind);
       }
       const personaRecord = persona as unknown as Record<string, unknown>;
+      const store = await loadStoreProfile(db);
+      personaRecord.storeName = store.name;
       if (order) {
         personaRecord.productFacts = factsOf(order.productName);
       } else if (scenario?.stage === "pre_sale" || scenario?.orderKind === "none") {
@@ -359,9 +403,9 @@ export function registerConversationRoutes(
         }
       }
       const created = await db.query<ConversationRow>(
-        `insert into conversations (task_id, student_id, scenario_id, persona)
-         values ($1, $2, $3, $4) returning *`,
-        [taskId ?? null, user.sub, resolvedScenarioId, JSON.stringify(persona)],
+        `insert into conversations (task_id, student_id, scenario_id, persona, contact_reason_suggested)
+         values ($1, $2, $3, $4, $5) returning *`,
+        [taskId ?? null, user.sub, resolvedScenarioId, JSON.stringify(persona), suggestContactReason(scenario?.name, scenario?.stage)],
       );
       const conversation = created.rows[0]!;
 
@@ -429,7 +473,18 @@ export function registerConversationRoutes(
          order by coalesce(lm.created_at, c.created_at) desc limit 30`,
         [user.sub, status],
       );
+      const ids = result.rows.map((row) => row.id as string);
+      const orderRows = ids.length
+        ? await db.query("select conversation_id, payload from orders where conversation_id = any($1)", [ids])
+        : { rows: [] as Array<Record<string, unknown>> };
+      const ordersByConversation = new Map<string, OrderInfo[]>();
+      for (const item of orderRows.rows) {
+        const key = item.conversation_id as string;
+        ordersByConversation.set(key, [...(ordersByConversation.get(key) ?? []), item.payload as OrderInfo]);
+      }
+      const store = await loadStoreProfile(db);
       return result.rows.map((row) => ({
+        ...serviceMetaOf(row, ordersByConversation.get(row.id as string) ?? [], store.tiers),
         id: row.id,
         taskId: row.task_id,
         scenarioId: row.scenario_id,
@@ -451,6 +506,90 @@ export function registerConversationRoutes(
         visits72h: Number(row.visits72 ?? 0),
         createdAt: row.created_at,
       }));
+    },
+  );
+
+  // 文本翻译（评价、邮件正文的中文译文）。同一段文字只翻一次，译文存库（text_translations），之后直接读取
+  app.post<{ Body: { text?: string } }>(
+    "/v1/translate",
+    { preHandler: guard.requireRole("student", "teacher") },
+    async (request, reply) => {
+      const text = typeof request.body?.text === "string" ? request.body.text.trim().slice(0, 4000) : "";
+      if (!text) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "没有要翻译的内容。" };
+      }
+      const textHash = createHash("sha256").update(text).digest("hex");
+      const stored = await db.query("select translation from text_translations where text_hash = $1", [textHash]);
+      if (stored.rowCount) return { translation: stored.rows[0].translation as string, cached: true };
+      if (!gateway.isConfigured()) {
+        reply.code(503);
+        return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "请由管理员配置 LLM 服务。" };
+      }
+      try {
+        const translation = await once(`translate:${textHash}`, async () => {
+          const { text: result } = await gateway.complete("assist", buildTranslationMessages(text));
+          await db.query(
+            "insert into text_translations (text_hash, source, translation) values ($1, $2, $3) on conflict (text_hash) do nothing",
+            [textHash, text, result],
+          );
+          return result;
+        });
+        return { translation, cached: false };
+      } catch (error) {
+        request.log.error(error, "translate failed");
+        reply.code(502);
+        return { code: "TRANSLATE_FAILED", message: "翻译失败，请稍后重试。" };
+      }
+    },
+  );
+
+  // 客服标记：咨询原因（确认或改正系统预填）、待跟进、客户备注。会话结束后仍可补记
+  app.patch<{ Params: { conversationId: string }; Body: { contactReason?: string | null; followUp?: boolean; buyerNote?: string | null } }>(
+    "/v1/conversations/:conversationId/service-meta",
+    { preHandler: guard.requireRole("student") },
+    async (request, reply) => {
+      const user = request.user!;
+      const body = request.body ?? {};
+      const sets: string[] = [];
+      const params: unknown[] = [request.params.conversationId, user.sub];
+      if (body.contactReason !== undefined) {
+        if (body.contactReason !== null && !(CONTACT_REASONS as readonly string[]).includes(body.contactReason)) {
+          reply.code(400);
+          return { code: "INVALID_INPUT", message: "咨询原因不在可选范围内。" };
+        }
+        params.push(body.contactReason);
+        sets.push(`contact_reason = $${params.length}`);
+      }
+      if (body.followUp !== undefined) {
+        params.push(Boolean(body.followUp));
+        sets.push(`follow_up = $${params.length}`);
+      }
+      if (body.buyerNote !== undefined) {
+        params.push(typeof body.buyerNote === "string" && body.buyerNote.trim() ? body.buyerNote.trim().slice(0, 500) : null);
+        sets.push(`buyer_note = $${params.length}`, "buyer_note_at = now()");
+      }
+      if (!sets.length) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "没有要保存的内容。" };
+      }
+      const result = await db.query(
+        `update conversations set ${sets.join(", ")} where id = $1 and student_id = $2
+         returning contact_reason, contact_reason_suggested, follow_up, buyer_note, buyer_note_at`,
+        params,
+      );
+      if (!result.rowCount) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "会话不存在。" };
+      }
+      const row = result.rows[0]!;
+      return {
+        contactReason: row.contact_reason ?? null,
+        contactReasonSuggested: row.contact_reason_suggested ?? null,
+        followUp: Boolean(row.follow_up),
+        buyerNote: row.buyer_note ?? null,
+        buyerNoteAt: row.buyer_note_at ?? null,
+      };
     },
   );
 
@@ -651,11 +790,11 @@ export function registerConversationRoutes(
         return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "翻译服务未配置。" };
       }
       try {
-        const { text: translation } = await gateway.complete("assist", buildTranslationMessages(message.content));
-        await db.query(
-          "update conversation_messages set translated_content = $1 where id = $2",
-          [translation, message.id],
-        );
+        const translation = await once(`message-translate:${message.id}`, async () => {
+          const { text: result } = await gateway.complete("assist", buildTranslationMessages(message.content));
+          await db.query("update conversation_messages set translated_content = $1 where id = $2", [result, message.id]);
+          return result;
+        });
         return { translation, cached: false };
       } catch (error) {
         request.log.error(error, "translate failed");
@@ -703,18 +842,23 @@ export function registerConversationRoutes(
       }
       try {
         // 按买家画像选择音色（男/女）与朗读语种
-        const { audio, elapsedMs } = await voice.synthesize(
-          message.content.slice(0, 500),
-          gender === "male" ? "male" : "female",
-          persona.language,
-        );
-        fs.mkdirSync(path.dirname(target), { recursive: true });
-        fs.writeFileSync(target, audio);
-        await db.query(
-          "insert into voice_metrics (kind, elapsed_ms, chars, outcome) values ('tts', $1, $2, 'success')",
-          [elapsedMs, message.content.length],
-        );
-        return { audioUrl, cached: false, elapsedMs };
+        // 自动播报和手动点击可能同时到：同一条消息只合成一次
+        const { elapsedMs, fresh } = await once(`tts:${fileName}`, async () => {
+          if (fs.existsSync(target)) return { elapsedMs: 0, fresh: false };
+          const { audio, elapsedMs: ms } = await voice.synthesize(
+            message.content.slice(0, 500),
+            gender === "male" ? "male" : "female",
+            persona.language,
+          );
+          fs.mkdirSync(path.dirname(target), { recursive: true });
+          fs.writeFileSync(target, audio);
+          await db.query(
+            "insert into voice_metrics (kind, elapsed_ms, chars, outcome) values ('tts', $1, $2, 'success')",
+            [ms, message.content.length],
+          );
+          return { elapsedMs: ms, fresh: true };
+        });
+        return { audioUrl, cached: !fresh, elapsedMs };
       } catch (error) {
         await db.query(
           "insert into voice_metrics (kind, elapsed_ms, chars, outcome) values ('tts', 0, $1, 'error')",

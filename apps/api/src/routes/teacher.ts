@@ -16,7 +16,7 @@ function scopedStudentsSql(isAdmin: boolean, paramIndex = 1): string {
        )`;
 }
 
-interface AssessedRow {
+export interface AssessedRow {
   student_id: string;
   total: string | number;
   scores: Record<string, number>;
@@ -35,7 +35,7 @@ interface StudentAggregate {
 }
 
 /** 任务口径聚合：任务成绩 = 会话均分；学生综合 = 任务均分；班级统计一人一个样本 */
-function aggregateTaskCentric(rows: AssessedRow[]): {
+export function aggregateTaskCentric(rows: AssessedRow[]): {
   byStudent: Map<string, StudentAggregate>;
   distribution: number[];
   radar: Array<{ id: string; label: string; value: number | null }>;

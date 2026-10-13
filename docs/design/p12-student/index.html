@@ -1,0 +1,1206 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>学生端改版</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+:root { --doc-bg:#e9edf3; --doc-ink:#161c26; --doc-ink-2:#465163; --doc-line:#d6dce5; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--doc-bg); color: var(--doc-ink); font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 24px; font-weight: 700; }
+.doc h2 { margin: 64px 0 6px; font-size: 20px; font-weight: 700; }
+.doc h2 small { font-size: 13px; font-weight: 400; color: var(--doc-ink-2); margin-left: 8px; }
+.doc .lede { margin: 0 0 20px; color: var(--doc-ink-2); max-width: 1040px; }
+.diag { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0 8px; }
+.diag div { background: #fff; border: 1px solid var(--doc-line); border-radius: 10px; padding: 14px 16px; font-size: 13px; color: var(--doc-ink-2); }
+.diag b { display: block; margin-bottom: 4px; color: var(--doc-ink); font-size: 14px; }
+.diag .fix { color: #174aa8; }
+.diag .api { display: inline-block; margin-top: 6px; padding: 1px 6px; border-radius: 4px; background: #fdf0dc; color: #9a5200; font-size: 12px; }
+.diag .bug { display: inline-block; margin-top: 6px; padding: 1px 6px; border-radius: 4px; background: #fbe8e6; color: #b8302a; font-size: 12px; }
+.principle { background: #fff; border: 1px solid var(--doc-line); border-radius: 10px; padding: 16px 20px; margin: 16px 0; font-size: 13px; color: var(--doc-ink-2); display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.principle b { display: block; color: var(--doc-ink); font-size: 14px; margin-bottom: 4px; }
+.cap { display: flex; justify-content: space-between; gap: 24px; margin: 22px 0 8px; font-size: 13px; color: var(--doc-ink-2); }
+.cap b { color: var(--doc-ink); white-space: nowrap; }
+.frame { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid var(--doc-line); box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); background: #fff; }
+.screen { position: absolute; top: 0; left: 0; width: 1440px; height: 900px; transform-origin: 0 0; overflow: hidden; }
+.before { width: 100%; display: block; border-radius: 10px; border: 1px solid var(--doc-line); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.trio { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+figure { margin: 0; }
+figcaption { font-size: 12px; color: var(--doc-ink-2); margin-top: 6px; }
+table.api-t { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--doc-line); border-radius: 10px; overflow: hidden; font-size: 13px; margin-top: 12px; }
+table.api-t th, table.api-t td { text-align: left; padding: 9px 14px; border-bottom: 1px solid #edf0f4; vertical-align: top; }
+table.api-t th { background: #f6f8fb; color: var(--doc-ink-2); font-weight: 600; font-size: 12px; }
+table.api-t td:first-child { white-space: nowrap; font-weight: 600; }
+.lv { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 12px; }
+.lv.fe { background: #e3f4ea; color: #1a7445; } .lv.be { background: #fdf0dc; color: #9a5200; }
+
+/* ===== 织 UI 令牌（同 apps/portal/src/styles/tokens.css） ===== */
+.s { --canvas:#f4f6f9; --surface:#fff; --surface-2:#f8f9fb; --hover:#eef2f7; --line:#e3e7ee; --line-2:#c8cfda; --ink:#161c26; --ink-2:#465163; --ink-3:#5e6a7b; --ink-4:#9aa3b0;
+  --brand:#1d5fd1; --brand-hover:#174ead; --brand-soft:#e8effc; --brand-ink:#174aa8; --ok:#1a7445; --ok-wash:#e3f4ea; --warn:#9a5200; --warn-wash:#fdf0dc; --bad:#b8302a; --bad-wash:#fbe8e6; --info:#5146c4;
+  --c1:#1d5fd1; --c1s:#e8effc; --c2:#0a7a70; --c2s:#e0f3f0; --c3:#8c5b0f; --c3s:#fbefdc; --c4:#6c4fc9; --c4s:#eeeafb;
+  background: var(--surface); color: var(--ink); font: 400 14px/22px Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.s svg { width: 18px; height: 18px; stroke-width: 1.75; flex: none; }
+.num { font-variant-numeric: tabular-nums; }
+.app { position: relative; display: grid; grid-template-columns: 232px 1fr; grid-template-rows: minmax(0, 1fr); height: 100%; }
+.side { display: flex; flex-direction: column; padding: 14px 12px; border-right: 1px solid var(--line); background: var(--surface); }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 18px; font-size: 14px; font-weight: 700; }
+.mark { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 6px; background: var(--brand); color: #fff; }
+.mark svg { width: 16px; height: 16px; }
+.nav { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 6px; color: var(--ink-2); font-size: 14px; }
+.nav svg { color: var(--ink-3); }
+.nav.on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.nav.on svg { color: var(--brand-ink); }
+.nav .badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.nav .badge.soft { background: var(--hover); color: var(--ink-2); }
+.navlabel { display: flex; align-items: center; gap: 6px; margin: 18px 12px 6px; font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.navlabel .smark { display: inline-flex; width: 16px; height: 16px; border-radius: 4px; background: #1f2937; color: #fff; font-size: 10px; font-weight: 700; align-items: center; justify-content: center; }
+.grow { flex: 1; }
+.foot { border-top: 1px solid var(--line); padding-top: 8px; }
+.main { display: flex; flex-direction: column; min-width: 0; background: var(--canvas); }
+.head { display: flex; align-items: flex-end; gap: 28px; height: 56px; padding: 0 40px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; }
+.head.tight { padding: 0 24px; }
+.head.store-head { padding-left: 24px; }
+.head.bar { align-items: center; gap: 14px; padding: 0 20px; }
+.head.bar .right { margin-bottom: 0; }
+.head.bar .shift { flex: 1; min-width: 0; height: auto; padding: 0; border: 0; background: transparent; }
+.head h1 { margin: 0 0 13px; font-size: 20px; font-weight: 700; white-space: nowrap; }
+.head .tabs { display: flex; gap: 24px; align-self: stretch; align-items: flex-end; }
+.head .tab { padding-bottom: 15px; border-bottom: 2px solid transparent; color: var(--ink-2); font-size: 14px; white-space: nowrap; }
+.head .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--brand); }
+.head .tab .n { color: var(--ink-3); font-weight: 400; margin-left: 4px; }
+.head .tab .n.red { color: var(--bad); font-weight: 600; }
+.head .tab.on .n { color: var(--brand-ink); }
+.head .right { margin-left: auto; display: flex; align-items: center; gap: 14px; margin-bottom: 13px; color: var(--ink-2); }
+.notice { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border-radius: 6px; background: var(--warn-wash); color: var(--warn); font-size: 13px; max-width: 420px; margin-bottom: 13px; white-space: nowrap; overflow: hidden; }
+.notice svg { width: 15px; height: 15px; }
+.notice span { overflow: hidden; text-overflow: ellipsis; color: #6b3d00; }
+.av { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--hover); font-size: 12px; font-weight: 700; color: var(--ink-2); flex: none; overflow: hidden; }
+.av img { width: 100%; height: 100%; object-fit: cover; }
+.av.lg { width: 40px; height: 40px; } .av.md { width: 34px; height: 34px; } .av.xs { width: 22px; height: 22px; font-size: 11px; }
+.body { flex: 1; overflow: hidden; padding: 28px 40px; }
+.body.flush { padding: 0; display: flex; flex-direction: column; }
+.wrap { max-width: 1120px; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--line-2); background: #fff; color: var(--ink); white-space: nowrap; font-size: 14px; font-weight: 500; }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+.btn.link { border-color: transparent; background: transparent; color: var(--brand-ink); padding: 0 6px; }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 13px; }
+.btn.lg { height: 40px; padding: 0 18px; font-size: 15px; }
+.btn svg { width: 16px; height: 16px; }
+.btn.dis { background: #c9d7f2; border-color: #c9d7f2; }
+.search { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 6px; background: #fff; color: var(--ink-3); font-size: 13px; }
+.search svg { width: 15px; height: 15px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { height: 28px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--line-2); background: #fff; color: var(--ink-2); font-size: 13px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.chip.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-ink); font-weight: 600; }
+.chip i { font-style: normal; opacity: .7; }
+.chip svg { width: 14px; height: 14px; }
+.tag { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 4px; font-size: 12px; font-weight: 500; background: var(--surface-2); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
+.tag svg { width: 12px; height: 12px; }
+.tag.c1 { background: var(--c1s); color: var(--c1); box-shadow: none; } .tag.c2 { background: var(--c2s); color: var(--c2); box-shadow: none; }
+.tag.c3 { background: var(--c3s); color: var(--c3); box-shadow: none; } .tag.c4 { background: var(--c4s); color: var(--c4); box-shadow: none; }
+.tag.bad { background: var(--bad-wash); color: var(--bad); box-shadow: none; } .tag.warn { background: var(--warn-wash); color: var(--warn); box-shadow: none; }
+.tag.ok { background: var(--ok-wash); color: var(--ok); box-shadow: none; } .tag.brand { background: var(--brand-soft); color: var(--brand-ink); box-shadow: none; }
+.sw { position: relative; width: 32px; height: 18px; border-radius: 9px; background: var(--line-2); flex: none; display: inline-block; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.sw.on { background: var(--brand); } .sw.on::after { left: 16px; }
+.board { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.bhead { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+.bhead h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.bhead .n { color: var(--ink-3); font-size: 13px; }
+.bhead .end { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.muted { color: var(--ink-3); }
+.small { font-size: 13px; }
+.cap-s { font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.help { display: inline-flex; color: var(--ink-4); vertical-align: -3px; }
+.help svg { width: 14px; height: 14px; }
+.track { height: 6px; border-radius: 999px; background: var(--hover); overflow: hidden; }
+.track i { display: block; height: 100%; border-radius: 999px; background: var(--brand); }
+.track.empty { background: repeating-linear-gradient(90deg, #e3e8ef 0 6px, transparent 6px 10px); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-4); display: inline-block; flex: none; }
+.scrim { position: absolute; inset: 0; background: rgba(14,20,32,.36); }
+.stars { display: inline-flex; gap: 1px; color: #e3a008; }
+.stars svg { width: 14px; height: 14px; fill: currentColor; stroke: none; }
+.stars svg.off { fill: #dfe3ea; }
+
+/* ===== 仪表盘卡片（同教师端 D-31） ===== */
+.greet { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+.greet h2 { margin: 0; font-size: 26px; font-weight: 700; }
+.greet span { color: var(--ink-2); font-size: 13px; }
+.kc-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.kc { padding: 18px 20px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px rgba(16,24,40,.04); display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; min-height: 118px; }
+.kc .lb { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--ink-2); }
+.kc .lb svg { width: 13px; height: 13px; color: var(--ink-4); }
+.kc .v b { font-size: 30px; font-weight: 700; letter-spacing: -.02em; line-height: 36px; }
+.kc .v small { font-size: 13px; color: var(--ink-3); margin-left: 3px; }
+.kc .v b.dash { color: #c3cad5; }
+.kc .sub { margin-top: 4px; font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.pill { display: inline-flex; align-items: center; gap: 2px; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.pill.up { background: var(--ok-wash); color: var(--ok); } .pill.down { background: var(--bad-wash); color: var(--bad); }
+.pill svg { width: 12px; height: 12px; }
+.s svg.ring { width: 64px; height: 64px; }
+.s svg.gauge { width: 104px; height: 60px; }
+.s svg.rank { width: 92px; height: 52px; }
+.bar2 { grid-column: 1 / -1; margin-top: 8px; height: 8px; border-radius: 999px; background: var(--hover); overflow: hidden; display: flex; }
+.bar2 i { display: block; height: 100%; background: var(--brand); }
+.bar2 i.ok { background: var(--ok); }
+.bar2.empty { background: repeating-linear-gradient(90deg, #e3e8ef 0 6px, transparent 6px 10px); }
+
+/* ===== 任务大厅 ===== */
+.focus { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; margin-top: 16px; }
+.now { padding: 22px 24px; background: #fff; border: 1px solid var(--line); border-radius: 12px; border-left: 4px solid var(--c3); display: grid; gap: 14px; }
+.now .k { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-3); }
+.now h3 { margin: 0; font-size: 20px; font-weight: 700; }
+.now .facts { display: flex; gap: 24px; font-size: 13px; color: var(--ink-2); }
+.now .facts span { display: inline-flex; align-items: center; gap: 6px; }
+.now .facts svg { width: 15px; height: 15px; color: var(--ink-3); }
+.now .facts .w { color: var(--warn); font-weight: 600; } .now .facts .w svg { color: var(--warn); }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.step { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+.step .ck { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; background: var(--surface-2); color: var(--ink-3); font-size: 12px; font-weight: 700; box-shadow: inset 0 0 0 1px var(--line-2); }
+.step.done .ck { background: var(--ok); color: #fff; box-shadow: none; } .step.done .ck svg { width: 13px; height: 13px; stroke-width: 3; }
+.step.cur { border-color: var(--brand); background: var(--brand-soft); }
+.step.cur .ck { background: var(--brand); color: #fff; box-shadow: none; }
+.step b { display: block; font-weight: 600; font-size: 13px; line-height: 18px; }
+.step small { color: var(--ink-3); font-size: 12px; }
+.now .acts { display: flex; align-items: center; gap: 10px; }
+.now .acts .note { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.prac { padding: 20px; background: #fff; border: 1px solid var(--line); border-radius: 12px; display: grid; gap: 12px; align-content: start; }
+.prac h4 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.prac p { margin: 0; font-size: 13px; color: var(--ink-2); }
+.prac .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.prac .opt { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.prac .opt.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.prac .opt .sq { width: 8px; height: 8px; border-radius: 2px; }
+.tl { }
+.tr { display: grid; grid-template-columns: 4px minmax(0, 1fr) 200px 150px 120px; gap: 18px; align-items: center; padding: 14px 20px 14px 0; border-top: 1px solid var(--line); }
+.tr:first-of-type { border-top: 0; }
+.tr .bar { align-self: stretch; border-radius: 0 3px 3px 0; }
+.tr b { font-size: 15px; font-weight: 600; }
+.tr .meta { font-size: 12px; color: var(--ink-3); margin-top: 2px; display: flex; gap: 10px; align-items: center; }
+.tr .meta .tag { height: 20px; }
+.tr .prog { display: grid; gap: 6px; font-size: 12px; color: var(--ink-3); }
+.tr .prog b { font-size: 13px; color: var(--ink); }
+.tr .due { font-size: 13px; color: var(--ink-2); }
+.tr .due.w { color: var(--warn); font-weight: 600; }
+.tr .due.r { color: var(--bad); font-weight: 600; }
+.tr .act { text-align: right; }
+.sb { display: flex; align-items: center; gap: 12px; }
+.sb .sc { width: 52px; height: 44px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; line-height: 20px; flex: none; }
+.sb .sc small { font-size: 10px; font-weight: 500; }
+.sc.hi { background: var(--ok-wash); color: var(--ok); } .sc.lo { background: var(--bad-wash); color: var(--bad); } .sc.mid { background: var(--surface-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.grp { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: var(--surface-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.base { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 20px; align-items: center; padding: 22px 24px; background: #fff; border: 1px solid #c9d7f2; border-radius: 12px; margin-bottom: 16px; }
+.base .ic { width: 56px; height: 56px; border-radius: 14px; background: var(--brand-soft); color: var(--brand); display: flex; align-items: center; justify-content: center; }
+.base .ic svg { width: 26px; height: 26px; }
+.base h3 { margin: 0 0 4px; font-size: 18px; }
+.base p { margin: 0; font-size: 13px; color: var(--ink-2); }
+.base .facts { display: flex; gap: 16px; margin-top: 8px; font-size: 12px; color: var(--ink-3); }
+.empty-line { padding: 36px 20px; display: flex; align-items: center; gap: 16px; }
+.empty-line .ic { width: 44px; height: 44px; border-radius: 12px; background: var(--surface-2); color: var(--ink-4); display: flex; align-items: center; justify-content: center; }
+
+/* ===== 工作台 ===== */
+.shift { display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 20px; background: #fff; border-bottom: 1px solid var(--line); flex: none; font-size: 13px; }
+.shift .nm { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
+.shift .sep { width: 1px; height: 20px; background: var(--line); }
+.shift .clock { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 6px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); font-weight: 700; font-size: 15px; }
+.shift .clock svg { width: 15px; height: 15px; color: var(--ink-3); }
+.shift .clock.warn { background: var(--warn-wash); color: var(--warn); box-shadow: none; } .shift .clock.warn svg { color: var(--warn); }
+.shift .clock.bad { background: var(--bad-wash); color: var(--bad); box-shadow: none; } .shift .clock.bad svg { color: var(--bad); }
+.shift .clock small { font-size: 12px; font-weight: 500; color: var(--ink-3); }
+.shift .clock.bad small { color: var(--bad); }
+.shift .cnt { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.shift .cnt .pips { display: inline-flex; gap: 3px; }
+.shift .cnt .pips i { width: 14px; height: 6px; border-radius: 3px; background: var(--line-2); }
+.shift .cnt .pips i.d { background: var(--ok); } .shift .cnt .pips i.c { background: var(--brand); }
+.shift .mode { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.shift .mode svg { width: 15px; height: 15px; color: var(--ink-3); }
+.shift .stats { margin-left: auto; display: flex; align-items: center; gap: 18px; color: var(--ink-3); font-size: 12px; }
+.shift .stats b { color: var(--ink); font-size: 14px; margin-left: 4px; font-weight: 700; }
+.shift .stats b.r { color: var(--bad); }
+.shift .stats svg { width: 15px; height: 15px; }
+.wb { flex: 1; display: grid; grid-template-columns: 296px minmax(0, 1fr) 336px; grid-template-rows: minmax(0, 1fr); min-height: 0; }
+.ql { background: #fff; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.ql .top { padding: 12px 12px 0; display: grid; gap: 10px; }
+.seg { display: flex; padding: 3px; border-radius: 8px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.seg span { flex: 1; text-align: center; height: 28px; line-height: 28px; border-radius: 6px; font-size: 13px; color: var(--ink-2); }
+.seg span.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.08); }
+.seg span i { font-style: normal; margin-left: 4px; color: var(--ink-3); font-weight: 500; }
+.qg { padding: 14px 16px 6px; font-size: 12px; color: var(--ink-3); font-weight: 600; display: flex; gap: 6px; align-items: center; }
+.qg .r { color: var(--bad); }
+.qi { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; padding: 10px 14px; margin: 0 6px; border-radius: 8px; position: relative; }
+.qi.on { background: var(--brand-soft); }
+.qi.on::before { content: ""; position: absolute; left: -6px; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--brand); }
+.qi .av { width: 40px; height: 40px; }
+.qi .l1 { display: flex; align-items: center; gap: 6px; }
+.qi .l1 b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qi .l1 .w { margin-left: auto; display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 700; color: var(--bad); white-space: nowrap; }
+.qi .l1 .w.o { color: var(--warn); } .qi .l1 .w.g { color: var(--ink-3); font-weight: 500; }
+.qi .l1 .w svg { width: 12px; height: 12px; }
+.qi .l2 { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qi .l3 { display: flex; gap: 4px; margin-top: 4px; }
+.qi .l3 .tag { height: 18px; font-size: 11px; padding: 0 6px; }
+.qi.typing .l2 { color: var(--brand-ink); }
+.ql .queue { margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 8px; }
+.ql .queue svg { width: 15px; height: 15px; }
+.ql .queue .avs { display: flex; } .ql .queue .avs .av { width: 22px; height: 22px; margin-left: -6px; box-shadow: 0 0 0 2px #fff; }
+.chat { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--canvas); position: relative; }
+.ch { display: flex; align-items: center; gap: 12px; height: 60px; padding: 0 20px; background: #fff; border-bottom: 1px solid var(--line); flex: none; }
+.ch b { font-size: 15px; }
+.ch .sub { font-size: 12px; color: var(--ink-3); }
+.ch .end { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.msgs { flex: 1; min-height: 0; overflow: hidden; justify-content: flex-end; padding: 18px 28px; display: flex; flex-direction: column; gap: 14px; }
+.sys { align-self: center; font-size: 12px; color: var(--ink-3); background: rgba(255,255,255,.7); padding: 2px 10px; border-radius: 10px; }
+.m { display: flex; gap: 10px; max-width: 76%; }
+.m .av { width: 30px; height: 30px; margin-top: 2px; }
+.m .bub { padding: 10px 14px; border-radius: 8px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); font-size: 14px; line-height: 22px; }
+.m .tr2 { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--ink-2); line-height: 18px; }
+.m .mt { display: flex; gap: 12px; align-items: center; margin-top: 4px; font-size: 11px; color: var(--ink-3); }
+.m .mt span { display: inline-flex; align-items: center; gap: 3px; }
+.m .mt svg { width: 12px; height: 12px; }
+.m .mt .playing { color: var(--brand-ink); font-weight: 600; }
+.m.me { align-self: flex-end; flex-direction: row-reverse; }
+.m.me .bub { background: var(--brand); color: #fff; box-shadow: none; }
+.m.me .mt { justify-content: flex-end; }
+.voice { display: flex; align-items: center; gap: 10px; }
+.voice .wave { display: flex; align-items: center; gap: 2px; }
+.voice .wave i { width: 3px; border-radius: 2px; background: var(--ink-3); }
+.ocard { display: grid; grid-template-columns: 52px 1fr; gap: 10px; padding: 10px; border-radius: 8px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); width: 300px; font-size: 12px; color: var(--ink-3); }
+.ocard img { width: 52px; height: 52px; border-radius: 6px; object-fit: cover; }
+.ocard b { display: block; font-size: 13px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ocard .p { color: var(--ink); font-weight: 700; font-size: 14px; }
+.composer { margin: 0 20px 16px; background: #fff; border: 1px solid var(--line-2); border-radius: 10px; flex: none; }
+.composer .tools { display: flex; align-items: center; gap: 14px; padding: 9px 14px 0; color: var(--ink-3); }
+.composer .tools svg { width: 18px; height: 18px; }
+.composer .tools .ph { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--ink-2); }
+.composer .tools .tg { margin-left: auto; display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); }
+.composer .tools .tg span { display: inline-flex; align-items: center; gap: 6px; }
+.composer .ta { padding: 8px 14px; min-height: 58px; font-size: 14px; color: var(--ink); }
+.composer .ta .ph2 { color: var(--ink-4); }
+.composer .bt { display: flex; align-items: center; gap: 10px; padding: 0 12px 10px; }
+.composer .bt .cnt { margin-left: auto; font-size: 12px; color: var(--ink-4); }
+.composer .ptt { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 15px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line-2); font-size: 13px; color: var(--ink-2); }
+.composer .ptt svg { width: 15px; height: 15px; }
+.rp { background: #fff; border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.cust { padding: 16px 18px 14px; border-bottom: 1px solid var(--line); display: grid; gap: 12px; }
+.cust .who { display: flex; gap: 12px; align-items: center; }
+.cust .who b { font-size: 15px; display: block; }
+.cust .who small { font-size: 12px; color: var(--ink-3); }
+.lbl { display: grid; gap: 8px; }
+.lbl .t { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.lbl .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.lbl .o { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px dashed var(--line-2); color: var(--ink-3); font-size: 12px; }
+.lbl .o svg { width: 12px; height: 12px; }
+.lbl .o.on { border: 1px solid transparent; font-weight: 600; }
+.lbl .o.on.fan { background: #fdeef3; color: #b4235c; } .lbl .o.on.big { background: var(--c3s); color: var(--c3); } .lbl .o.on.norm { background: var(--c1s); color: var(--c1); } .lbl .o.on.sleep { background: #eef0f4; color: #4b5565; }
+.systags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.systags .src { font-size: 11px; color: var(--ink-4); display: inline-flex; align-items: center; gap: 3px; }
+.systags .src svg { width: 12px; height: 12px; }
+.cnote { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 4px; font-size: 13px; }
+.cnote .t { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.cnote .t svg { width: 13px; height: 13px; margin-left: auto; }
+.cnote p { margin: 0; line-height: 20px; }
+.cnote small { font-size: 11px; color: var(--ink-4); }
+.reason { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line-2); font-size: 13px; color: var(--ink-3); background: #fff; white-space: nowrap; }
+.reason b { color: var(--ink); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+.reason .ai { color: var(--info); width: 14px; height: 14px; }
+.reason svg { width: 14px; height: 14px; }
+.reason.ok { border-color: transparent; background: var(--surface-2); }
+.fup { display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 10px; border-radius: 6px; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.fup svg { width: 15px; height: 15px; }
+.fup.on { color: var(--warn); background: var(--warn-wash); font-weight: 600; }
+.fup.on svg { fill: currentColor; }
+.kv { display: grid; grid-template-columns: 72px 1fr; gap: 6px 10px; font-size: 13px; }
+.kv dt { color: var(--ink-3); } .kv dd { margin: 0; }
+.rtabs { display: flex; gap: 20px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+.rtabs span { padding: 12px 0 10px; font-size: 13px; color: var(--ink-2); border-bottom: 2px solid transparent; }
+.rtabs span.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--brand); }
+.rtabs span i { font-style: normal; color: var(--ink-3); margin-left: 3px; }
+.rbody { padding: 14px 16px; display: grid; gap: 12px; align-content: start; overflow: hidden; }
+.oc { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 10px; font-size: 12px; }
+.oc .h { display: flex; justify-content: space-between; color: var(--ink-3); }
+.oc .h b { color: var(--ink); font-size: 13px; }
+.oc .it { display: grid; grid-template-columns: 48px 1fr auto; gap: 10px; align-items: center; }
+.oc .it img { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; }
+.oc .it b { font-size: 13px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.oc .lg { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); color: var(--ink-2); }
+.oc .lg svg { width: 14px; height: 14px; margin-top: 2px; color: var(--ink-3); }
+.oc .ft { display: flex; gap: 6px; }
+.pc2 { display: grid; grid-template-columns: 64px 1fr; gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+.pc2.on { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.pc2 img { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; }
+.pc2 b { font-size: 13px; display: block; line-height: 18px; }
+.pc2 .p { font-weight: 700; font-size: 15px; }
+.pc2 .m2 { font-size: 12px; color: var(--ink-3); }
+.pc2 .ac { display: flex; gap: 4px; margin-top: 6px; }
+.toast { position: absolute; top: 72px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 8px; background: #1f2937; color: #fff; font-size: 13px; box-shadow: 0 8px 24px rgba(16,24,40,.24); z-index: 5; white-space: nowrap; }
+.toast svg { width: 16px; height: 16px; color: #fbbf24; }
+.endcard { align-self: center; width: 460px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; gap: 12px; }
+.endcard .h { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.endcard .h svg { color: var(--ok); }
+.endcard .fx { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.endcard .fx div { padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-size: 12px; color: var(--ink-3); }
+.endcard .fx b { display: block; font-size: 15px; color: var(--ink); }
+.endcard .ac { display: flex; gap: 8px; align-items: center; }
+.endcard .ac small { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.closed-bar { margin: 0 20px 16px; padding: 14px 16px; border-radius: 10px; background: #fff; border: 1px solid var(--line); display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--ink-2); }
+
+/* 商品详情抽屉 */
+.pd { position: absolute; top: 0; right: 0; bottom: 0; width: 720px; background: #fff; box-shadow: 0 24px 64px rgba(16,24,40,.25); display: flex; flex-direction: column; z-index: 4; }
+.pd .dh { display: flex; align-items: center; gap: 10px; height: 60px; padding: 0 24px; border-bottom: 1px solid var(--line); flex: none; }
+.pd .dh h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.pd .dh .x { margin-left: auto; color: var(--ink-3); }
+.pd .db { flex: 1; overflow: hidden; padding: 20px 24px; display: grid; gap: 22px; align-content: start; }
+.pd .hero { display: grid; grid-template-columns: 220px 1fr; gap: 20px; }
+.pd .gal img.main { width: 220px; height: 220px; border-radius: 10px; object-fit: cover; border: 1px solid var(--line); }
+.pd .thumbs { display: flex; gap: 6px; margin-top: 6px; }
+.pd .thumbs img { width: 50px; height: 50px; border-radius: 6px; object-fit: cover; border: 1px solid var(--line); }
+.pd .thumbs img.on { border: 2px solid var(--brand); }
+.pd h4 { margin: 0; font-size: 17px; line-height: 24px; }
+.pd .price { font-size: 26px; font-weight: 700; margin: 6px 0 2px; }
+.pd .price small { font-size: 13px; font-weight: 400; color: var(--ink-3); margin-left: 8px; }
+.pd .skus { display: grid; gap: 8px; margin-top: 10px; font-size: 13px; }
+.pd .skus .r { display: flex; gap: 8px; align-items: center; }
+.pd .skus .r > span:first-child { width: 40px; color: var(--ink-3); }
+.pd .skus .o { height: 26px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line-2); display: inline-flex; align-items: center; font-size: 12px; }
+.pd .skus .o.on { border-color: var(--brand); color: var(--brand-ink); background: var(--brand-soft); font-weight: 600; }
+.pd .sec h5 { margin: 0 0 10px; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.pd .sec h5 .n { font-weight: 400; font-size: 12px; color: var(--ink-3); }
+.pd .bul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); display: grid; gap: 4px; }
+.pd .spec { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; font-size: 13px; }
+.pd .spec div { display: grid; grid-template-columns: 76px 1fr; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.pd .spec div:nth-child(odd) { border-right: 1px solid var(--line); }
+.pd .spec dt { color: var(--ink-3); } .pd .spec dd { margin: 0; }
+.pd table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pd table th { text-align: left; font-weight: 500; font-size: 12px; color: var(--ink-3); background: var(--surface-2); padding: 7px 12px; }
+.pd table td { padding: 8px 12px; border-top: 1px solid var(--line); }
+.pd .faq { display: grid; gap: 8px; }
+.pd .faq div { padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: 13px; position: relative; }
+.pd .faq b { display: block; font-weight: 600; margin-bottom: 2px; }
+.pd .faq span { color: var(--ink-2); }
+.pd .use { position: absolute; right: 10px; top: 8px; display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--brand-ink); }
+.pd .use svg { width: 13px; height: 13px; }
+.pd .after { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pd .after div { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; color: var(--ink-2); }
+.pd .after b { display: block; color: var(--ink); }
+.pd .df { display: flex; gap: 8px; align-items: center; padding: 12px 24px; border-top: 1px solid var(--line); }
+.pd .df .l { font-size: 12px; color: var(--ink-3); }
+.pd .df .r { margin-left: auto; display: flex; gap: 8px; }
+
+/* 店铺资料（教师端） */
+.store { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 18px; align-items: start; padding: 20px 22px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+.store .logo { width: 64px; height: 64px; border-radius: 14px; background: #1f2937; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 800; }
+.store h3 { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 10px; }
+.store .meta { margin-top: 4px; font-size: 13px; color: var(--ink-2); display: flex; gap: 14px; flex-wrap: wrap; }
+.store .meta span { display: inline-flex; align-items: center; gap: 5px; }
+.store .meta svg { width: 14px; height: 14px; color: var(--ink-3); }
+.store .rules { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); }
+.store .rules span { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 6px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.store .rules b { font-weight: 600; color: var(--ink); }
+.store .acts { display: flex; gap: 8px; }
+.ggrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.gc { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.gc img { width: 100%; height: 150px; object-fit: cover; display: block; }
+.gc .bd { padding: 12px 14px 14px; display: grid; gap: 4px; }
+.gc b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc .spec { font-size: 12px; color: var(--ink-3); }
+.gc .row { display: flex; align-items: baseline; justify-content: space-between; margin-top: 4px; }
+.gc .price { font-size: 18px; font-weight: 700; }
+.sdr { position: absolute; top: 0; right: 0; bottom: 0; width: 960px; background: #fff; box-shadow: 0 24px 64px rgba(16,24,40,.25); display: flex; flex-direction: column; }
+.sdr .dh { display: flex; align-items: center; height: 60px; padding: 0 28px; border-bottom: 1px solid var(--line); flex: none; }
+.sdr .dh h3 { margin: 0; font-size: 18px; font-weight: 600; }
+.sdr .dh svg { margin-left: auto; color: var(--ink-3); }
+.sdr .db { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 360px; }
+.sdr .form { padding: 22px 28px; display: grid; gap: 22px; align-content: start; overflow: hidden; }
+.sdr .sgrp h4 { margin: 0 0 12px; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.sdr .sgrp h4 .no { width: 20px; height: 20px; border-radius: 50%; background: var(--brand-soft); color: var(--brand-ink); font-size: 12px; display: inline-flex; align-items: center; justify-content: center; }
+.sdr .sgrp + .grp { padding-top: 20px; border-top: 1px solid var(--line); }
+.fld { display: grid; gap: 6px; }
+.fld label { font-size: 13px; color: var(--ink-2); font-weight: 500; }
+.fld .in { height: 34px; border: 1px solid var(--line-2); border-radius: 6px; padding: 0 10px; display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.fld .in.ta { height: auto; min-height: 58px; padding: 8px 10px; align-items: flex-start; line-height: 20px; }
+.fld .in .unit { margin-left: auto; color: var(--ink-3); font-size: 13px; }
+.fld .hint { font-size: 12px; color: var(--ink-3); }
+.fld .hint b { color: var(--ink); }
+.f2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.lg-pick { display: flex; gap: 10px; align-items: center; }
+.lg-pick .logo { width: 44px; height: 44px; border-radius: 10px; background: #1f2937; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px; }
+.segc { display: flex; padding: 3px; border-radius: 8px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); width: max-content; }
+.segc span { padding: 0 12px; height: 28px; line-height: 28px; border-radius: 6px; font-size: 13px; color: var(--ink-2); }
+.segc span.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.08); }
+.sdr .pv { background: var(--surface-2); border-left: 1px solid var(--line); padding: 22px; display: grid; gap: 14px; align-content: start; }
+.pvc { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; font-size: 12px; color: var(--ink-3); }
+.pvc .k { font-size: 11px; font-weight: 600; color: var(--ink-3); }
+.pvc .side-mini { display: grid; gap: 4px; }
+.pvc .side-mini div { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px; border-radius: 5px; font-size: 12px; color: var(--ink-2); }
+.pvc .side-mini div.on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.pvc .side-mini svg { width: 13px; height: 13px; }
+.pvc .mailh { font-size: 12px; color: var(--ink-2); line-height: 18px; }
+.pvc .mailh b { color: var(--ink); }
+.pvc .sig { white-space: pre-line; font-size: 12px; color: var(--ink); line-height: 18px; border-left: 2px solid var(--line-2); padding-left: 8px; }
+.pvc .tiers { display: grid; gap: 6px; }
+.pvc .tiers div { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.sdr .df { display: flex; align-items: center; gap: 8px; padding: 12px 28px; border-top: 1px solid var(--line); }
+.sdr .df .l { font-size: 12px; color: var(--ink-3); }
+.sdr .df .r { margin-left: auto; display: flex; gap: 8px; }
+
+/* 评价 */
+.rv { display: grid; grid-template-columns: 420px minmax(0, 1fr); grid-template-rows: minmax(0,1fr); flex: 1; min-height: 0; background: #fff; }
+.rv .list { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.rv .lt { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.ri { display: grid; grid-template-columns: 36px minmax(0, 1fr) 44px; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); position: relative; }
+.ri.on { background: var(--brand-soft); }
+.ri.on::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--brand); }
+.ri .av { width: 36px; height: 36px; }
+.ri .l1 { display: flex; align-items: center; gap: 8px; }
+.ri .l1 b { font-size: 14px; }
+.ri .l1 .d { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.ri p { margin: 4px 0 6px; font-size: 13px; color: var(--ink-2); line-height: 20px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ri .l3 { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ink-3); }
+.ri img.pi { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; }
+.rd { display: flex; flex-direction: column; min-height: 0; }
+.rd .top { padding: 20px 28px; border-bottom: 1px solid var(--line); display: grid; gap: 12px; }
+.rd .top .who { display: flex; align-items: center; gap: 12px; }
+.rd .top .who b { font-size: 16px; }
+.rd .top .who .r { margin-left: auto; display: flex; gap: 8px; }
+.rd .quote { font-size: 15px; line-height: 24px; }
+.rd .quote .zh { margin-top: 6px; font-size: 13px; color: var(--ink-2); line-height: 20px; }
+.rd .ord { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: 13px; color: var(--ink-2); }
+.rd .ord img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; }
+.rd .ord .r { margin-left: auto; }
+.rd .rep { flex: 1; padding: 18px 28px; display: grid; gap: 12px; align-content: start; overflow: hidden; }
+.rd .rep h4 { margin: 0; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.rd .rep h4 .r { margin-left: auto; }
+.vers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.ver { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 6px; align-content: start; font-size: 13px; }
+.ver.on { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.ver .k { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.ver .k .rb { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line-2); }
+.ver.on .k .rb { box-shadow: inset 0 0 0 4px var(--brand); }
+.ver .en { line-height: 20px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.ver .zh { font-size: 12px; color: var(--ink-3); line-height: 18px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.editor { border: 1px solid var(--line-2); border-radius: 10px; }
+.editor .ta { padding: 12px 14px; font-size: 14px; line-height: 22px; min-height: 92px; }
+.editor .bt { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+.editor .bt .r { margin-left: auto; display: flex; gap: 8px; }
+.okline { display: inline-flex; align-items: center; gap: 4px; color: var(--ok); }
+.okline svg { width: 14px; height: 14px; }
+
+/* 评价第二版：评价流 */
+.r2-page { flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: 280px minmax(0, 860px); gap: 40px; padding: 24px 32px; background: #fff; align-content: start; }
+.r2-sum h3 { margin: 0 0 10px; font-size: 18px; }
+.r2-avg { display: flex; align-items: center; gap: 8px; }
+.r2-avg .stars svg { width: 18px; height: 18px; }
+.r2-avg b { font-size: 18px; } .r2-avg span { color: var(--ink-3); font-size: 13px; }
+.r2-n { margin: 4px 0 16px; font-size: 13px; color: var(--ink-3); }
+.r2-hist { display: grid; gap: 10px; }
+.r2-hist div { display: grid; grid-template-columns: 34px 1fr 36px; gap: 10px; align-items: center; font-size: 13px; color: var(--brand-ink); }
+.r2-hist i { height: 18px; border-radius: 4px; background: #f0f2f2; box-shadow: inset 0 0 0 1px #dfe3ea; overflow: hidden; }
+.r2-hist em { display: block; height: 100%; background: #e3a008; }
+.r2-hist span:last-child { text-align: right; }
+.r2-side-f { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.r2-list { min-width: 0; }
+.r2-tool { display: flex; align-items: center; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.r2 { padding: 18px 0; border-bottom: 1px solid var(--line); display: grid; gap: 6px; }
+.r2-who { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.r2-who .av { width: 32px; height: 32px; }
+.r2-line { display: flex; align-items: center; gap: 10px; }
+.r2-prod { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
+.r2-prod img { width: 22px; height: 22px; border-radius: 4px; object-fit: cover; }
+.r2-vp { color: #b4570b; font-weight: 600; }
+.r2-text { margin: 2px 0 0; font-size: 14px; line-height: 22px; }
+.r2-zh { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2); padding-left: 10px; border-left: 2px solid var(--line-2); }
+.r2-reply { margin: 6px 0 0 24px; padding: 10px 14px; border-radius: 8px; background: var(--surface-2); font-size: 13px; }
+.r2-reply .h { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.r2-reply p { margin: 0; color: var(--ink-2); line-height: 20px; }
+.r2-edit { margin-left: auto; color: var(--brand-ink); font-size: 12px; }
+.smark2 { display: inline-flex; width: 16px; height: 16px; border-radius: 4px; background: #1f2937; color: #fff; font-size: 10px; font-weight: 700; align-items: center; justify-content: center; }
+.r2-acts { display: flex; gap: 18px; margin-top: 4px; font-size: 13px; color: var(--ink-2); }
+.r2-a { display: inline-flex; align-items: center; gap: 4px; }
+.r2-a svg { width: 14px; height: 14px; }
+.r2-a.strong { color: var(--brand-ink); font-weight: 600; }
+.r2-compose { margin: 8px 0 0 24px; padding: 14px; border: 1px solid var(--line-2); border-radius: 10px; display: grid; gap: 12px; }
+.r2-c-h { display: flex; align-items: center; gap: 10px; }
+.r2-compose .ver .en { -webkit-line-clamp: 3; }
+
+/* 邮件 */
+.ml { display: grid; grid-template-columns: 380px minmax(0, 1fr); grid-template-rows: minmax(0,1fr); flex: 1; min-height: 0; background: #fff; }
+.ml .list { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.ml .lt { display: grid; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.ml .lt .r1 { display: flex; gap: 8px; }
+.mi { display: grid; grid-template-columns: 8px 34px minmax(0, 1fr); gap: 8px; padding: 12px 14px 12px 8px; border-bottom: 1px solid var(--line); position: relative; }
+.mi.on { background: var(--brand-soft); }
+.mi .u { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); margin-top: 8px; }
+.mi .u.no { background: transparent; }
+.mi .av { width: 34px; height: 34px; }
+.mi .l1 { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.mi .l1 b { font-weight: 600; }
+.mi .l1 .d { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.mi .sj { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mi.read .sj { font-weight: 400; }
+.mi .pv { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mi .l4 { display: flex; gap: 6px; margin-top: 4px; }
+.mi .l4 .tag { height: 18px; font-size: 11px; padding: 0 6px; }
+.md { display: flex; flex-direction: column; min-height: 0; }
+.md .top { padding: 18px 28px 14px; border-bottom: 1px solid var(--line); }
+.md .top h3 { margin: 0 0 12px; font-size: 18px; }
+.md .from { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.md .from small { color: var(--ink-3); }
+.md .from .r { margin-left: auto; display: flex; gap: 6px; align-items: center; color: var(--ink-3); font-size: 12px; }
+.md .bodyx { padding: 18px 28px; font-size: 14px; line-height: 23px; display: grid; gap: 12px; align-content: start; flex: 1; overflow: hidden; }
+.md .bodyx p { margin: 0; }
+.md .zhbox { padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: 13px; color: var(--ink-2); line-height: 20px; }
+.md .zhbox .k { font-size: 12px; color: var(--ink-3); margin-bottom: 2px; display: flex; align-items: center; gap: 4px; }
+.md .zhbox .k svg { width: 13px; height: 13px; }
+.md .reply { margin: 0 28px 20px; border: 1px solid var(--line-2); border-radius: 10px; }
+.md .reply .h { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink-2); }
+.md .reply .h .r { margin-left: auto; display: flex; gap: 6px; }
+.md .reply .ta { padding: 12px 14px; min-height: 84px; font-size: 14px; color: var(--ink-4); }
+.md .reply .bt { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); }
+.md .reply .bt .r { margin-left: auto; display: flex; gap: 8px; }
+
+/* 订单 */
+.olist { flex: 1; min-height: 0; background: #fff; overflow: hidden; }
+.olist .bhead { padding: 0 24px; min-height: 58px; }
+.olist .oh, .olist .og .g1, .olist .og .g2 { padding-left: 24px; padding-right: 24px; }
+.ot { }
+.oh { display: grid; grid-template-columns: minmax(0, 2.2fr) 90px 60px 120px 130px 120px; gap: 16px; padding: 10px 20px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.og { border-bottom: 1px solid var(--line); }
+.og .g1 { display: flex; align-items: center; gap: 12px; padding: 10px 20px 0; font-size: 12px; color: var(--ink-3); }
+.og .g1 .buyer { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-size: 13px; font-weight: 600; }
+.og .g1 .buyer small { color: var(--ink-3); font-weight: 400; }
+.og .g1 .no { color: var(--ink-2); }
+.og .g1 svg { width: 13px; height: 13px; color: var(--ink-4); }
+.og .g2 { display: grid; grid-template-columns: minmax(0, 2.2fr) 90px 60px 120px 130px 120px; gap: 16px; align-items: center; padding: 10px 20px 14px; font-size: 13px; }
+.og .g2 .it { display: grid; grid-template-columns: 52px 1fr; gap: 12px; align-items: center; }
+.og .g2 img { width: 52px; height: 52px; border-radius: 6px; object-fit: cover; border: 1px solid var(--line); }
+.og .g2 .it b { font-weight: 500; display: block; }
+.og .g2 .it small { color: var(--ink-3); font-size: 12px; }
+.og .g2 .amt b { font-size: 14px; }
+.og .g2 .amt small { display: block; font-size: 11px; color: var(--ink-3); }
+.og .g2 .st { display: grid; gap: 2px; }
+.og .g2 .st small { font-size: 12px; color: var(--ink-3); }
+.og .g2 .ac { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
+
+/* 我的记录 */
+.two { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+.ab { padding: 6px 20px 14px; }
+.abr { display: grid; grid-template-columns: 92px minmax(0, 1fr) 36px 96px; gap: 14px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.abr:last-child { border-bottom: 0; }
+.abr .nm { font-weight: 600; }
+.abr .bt { position: relative; height: 8px; border-radius: 999px; background: var(--hover); }
+.abr .bt i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--brand); }
+.abr .bt i.lo { background: var(--bad); }
+.abr .bt em { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); border-radius: 1px; }
+.abr .bt.empty { background: repeating-linear-gradient(90deg, #e3e8ef 0 6px, transparent 6px 10px); }
+.abr .val { font-weight: 700; font-size: 15px; text-align: right; }
+.abr .val.lo { color: var(--bad); }
+.abr .pill { white-space: nowrap; justify-self: start; }
+.abr .tip { grid-column: 2 / -1; margin-top: -4px; font-size: 12px; color: var(--ink-3); }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-3); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 12px; height: 6px; border-radius: 3px; background: var(--brand); }
+.legend em { width: 2px; height: 12px; background: var(--ink); }
+.trend { padding: 12px 16px 16px; }
+.rr { display: grid; grid-template-columns: 52px minmax(0, 1.2fr) 112px minmax(0, 1.6fr) 72px; gap: 18px; align-items: center; padding: 14px 20px; border-top: 1px solid var(--line); }
+.rr .sc { width: 52px; height: 48px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 19px; line-height: 20px; }
+.rr .sc small { font-size: 10px; font-weight: 500; }
+.rr b { font-size: 14px; font-weight: 600; }
+.rr .m2 { font-size: 12px; color: var(--ink-3); margin-top: 2px; display: flex; gap: 8px; align-items: center; }
+.rr .mini { display: flex; align-items: flex-end; gap: 4px; height: 34px; }
+.rr .mini i { width: 12px; border-radius: 2px 2px 0 0; background: #bcd0f3; }
+.rr .mini i.lo { background: #e9a39d; }
+.rr .cm { display: grid; gap: 4px; font-size: 12px; line-height: 18px; }
+.rr .cm div { display: flex; gap: 6px; align-items: flex-start; }
+.rr .cm .who { flex: none; font-weight: 600; padding: 0 5px; border-radius: 4px; font-size: 11px; line-height: 18px; }
+.rr .cm .who.ai { background: var(--surface-2); color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--line); }
+.rr .cm .who.t { background: var(--c4s); color: var(--c4); }
+.rr .cm span.x { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rr .cm .tc span.x { color: var(--ink); }
+.rr.practice .sc { background: var(--surface-2); color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--line); font-size: 13px; }
+.hint-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; box-shadow: 0 4px 14px rgba(16,24,40,.08); font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.hint-card svg { color: var(--ink-3); }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>学生端改版：任务大厅 · 客服工作台 · 订单 · 评价 · 邮件 · 我的记录</h1>
+  <p class="lede">学生端分两层：<b>任务大厅、我的记录</b>是“学习区”，可以直接说任务和成绩，版式和教师端一致（浅灰底 + 白色内容板 + 仪表盘卡片）；<b>工作台、订单、评价、邮件</b>是“店铺后台”，要像一套真实的跨境客服软件，内容区不出现“实训、任务、评分”。这次把两层的分工在侧栏里摆明，再逐页按“学生来这页最想知道什么、要做什么判断、做完去哪”重排，并把参数里学生端还没落地的 C1–C7、D1（限时、交互方式）和商品详情一起画进来。数据是编的（按 45 人班级、4 个任务），只看版式。</p>
+
+  <div class="principle">
+    <div><b>学习区回答“我现在该做什么、做得怎么样”</b>首屏只放一个“现在要做的”任务，进度、截止、限时一眼看到；成绩用和教师端同一套仪表盘卡片，老师评语单独显示。</div>
+    <div><b>店铺后台回答“谁在等我、我手里有什么资料”</b>工作台按“谁等得最久”排会话，顶部一条细栏放本班次剩余时间和接待进度；买家问到商品参数、物流、售后时，资料一点就开。</div>
+    <div><b>两层两种版式，颜色只给要处理的事</b>学习区用浅灰底 + 限宽卡片（同教师端）；店铺后台四页左右顶格、白底铺满、不显示页名（侧栏选中项已经说明在哪），顶栏直接放页签或本场信息，像真实客服软件；老师的公告条只在学习区显示，店铺后台里收进铃铛。红：买家等太久、差评待回复、低于达标线；橙：快截止、快到时间。其他都是灰和墨色。侧栏只给“店铺后台”挂红色角标。</div>
+  </div>
+
+  <h2>问题诊断</h2>
+  <div class="diag">
+    <div><b>1. 外壳：学习区和店铺后台混在一起</b>六个入口平铺，“我的记录”排在邮件后面；店铺后台有人在等、有差评没回，侧栏上看不出来。<br><span class="fix">改：侧栏分两组——上面“任务大厅、我的记录”，下面一组标题“店铺后台”（工作台、订单、评价、邮件）。工作台挂“买家在等”红色角标，评价挂“待回复差评”，邮件挂“未读”灰色角标。</span></div>
+    <div><b>2. 任务大厅：黑色大横幅跳出了整套体系，指标也不是参数要的四项</b>黑底横幅比任务列表还抢眼，自由练习挤在它右边；四个指标是待办 / 已完成 / 平均分 / 满意率，参数要求“已完成任务、平均分、班级排名、累计对话”（C1）。<br><span class="fix">改：顶部四张关键数字卡片（和教师端同款，带小图）；下面左边是“现在要做的”任务卡——每个场景一格，做完打勾，截止、单次限时、交流方式写在标题下；右边是自由练习小卡片。</span><br><span class="api">要补接口：班级排名、累计对话数（学生自己的接待次数 / 对话轮数）</span></div>
+    <div><b>3. 任务大厅：任务列表每行一样重，“47 分”下面标着“达标”</b>表格七列，进度、截止、成绩挤在一起；详情要点行内展开，限时和交流方式藏在里面。<br><span class="fix">改：按“要完成的 / 已完成”分组。要完成的行只突出进度条和截止（3 天内截止标橙、逾期标红）；已完成的行左边一个分数块（低于达标线红、80 以上绿），旁边写“达标线 70”。限时、交流方式提到第二行灰字。</span><br><span class="bug">缺陷：47 分显示“达标”，达标判断要用任务自己的达标线</span></div>
+    <div><b>4. 工作台：不知道还剩多少时间、还要接几位</b>老师设的单次限时、交流方式（文字 / 语音 / 混合）目前只存进了数据库，工作台不读（D1）；顶部 8 个数字占一整行，一半是“—”；右上角“全部任务”下拉意义不明。<br><span class="fix">改：顶部换成一条 52 高的“本班次”细栏：环节 + 名称、倒计时（剩 5 分钟变橙、1 分钟变红）、接待进度格（1/3）、交流方式；店铺数字缩成右侧一行小字，只留今日接待、平均响应、未回复、满意率。到时间自动结束并出提示。交流方式为“语音”时输入区只留“按住说话”。</span><br><span class="api">要补：工作台读取 timeLimitMinutes / interactionMode（接口已返回），截止后拒绝新会话</span></div>
+    <div><b>5. 工作台：会话列表看不出谁等得最久，也看不出买家是哪类客户</b>当前 / 最近两个页签里每条一样重；参数要求按粉丝、大订单客户、普通客户、沉睡客户等标签标注买家（C2），现在只有画像里的客户类型，叫法也和参数对不上。同时接待 3 位（C3）时更需要排序。<br><span class="fix">改：接待中按“等你回复 → 已回复”分组，每条右上角写等待时长（超过 1 分钟红、30 秒橙），买家正在输入时第二行变蓝。客户标签由系统按订单自动生成（见下面“先讲依据”），显示在名字下面和右栏，客服不能改。客服在工作台上做的是行业里通行的三件事：写客户备注、确认咨询原因、标待跟进。</span><br><span class="api">要补：标签计算规则；客户备注表；会话的咨询原因、待跟进字段</span></div>
+    <div><b>6. 工作台：译文要点开，播报只能一条条点，右栏头像出现两次</b>“显示译文”和“播报”挤在气泡下面重叠；参数要求支持语音播报（C6），机房里学生戴耳机练习，逐条点很打断；右栏头部和资料卡各有一个大头像和同一组标签。<br><span class="fix">改：自动翻译打开时译文直接显示在原文下方（虚线分隔）；输入区右上并排“自动翻译”“自动播报”两个开关，打开播报后买家新消息自动朗读，正在读的那条标蓝。右栏只留一行头像 + 名字。</span><br><span class="api">只改前端</span></div>
+    <div><b>7. 工作台：买家问参数、物流、退换，资料不在手边</b>商品页签只给名称、价格、库存；场景配置里每个商品已经有卖点、规格参数、尺码、发货时效、退换政策、常见问题（D-32），只喂给了买家 AI，学生看不到。<br><span class="fix">改：商品卡片点开右侧 720 宽“商品详情”抽屉：主图 + 款式、卖点、规格参数、物流时效表、售后政策、常见问题。每条参数和问答旁边一个“引用”，点了把这句填进输入框。底部“发送商品”“邀请下单”。</span><br><span class="api">接口已有（/v1/store/products 的 details），只改前端</span></div>
+    <div><b>8. 工作台：会话结束后只有一行灰字</b>“本次会话已结束·客户已离开”之后，学生不知道这次怎么样、去哪看结果、下一位什么时候来；页面上也没有主动结束接待的按钮（接口其实有）。<br><span class="fix">改：会话头部加“结束接待”（二次确认）；结束后在对话末尾放一张小结卡：用时、对话轮数、买家情绪变化，按钮“查看复盘”（复盘生成后可点，进入我的记录）和“接待下一位”。小结卡不出现分数，沉浸层不谈评分。</span></div>
+    <div><b>9. 评价：页面排版坏了，统计卡颜色乱用</b>评价正文一个单词一行（布局缺陷）；四张统计卡里“中评 0”是橙色、“好评率 25%”是绿色，颜色和好坏对不上；生成的三版回复没有说明是英文、没有中文对照（C5）。<br><span class="fix">改：左右两栏——左边评价列表，待回复的排前面、标红；右边看评价全文（带中文译文）、关联订单和回复区。“AI 帮写”一次给三版英文回复，并排三张卡片，每张下面一行中文意思，点选后进编辑框再改。统计缩成标题栏里的一行小字。</span><br><span class="bug">缺陷：评价正文被压成一词一行</span></div>
+    <div><b>10. 邮件：文件夹占了一整栏，邮件类场景还没接进来</b>收件箱 / 已发送 / 草稿三项占 190 宽；没选邮件时右边是一段说明文字；老师建的邮件类场景现在仍然走在线会话。<br><span class="fix">改：文件夹并进列表顶部的分段控件（收件箱 / 待回复 / 已发送 / 草稿），“写邮件”放到标题栏。默认打开最新一封未回复的邮件，正文下方直接是回复框（带 AI 辅助和违规词检查，已有）。邮件类场景的买家来信直接进收件箱，和真实邮件一样显示。</span><br><span class="api">要补接口：邮件类场景按邮件下发和结束、评分</span></div>
+    <div><b>11. 订单：基本可用，做减法</b>“售后状态”一列几乎全是“—”；状态标签全是同一种蓝色；买家在最右边离订单号很远。<br><span class="fix">改：去掉空的售后列，有售后时在状态下面加一行；买家头像和名字移到订单头左边；状态只有“待付款超过 24 小时”标橙，其他用中性色；每行只留一个主操作（待付款“去催付”、已发货“查看物流”），其余收进“…”。</span><br><span class="api">只改前端</span></div>
+    <div><b>12. 我的记录：黑色横幅 + 英文眉标，老师评语看不到</b>“PERFORMANCE PROFILE”英文眉标和渐变暗底违反设计规范；雷达图占半屏；接口已经分开返回 AI 评语和老师评语（C7），页面只显示 AI 评语；达标率写死按 80 分算；空状态写着“在工作台点击「结束会话」”，这个按钮不存在。<br><span class="fix">改：和任务大厅同一套四张关键数字卡片；“六项能力”改成横条（蓝条是近期平均，黑竖线是训前测评，低于 60 红色），旁边一张成绩走势；成绩记录每行一个分数块 + 六项小柱 + 两行评语（AI 一行灰、老师一行紫色标出），老师复核过的标“已复核”。</span><br><span class="bug">缺陷：达标线写死 80；空状态文案过时</span></div>
+  </div>
+  <p class="lede" style="margin-top:12px">C8 独立入口：已定保留同一登录页 + 页签。只改提示：账号是教师却在学生页签登录时，提示“这是教师账号”，并给一个“切到教师登录”的按钮，不单独出稿。</p>
+
+  <h2>改前截图</h2>
+  <div class="trio">
+    <figure><img class="before" src="assets/before-tasks.png" alt=""><figcaption>任务大厅：黑色横幅抢眼，表格每行一样重，47 分标“达标”</figcaption></figure>
+    <figure><img class="before" src="assets/before-workbench-chat.png" alt=""><figcaption>工作台：8 个数字占一行，看不到剩余时间，译文要点开，右栏头像重复</figcaption></figure>
+    <figure><img class="before" src="assets/before-reviews.png" alt=""><figcaption>评价：正文一词一行（缺陷），统计卡颜色和好坏对不上</figcaption></figure>
+    <figure><img class="before" src="assets/before-mail.png" alt=""><figcaption>邮件：文件夹占一栏，右边是一段说明</figcaption></figure>
+    <figure><img class="before" src="assets/before-orders.png" alt=""><figcaption>订单：空的售后列、状态全蓝、买家在最右</figcaption></figure>
+    <figure><img class="before" src="assets/before-records.png" alt=""><figcaption>我的记录：英文眉标 + 暗色渐变，雷达占半屏</figcaption></figure>
+  </div>
+
+  <h2>任务大厅 <small>学习区</small></h2>
+  <div class="cap"><b>改后 · 有任务时</b><span>第一行四个关键数字（C1）；第二块“现在要做的”只放一个任务，三个场景一格一格打勾；下面任务按“要完成 / 已完成”分组</span></div>
+  <div class="frame" data-h="1090"><div class="screen s" data-tpl="hall"></div></div>
+  <div class="cap"><b>改后 · 第一次登录</b><span>还没做训前测评时，测评卡放最上面；数字卡片照常画，灰色“—”；任务列表用一句话 + 自由练习</span></div>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="hallEmpty"></div></div>
+
+  <h2>客服工作台 <small>店铺后台</small></h2>
+  <h3 style="margin:18px 0 6px;font-size:16px">先讲依据：客户标签由谁打</h3>
+  <p class="lede">查了千牛、飞鸽和海外常用的 Gorgias，三家做法一致：<b>“这是哪类客户”由系统按会员和交易数据生成，客服只看不改</b>；客服在接待时手动做的是记备注、标这次为什么来、标要不要跟进。所以参数里“按粉丝、大订单客户……等标签对买家进行标注”落成系统自动标注，之前稿子里让学生手动点选四个标签的做法作废。</p>
+  <table class="api-t">
+    <tr><th>平台</th><th>系统生成的客户标签（客服只读）</th><th>客服在工作台上手动做的</th></tr>
+    <tr><td>千牛（淘宝）</td><td>聊天窗口右侧客户模块：官方云标签（红色）；会员等级来自店铺会员体系，没绑定会员的统一显示“店铺客户”；运营在“客户运营平台”按规则建的标签（蓝色）</td><td>客户备注；长按会话加星标，标出重要客户；接待中心“任务”记下当场解决不了的问题</td></tr>
+    <tr><td>飞鸽（抖店）</td><td>右侧工作台是订单、商品、快捷短语；客户分类在后台“客户管理”里由运营做</td><td>备注、订单备注（右下角操作区）</td></tr>
+    <tr><td>Gorgias（海外）</td><td>AI 识别来信意图和情绪，按规则自动加标签</td><td>确认或修改 Contact Reason（咨询原因）：AI 先预填，客服单选；选项互不重叠，写买家能看到的原因（“发货延迟”，而不是“仓库出错”）</td></tr>
+  </table>
+  <table class="api-t">
+    <tr><th>系统标签</th><th>规则（RFM：最近一次购买 · 频次 · 金额）</th><th>数据来源</th></tr>
+    <tr><td>粉丝</td><td>关注店铺或是店铺会员</td><td>画像客户价值层“粉丝客”</td></tr>
+    <tr><td>大订单客户</td><td>单笔实付 ≥ USD 100，或近一年累计 ≥ USD 300（阈值可在店铺资料里改）</td><td>这位买家的订单</td></tr>
+    <tr><td>沉睡客户</td><td>最近一次下单超过 180 天</td><td>画像“沉睡客” + 订单日期</td></tr>
+    <tr><td>普通客户</td><td>有成交，不属于上面几类</td><td>订单</td></tr>
+    <tr><td>新客</td><td>还没有成交</td><td>画像“潜在意向客”</td></tr>
+  </table>
+  <p class="lede" style="margin-top:10px">一位买家可以同时有两个标签（如“粉丝 + 大订单客户”）。画像里的客户价值层（潜在意向客 / 复购老客 / 粉丝客 / 沉睡客，参数 1.4）是生成买家时用的设定；系统标签是按它生成的订单算出来给客服看的，和真实店铺一样。<br>
+  对学生的训练点：看到标签就换话术（参数 1.4）；咨询原因练“听懂买家要什么”——AI 先猜一个，学生确认或改正，老师回放能看到改得对不对；待跟进和客户备注练“答应的事要落地”，同一位买家下次进线时，备注就在右栏。<br>
+  来源：<a href="https://insight.xiaoduoai.com/commerce-knowledge/how-to-set-the-intelligent-customer-service-plug-in-on-the-right-side-of-taobao-qianniu-chat-window-whether-it-can-improve-store-operation-efficiency-and-customer-service-quality.html">千牛右侧客户模块（云标签 / 客户运营平台标签）</a> · <a href="https://open.fliggy.com/support/announcementDetail.htm?id=25311">阿里开放平台：会员等级在千牛客服工作台的显示</a> · <a href="https://apps.apple.com/us/app/%E5%8D%83%E7%89%9B/id590217303?l=zh-Hans-CN">千牛 App：会话星标</a> · <a href="https://school.jinritemai.com/doudian/web/articlev0/aJQJpwL4w2GA?should_hide_bottom_nav=1&from_school=1&should_full_screen=1">抖店学习中心：飞鸽右侧工作台</a> · <a href="https://docs.gorgias.com/en-US/ai-powered-contact-reason-suggestion-319029">Gorgias：AI 预填咨询原因</a></p>
+  <div class="cap"><b>改后 · 同时接待 3 位</b><span>顶部细栏：本班次剩余时间、接待进度、交流方式；左边按“等你回复”排，等最久的在最上；客户标签系统自动生成；会话头部确认咨询原因、标待跟进；右栏写客户备注</span></div>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="wb"></div></div>
+  <div class="cap"><b>改后 · 商品详情</b><span>买家问续航和寄美国要多久：右栏商品卡片点开详情抽屉，参数和问答旁边一个“引用”，直接填进输入框</span></div>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="wbProduct"></div></div>
+  <div class="cap"><b>改后 · 会话结束 + 快到时间</b><span>剩 4 分钟时倒计时变橙并提示一次；买家离开后对话末尾一张小结卡，不显示分数，给“查看复盘”和“接待下一位”。本场交流方式为“语音”，输入区只留按住说话</span></div>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="wbEnd"></div></div>
+
+  <h2>评价 <small>店铺后台 · 第二版（2026-10-13）</small></h2>
+  <p class="lede">用户反馈：第一版的“左列表 + 右详情”不像真实平台的评价页。真实平台（亚马逊商品页的 Customer reviews、速卖通 / Shopify 店铺的评价区）都是<b>一页往下排的评价流</b>：左边一块评分概览（平均星级、总评价数、5→1 星占比条，点一行就筛这一星），右边每条评价完整展开——买家、星级、日期与国家、规格 + “已购买”、正文；商家回复直接缩进显示在这条评价下面。所以改成：</p>
+  <div class="diag">
+    <div><b>1. 评价流取代左右分栏</b>每条评价一块，正文全文显示，不用点进去看。<br><span class="fix">改：左侧 280 宽评分概览（平均分 + 星级 + “共 13 条评价” + 5→1 星占比条，可点筛选），右侧评价流。顶栏页签保留：全部 / 待回复 / 差评 / 中评 / 好评。</span></div>
+    <div><b>2. 回复就地展开</b>不再固定一个回复区。<br><span class="fix">改：每条评价底部一行操作“回复 · 查看译文 · 查看订单 · …（联系买家）”；点“回复”在这条评价下面展开回复框（AI 帮写的三版英文回复也在这里）；发出后变成缩进的灰底“Aurora Mart 的回复 · 日期”，可编辑。</span></div>
+    <div><b>3. 去掉模拟提示</b>真实评价页不显示买家的客户标签、不常驻中文译文。<br><span class="fix">改：买家行只写名字、国家；译文改成“查看译文”链接，点了才在正文下显示；评价上不标“待回复”，用顶部的“待回复”页签筛。</span></div>
+    <div><b>4. 商品写在评价里</b>亚马逊写“Color: Black | Verified Purchase”。<br><span class="fix">改：正文上方一行灰字“商品图 + 商品名 · 规格 · 已购买”，点商品名看订单。</span></div>
+  </div>
+  <div class="cap"><b>第二版 · 评价流</b><span>第一条已回复（商家回复缩进显示在下面）；第二条待回复</span></div>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="reviews2"></div></div>
+  <div class="cap"><b>第二版 · 回复展开</b><span>点“回复”后在这条评价下面展开：AI 帮写三版英文（各附一行中文意思），选一版进编辑框再改，发布后公开显示在评价下面</span></div>
+  <div class="frame" data-h="1020"><div class="screen s" data-tpl="reviews2b"></div></div>
+  <details style="margin-top:16px"><summary class="small" style="cursor:pointer;color:var(--doc-ink-2)">第一版（已作废）：左列表 + 右详情</summary>
+  <div class="frame" data-h="900" style="margin-top:8px"><div class="screen s" data-tpl="reviews"></div></div></details>
+
+  <h2>邮件 <small>店铺后台</small></h2>
+  <div class="cap"><b>改后</b><span>文件夹并进分段控件；默认打开最新一封未回复的邮件；回复框就在正文下面</span></div>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="mail"></div></div>
+
+  <h2>订单 <small>店铺后台 · 小修</small></h2>
+  <div class="cap"><b>改后</b><span>买家移到订单头左边；状态只有超时未付标橙；每行一个主操作</span></div>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="orders"></div></div>
+
+  <h2>我的记录 <small>学习区</small></h2>
+  <div class="cap"><b>改后 · 有成绩时</b><span>四张关键数字卡片同任务大厅；六项能力横条对比训前；每条记录 AI 评语和老师评语分两行（C7）</span></div>
+  <div class="frame" data-h="1120"><div class="screen s" data-tpl="records"></div></div>
+  <div class="cap"><b>改后 · 还没有成绩</b><span>骨架照常画：做过训前测评就先画出黑竖线；横条用虚线占位，中间一张提示卡</span></div>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="recordsEmpty"></div></div>
+
+  <h2>店铺资料 <small>教师端 · 场景配置 → 店铺商品</small></h2>
+  <h3 style="margin:18px 0 6px;font-size:16px">先讲依据：店铺资料放什么、谁在用</h3>
+  <p class="lede">现在“店铺”只是邮件页里写死的一个地址（<code>support@auroramart-global.com</code>），数据库里没有店铺。全平台只有一份商品库，老师在“场景配置 → 店铺商品”里维护，所以店铺资料也做成<b>全平台一份</b>，放在店铺商品页签的顶部，老师和管理员都能改（和商品同一套权限）。管理端“品牌设置”管的是平台名（外壳），店铺名是沉浸层里的模拟店，两者分开。<br>
+  字段参照 Shopify 的店铺设置（店铺名、对外联系方式、币种、时区）和亚马逊卖家资料（卖家显示名、客服邮箱），只取学生和买家实际会碰到的；再加上一组“客户分层规则”，给工作台的系统客户标签用。</p>
+  <table class="api-t">
+    <tr><th>字段</th><th>默认值</th><th>用在哪里</th></tr>
+    <tr><td>店铺名称</td><td>Aurora Mart（虚构，可改）</td><td>学生端侧栏“店铺后台”分组标题；订单的卖家栏；评价下“店铺回复”的署名；买家 AI 知道自己在哪家店买的（“I ordered from Aurora Mart”）</td></tr>
+    <tr><td>店铺标识</td><td>名称首字母</td><td>学生端侧栏、邮件发件人头像；可上传正方形图片</td></tr>
+    <tr><td>主营市场 · 币种</td><td>欧美 · USD</td><td>买家 AI 的背景；订单、商品价格的币种（现在全是 USD，先只读）</td></tr>
+    <tr><td>客服邮箱</td><td>按名称生成 support@auroramart.com</td><td>邮件页的发件地址，替掉写死的地址；买家来信的收件地址</td></tr>
+    <tr><td>客服签名</td><td>Best regards,<br>Aurora Mart Customer Support</td><td>邮件模板、AI 帮写的邮件和评价回复的落款</td></tr>
+    <tr><td>客户分层规则</td><td>大订单：单笔 ≥ USD 100 或近一年累计 ≥ USD 300；沉睡：超过 180 天没下单</td><td>工作台的系统客户标签（见工作台“先讲依据”）</td></tr>
+  </table>
+  <p class="lede" style="margin-top:10px">不做：退换货、物流政策（每个商品已经有，店铺级不重复）；时区、订单号前缀（学生碰不到）；每个老师或每个班开一家店（商品库也得跟着拆，以后再说）。<br>
+  来源：<a href="https://help.shopify.com/en/manual/intro-to-shopify/initial-setup/setup-business-settings">Shopify：店铺设置（店铺名、联系方式、币种）</a></p>
+  <div class="cap"><b>改后 · 店铺商品页签顶部</b><span>一张店铺头卡：是谁、怎么联系、客户怎么分层；右上角“编辑店铺资料”。下面接现有的商品卡片</span></div>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="store"></div></div>
+  <div class="cap"><b>改后 · 编辑店铺资料（右侧抽屉）</b><span>按“店铺是谁 / 怎么联系 / 客户怎么分层”分三组；右边实时看学生端侧栏、邮件和标签会变成什么样</span></div>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="storeEdit"></div></div>
+
+  <h2>改动清单与接口</h2>
+  <table class="api-t">
+    <tr><th>项</th><th>内容</th><th>改动</th></tr>
+    <tr><td>店铺资料</td><td>全平台一份：名称、标识、主营市场、客服邮箱、签名、客户分层规则；学生端侧栏、邮件、AI 帮写、买家 AI 读取</td><td><span class="lv be">新表 + 接口</span> store_profile（教师、管理员可写，学生只读）</td></tr>
+    <tr><td>外壳</td><td>侧栏分“学习区 / 店铺后台”两组，店铺后台挂角标（买家在等、待回复差评、未读邮件）</td><td><span class="lv fe">前端</span></td></tr>
+    <tr><td>C1</td><td>任务大厅、我的记录四张关键数字：已完成任务、平均分、班级排名、累计对话</td><td><span class="lv be">新接口</span> 学生本人排名 + 累计对话数</td></tr>
+    <tr><td>C2</td><td>系统客户标签（粉丝 / 大订单客户 / 普通客户 / 沉睡客户 / 新客，按订单规则计算，只读）；客服手动：客户备注、咨询原因（AI 预填）、待跟进；教师回放可见</td><td><span class="lv be">新字段 + 接口</span> 标签计算、buyer_notes、conversations.contact_reason / follow_up</td></tr>
+    <tr><td>C3</td><td>同时接待 3 位：会话列表按等待时长分组排序</td><td><span class="lv fe">前端</span>（进线并发已在 D-36 里）</td></tr>
+    <tr><td>C5</td><td>差评三版英文回复 + 中文意思</td><td><span class="lv be">改提示词</span> 固定英文、附中文释义</td></tr>
+    <tr><td>C6</td><td>自动播报开关（存本机偏好）</td><td><span class="lv fe">前端</span></td></tr>
+    <tr><td>C7</td><td>AI 评语和老师评语分两行显示</td><td><span class="lv fe">前端</span>（接口已分开返回）</td></tr>
+    <tr><td>D1</td><td>本班次倒计时、到时自动结束；交流方式约束输入；截止后不再进线</td><td><span class="lv be">接口小改</span> 截止后拒绝新建会话（403）</td></tr>
+    <tr><td>商品详情</td><td>工作台商品详情抽屉 + 引用到输入框</td><td><span class="lv fe">前端</span>（details 已返回）</td></tr>
+    <tr><td>结束接待</td><td>会话头“结束接待”+ 结束小结卡</td><td><span class="lv fe">前端</span>（close 接口已有）</td></tr>
+    <tr><td>邮件场景</td><td>邮件类场景的买家来信进收件箱，回信后结束并评分</td><td><span class="lv be">新流程</span> 场景 channel=mail 时按邮件下发</td></tr>
+    <tr><td>缺陷</td><td>47 分标“达标”；评价正文一词一行；记录页达标线写死 80；空状态提到不存在的按钮</td><td><span class="lv fe">前端</span></td></tr>
+  </table>
+</div>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const I = (n, cls) => `<i data-lucide="${n}"${cls ? ` class="${cls}"` : ""}></i>`;
+const H = `<span class="help">${I("circle-help")}</span>`;
+const AV = (f) => `../../../apps/portal/public/avatars/${f}.jpg`;
+const PI = (n) => `../../../apps/api/assets/product-library/LIB-${String(n).padStart(3, "0")}.jpg`;
+const av = (f, cls = "") => `<span class="av ${cls}"><img src="${AV(f)}" alt=""></span>`;
+const star = (n) => `<span class="stars">${[1,2,3,4,5].map((i) => `<svg viewBox="0 0 24 24" class="${i > n ? "off" : ""}"><path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/></svg>`).join("")}</span>`;
+
+const NAV_LEARN = [["layout-dashboard", "任务大厅"], ["graduation-cap", "我的记录"]];
+const NAV_STORE = [["message-square-more", "客服工作台", "2"], ["package-search", "订单"], ["star", "评价", "3"], ["mail", "邮件", "5", "soft"]];
+const STORE = NAV_STORE.map((n) => n[1]);
+const navItem = (active) => ([i, l, b, soft]) => `<div class="nav${l === active ? " on" : ""}">${I(i)}${l}${b ? `<span class="badge${soft ? " soft" : ""}">${b}</span>` : ""}</div>`;
+const shell = (active, title, body, opt = {}) => `<div class="app">
+  <nav class="side">
+    <div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>
+    ${NAV_LEARN.map(navItem(active)).join("")}
+    <div class="navlabel"><span class="smark">A</span>店铺后台 · Aurora Mart</div>
+    ${NAV_STORE.map(navItem(active)).join("")}
+    <div class="grow"></div>
+    <div class="foot"><div class="nav">${I("book-open")}使用帮助</div></div>
+  </nav>
+  <div class="main"><header class="head${opt.tight ? " tight" : ""}${opt.bar ? " bar" : ""}${STORE.includes(active) ? " store-head" : ""}">${STORE.includes(active) ? "" : `<h1>${title}</h1>`}${opt.bar || ""}${opt.tabs ? `<div class="tabs">${opt.tabs}</div>` : ""}
+    <div class="right">${opt.notice === false || STORE.includes(active) ? "" : `<div class="notice" style="margin-bottom:0">${I("megaphone")}<span>「售后差评挽回」明天 18:00 截止，至少完成两个场景</span></div>`}${opt.extra || ""}${I("bell")}<span class="av">张</span>张三 ${I("chevron-down")}</div></header>
+    <div class="body${opt.flush ? " flush" : ""}">${opt.flush ? body : `<div class="wrap">${body}</div>`}</div></div></div>`;
+
+/* 小图 */
+const ring = (pct, color) => { const r = 26, c = 2 * Math.PI * r; return `<svg class="ring" viewBox="0 0 64 64"><circle cx="32" cy="32" r="${r}" fill="none" stroke="#edf1f5" stroke-width="8"/>${pct == null ? "" : `<circle cx="32" cy="32" r="${r}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${c * pct / 100} ${c}" transform="rotate(-90 32 32)"/>`}</svg>`; };
+const gauge = (v, pass = 60) => { const r = 40, c = Math.PI * r; const a = (pass / 100) * Math.PI; const x1 = 48 - (r - 9) * Math.cos(a), y1 = 50 - (r - 9) * Math.sin(a), x2 = 48 - (r + 7) * Math.cos(a), y2 = 50 - (r + 7) * Math.sin(a);
+  return `<svg class="gauge" viewBox="0 0 96 56"><path d="M8 50 A40 40 0 0 1 88 50" fill="none" stroke="#edf1f5" stroke-width="8" stroke-linecap="round"/>${v == null ? "" : `<path d="M8 50 A40 40 0 0 1 88 50" fill="none" stroke="${v < pass ? "#b8302a" : "#1d5fd1"}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${c * v / 100} ${c}"/>`}<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#161c26" stroke-width="2"/></svg>`; };
+const rank = (pos, total) => { const bars = 9; const hit = pos == null ? -1 : Math.min(bars - 1, Math.floor((1 - pos / total) * bars));
+  return `<svg class="rank" viewBox="0 0 92 52">${Array.from({ length: bars }, (_, i) => { const h = 10 + i * 4.5; return `<rect x="${i * 10 + 1}" y="${50 - h}" width="7" height="${h}" rx="1.5" fill="${i === hit ? "#1d5fd1" : "#e6ebf2"}"/>`; }).join("")}</svg>`; };
+const kc = (label, value, sub, viz, bar) => `<div class="kc"><div class="lb">${label}${H}</div><div><div class="v">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>${viz || ""}${bar || ""}</div>`;
+const kpis = (empty) => empty ? `<div class="kc-row">
+    ${kc("已完成任务", `<b class="dash">—</b>`, "老师下发后显示", "", `<div class="bar2 empty"></div>`)}
+    ${kc("平均分", `<b class="dash">—</b>`, "", gauge(null))}
+    ${kc("班级排名", `<b class="dash">—</b>`, "45 人", rank(null, 45))}
+    ${kc("累计对话", `<b class="dash">0</b><small>次</small>`, "", ring(null))}</div>`
+  : `<div class="kc-row">
+    ${kc("已完成任务", `<b>2</b><small>/ 4</small>`, "还有 2 个要完成", "", `<div class="bar2"><i class="ok" style="width:50%"></i></div>`)}
+    ${kc("平均分", `<b>72</b><small>/ 100</small>`, `<span class="pill up">${I("arrow-up")}17</span>较训前`, gauge(72))}
+    ${kc("班级排名", `<b>第 18</b><small>/ 45</small>`, `<span class="pill up">${I("arrow-up")}3</span>较上周`, rank(18, 45))}
+    ${kc("累计对话", `<b>11</b><small>次</small>`, "共 164 轮 · 其中练习 4 次", ring(64, "#0a7a70"))}</div>`;
+
+/* ============ 任务大厅 ============ */
+const step = (cls, n, t, s) => `<div class="step ${cls}"><span class="ck">${cls === "done" ? I("check") : n}</span><div><b>${t}</b><small>${s}</small></div></div>`;
+const tr = ({ c, name, stage, meta, prog, due, dueCls, act, score }) => `<div class="tr"><span class="bar" style="background:var(--${c})"></span>
+  <div><b>${name}</b><div class="meta"><span class="tag ${c}">${stage}</span>${meta}</div></div>
+  ${score ? `<div class="sb"><span class="sc ${score.cls}">${score.v}<small>分</small></span><div class="small"><div>${score.t}</div><div class="cap-s">${score.s}</div></div></div>`
+          : `<div class="prog"><div><b>${prog[0]} / ${prog[1]}</b> 个场景</div><div class="track"><i style="width:${prog[0] / prog[1] * 100}%"></i></div></div>`}
+  <div class="due ${dueCls || ""}">${due}</div>
+  <div class="act">${act}</div></div>`;
+const hall = () => shell("任务大厅", "任务大厅", `
+  <div class="greet"><h2>下午好，张三</h2><span>跨境电商2601班 · 本周练了 3 次</span></div>
+  ${kpis(false)}
+  <div class="focus">
+    <div class="now">
+      <div class="k"><span class="tag c3">售后处理</span>现在要做的 · 王老师 10 月 11 日下发</div>
+      <h3>售后差评挽回</h3>
+      <div class="facts"><span class="w">${I("alarm-clock")}明天 18:00 截止</span><span>${I("timer")}每次接待限时 20 分钟</span><span>${I("mic")}文字 + 语音</span><span>${I("target")}达标线 70 分</span></div>
+      <div class="steps">
+        ${step("done", 1, "缺件差评", "已接待 · 76 分")}
+        ${step("cur", 2, "物流延误投诉", "还没开始")}
+        ${step("", 3, "质量问题退款", "还没开始")}
+      </div>
+      <div class="acts"><span class="btn primary lg">${I("headset")}进入工作台</span><span class="btn">任务要求</span><span class="note">进入后买家会一位一位进线，同时最多 3 位</span></div>
+    </div>
+    <div class="prac">
+      <h4>${I("dumbbell")}自由练习</h4>
+      <p>不计成绩，场景随便挑，可以反复练。</p>
+      <div class="opts">
+        <span class="opt on">${I("shuffle")}随机</span>
+        <span class="opt"><span class="sq" style="background:var(--c2)"></span>售前沟通</span>
+        <span class="opt"><span class="sq" style="background:var(--c1)"></span>售中处理</span>
+        <span class="opt"><span class="sq" style="background:var(--c3)"></span>售后处理</span>
+        <span class="opt" style="grid-column:1/-1"><span class="sq" style="background:var(--c4)"></span>客户分层维护</span>
+      </div>
+      <span class="btn" style="justify-content:center">开始练习</span>
+    </div>
+  </div>
+  <div class="board" style="margin-top:16px">
+    <div class="bhead"><h3>全部任务</h3><span class="n">4</span><div class="end"><div class="chips"><span class="chip on">全部</span><span class="chip">要完成 <i>2</i></span><span class="chip">已完成 <i>2</i></span></div></div></div>
+    <div class="grp">要完成 · 2</div>
+    ${tr({ c: "c3", name: "售后差评挽回", stage: "售后处理", meta: "3 个场景 · 每次限时 20 分钟 · 文字 + 语音", prog: [1, 3], due: "明天 18:00 截止", dueCls: "w", act: `<span class="btn primary sm">继续</span>` })}
+    ${tr({ c: "c1", name: "清关延误安抚", stage: "售中处理", meta: "2 个场景 · 不限时 · 文字", prog: [0, 2], due: "10 月 24 日截止", act: `<span class="btn sm">开始</span>` })}
+    <div class="grp">已完成 · 2</div>
+    ${tr({ c: "c1", name: "售中物流同步演练", stage: "售中处理", meta: "2 个场景 · 不限时 · 文字", score: { cls: "hi", v: 80, t: "达标", s: "达标线 70 · 老师已复核" }, due: "10 月 13 日完成", act: `<span class="btn link sm">看复盘</span>` })}
+    ${tr({ c: "c2", name: "新品推广首训", stage: "售前沟通", meta: "1 个场景 · 每次限时 15 分钟 · 文字", score: { cls: "lo", v: 47, t: `<span style="color:var(--bad);font-weight:600">未达标</span>`, s: "达标线 60 · 差 13 分" }, due: "10 月 12 日完成", act: `<span class="btn link sm">看复盘</span>` })}
+  </div>`);
+const hallEmpty = () => shell("任务大厅", "任务大厅", `
+  <div class="greet"><h2>上午好，张三</h2><span>跨境电商2601班</span></div>
+  <div class="base"><span class="ic">${I("clipboard-pen-line")}</span>
+    <div><h3>先做一次训前测评</h3><p>10 道题，测出你现在六项能力的起点。以后每次成绩都会和它比，看自己进步了多少。</p>
+      <div class="facts"><span>单选 · 多选 · 判断 · 英文实操</span><span>约 8 分钟</span><span>中途退出不保存</span></div></div>
+    <span class="btn primary lg">开始测评</span></div>
+  ${kpis(true)}
+  <div class="focus">
+    <div class="board"><div class="bhead"><h3>任务</h3></div>
+      <div class="empty-line"><span class="ic">${I("inbox")}</span><div><div style="font-weight:600">老师还没有下发任务</div><div class="small muted">下发后会出现在这里，顶部也会有通知。可以先去自由练习熟悉工作台。</div></div></div></div>
+    <div class="prac">
+      <h4>${I("dumbbell")}自由练习</h4>
+      <p>不计成绩，场景随便挑，可以反复练。</p>
+      <div class="opts"><span class="opt on">${I("shuffle")}随机</span><span class="opt"><span class="sq" style="background:var(--c2)"></span>售前沟通</span><span class="opt"><span class="sq" style="background:var(--c1)"></span>售中处理</span><span class="opt"><span class="sq" style="background:var(--c3)"></span>售后处理</span></div>
+      <span class="btn primary" style="justify-content:center">开始练习</span>
+    </div>
+  </div>`, { notice: false });
+
+/* ============ 工作台 ============ */
+const shiftBar = (clock, cls, pips) => `<div class="shift">
+  <span class="nm"><span class="tag c3">售后处理</span>售后差评挽回</span><span class="sep"></span>
+  <span class="clock ${cls}">${I("timer")}<span class="num">${clock}</span><small>本场剩余</small></span>
+  <span class="cnt">已接待<span class="pips">${pips}</span><b class="num">1 / 3</b></span>
+  <span class="mode">${I("mic")}文字 + 语音</span>
+  <div class="stats"><span>今日接待<b class="num">3</b></span><span>平均响应<b class="num">42 秒</b></span><span>未回复<b class="num r">2</b></span><span>满意率<b class="num">86%</b></span>${I("chevron-down")}</div>
+</div>`;
+const qi = ({ f, n, w, wc, msg, tags = [], on, typing }) => `<div class="qi${on ? " on" : ""}${typing ? " typing" : ""}">${av(f)}<div style="min-width:0">
+  <div class="l1"><b>${n}</b><span class="w ${wc || ""}">${wc === "g" ? "" : I("clock-3")}${w}</span></div>
+  <div class="l2">${msg}</div>${tags.length ? `<div class="l3">${tags.join("")}</div>` : ""}</div></div>`;
+const T_BIG = `<span class="tag c3">大订单客户</span>`, T_FAN = `<span class="tag" style="background:#fdeef3;color:#b4235c;box-shadow:none">粉丝</span>`, T_SLEEP = `<span class="tag">沉睡客户</span>`;
+const queue = (active) => `<div class="ql">
+  <div class="top"><span class="search">${I("search")}搜索买家或聊天内容</span><div class="seg"><span class="on">接待中<i>3</i></span><span>最近联系<i>24</i></span></div></div>
+  <div class="qg"><span class="r">等你回复 · 2</span></div>
+  ${qi({ f: "f-03", n: "Emily Wilson", w: "1:24", msg: "So when exactly will the replacement ship?", tags: [T_BIG], on: active === "emily" })}
+  ${qi({ f: "f-07", n: "Miyu Ito", w: "0:38", wc: "o", msg: "Is the 20m version waterproof too?", on: active === "miyu" })}
+  <div class="qg">已回复 · 1</div>
+  ${qi({ f: "m-04", n: "Paul Becker", w: "16:21", wc: "g", msg: "对方正在输入…", typing: true, tags: [T_FAN, T_BIG] })}
+  <div class="queue">${I("users")}<span class="avs">${av("f-12", "xs")}</span>还有 1 位在排队 · 约 2 分钟后进线</div>
+</div>`;
+const custPanel = (tab, body) => `<div class="rp">
+  <div class="cust">
+    <div class="who">${av("f-03", "lg")}<div><b>Emily Wilson</b><small>英国 · 个人消费者 · en-GB</small></div></div>
+    <div class="systags">${T_BIG}<span class="src">${I("bot")}系统按订单生成${H}</span></div>
+    <dl class="kv"><dt>历史订单</dt><dd>3 笔 · USD 412.70</dd><dt>最近下单</dt><dd>10 月 2 日</dd><dt>72 小时咨询</dt><dd>2 次</dd></dl>
+    <div class="cnote"><div class="t">客户备注${I("pencil")}</div><p>上一单缺了一只耳机，10 月 4 日已答应补发。周五出差，比较着急。</p><small>你 · 10 月 4 日</small></div>
+  </div>
+  <div class="rtabs">${["订单<i>2</i>", "商品", "优惠券<i>3</i>"].map((t, i) => `<span class="${["订单", "商品", "优惠券"][i] === tab ? "on" : ""}">${t}</span>`).join("")}</div>
+  <div class="rbody">${body}</div></div>`;
+const ordersTab = `<div class="oc"><div class="h"><b class="num">PO-202610-814303</b><span class="tag">已发货</span></div>
+    <div class="it"><img src="${PI(1)}" alt=""><div style="min-width:0"><b>Wireless Noise-Cancelling Earbuds</b><span class="muted">Black · 带充电盒 × 3</span></div><b class="num">$119.97</b></div>
+    <div class="lg">${I("truck")}<div>Yanwen · YW8823410157CN<br><span class="muted">10 月 9 日 到达伦敦清关中心，等待清关</span></div></div>
+    <div class="ft"><span class="btn sm">${I("send")}发送订单</span><span class="btn sm ghost">详情</span><span class="btn sm ghost">改地址</span></div></div>
+  <div class="oc" style="opacity:.75"><div class="h"><b class="num">PO-202609-551208</b><span class="tag">已成功</span></div>
+    <div class="it"><img src="${PI(3)}" alt=""><div style="min-width:0"><b>Stainless Insulated Tumbler 600ml</b><span class="muted">Matte Green × 2</span></div><b class="num">$51.80</b></div></div>`;
+const productsTab = `<div class="seg"><span>全店商品</span><span class="on">买家看过<i>2</i></span></div>
+  <div class="pc2 on"><img src="${PI(1)}" alt=""><div><b>Wireless Noise-Cancelling Earbuds</b><div class="p num">$39.99</div><div class="m2">已售 1,284 · 库存 326</div>
+    <div class="ac"><span class="btn sm">${I("panel-right-open")}详情</span><span class="btn sm ghost">${I("send")}发送</span></div></div></div>
+  <div class="pc2"><img src="${PI(2)}" alt=""><div><b>Smart LED String Lights 10m</b><div class="p num">$21.50</div><div class="m2">已售 860 · 库存 74</div>
+    <div class="ac"><span class="btn sm">${I("panel-right-open")}详情</span><span class="btn sm ghost">${I("send")}发送</span></div></div></div>`;
+const chatEmily = (extra = "") => `<div class="chat">
+  <div class="ch">${av("f-03", "md")}<div><b>Emily Wilson</b><div class="sub">英国</div></div><div class="end"><span class="reason">咨询原因<b>${I("sparkles", "ai")}物流延误</b>${I("chevron-down")}</span><span class="fup">${I("star")}待跟进</span><span class="btn sm">${I("log-out")}结束接待</span></div></div>
+  <div class="msgs">
+    <span class="sys">16:02 会话已分配给你</span>
+    <div class="m">${av("f-03")}<div><div class="bub">Hi, my earbuds order has been stuck in customs for 5 days. One of the earbuds in my last order was also missing. I need this sorted before my trip on Friday.
+      <div class="tr2">你好，我的耳机订单已经卡在海关 5 天了。上一单里还少了一只耳机。我周五出差前必须解决。</div></div>
+      <div class="mt"><span class="playing">${I("volume-2")}播报中</span><span>16:02</span></div></div></div>
+    <div class="m me">${av("f-01")}<div><div class="bub">I'm sorry for the trouble, Emily. I've checked: your parcel arrived at the London customs centre on Oct 9. Let me confirm the clearance status with the carrier right now.</div>
+      <div class="mt"><span>16:03 · 已读</span></div></div></div>
+    <div class="m">${av("f-03")}<div><div class="bub"><div class="voice">${I("play")}<span class="wave">${[8,14,10,18,12,16,9,14,7,12,16,10].map((h) => `<i style="height:${h}px"></i>`).join("")}</span><span class="num muted small">0:09</span></div>
+      <div class="tr2">“Ok. And does the replacement set come with the charging case? How long is the battery?” · 好的。补发的那套带充电盒吗？续航多久？</div></div>
+      <div class="mt"><span>${I("volume-2")}播报</span><span>16:04</span></div></div></div>
+    <div class="m">${av("f-03")}<div><div class="bub">So when exactly will the replacement ship?<div class="tr2">那补发到底什么时候能寄出？</div></div><div class="mt"><span>${I("volume-2")}播报</span><span>16:05</span></div></div></div>
+  </div>
+  <div class="composer">
+    <div class="tools">${I("smile")}${I("image")}${I("film")}${I("paperclip")}<span class="ph">${I("message-square-text")}快捷短语</span>
+      <div class="tg"><span>${I("languages")}自动翻译<span class="sw on"></span></span><span>${I("volume-2")}自动播报<span class="sw on"></span></span></div></div>
+    <div class="ta">${extra || `The replacement set includes the charging case. Battery: up to 7 hours per charge, 28 hours with the case.<span class="ph2"> |</span>`}</div>
+    <div class="bt"><span class="ptt">${I("mic")}按住说话</span><span class="cnt num">96 / 1000</span><span class="btn primary sm">发送 ${I("send-horizontal")}</span></div>
+  </div></div>`;
+const wb = () => shell("客服工作台", "客服工作台", `<div class="wb">${queue("emily")}${chatEmily()}${custPanel("订单", ordersTab)}</div>`, { flush: true, tight: true, bar: shiftBar("12:46", "", `<i class="d"></i><i class="c"></i><i></i>`) });
+const wbProduct = () => shell("客服工作台", "客服工作台", `<div class="wb">${queue("emily")}${chatEmily(`The replacement set includes the charging case. Battery: about 7 hours per charge (ANC off), up to 28 hours with the case.<span class="ph2"> |</span>`)}${custPanel("商品", productsTab)}</div>
+  <div class="scrim" style="z-index:3"></div>
+  <div class="pd">
+    <div class="dh"><h3>商品详情</h3><span class="tag">耳机音频</span><span class="x">${I("x")}</span></div>
+    <div class="db">
+      <div class="hero"><div class="gal"><img class="main" src="${PI(1)}" alt=""><div class="thumbs"><img class="on" src="${PI(1)}" alt=""><img src="${PI(1)}" alt="" style="filter:hue-rotate(30deg) saturate(.6)"><img src="${PI(1)}" alt="" style="filter:grayscale(1)"></div></div>
+        <div><h4>Wireless Noise-Cancelling Earbuds</h4><div class="price num">$39.99<small>已售 1,284 · 库存 326</small></div>
+          <div class="skus"><div class="r"><span>颜色</span><span class="o on">Black</span></div><div class="r"><span>款式</span><span class="o on">Earbuds + Charging Case</span><span class="o">+ Ear Tips Kit</span></div></div>
+          <ul class="bul" style="margin-top:12px"><li>主动降噪最高约 30 dB，通勤、飞机上都能用</li><li>单次 7 小时，配合充电盒共 28 小时</li><li>蓝牙 5.3，可同时连接两台设备</li></ul></div></div>
+      <div class="sec"><h5>规格参数<span class="n">8 项</span></h5><dl class="spec">
+        <div><dt>续航</dt><dd>单次约 7 小时，充电盒共 28 小时</dd></div><div><dt>降噪深度</dt><dd>最高约 30 dB</dd></div>
+        <div><dt>充电接口</dt><dd>USB-C，约 1.5 小时充满</dd></div><div><dt>防水等级</dt><dd>IPX4</dd></div>
+        <div><dt>包装清单</dt><dd>耳机 ×2、充电盒、USB-C 线、耳塞套 S/M/L</dd></div><div><dt>单耳重量</dt><dd>4.8 g</dd></div></dl></div>
+      <div class="sec"><h5>物流时效<span class="n">深圳发货 · 2 个工作日内出库</span></h5><table><tr><th>地区</th><th>方式</th><th>时效</th><th>运费</th></tr>
+        <tr><td>美国</td><td>标准运输（带电专线）</td><td>9–15 个工作日</td><td>免运费</td></tr><tr><td>欧洲</td><td>标准运输（带电专线）</td><td>12–18 个工作日</td><td class="num">$3.99</td></tr></table></div>
+      <div class="sec"><h5>售后</h5><div class="after"><div><b>30 天无理由退货</b>需包装和配件齐全</div><div><b>保修 12 个月</b>非人为故障免费换新，退回运费店铺承担</div></div></div>
+      <div class="sec"><h5>常见问题<span class="n">3</span></h5><div class="faq">
+        <div><b>能同时连接两部手机吗？</b><span>支持，一台播放时另一台来电可直接接听。</span><span class="use">${I("corner-down-left")}引用</span></div>
+        <div><b>戴着跑步会掉吗？</b><span>单耳 4.8 g，附 S/M/L 耳塞套，IPX4 可应对汗水。</span><span class="use">${I("corner-down-left")}引用</span></div></div></div>
+    </div>
+    <div class="df"><span class="l">引用的内容会译成买家的语言填进输入框</span><div class="r"><span class="btn">${I("send")}发送商品</span><span class="btn primary">${I("shopping-cart")}邀请下单</span></div></div>
+  </div>`, { flush: true, tight: true, bar: shiftBar("12:31", "", `<i class="d"></i><i class="c"></i><i></i>`) });
+const wbEnd = () => shell("客服工作台", "客服工作台", `<div class="wb">
+    <div class="ql">
+      <div class="top"><span class="search">${I("search")}搜索买家或聊天内容</span><div class="seg"><span class="on">接待中<i>1</i></span><span>最近联系<i>25</i></span></div></div>
+      <div class="qg"><span class="r">等你回复 · 1</span></div>
+      ${qi({ f: "f-07", n: "Miyu Ito", w: "0:22", wc: "o", msg: "Is the 20m version waterproof too?" })}
+      <div class="qg">刚结束 · 1</div>
+      ${qi({ f: "m-04", n: "Paul Becker", w: "16:40", wc: "g", msg: "Thanks, that works for me.", tags: [T_FAN, T_BIG], on: true })}
+      <div class="queue">${I("users")}队列已空 · 本场还剩 1 位</div>
+    </div>
+    <div class="chat">
+      <div class="toast">${I("alarm-clock")}本场还剩 4 分钟，到时间后正在接待的会话会自动结束</div>
+      <div class="ch">${av("m-04", "md")}<div><b>Paul Becker</b><div class="sub">德国</div></div><div class="end"><span class="reason ok">咨询原因<b>缺件 / 错发</b></span><span class="fup on">${I("star")}待跟进</span><span class="tag">已结束</span></div></div>
+      <div class="msgs">
+        <div class="m">${av("m-04")}<div><div class="bub">If you can send the missing piece this week without me returning the whole set, I'll update my review.<div class="tr2">如果这周能把缺的那件寄过来、不用我把整套退回，我就改评价。</div></div><div class="mt"><span>${I("volume-2")}播报</span><span>16:36</span></div></div></div>
+        <div class="m me">${av("f-01")}<div><div class="bub">Absolutely. I've arranged a free replacement part, shipping tomorrow by express. You'll get the tracking number by email tonight.</div><div class="mt"><span>16:38 · 已读</span></div></div></div>
+        <div class="m">${av("m-04")}<div><div class="bub">Thanks, that works for me.<div class="tr2">谢谢，这样可以。</div></div><div class="mt"><span>${I("volume-2")}播报</span><span>16:40</span></div></div></div>
+        <span class="sys">16:40 买家已离开</span>
+        <div class="endcard"><div class="h">${I("circle-check")}接待已结束</div>
+          <div class="fx"><div>用时<b class="num">14 分 20 秒</b></div><div>对话<b class="num">11 轮</b></div><div>买家情绪<b>不满 → 满意</b></div></div>
+          <div class="small muted">已标记：咨询原因 <b style="color:var(--ink)">缺件 / 错发</b> · <span style="color:var(--warn)">待跟进</span>（补发单号发出后再联系）</div>
+          <div class="ac"><span class="btn sm" style="opacity:.6">${I("loader")}复盘生成中</span><span class="btn primary sm">接待下一位 · Miyu Ito</span><small>复盘好了会在我的记录里</small></div></div>
+      </div>
+      <div class="closed-bar">${I("lock")}这位买家已离开，不能再发消息。<span class="btn sm ghost" style="margin-left:auto">${I("mail")}发邮件跟进</span></div>
+    </div>
+    <div class="rp">
+      <div class="cust"><div class="who">${av("m-04", "lg")}<div><b>Paul Becker</b><small>德国 · 精品店主 · de-DE</small></div></div>
+        <div class="systags">${T_FAN}${T_BIG}<span class="src">${I("bot")}系统按订单生成${H}</span></div>
+        <dl class="kv"><dt>历史订单</dt><dd>4 笔 · USD 286.40</dd><dt>最近下单</dt><dd>10 月 11 日</dd></dl>
+        <div class="cnote"><div class="t">客户备注${I("pencil")}</div><p>瑜伽垫缺收纳绑带，已快递补发（16:39）。答应补发后会改评价。</p><small>你 · 刚刚</small></div></div>
+      <div class="rtabs"><span class="on">订单<i>4</i></span><span>商品</span><span>优惠券<i>3</i></span></div>
+      <div class="rbody"><div class="oc"><div class="h"><b class="num">PO-202610-635464</b><span class="tag">待发货</span></div>
+        <div class="it"><img src="${PI(4)}" alt=""><div style="min-width:0"><b>Foldable Yoga Mat</b><span class="muted">Ocean Blue · 8mm × 3</span></div><b class="num">$119.97</b></div>
+        <div class="lg">${I("notebook-pen")}<div>备注：补发缺失的收纳绑带，走快递<br><span class="muted">16:39 由你添加</span></div></div></div></div>
+    </div>
+  </div>`, { flush: true, tight: true, bar: shiftBar("03:58", "warn", `<i class="d"></i><i class="d"></i><i></i>`).replace("1 / 3", "2 / 3") });
+
+/* ============ 评价 ============ */
+const ri = ({ f, n, s, d, t, p, st, on }) => `<div class="ri${on ? " on" : ""}">${av(f)}<div style="min-width:0"><div class="l1"><b>${n}</b>${star(s)}<span class="d">${d}</span></div><p>${t}</p><div class="l3">${st}</div></div><img class="pi" src="${PI(p)}" alt=""></div>`;
+const reviews = () => shell("评价", "评价", `<div class="rv">
+  <div class="list">
+    <div class="lt"><span class="search" style="flex:1">${I("search")}搜索买家、商品或订单号</span><span class="btn sm ghost">近 30 天 ${I("chevron-down")}</span></div>
+    ${ri({ f: "m-04", n: "Paul Becker", s: 1, d: "10 月 12 日", t: "Package arrived with a part missing. Now I can't use it at all until this is fixed.", p: 4, st: `<span class="tag bad">待回复</span>德国 · 粉丝`, on: true })}
+    ${ri({ f: "f-09", n: "Lena Fischer", s: 2, d: "10 月 11 日", t: "Are you kidding me? The lights stopped working after two days. Very disappointed.", p: 2, st: `<span class="tag bad">待回复</span>德国` })}
+    ${ri({ f: "f-05", n: "Julia Fischer", s: 1, d: "10 月 9 日", t: "Took 25 days to arrive and nobody answered my messages.", p: 1, st: `<span class="tag bad">待回复</span>奥地利` })}
+    ${ri({ f: "f-11", n: "Julia Richter", s: 3, d: "10 月 8 日", t: "The mat is ok but the smell was strong for the first week.", p: 4, st: `<span class="tag">已回复</span>瑞士` })}
+    ${ri({ f: "m-09", n: "Ana Pereira", s: 5, d: "10 月 6 日", t: "Great tumbler, keeps my coffee hot for hours. Seller was very helpful!", p: 3, st: `<span class="tag">已回复</span>巴西 · <span class="okline">${I("refresh-cw")}已改评 2→5 星</span>` })}
+  </div>
+  <div class="rd">
+    <div class="top">
+      <div class="who">${av("m-04", "lg")}<div><b>Paul Becker</b><div class="small muted">德国 · 精品店主 · 10 月 12 日 10:13</div></div>${star(1)}<div class="r"><span class="btn sm ghost">${I("message-square-more")}去会话</span></div></div>
+      <div class="quote">Package arrived with a part missing. Now I can't use it at all until this is fixed. Really frustrating for a repeat customer.
+        <div class="zh">包裹到了但少了一个部件，修好之前完全没法用。作为老顾客真的很失望。</div></div>
+      <div class="ord"><img src="${PI(4)}" alt=""><div><b style="color:var(--ink)">Foldable Yoga Mat</b> · Ocean Blue · 8mm × 3<br><span class="num">PO-202610-635464 · $119.97 · 待发货</span></div><span class="btn sm r">查看订单</span></div>
+    </div>
+    <div class="rep">
+      <h4>回复买家<span class="cap-s" style="font-weight:400">公开显示在评价下面</span><span class="r btn sm">${I("sparkles")}换一批</span></h4>
+      <div class="vers">
+        <div class="ver on"><div class="k"><span class="rb"></span>先道歉，补发缺件</div><div class="en">Hi Paul, we're truly sorry the strap was missing from your order. We've shipped the missing part by express today at no cost, and you'll receive tracking by email.</div><div class="zh">非常抱歉缺了绑带。今天已免费快递补发，物流单号会发到你邮箱。</div></div>
+        <div class="ver"><div class="k"><span class="rb"></span>给退款选择</div><div class="en">Dear Paul, thank you for letting us know. If you prefer, we can issue a partial refund right away instead of a replacement — just reply to choose.</div><div class="zh">感谢告知。如果你愿意，也可以不补发、直接部分退款，回复我们选择即可。</div></div>
+        <div class="ver"><div class="k"><span class="rb"></span>邀请私下沟通</div><div class="en">Hi Paul, as a valued repeat customer this isn't the experience we want for you. Please message us so we can fix it within 24 hours.</div><div class="zh">作为老顾客，这不是我们想给你的体验。请私信我们，24 小时内解决。</div></div>
+      </div>
+      <div class="editor"><div class="ta">Hi Paul, we're truly sorry the strap was missing from your order. We've shipped the missing part by express today at no cost, and you'll receive tracking by email tonight. Thank you for being with us — we hope the mat serves you well.</div>
+        <div class="bt"><span class="okline">${I("shield-check")}没有违规用语</span><span class="num">英文 · 286 / 1000</span><div class="r"><span class="btn sm ghost">清空</span><span class="btn primary sm">发送回复</span></div></div></div>
+    </div>
+  </div></div>`, { flush: true, tabs: `<span class="tab on">全部<span class="n">12</span></span><span class="tab">待回复<span class="n red">3</span></span><span class="tab">差评<span class="n">9</span></span><span class="tab">中评<span class="n">0</span></span><span class="tab">好评<span class="n">3</span></span>`, notice: false, extra: `<span class="small muted" style="white-space:nowrap">平均 2.3 星 · 好评率 25%</span>` });
+
+/* ============ 评价第二版：评价流 ============ */
+const hist = [[5, 3, 23], [4, 1, 8], [3, 0, 0], [2, 2, 15], [1, 7, 54]];
+const rvSummary = (on) => `<aside class="r2-sum">
+  <h3>买家评价</h3>
+  <div class="r2-avg">${star(3)}<b>2.5</b><span>满分 5 星</span></div>
+  <div class="r2-n">共 13 条评价</div>
+  <div class="r2-hist">${hist.map(([k, n, pct]) => `<div class="${k === on ? "on" : ""}"><span>${k} 星</span><i><em style="width:${pct}%"></em></i><span class="num">${pct}%</span></div>`).join("")}</div>
+  <div class="r2-side-f"><span>好评率 <b>31%</b></span><span>已回复 <b>4</b> / 13</span></div>
+</aside>`;
+const r2 = ({ f, n, c, s, d, pi, prod, spec, text, pending, reply, open, zh }) => `<article class="r2">
+  <div class="r2-who">${av(f)}<b>${n}</b>${pending ? '<span class="tag bad" style="margin-left:auto">待回复</span>' : ""}</div>
+  <div class="r2-line">${star(s)}<span class="muted small">${d} · ${c}</span></div>
+  <div class="r2-prod"><img src="${PI(pi)}" alt=""><span>${prod}</span><span class="muted">· ${spec} ·</span><span class="r2-vp">已购买</span></div>
+  <p class="r2-text">${text}</p>
+  ${zh ? `<p class="r2-zh">${zh}</p>` : ""}
+  ${reply ? `<div class="r2-reply"><div class="h"><span class="smark2">A</span><b>Aurora Mart 的回复</b><span class="muted small">${reply.d}</span><span class="r2-edit">编辑</span></div><p>${reply.t}</p></div>` : ""}
+  ${open || ""}
+  <div class="r2-acts">${reply ? "" : `<span class="r2-a strong">${I("reply")}回复</span>`}<span class="r2-a">${I("languages")}${zh ? "收起译文" : "查看译文"}</span><span class="r2-a">${I("package-search")}查看订单</span><span class="r2-a">${I("ellipsis")}</span></div>
+</article>`;
+const reviews2Body = (openSecond) => `<div class="r2-page">${rvSummary(null)}
+  <div class="r2-list">
+    <div class="r2-tool"><span class="search" style="width:300px">${I("search")}搜索买家、商品或订单号</span><span class="btn sm ghost">最新 ${I("chevron-down")}</span><span class="btn sm ghost">近 30 天 ${I("chevron-down")}</span><span class="muted small" style="margin-left:auto">13 条</span></div>
+    ${r2({ f: "f-09", n: "Lena Fischer", c: "德国", s: 2, d: "10 月 11 日", pi: 2, prod: "Smart LED String Lights 10m", spec: "RGB / App control", text: "The lights stopped working after two days. Very disappointed, I expected much better for this price.", reply: { d: "10 月 12 日", t: "Hi Lena, we're sorry the lights failed so quickly. We've sent you a replacement set by express today at no cost — please keep the original. Thank you for your patience." } })}
+    ${r2({ f: "m-04", n: "Paul Becker", c: "德国", s: 1, d: "10 月 12 日", pi: 4, prod: "Foldable Yoga Mat", spec: "Ocean Blue / 8mm", text: "Package arrived with a part missing. Now I can't use it at all until this is fixed. Really frustrating for a repeat customer.", pending: true, open: openSecond, zh: openSecond ? "包裹到了但少了一个部件，修好之前完全没法用。作为老顾客真的很失望。" : "" })}
+    ${openSecond ? "" : r2({ f: "f-11", n: "Julia Richter", c: "瑞士", s: 3, d: "10 月 8 日", pi: 4, prod: "Foldable Yoga Mat", spec: "Lavender Grey / 6mm", text: "The mat is ok but the smell was strong for the first week.", pending: true })}
+  </div></div>`;
+const r2Composer = `<div class="r2-compose">
+  <div class="r2-c-h"><b>回复 Paul Becker</b><span class="muted small">公开显示在这条评价下面</span><span class="btn sm" style="margin-left:auto">${I("sparkles")}AI 帮写</span></div>
+  <div class="vers">
+    <div class="ver on"><div class="k"><span class="rb"></span>道歉，补发缺件</div><div class="en">Hi Paul, we're truly sorry the strap was missing from your order. We've shipped the missing part by express today at no cost.</div><div class="zh">非常抱歉缺了绑带，今天已免费快递补发。</div></div>
+    <div class="ver"><div class="k"><span class="rb"></span>给退款选择</div><div class="en">Dear Paul, thank you for letting us know. If you prefer, we can issue a partial refund right away instead of a replacement.</div><div class="zh">感谢告知，也可以不补发、直接部分退款。</div></div>
+    <div class="ver"><div class="k"><span class="rb"></span>邀请私下沟通</div><div class="en">Hi Paul, as a valued repeat customer this isn't the experience we want for you. Please message us so we can fix it within 24 hours.</div><div class="zh">请私信我们，24 小时内解决。</div></div>
+  </div>
+  <div class="editor"><div class="ta">Hi Paul, we're truly sorry the strap was missing from your order. We've shipped the missing part by express today at no cost, and you'll receive tracking by email tonight.</div>
+    <div class="bt"><span class="okline">${I("shield-check")}没有违规用语</span><span class="num">英文 · 168 / 1000</span><div class="r"><span class="btn sm ghost">取消</span><span class="btn primary sm">发布回复</span></div></div></div>
+</div>`;
+const r2tabs = `<span class="tab on">全部<span class="n">13</span></span><span class="tab">待回复<span class="n red">9</span></span><span class="tab">差评<span class="n">9</span></span><span class="tab">中评<span class="n">0</span></span><span class="tab">好评<span class="n">4</span></span>`;
+const reviews2 = () => shell("评价", "评价", reviews2Body(""), { flush: true, tabs: r2tabs, notice: false });
+const reviews2b = () => shell("评价", "评价", reviews2Body(r2Composer), { flush: true, tabs: r2tabs, notice: false });
+
+/* ============ 邮件 ============ */
+const mi = ({ f, n, d, sj, pv, u, on, tags = "" }) => `<div class="mi${on ? " on" : ""}${u ? "" : " read"}"><span class="u${u ? "" : " no"}"></span>${av(f)}<div style="min-width:0"><div class="l1"><b>${n}</b><span class="d">${d}</span></div><div class="sj">${sj}</div><div class="pv">${pv}</div>${tags ? `<div class="l4">${tags}</div>` : ""}</div></div>`;
+const mail = () => shell("邮件", "邮件", `<div class="ml">
+  <div class="list">
+    <div class="lt">
+      <span class="search">${I("search")}搜索发件人、主题或订单号</span></div>
+    ${mi({ f: "f-03", n: "Emily Wilson", d: "16:20", sj: "Customs delay? Order PO-202610-814303", pv: "Hi Support team, my tracking shows the Wireless No…", u: true, on: true, tags: `<span class="tag">PO-202610-814303</span>` })}
+    ${mi({ f: "f-07", n: "Miyu Ito", d: "13:52", sj: "Please confirm my payment (PO-202610-635…", pv: "Hello, I completed the payment for order PO-202610…", u: true })}
+    ${mi({ f: "f-14", n: "Rachel Anderson", d: "13:51", sj: "Please confirm my payment (PO-202610-401…", pv: "Hello, I completed the payment for order PO-202610…", u: true })}
+    ${mi({ f: "f-03", n: "Emily Wilson", d: "10 月 4 日", sj: "Where is my parcel? PO-202610-788663", pv: "Hello, it's been quite a while since order PO-2026…", u: false, tags: `<span class="tag">已回复</span>` })}
+    ${mi({ f: "f-14", n: "Rachel Anderson", d: "10 月 4 日", sj: "Customs delay? Order PO-202610-902734", pv: "Hi Support team, my tracking shows the Smart LED …", u: false, tags: `<span class="tag">已回复</span>` })}
+    ${mi({ f: "f-07", n: "Miyu Ito", d: "10 月 4 日", sj: "Package status inquiry - PO-202610-722727", pv: "Hi, could you tell me when my order will arrive…", u: false })}
+  </div>
+  <div class="md">
+    <div class="top"><h3>Customs delay? Order PO-202610-814303</h3>
+      <div class="from">${av("f-03", "md")}<div><b>Emily Wilson</b> <small>&lt;emily.wilson@mailbox.co.uk&gt;</small><br><small>发给 support@auroramart.com · 今天 16:20</small></div>
+        <div class="r"><span class="btn sm ghost">${I("package-search")}查看订单</span><span class="btn sm ghost">${I("ellipsis")}</span></div></div></div>
+    <div class="bodyx">
+      <p>Hi Support team,</p>
+      <p>My tracking shows the Wireless Noise-Cancelling Earbuds (order PO-202610-814303) have been at the London customs centre since October 9. Do I need to pay any import duty, or provide any documents? I'm travelling on Friday and really need them before then.</p>
+      <p>Thanks,<br>Emily</p>
+      <div class="zhbox"><div class="k">${I("languages")}中文译文</div>物流显示耳机（订单 PO-202610-814303）10 月 9 日起一直在伦敦清关中心。我需要付进口税或提供什么材料吗？我周五出行，很需要在那之前收到。</div>
+    </div>
+    <div class="reply"><div class="h">${I("reply")}回复 Emily Wilson<div class="r"><span class="btn sm ghost">${I("file-text")}模板</span><span class="btn sm">${I("sparkles")}AI 辅助</span></div></div>
+      <div class="ta">写回复…（可以用中文写，发送前译成英文）</div>
+      <div class="bt"><span class="small muted">草稿会自动保存</span><div class="r"><span class="btn sm ghost">存草稿</span><span class="btn primary sm">发送</span></div></div></div>
+  </div></div>`, { flush: true, tabs: `<span class="tab on">收件箱<span class="n">43</span></span><span class="tab">待回复<span class="n red">5</span></span><span class="tab">已发送</span><span class="tab">草稿<span class="n">2</span></span>`, extra: `<span class="btn primary sm">${I("pencil")}写邮件</span>` });
+
+/* ============ 订单 ============ */
+const og = ({ f, n, c, no, t, p, name, sku, price, qty, total, st, stSub, stCls, act }) => `<div class="og">
+  <div class="g1"><span class="buyer">${av(f, "xs")}${n}<small>${c}</small></span><span class="no num">${no}</span>${I("copy")}<span>${t}</span></div>
+  <div class="g2"><div class="it"><img src="${PI(p)}" alt=""><div><b>${name}</b><small>${sku}</small></div></div><span class="num">${price}</span><span class="num">× ${qty}</span>
+    <div class="amt"><b class="num">${total}</b><small>含运费 $0.00</small></div>
+    <div class="st"><span><span class="tag ${stCls || ""}">${st}</span></span>${stSub ? `<small>${stSub}</small>` : ""}</div>
+    <div class="ac">${act}<span class="btn sm ghost">${I("ellipsis")}</span></div></div></div>`;
+const orders = () => shell("订单", "订单", `<div class="olist">
+  <div class="bhead"><span class="search" style="width:360px">${I("search")}订单号 / 运单号 / 商品 / 买家</span><div class="chips"><span class="chip">${I("user")}买家：全部</span><span class="chip">${I("calendar")}近 30 天</span></div><div class="end"><span class="n">共 41 笔</span></div></div>
+  <div class="oh"><span>商品</span><span>单价</span><span>数量</span><span>实收</span><span>状态</span><span style="text-align:right">操作</span></div>
+  ${og({ f: "f-07", n: "Miyu Ito", c: "日本 · 普通客户", no: "PO-202610-679963", t: "10 月 10 日 13:52", p: 2, name: "Smart LED String Lights 10m", sku: "RGB · App 控制 · IP65", price: "$21.50", qty: 2, total: "$43.00", st: "待付款", stCls: "warn", stSub: "已过 2 天未付", act: `<span class="btn sm">去催付</span>` })}
+  ${og({ f: "f-03", n: "Emily Wilson", c: "英国 · 大订单客户", no: "PO-202610-814303", t: "10 月 2 日 13:50", p: 1, name: "Wireless Noise-Cancelling Earbuds", sku: "Black · 带充电盒", price: "$39.99", qty: 3, total: "$119.97", st: "已发货", stSub: "伦敦清关中心 · 4 天未更新", act: `<span class="btn sm">查看物流</span>` })}
+  ${og({ f: "m-04", n: "Paul Becker", c: "德国 · 粉丝 · 大订单客户", no: "PO-202610-635464", t: "10 月 11 日 13:52", p: 4, name: "Foldable Yoga Mat", sku: "Ocean Blue · 8mm", price: "$39.99", qty: 3, total: "$119.97", st: "待发货", stSub: "售后：补发缺件", act: `<span class="btn sm">查看详情</span>` })}
+  ${og({ f: "f-14", n: "Rachel Anderson", c: "加拿大 · 普通客户", no: "PO-202610-401656", t: "10 月 11 日 13:51", p: 3, name: "Stainless Insulated Tumbler 600ml", sku: "Matte Black", price: "$24.20", qty: 3, total: "$72.60", st: "待发货", act: `<span class="btn sm">查看详情</span>` })}
+  </div>`, { tabs: `<span class="tab on">全部<span class="n">41</span></span><span class="tab">待付款<span class="n">3</span></span><span class="tab">待发货<span class="n">8</span></span><span class="tab">已发货<span class="n">9</span></span><span class="tab">已送达<span class="n">19</span></span><span class="tab">已成功<span class="n">2</span></span>`, notice: false, flush: true });
+
+/* ============ 我的记录 ============ */
+const DIMS = ["话术规范", "沟通有效性", "客户情绪安抚", "问题解决", "语法准确性", "违规用语合规"];
+const abr = (nm, v, base, delta, tip) => `<div class="abr"><span class="nm">${nm}</span><div class="bt${v == null ? " empty" : ""}">${v == null ? "" : `<i class="${v < 60 ? "lo" : ""}" style="width:${v}%"></i>`}${base == null ? "" : `<em style="left:${base}%"></em>`}</div>
+  <span class="val num${v != null && v < 60 ? " lo" : ""}">${v == null ? `<span style="color:#c3cad5">—</span>` : v}</span>${delta == null ? `<span></span>` : `<span class="pill ${delta >= 0 ? "up" : "down"}">${I(delta >= 0 ? "arrow-up" : "arrow-down")}${Math.abs(delta)} 较训前</span>`}${tip ? `<div class="tip">${tip}</div>` : ""}</div>`;
+const trend = (empty) => { const pts = [47, 62, 58, 80, 71, 76]; const w = 300, h = 150, x = (i) => 24 + i * ((w - 40) / (pts.length - 1)), y = (v) => h - 18 - (v - 30) / 70 * (h - 36);
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto">${[40, 60, 80, 100].map((v) => `<line x1="20" x2="${w - 8}" y1="${y(v)}" y2="${y(v)}" stroke="${v === 70 ? "#161c26" : "#eef1f5"}" stroke-width="${v === 70 ? 1 : 1}" ${v === 70 ? 'stroke-dasharray="3 3"' : ""}/><text x="2" y="${y(v) + 4}" font-size="10" fill="#9aa3b0">${v}</text>`).join("")}
+  <line x1="20" x2="${w - 8}" y1="${y(70)}" y2="${y(70)}" stroke="#161c26" stroke-dasharray="3 3"/><text x="24" y="${y(70) - 4}" font-size="10" fill="#465163">达标线</text>
+  ${empty ? `<polyline points="${pts.map((_, i) => `${x(i)},${y(60)}`).join(" ")}" fill="none" stroke="#dfe4ea" stroke-width="2" stroke-dasharray="4 4"/>` : `<polyline points="${pts.map((v, i) => `${x(i)},${y(v)}`).join(" ")}" fill="none" stroke="#1d5fd1" stroke-width="2"/>${pts.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="3.5" fill="#fff" stroke="${v < 60 ? "#b8302a" : "#1d5fd1"}" stroke-width="2"/>`).join("")}`}
+  ${["9/28", "10/2", "10/8", "10/9", "10/12", "10/13"].map((d, i) => `<text x="${x(i) - 10}" y="${h - 2}" font-size="10" fill="#9aa3b0">${d}</text>`).join("")}</svg>`; };
+const rr = ({ v, cls, name, scene, date, bars, ai, tc, practice, reviewed }) => `<div class="rr${practice ? " practice" : ""}">
+  <span class="sc ${cls}">${practice ? "练习" : `${v}<small>分</small>`}</span>
+  <div><b>${name}</b><div class="m2">${scene} · ${date}${reviewed ? ` <span class="tag" style="height:18px;font-size:11px">已复核</span>` : ""}</div></div>
+  <div class="mini">${bars.map((b) => `<i class="${b < 60 ? "lo" : ""}" style="height:${b * 0.34}px"></i>`).join("")}</div>
+  <div class="cm"><div><span class="who ai">AI</span><span class="x">${ai}</span></div>${tc ? `<div class="tc"><span class="who t">王老师</span><span class="x">${tc}</span></div>` : ""}</div>
+  <span class="btn sm">复盘</span></div>`;
+const records = () => shell("我的记录", "我的记录", `
+  ${kpis(false)}
+  <div class="two">
+    <div class="board"><div class="bhead"><h3>六项能力</h3><span class="n">近 30 天 6 次接待的平均</span><div class="end"><div class="legend"><span><i></i>近期平均</span><span><em></em>训前测评</span></div></div></div>
+      <div class="ab">
+        ${abr("话术规范", 74, 62, 12)}
+        ${abr("沟通有效性", 58, 66, -8, "先回应买家最关心的问题，再补充说明；一条消息只讲一件事")}
+        ${abr("客户情绪安抚", 52, 48, 4, "买家不满时先共情再给方案：I completely understand… / I'm so sorry…")}
+        ${abr("问题解决", 79, 55, 24)}
+        ${abr("语法准确性", 81, 70, 11)}
+        ${abr("违规用语合规", 92, 85, 7)}
+      </div></div>
+    <div class="board"><div class="bhead"><h3>成绩走势</h3><span class="n">任务接待</span></div><div class="trend">${trend(false)}</div></div>
+  </div>
+  <div class="board" style="margin-top:16px">
+    <div class="bhead"><h3>成绩记录</h3><span class="n">11</span><div class="end"><div class="chips"><span class="chip on">全部</span><span class="chip">任务 <i>7</i></span><span class="chip">练习 <i>4</i></span><span class="chip">有老师评语 <i>2</i></span></div></div></div>
+    ${rr({ v: 76, cls: "mid", name: "售后差评挽回", scene: "缺件差评 · Paul Becker", date: "今天 16:40", bars: [78, 70, 66, 84, 80, 95], ai: "补发方案给得快，买家情绪明显缓和；开场道歉稍显模板化。" })}
+    ${rr({ v: 80, cls: "hi", name: "售中物流同步演练", scene: "清关延误 · Emily Wilson", date: "10 月 13 日", bars: [82, 75, 70, 85, 84, 100], ai: "物流节点说明清晰，主动给出预计时间。", tc: "这次很好，下次清关问题记得先说明是否需要买家补交材料。", reviewed: true })}
+    ${rr({ v: 47, cls: "lo", name: "新品推广首训", scene: "犹豫的首购客 · Lena Fischer", date: "10 月 12 日", bars: [52, 40, 38, 50, 64, 90], ai: "没有回答买家关于尺寸的问题就推优惠券，买家两次追问。", tc: "先把商品资料看熟再推荐，尺寸表在商品详情里。", reviewed: true })}
+    ${rr({ practice: true, name: "自由练习", scene: "售前 · 询价比价 · Ana Pereira", date: "10 月 11 日", bars: [70, 66, 72, 68, 75, 100], ai: "报价准确，可以更主动地推荐搭配商品。" })}
+  </div>`, { notice: false });
+const recordsEmpty = () => shell("我的记录", "我的记录", `
+  ${kpis(true)}
+  <div class="two">
+    <div class="board" style="position:relative"><div class="bhead"><h3>六项能力</h3><span class="n">训前测评 64 分</span><div class="end"><div class="legend"><span><i></i>近期平均</span><span><em></em>训前测评</span></div></div></div>
+      <div class="ab">${abr("话术规范", null, 62)}${abr("沟通有效性", null, 66)}${abr("客户情绪安抚", null, 48)}${abr("问题解决", null, 55)}${abr("语法准确性", null, 70)}${abr("违规用语合规", null, 85)}</div>
+      <div class="hint-card">${I("message-square-dashed")}完成第一次接待后，这里出现你的六项能力${H}</div></div>
+    <div class="board" style="position:relative"><div class="bhead"><h3>成绩走势</h3></div><div class="trend">${trend(true)}</div><div class="hint-card" style="top:58%">${I("chart-line")}每次任务接待出分后连成线</div></div>
+  </div>
+  <div class="board" style="margin-top:16px"><div class="bhead"><h3>成绩记录</h3><span class="n">0</span></div>
+    <div class="empty-line"><span class="ic">${I("inbox")}</span><div><div style="font-weight:600">还没有记录</div><div class="small muted">完成任务里的接待或自由练习后，每一次都会在这里留一份复盘。</div></div><span class="btn" style="margin-left:auto">去任务大厅</span></div></div>`, { notice: false });
+
+/* ============ 店铺资料（教师端） ============ */
+const tshell = (body) => `<div class="app">
+  <nav class="side">
+    <div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>
+    ${[["chart-column","数据总览"],["clipboard-list","实训任务"],["users-round","班级与学生"],["megaphone","通知公告"],["message-square-more","实训跟踪"],["file-chart-column","考核报表"],["boxes","场景配置"]].map(([i,l]) => `<div class="nav${l==="场景配置"?" on":""}">${I(i)}${l}</div>`).join("")}
+    <div class="grow"></div><div class="foot"><div class="nav">${I("book-open")}使用帮助</div></div>
+  </nav>
+  <div class="main"><header class="head"><h1>场景配置</h1><div class="tabs"><span class="tab">场景<span class="n">24</span></span><span class="tab">买家画像<span class="n">40</span></span><span class="tab on">店铺商品<span class="n">80</span></span></div>
+    <div class="right">${I("bell")}<span class="av">王</span>王老师 ${I("chevron-down")}</div></header>
+    <div class="body"><div class="wrap">${body}</div></div></div></div>`;
+const gc = (n, name, spec, price, sales) => `<div class="gc"><img src="${PI(n)}" alt=""><div class="bd"><b>${name}</b><span class="spec">${spec}</span><div class="row"><span class="price num">${price}</span><span class="small muted">已售 ${sales}</span></div></div></div>`;
+const storeCard = () => `<div class="store"><span class="logo">A</span>
+  <div><h3>Aurora Mart<span class="tag">欧美 · USD</span></h3>
+    <div class="meta"><span>${I("mail")}support@auroramart.com</span><span>${I("pen-line")}Best regards, Aurora Mart Customer Support</span></div>
+    <div class="rules"><span>${I("users")}客户分层${H}</span><span>大订单客户 <b>单笔 ≥ $100</b> 或 <b>年累计 ≥ $300</b></span><span>沉睡客户 <b>180 天</b>没下单</span></div></div>
+  <div class="acts"><span class="btn">${I("pencil")}编辑店铺资料</span></div></div>`;
+const store = () => tshell(`${storeCard()}
+  <div class="bar-row" style="display:flex;align-items:center;gap:10px;margin:20px 0 14px"><span class="search" style="width:260px">${I("search")}搜索商品</span><div class="chips"><span class="chip on">全部 <i>80</i></span><span class="chip">耳机音频 <i>6</i></span><span class="chip">家居灯饰 <i>9</i></span><span class="chip">运动户外 <i>12</i></span><span class="chip">缺图片 <i>2</i></span></div><span style="margin-left:auto" class="btn primary">${I("plus")}添加商品</span></div>
+  <div class="ggrid">${gc(1, "Wireless Noise-Cancelling Earbuds", "Black · 带充电盒", "$39.99", "1,284")}${gc(2, "Smart LED String Lights 10m", "RGB · App 控制 · IP65", "$21.50", "860")}${gc(3, "Stainless Insulated Tumbler 600ml", "Matte Green / Black / Beige", "$25.90", "2,031")}${gc(4, "Foldable Yoga Mat", "6mm / 8mm · 3 色", "$39.99", "512")}</div>`);
+const storeEditFull = () => { const base = tshell(`${storeCard()}`); return base.replace(/<\/div>$/, `<div class="scrim"></div>
+  <div class="sdr"><div class="dh"><h3>编辑店铺资料</h3>${I("x")}</div>
+    <div class="db"><div class="form">
+      <div class="sgrp"><h4><span class="no">1</span>店铺是谁</h4>
+        <div class="f2"><div class="fld"><label>店铺名称</label><div class="in">Aurora Mart</div><span class="hint">英文，买家会看到；12 个字符以内显示最完整</span></div>
+          <div class="fld"><label>主营市场 · 币种</label><div class="segc"><span class="on">欧美</span><span>日韩</span><span>东南亚</span><span>中东</span></div><span class="hint">币种 USD</span></div></div>
+        <div class="fld" style="margin-top:12px"><label>店铺标识</label><div class="lg-pick"><span class="logo">A</span><span class="btn sm">${I("upload")}上传图片</span><span class="hint">不上传就用名称首字母</span></div></div></div>
+      <div class="sgrp"><h4><span class="no">2</span>怎么联系</h4>
+        <div class="f2"><div class="fld"><label>客服邮箱</label><div class="in">support@auroramart.com</div><span class="hint">按店铺名生成，可改；学生发的邮件从这里发出</span></div>
+          <div class="fld"><label>客服签名</label><div class="in ta">Best regards,<br>Aurora Mart Customer Support</div></div></div></div>
+      <div class="sgrp"><h4><span class="no">3</span>客户怎么分层<span class="help">${I("circle-help")}</span></h4>
+        <div class="f2"><div class="fld"><label>大订单客户</label><div class="in">单笔实付 ≥<span class="unit">USD</span><b style="font-weight:600">100</b></div><div class="in">或近一年累计 ≥<span class="unit">USD</span><b style="font-weight:600">300</b></div></div>
+          <div class="fld"><label>沉睡客户</label><div class="in">超过<span class="unit">天没下单</span><b style="font-weight:600">180</b></div><span class="hint">按现有 80 个商品的价格，约 <b>3 成</b>买家会是大订单客户</span></div></div></div>
+    </div>
+    <div class="pv"><div class="cap-s">学生端预览</div>
+      <div class="pvc"><span class="k">侧栏</span><div class="side-mini"><div style="color:var(--ink-3)"><span style="display:inline-flex;width:14px;height:14px;border-radius:3px;background:#1f2937;color:#fff;font-size:9px;font-weight:700;align-items:center;justify-content:center;padding:0;border:0">A</span>店铺后台 · Aurora Mart</div><div class="on">${I("message-square-more")}客服工作台</div><div>${I("package-search")}订单</div></div></div>
+      <div class="pvc"><span class="k">学生发出的邮件</span><div class="mailh">发件人 <b>Aurora Mart</b> &lt;support@auroramart.com&gt;<br>收件人 Emily Wilson</div><div class="sig">Best regards,
+Aurora Mart Customer Support</div></div>
+      <div class="pvc"><span class="k">工作台里的客户标签</span><div class="tiers"><div><span class="tag c3">大订单客户</span>Emily · 3 笔共 $412.70</div><div><span class="tag">沉睡客户</span>Lena · 上次下单 7 个月前</div><div><span class="tag">普通客户</span>Miyu · 1 笔 $43.00</div></div></div>
+    </div></div>
+    <div class="df"><span class="l">改完立即生效：学生端侧栏、新发出的邮件和下一位进线的买家</span><div class="r"><span class="btn ghost">取消</span><span class="btn primary">保存</span></div></div>
+  </div></div>`); };
+const T = { store, storeEdit: storeEditFull, hall, hallEmpty, wb, wbProduct, wbEnd, reviews, reviews2, reviews2b, mail, orders, records, recordsEmpty };
+document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
+if (window.lucide) lucide.createIcons();
+function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const h = +(f.dataset.h || 900); s.style.height = `${h}px`; const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${h * k}px`; }); }
+fit(); addEventListener("resize", fit);
+</script>
+</body>
+</html>

@@ -4,6 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db";
+import { once } from "../inflight";
 import type { AuthGuard } from "../auth-context";
 import { writeAudit } from "../auth-context";
 import { getSetting, setSetting, type QuotaSettings } from "../settings";
@@ -315,7 +316,18 @@ export function registerAdminRoutes(
       return { code: "TTS_NOT_CONFIGURED", message: "还没有配置语音密钥。" };
     }
     try {
-      const { audio } = await voice.preview(speaker);
+      // 试听句固定：同一音色只合成一次，存 uploads/tts/preview-<音色>.mp3 复用
+      const path = await import("node:path");
+      const fs = await import("node:fs");
+      const target = path.resolve(process.cwd(), "uploads", "tts", `preview-${speaker}.mp3`);
+      const audio = fs.existsSync(target)
+        ? fs.readFileSync(target)
+        : await once(`voice-preview:${speaker}`, async () => {
+            const { audio: fresh } = await voice.preview(speaker);
+            fs.mkdirSync(path.dirname(target), { recursive: true });
+            fs.writeFileSync(target, fresh);
+            return fresh;
+          });
       reply.type("audio/mpeg");
       return reply.send(audio);
     } catch (error) {

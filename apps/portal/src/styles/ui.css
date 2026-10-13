@@ -537,6 +537,7 @@
 
 /* 导航角标；图表放进内容板 */
 .shell-nav-badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--c-danger); font-style: normal; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; color: #fff; }
+.shell-nav-badge.is-soft { background: var(--c-surface-hover); color: var(--c-ink-2); }
 .board .score-dist { margin: 20px 20px 22px; height: 150px; border-bottom: 1px solid var(--c-line); }
 .board .dim-bars { padding: 16px 20px 18px; }
 .board .notice-list { padding: 0 20px; }

@@ -4,7 +4,7 @@ import { AdminPages } from "./pages/admin/AdminPages";
 import { AppShell, roleNav, type ShellAnnouncement, type ShellNotificationCenter } from "./components/AppShell";
 import { LoginScreen } from "./components/LoginScreen";
 import { MailStudio } from "./pages/student/MailStudio";
-import { LiveMail } from "./pages/student/LiveMail";
+import { LiveMail, countUnreadMail } from "./pages/student/LiveMail";
 import { Orders } from "./pages/student/Orders";
 import { LiveOrders, OPEN_ORDER_KEY } from "./pages/student/LiveOrders";
 import { LiveReviews } from "./pages/student/LiveReviews";
@@ -28,7 +28,11 @@ import {
   loadSession,
   type GuidanceItem,
   type Session,
-  type StudentAnnouncement, saveSession } from "./api/client";
+  type StudentAnnouncement, saveSession,
+  fetchStoreProfile,
+  type ConversationSummary,
+  type StoreProfile,
+  } from "./api/client";
 
 /** 旧版本的指导已读状态存在本机（且不分账号），首次进入时迁到云端（K4） */
 const LEGACY_GUIDANCE_READ_KEY = "cecs.guidance.read";
@@ -142,6 +146,36 @@ export function App() {
     };
   }, [studentLive, session, guidance, readIds]);
 
+  /** 页面内跳转（工作台“查看复盘”“发邮件跟进”）：页面派发 cecs:navigate，外壳切页 */
+  useEffect(() => {
+    const onNavigate = (event: Event) => {
+      const page = (event as CustomEvent<{ page?: string }>).detail?.page;
+      if (page && roleNav[role].some((item) => item.id === page)) setActive(page);
+    };
+    window.addEventListener("cecs:navigate", onNavigate);
+    return () => window.removeEventListener("cecs:navigate", onNavigate);
+  }, [role]);
+
+  /** 学生端：店铺资料（侧栏分组标题）+ 店铺后台角标：买家在等的会话、未读邮件（D-37），30 秒刷新。评价不挂角标：平台没有“必须回复评价”的逻辑 */
+  const [store, setStore] = useState<StoreProfile | null>(null);
+  const [studentBadges, setStudentBadges] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!studentLive || !session) return;
+    void fetchStoreProfile(session).then(setStore).catch(() => undefined);
+    const load = () => {
+      void apiGet<ConversationSummary[]>("/v1/conversations", session)
+        .then((rows) => setStudentBadges((prev) => ({ ...prev, workbench: rows.filter((row) => row.unreplied).length })))
+        .catch(() => undefined);
+      void countUnreadMail(session)
+        .then((count) => setStudentBadges((prev) => ({ ...prev, mail: count })))
+        .catch(() => undefined);
+    };
+    load();
+    const timer = window.setInterval(load, 30_000);
+    return () => window.clearInterval(timer);
+    // 切页时刷新：读完邮件、回完评价后角标马上变
+  }, [studentLive, session, active]);
+
   /** 教师端侧栏角标：买家等待超过 3 分钟的会话数，30 秒刷新（D-27） */
   const [teacherWaiting, setTeacherWaiting] = useState(0);
   const teacherLive = signedIn && !demo && role === "teacher" && session !== null;
@@ -202,7 +236,8 @@ export function App() {
       notifications={notifications}
       announcements={announcements}
       banner={adminBanner}
-      badges={teacherWaiting ? { tracking: teacherWaiting } : undefined}
+      badges={role === "student" ? studentBadges : teacherWaiting ? { tracking: teacherWaiting } : undefined}
+      store={role === "student" ? store : undefined}
       session={demo ? null : session}
       onSessionChange={(next) => { saveSession(next); setSession(next); }}
       onSignOut={
@@ -246,6 +281,11 @@ function StudentPage({
     return session ? (
       <LiveReviews
         session={session}
+        onOpenConversation={(conversationId) => {
+          sessionStorage.setItem(OPEN_CONVERSATION_KEY, conversationId);
+          onNavigate("workbench");
+          window.dispatchEvent(new CustomEvent(OPEN_CONVERSATION_EVENT));
+        }}
         onOpenOrder={(orderId) => {
           sessionStorage.setItem(OPEN_ORDER_KEY, orderId);
           onNavigate("orders");
@@ -268,7 +308,7 @@ function StudentPage({
       <MailStudio />
     );
   }
-  if (active === "records") return session ? <LiveRecords session={session} /> : <Records />;
+  if (active === "records") return session ? <LiveRecords session={session} onOpenHall={() => onNavigate("tasks")} /> : <Records />;
   return (
     <TaskHall
       onStart={(taskId) => {
