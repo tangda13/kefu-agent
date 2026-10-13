@@ -125,7 +125,8 @@ export function TaskHall({
   session,
 }: {
   onStart: (taskId?: string) => void;
-  onOpenRecords: () => void;
+  /** 传任务 id：直接看这个任务的复盘 */
+  onOpenRecords: (taskId?: string) => void;
   session?: Session | null;
 }) {
   const [tasks, setTasks] = useState<StudentTask[]>([]);
@@ -376,7 +377,7 @@ export function TaskHall({
                       </div>
                     </div>
                     <div className="sl-tr-due" />
-                    <div className="sl-tr-act"><Button size="sm" onClick={onOpenRecords}>看复盘</Button></div>
+                    <div className="sl-tr-act"><Button size="sm" onClick={() => onOpenRecords(task.id)}>看复盘</Button></div>
                   </div>
                 );
               })}

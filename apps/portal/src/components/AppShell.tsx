@@ -20,6 +20,7 @@ import {
   Settings2,
   ShieldCheck,
   Star,
+  Store,
   UserRoundCog,
   UsersRound,
   type LucideIcon,
@@ -218,7 +219,7 @@ function StoreGroupLabel({ store, onOpen }: { store?: { name: string; logoUrl: s
     <button type="button" className="shell-nav-group" title={name ? `店铺后台 · ${name}` : "店铺后台"} onClick={onOpen} disabled={!onOpen}>
       {/* 折叠时只剩分隔线 + 店铺标识 */}
       <span className="shell-store-mark">
-        {store?.logoUrl ? <img src={store.logoUrl} alt="" /> : (name.trim()[0] ?? "店").toUpperCase()}
+        {store?.logoUrl ? <img src={store.logoUrl} alt="" /> : <Store size={14} />}
       </span>
       <span>店铺后台{name ? ` · ${name}` : ""}</span>
     </button>

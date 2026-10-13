@@ -21,6 +21,7 @@ interface AssessmentRecord {
   conversationId: string;
   scenarioName: string;
   scenarioStage: string | null;
+  taskId: string | null;
   /** 任务名；自由练习为空 */
   taskName: string | null;
   /** 达标线；自由练习为空 */
@@ -274,18 +275,34 @@ const RANGE_OPTIONS: { id: RangeKey; label: string }[] = [
   { id: "d30", label: "近 30 天" },
 ];
 
+export const RECORD_TASK_KEY = "cecs.recordTask";
+
 export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenHall?: () => void }) {
   const [data, setData] = useState<AssessmentData | null>(null);
   const [active, setActive] = useState<AssessmentRecord | null>(null);
   const [replay, setReplay] = useState<ConversationMessage[] | null>(null);
   const [range, setRange] = useState<RangeKey>("all");
   const [filter, setFilter] = useState<ListFilter>("all");
+  /** 从任务大厅“看复盘”进来：只看这个任务的记录，并直接打开最近一次复盘 */
+  const [taskFocus, setTaskFocus] = useState<string | null>(() => {
+    try {
+      const id = sessionStorage.getItem(RECORD_TASK_KEY);
+      sessionStorage.removeItem(RECORD_TASK_KEY);
+      return id;
+    } catch {
+      return null;
+    }
+  });
   const [error, setError] = useState("");
   const [baseline, setBaseline] = useState<BaselineResult | null>(null);
 
   useEffect(() => {
     apiGet<AssessmentData>("/v1/student/assessments", session)
-      .then(setData)
+      .then((loaded) => {
+        setData(loaded);
+        const latest = taskFocus ? loaded.records.find((record) => record.taskId === taskFocus) : null;
+        if (latest) setActive(latest);
+      })
       .catch((cause) => setError(errorText(cause)));
     fetchBaselineStatus(session)
       .then((status) => setBaseline(status.completed && status.result ? status.result : null))
@@ -349,7 +366,8 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
   const taskCount = records.filter((record) => !record.practice).length;
   const practiceCount = records.length - taskCount;
   const teacherCount = records.filter((record) => record.teacherComment).length;
-  const visibleRecords = records.filter((record) =>
+  const focusName = taskFocus ? records.find((record) => record.taskId === taskFocus)?.taskName ?? null : null;
+  const visibleRecords = records.filter((record) => (taskFocus ? record.taskId === taskFocus : true)).filter((record) =>
     filter === "task" ? !record.practice : filter === "practice" ? !!record.practice : filter === "teacher" ? !!record.teacherComment : true,
   );
 
@@ -416,10 +434,10 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
       </div>
 
       <Board
-        title="成绩记录"
-        count={records.length}
+        title={focusName ? <>成绩记录 · {focusName}<button type="button" className="sl-focus-clear" onClick={() => setTaskFocus(null)}>看全部</button></> : "成绩记录"}
+        count={focusName ? visibleRecords.length : records.length}
         extra={
-          records.length ? (
+          records.length && !focusName ? (
             <FilterChips<ListFilter>
               value={filter}
               onChange={setFilter}

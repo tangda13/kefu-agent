@@ -1,4 +1,4 @@
-import { Copy, MapPin, NotebookPen, Package2, Search, Send, Truck } from "lucide-react";
+import { Copy, NotebookPen, Package2, Search, Truck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { assetUrl, updateOrder, type ConversationOrder, type OrderAddress, type Session } from "../../../api/client";
 import { Button, Select } from "../../../ui";
@@ -110,11 +110,12 @@ export function OrdersTab({ session, conversationId, buyerName, orders, setOrder
             ) : null}
             {detail.returnStatus ? <div className="wbk-oc-lg"><span className="wbk-oc-lg-t">退货/退款</span><div>{RETURN_LABELS[detail.returnStatus] ?? detail.returnStatus}</div></div> : null}
             {detail.remark ? <div className="wbk-oc-lg"><NotebookPen size={14} /><div>备注：{detail.remark}</div></div> : null}
-            <div className="wbk-oc-ft">
-              <Button size="sm" icon={Send} disabled={!canSend} onClick={() => onSend(order)}>发送订单</Button>
-              <Button size="sm" variant="ghost" onClick={() => setExpanded(open ? null : order.id)}>{open ? "收起" : "详情"}</Button>
-              <Button size="sm" variant="ghost" onClick={() => openAction(order, "remark")}>备注</Button>
-              <Button size="sm" variant="ghost" icon={MapPin} onClick={() => openAction(order, "address")}>改地址</Button>
+            {/* 操作一行平铺（同商品卡） */}
+            <div className="wbk-pc-ac is-row">
+              <button type="button" disabled={!canSend} onClick={() => onSend(order)}>发送订单</button>
+              <button type="button" className={open ? "is-on" : ""} onClick={() => setExpanded(open ? null : order.id)}>{open ? "收起" : "详情"}</button>
+              <button type="button" onClick={() => openAction(order, "remark")}>备注</button>
+              <button type="button" onClick={() => openAction(order, "address")}>改地址</button>
             </div>
             {open ? (
               <dl className="wbk-oc-detail">

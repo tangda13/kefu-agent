@@ -102,6 +102,7 @@ export function registerOrderRoutes(
         conversationId: row.conversation_id,
         scenarioName: row.scenario_name ?? "通用会话",
         scenarioStage: row.scenario_stage ?? null,
+        taskId: row.task_id ?? null,
         taskName: row.task_name ?? null,
         passScore: row.task_id == null ? null : Number(row.pass_score ?? 60),
         buyer: toStudentPersonaView(ensurePersonaAvatar(row.persona, row.conversation_id) as never),

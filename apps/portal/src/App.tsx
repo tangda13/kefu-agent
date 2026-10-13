@@ -9,7 +9,7 @@ import { Orders } from "./pages/student/Orders";
 import { LiveOrders, OPEN_ORDER_KEY } from "./pages/student/LiveOrders";
 import { LiveReviews } from "./pages/student/LiveReviews";
 import { Records } from "./pages/student/Records";
-import { LiveRecords } from "./pages/student/LiveRecords";
+import { LiveRecords, RECORD_TASK_KEY } from "./pages/student/LiveRecords";
 import { TaskHall } from "./pages/student/TaskHall";
 import { Workbench } from "./pages/student/Workbench";
 import { LiveWorkbench } from "./pages/student/LiveWorkbench";
@@ -315,7 +315,10 @@ function StudentPage({
         setStartTaskId(taskId ?? null);
         onNavigate("workbench");
       }}
-      onOpenRecords={() => onNavigate("records")}
+      onOpenRecords={(taskId) => {
+        if (taskId) sessionStorage.setItem(RECORD_TASK_KEY, taskId);
+        onNavigate("records");
+      }}
       session={session}
     />
   );
