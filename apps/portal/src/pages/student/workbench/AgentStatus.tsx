@@ -1,5 +1,6 @@
 import { Check, ChevronDown, Minus, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { PRACTICE_TOTALS } from "../practice";
 
 /* 客服状态（参照千牛 / 飞鸽）：状态标签，点开切换在线 / 小休 / 离线，设置最大接待人数。
    在线：正常进线；小休：可接待当前买家，不再进线新买家；离线：不进线，也不能发送消息。 */
@@ -14,9 +15,12 @@ const STATES: Array<{ id: AgentState; label: string; desc: string }> = [
 
 export const MAX_SERVE_LIMIT = 5;
 
-export function AgentStatus({ state, onState, maxServe, onMaxServe, canSetMax }: {
-  /** 最大接待人数只在自由练习时可设；任务里按老师的进线规则，固定 3 位 */
+export function AgentStatus({ state, onState, maxServe, onMaxServe, canSetMax, total, onTotal }: {
+  /** 接待人数只在自由练习时可设；任务里按老师的进线规则，同时最多 3 位 */
   canSetMax: boolean;
+  /** 最大接待人数：这一轮累计进线上限，0 = 不限 */
+  total: number;
+  onTotal: (next: number) => void;
   state: AgentState;
   onState: (next: AgentState) => void;
   maxServe: number;
@@ -54,11 +58,21 @@ export function AgentStatus({ state, onState, maxServe, onMaxServe, canSetMax }:
           </div>
           {canSetMax ? (
           <div className="wbk-agent-max">
-            <span>最大接待人数</span>
+            <span>同时接待人数</span>
             <span className="stepper">
               <button type="button" aria-label="减少" disabled={maxServe <= 1} onClick={() => onMaxServe(maxServe - 1)}><Minus size={13} /></button>
               <b className="num">{maxServe}</b>
               <button type="button" aria-label="增加" disabled={maxServe >= MAX_SERVE_LIMIT} onClick={() => onMaxServe(maxServe + 1)}><Plus size={13} /></button>
+            </span>
+          </div>
+          ) : null}
+          {canSetMax ? (
+          <div className="wbk-agent-max">
+            <span>最大接待人数</span>
+            <span className="wbk-agent-seg">
+              {PRACTICE_TOTALS.map((value) => (
+                <button key={value} type="button" className={value === total ? "is-on" : ""} onClick={() => onTotal(value)}>{value === 0 ? "不限" : value}</button>
+              ))}
             </span>
           </div>
           ) : null}

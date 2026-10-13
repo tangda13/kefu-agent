@@ -2,7 +2,7 @@ import { Clock3, Search, Users } from "lucide-react";
 import { useMemo } from "react";
 import { type ConversationSummary } from "../../../api/client";
 import { Segmented } from "../../../ui";
-import { Av, CustomerTagChip, clockLabel, listTimeLabel, useNow } from "./shared";
+import { Av, clockLabel, listTimeLabel, useNow } from "./shared";
 
 /* 会话列表（C3）：搜索 + 接待中 / 最近联系；接待中按“等你回复 → 已回复”分组 */
 
@@ -69,11 +69,7 @@ export function ConversationRail({ tab, onTab, search, onSearch, active, justEnd
           <span className={typing ? "wbk-qi-l2 is-typing" : "wbk-qi-l2"}>
             {typing ? "对方正在输入…" : item.lastMessage ? item.lastMessage.content : "买家刚进线…"}
           </span>
-          {item.customerTags && item.customerTags.length > 0 ? (
-            <span className="wbk-qi-l3">
-              {item.customerTags.map((tag) => <CustomerTagChip key={tag} tag={tag} small />)}
-            </span>
-          ) : null}
+          {/* 会话列表不放客户标签：标签在右栏客户资料里看 */}
         </span>
       </button>
     );

@@ -25,7 +25,7 @@ export function TaskChip({ task, practice, switchable, onPick, reason, practiceI
   onPick: (taskId: string) => void;
   /** 自由练习时，咨询类型收在这里（不放会话头） */
   reason?: { value: string | null; disabled: boolean; onPick: (reason: string) => void } | null;
-  practiceInfo?: { scope: string; max: number; onStop: () => void } | null;
+  practiceInfo?: { scope: string; max: number; arrived: number; total: number; onStop: () => void } | null;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -53,7 +53,8 @@ export function TaskChip({ task, practice, switchable, onPick, reason, practiceI
             {practiceInfo ? (
               <dl>
                 <dt>练习场景</dt><dd>{practiceInfo.scope}</dd>
-                <dt>进线</dt><dd>陆续进线，同时最多 {practiceInfo.max} 位</dd>
+                <dt>进线</dt><dd>同时最多 {practiceInfo.max} 位</dd>
+                <dt>已进线</dt><dd className="num">{practiceInfo.arrived}{practiceInfo.total ? ` / ${practiceInfo.total}` : ""} 位{practiceInfo.total && practiceInfo.arrived >= practiceInfo.total ? "（本轮已满）" : ""}</dd>
               </dl>
             ) : null}
             {reason ? (

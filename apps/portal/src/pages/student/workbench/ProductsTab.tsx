@@ -1,4 +1,4 @@
-import { Calculator, ListTree, Package2, PanelRightOpen, Send, ShoppingCart } from "lucide-react";
+import { Package2 } from "lucide-react";
 import { useState } from "react";
 import { assetUrl, type StoreProduct } from "../../../api/client";
 import { Button, Segmented } from "../../../ui";
@@ -43,14 +43,13 @@ export function ProductsTab({ products, browsed, canSend, canFill, onSend, onFil
               <b>{product.name}</b>
               <div className="wbk-pc-p num">USD {product.price}</div>
               <div className="wbk-pc-m">已售 {product.sales} · 库存 {product.stock}</div>
-              <div className="wbk-pc-ac">
-                <Button size="sm" icon={PanelRightOpen} onClick={() => onDetail(product)}>详情</Button>
-                <Button size="sm" variant="ghost" icon={Send} disabled={!canSend} onClick={() => onSend("product", product.id)}>发送</Button>
-              </div>
-              <div className="wbk-pc-ac is-sub">
-                <button type="button" disabled={!canSend} onClick={() => onSend("invite", product.id)}><ShoppingCart size={13} />邀请下单</button>
-                <button type="button" className={specOpen === product.id ? "is-on" : ""} onClick={() => { setSpecOpen(specOpen === product.id ? null : product.id); setCalcOpen(null); }}><ListTree size={13} />规格属性</button>
-                <button type="button" className={calcOpen === product.id ? "is-on" : ""} onClick={() => { setCalcOpen(calcOpen === product.id ? null : product.id); setSpecOpen(null); setQty(1); }}><Calculator size={13} />算价</button>
+              {/* 操作一行平铺：详情、发送、邀请下单、规格、算价 */}
+              <div className="wbk-pc-ac is-row">
+                <button type="button" onClick={() => onDetail(product)}>详情</button>
+                <button type="button" disabled={!canSend} onClick={() => onSend("product", product.id)}>发送</button>
+                <button type="button" disabled={!canSend} onClick={() => onSend("invite", product.id)}>邀请下单</button>
+                <button type="button" className={specOpen === product.id ? "is-on" : ""} onClick={() => { setSpecOpen(specOpen === product.id ? null : product.id); setCalcOpen(null); }}>规格</button>
+                <button type="button" className={calcOpen === product.id ? "is-on" : ""} onClick={() => { setCalcOpen(calcOpen === product.id ? null : product.id); setSpecOpen(null); setQty(1); }}>算价</button>
               </div>
             </div>
             {specOpen === product.id ? (

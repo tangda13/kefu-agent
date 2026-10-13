@@ -71,7 +71,7 @@ import { ProductDrawer } from "./workbench/ProductDrawer";
 import { ProductsTab } from "./workbench/ProductsTab";
 import { ShiftBar } from "./workbench/ShiftBar";
 import { BUSINESS_STAGE_LABELS } from "@cecs/contracts";
-import { PRACTICE_EVENT, readPractice, writePractice, type PracticeConfig } from "./practice";
+import { PRACTICE_EVENT, bumpPractice, readPractice, readPracticeTotal, writePractice, writePracticeTotal, type PracticeConfig } from "./practice";
 import { MAX_SERVE_LIMIT, type AgentState } from "./workbench/AgentStatus";
 import { Av, MessageBody, errorMessage, goToPage, hashSeed, isCardKind, timeLabel } from "./workbench/shared";
 
@@ -166,6 +166,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     window.addEventListener(PRACTICE_EVENT, sync);
     return () => window.removeEventListener(PRACTICE_EVENT, sync);
   }, []);
+  const [practiceTotal, setPracticeTotal] = useState(readPracticeTotal);
   const [practiceScenarios, setPracticeScenarios] = useState<ScenarioSummary[]>([]);
   useEffect(() => {
     if (!practice) return;
@@ -1105,6 +1106,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     if (!dataReady || !practice) return;
     const evaluate = () => {
       if (agentStateRef.current !== "online" || practiceBusyRef.current) return;
+      if (practiceTotal && (practice.arrived ?? 0) >= practiceTotal) return;
       const open = conversations.filter((item) => !item.taskId && !closedLocal.has(item.id)).length;
       if (open >= maxServe) {
         practiceNotBeforeRef.current = null;
@@ -1124,6 +1126,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       const scenarioId = pool[Math.floor(Math.random() * pool.length)]!;
       void createConversation(session, { scenarioId })
         .then((created) => {
+          bumpPractice();
           openingRequested.current.add(created.id);
           void streamConversationOpening(session, created.id, {
             onDelta: () => undefined,
@@ -1139,7 +1142,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     const timer = setInterval(evaluate, 2000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataReady, practice, practiceScenarios, conversations, closedLocal, maxServe, session]);
+  }, [dataReady, practice, practiceScenarios, practiceTotal, conversations, closedLocal, maxServe, session]);
 
   // ---------- 派生数据 ----------
 
@@ -1244,6 +1247,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
             ? practiceScenarios.find((item) => item.id === practice.scenarioId)?.name ?? "指定场景"
             : practice.stage === "random" ? "全部环节随机" : `${BUSINESS_STAGE_LABELS[practice.stage]} · 随机`,
           max: maxServe,
+          arrived: practice.arrived ?? 0,
+          total: practiceTotal,
           onStop: () => writePractice(null),
         } : null}
         switchable={inProgressTasks}
@@ -1257,6 +1262,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         agent={{
           state: agentState,
           onState: setAgentState,
+          total: practiceTotal,
+          onTotal: (next) => { setPracticeTotal(next); writePracticeTotal(next); },
           maxServe,
           onMaxServe: (next) => {
             setMaxServe(next);

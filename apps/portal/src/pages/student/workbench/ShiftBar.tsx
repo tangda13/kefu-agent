@@ -18,9 +18,9 @@ interface Props {
   onPickTask: (taskId: string) => void;
   reason?: { value: string | null; disabled: boolean; onPick: (reason: string) => void } | null;
   /** 自由练习进行中：练习范围与“结束练习” */
-  practiceInfo?: { scope: string; max: number; onStop: () => void } | null;
+  practiceInfo?: { scope: string; max: number; arrived: number; total: number; onStop: () => void } | null;
   /** 客服状态与最大接待人数（同千牛 / 飞鸽） */
-  agent: { state: AgentState; onState: (next: AgentState) => void; maxServe: number; onMaxServe: (next: number) => void };
+  agent: { total: number; onTotal: (next: number) => void; state: AgentState; onState: (next: AgentState) => void; maxServe: number; onMaxServe: (next: number) => void };
   /** 当前聚焦的任务；null = 自由练习或空闲 */
   task: StudentTask | null;
   /** 倒计时依据：当前这场会话的开始时间 */

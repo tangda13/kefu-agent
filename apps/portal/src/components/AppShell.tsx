@@ -109,7 +109,7 @@ function NotificationBell({ center }: { center?: ShellNotificationCenter }) {
           <div className="notify-overlay" onClick={() => setOpen(false)} />
           <div className="notify-panel" role="dialog" aria-label="消息中心">
             <div className="notify-head">
-              <strong>消息</strong>
+              <strong>消息{unreadCount > 0 ? <em className="notify-count">{unreadCount} 条未读</em> : null}</strong>
               {unreadCount > 0 && center ? (
                 <button className="text-button" onClick={() => center.onReadAll()}>全部已读</button>
               ) : null}
@@ -124,7 +124,8 @@ function NotificationBell({ center }: { center?: ShellNotificationCenter }) {
                     setOpen(false);
                   }}
                 >
-                  <span className="notify-title">{item.title}<small>{item.time}</small></span>
+                  <i className="notify-dot" aria-hidden="true" />
+                  <span className="notify-title"><span>{item.title}</span><small>{item.time}</small></span>
                   <p>{item.content}</p>
                 </button>
               ))}
