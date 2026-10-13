@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>个人能力雷达</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+* { box-sizing: border-box; } html, body { margin: 0; }
+body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 24px; } .doc h2 { margin: 48px 0 8px; font-size: 20px; }
+.lede { margin: 0 0 16px; color: #465163; max-width: 1080px; }
+.note { font-size: 12px; color: #465163; } .note a { color: #174aa8; }
+.t { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d6dce5; border-radius: 10px; overflow: hidden; font-size: 13px; }
+.t th, .t td { text-align: left; padding: 9px 14px; border-bottom: 1px solid #edf0f4; vertical-align: top; }
+.t th { background: #f6f8fb; color: #465163; font-size: 12px; }
+.t td i { font-style: normal; margin-left: 6px; padding: 0 6px; border-radius: 4px; background: #e8effc; color: #174aa8; font-size: 11px; }
+.g { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; } .g1 { background: #1d5fd1; } .g2 { background: #0a7a70; } .g3 { background: #8c5b0f; } .g4 { background: #6c4fc9; }
+.diag { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .diag div { background: #fff; border: 1px solid #d6dce5; border-radius: 10px; padding: 14px 16px; font-size: 13px; color: #465163; } .diag b { display: block; color: #161c26; }
+.cap { display: flex; justify-content: space-between; gap: 24px; margin: 18px 0 8px; font-size: 13px; color: #465163; } .cap b { color: #161c26; white-space: nowrap; }
+.frame { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid #d6dce5; background: #f4f6f9; }
+.screen { position: absolute; top: 0; left: 0; width: 1440px; transform-origin: 0 0; overflow: hidden; }
+.s { --line: #e3e7ee; --ink-2: #465163; --ink-3: #5e6a7b; --ink-4: #9aa3b0; --brand: #1d5fd1; --brand-ink: #174aa8; --brand-soft: #e8effc; --ok: #1a7445; --okw: #e3f4ea; --bad: #b8302a; --badw: #fbe8e6; background: #f4f6f9; color: #161c26; font-size: 14px; }
+.s svg { width: 18px; height: 18px; } .s svg.rd { display: block; margin: 0 auto; }
+.app { display: grid; grid-template-columns: 232px 1fr; height: 100%; }
+.side { background: #fff; border-right: 1px solid var(--line); padding: 14px 12px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 18px; font-weight: 700; font-size: 14px; }
+.mark { display: inline-flex; width: 26px; height: 26px; border-radius: 6px; background: var(--brand); color: #fff; align-items: center; justify-content: center; } .mark svg { width: 16px; height: 16px; }
+.nav { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 6px; color: var(--ink-2); } .nav.on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.navlabel { display: flex; align-items: center; gap: 6px; margin: 16px 12px 6px; font-size: 12px; color: var(--ink-3); } .navlabel svg { width: 14px; height: 14px; }
+.main { display: flex; flex-direction: column; min-width: 0; }
+.head { display: flex; align-items: center; height: 56px; padding: 0 40px; background: #fff; border-bottom: 1px solid var(--line); } .head h1 { margin: 0; font-size: 20px; }
+.head .right { margin-left: auto; display: flex; gap: 12px; align-items: center; color: var(--ink-2); }
+.av { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: #eef2f7; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+.body { padding: 28px 40px; }
+.kc-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+.kc { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; }
+.kc .lb { display: flex; gap: 4px; align-items: center; font-size: 13px; color: var(--ink-2); } .help svg { width: 13px; height: 13px; color: var(--ink-4); }
+.kc .v b { font-size: 28px; font-weight: 700; } .kc .v small { margin-left: 4px; color: var(--ink-3); font-size: 13px; } .kc .v b.dash { color: #c3cad5; }
+.kc .sub { font-size: 12px; color: var(--ink-3); }
+.pill { display: inline-flex; height: 20px; padding: 0 7px; border-radius: 10px; font-size: 12px; font-weight: 600; align-items: center; margin-right: 4px; } .pill.up { background: var(--okw); color: var(--ok); } .pill.down { background: var(--badw); color: var(--bad); }
+.ab { background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+.ab-h { display: flex; align-items: center; gap: 10px; padding: 16px 24px; border-bottom: 1px solid var(--line); } .ab-h h3 { margin: 0; font-size: 16px; }
+.muted { color: var(--ink-3); font-size: 13px; } .small { font-size: 12px; }
+.seg { margin-left: auto; display: flex; padding: 3px; border-radius: 8px; background: #f8f9fb; box-shadow: inset 0 0 0 1px var(--line); } .seg span { padding: 2px 12px; border-radius: 6px; font-size: 13px; color: var(--ink-2); } .seg .on { background: #fff; color: #161c26; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.ab-b { display: grid; grid-template-columns: 600px minmax(0, 1fr); gap: 24px; padding: 8px 24px 24px; }
+.ab-radar { position: relative; }
+.rd .ax { font-size: 12px; fill: #465163; font-weight: 600; } .rd .ax.hv { fill: #161c26; } .rd .axv { font-size: 12px; fill: #5e6a7b; } .rd .axv.lo { fill: #b8302a; font-weight: 700; }
+.rd .now { fill: rgba(29,95,209,.14); stroke: #1d5fd1; stroke-width: 2; } .rd line.now { stroke: #1d5fd1; stroke-width: 2; }
+.rd .base { fill: none; stroke: #9aa3b0; stroke-width: 1.5; stroke-dasharray: 4 4; } .rd line.base { stroke: #9aa3b0; stroke-width: 1.5; stroke-dasharray: 4 4; }
+.rd .cmp { fill: none; stroke: #9aa3b0; stroke-width: 1.5; stroke-dasharray: 4 4; }
+.rd .dot { fill: #fff; stroke: #1d5fd1; stroke-width: 2; } .rd .dot.lo { stroke: #b8302a; } .rd .dot.hv { fill: #b8302a; stroke: #fff; stroke-width: 3; }
+.lg, .gl { display: flex; gap: 16px; justify-content: center; font-size: 12px; color: var(--ink-3); margin-top: -6px; } .gl { margin-top: 6px; }
+.lg i.ln { display: inline-block; width: 16px; height: 0; border-top: 2px solid #1d5fd1; vertical-align: middle; margin-right: 5px; } .lg i.base, .lg i.cmp { border-top: 2px dashed #9aa3b0; } .lg i.red { border-top: 1px dashed #e8b4ae; }
+.gl i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
+.tipbox { position: absolute; width: 300px; padding: 12px 14px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(16,24,40,.14); font-size: 13px; }
+.tb-h { display: flex; align-items: center; gap: 6px; font-weight: 600; margin-bottom: 6px; } .tb-h i { width: 7px; height: 7px; border-radius: 50%; } .tb-h b { font-size: 16px; } .lo { color: #b8302a; }
+.tb-k { font-size: 11px; color: var(--ink-4); margin-top: 6px; } .tb-t { color: #465163; line-height: 20px; }
+.ex { margin-top: 4px; padding-left: 10px; border-left: 2px solid #c8cfda; font-size: 12px; color: #465163; font-style: italic; }
+.ab-side { display: grid; align-content: start; gap: 4px; padding-top: 12px; }
+.fs-h { display: flex; align-items: baseline; gap: 8px; font-weight: 600; font-size: 15px; margin-bottom: 4px; } .fs-h span { font-weight: 400; font-size: 12px; color: var(--ink-3); }
+.fc { padding: 12px 0; } .fc + .fc { padding-top: 14px; }
+.fc-h { display: flex; align-items: center; gap: 8px; } .fc-h b { font-size: 14px; } .fc-h .sc { font-size: 18px; font-weight: 700; } .fc-h .sc.lo { color: #b8302a; }
+.fc p { margin: 4px 0 0; font-size: 13px; color: #465163; line-height: 20px; }
+.fs-more { margin-top: 8px; font-size: 12px; color: var(--ink-4); }
+.empty { display: grid; gap: 6px; justify-items: start; padding: 24px 0; color: #465163; font-size: 13px; } .empty svg { color: var(--ink-4); } .empty span { color: var(--ink-3); font-size: 12px; }
+.dlg { margin: 40px auto; width: 1100px; background: #fff; border-radius: 14px; box-shadow: 0 24px 64px rgba(16,24,40,.2); }
+.dh { display: flex; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--line); } .dh .tot { margin-left: auto; padding: 4px 10px; border-radius: 12px; background: var(--brand-soft); color: var(--brand-ink); font-size: 13px; font-weight: 600; }
+.db { display: grid; grid-template-columns: 440px 1fr; gap: 24px; padding: 16px 24px 24px; }
+.db-r .k { font-size: 12px; color: var(--ink-3); margin-bottom: 6px; } .rv { padding: 10px 0; } .rv-h { display: flex; gap: 8px; align-items: baseline; } .rv-h .sc { font-weight: 700; } .rv p { margin: 2px 0 0; font-size: 13px; color: #465163; }
+.more { margin-top: 6px; color: var(--brand-ink); font-size: 13px; display: flex; gap: 4px; align-items: center; } .more svg { width: 14px; height: 14px; }
+.drawer { margin: 24px auto; width: 900px; background: #fff; border-radius: 14px; box-shadow: 0 24px 64px rgba(16,24,40,.2); }
+.wbody { padding: 18px 24px 24px; display: grid; gap: 12px; }
+.presets { display: flex; gap: 8px; } .presets span { padding: 4px 12px; border-radius: 14px; border: 1px solid #c8cfda; font-size: 13px; } .presets .on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.stack { display: flex; height: 12px; border-radius: 6px; overflow: hidden; gap: 2px; }
+.wgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 32px; }
+.wr { display: grid; grid-template-columns: 140px 1fr 96px; gap: 10px; align-items: center; height: 34px; font-size: 13px; } .wr i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
+.wb { height: 6px; border-radius: 3px; background: #eef2f7; overflow: hidden; } .wb em { display: block; height: 100%; }
+.st { display: flex; gap: 8px; align-items: center; justify-content: flex-end; font-weight: 600; } .st b { width: 22px; height: 22px; border: 1px solid #c8cfda; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-weight: 400; color: var(--ink-3); }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>个人能力雷达：10 个维度 · 雷达图 · 每项都有改进建议</h1>
+  <p class="lede">参数要求“个人能力雷达分析（不少于 6 个能力维度）……评估反馈覆盖违规用语合规、语法准确性、话术规范、沟通有效性、客户情绪安抚、问题解决等不少于 6 个维度，并提供对应的改进建议”。现在的 6 项只看“话说得怎么样”，看不出“事办得怎么样、懂不懂商品、快不快”；建议文字也是写死的、只给最弱两项。下面先讲依据，再画学生端和教师端。数据是编的，只看版式。</p>
+
+  <h2>一、依据：客服质检通常怎么分</h2>
+  <p class="lede">各家客服质检评分表（Zendesk QA、Scorebuddy、Calabrio 等）大体都按四类打分：<b>沟通与语气</b>（清晰、共情、专业）、<b>问题解决</b>（准确、完整、一次解决）、<b>流程与合规</b>（按流程、合规用语）、<b>收尾</b>；有的单列<b>商品知识</b>。另一个共识是：<b>响应时长这类结果指标要和“行为打分”分开</b>，由系统按数据算，不让质检员（这里是 AI）凭感觉打。合规类常设“红线”，违规直接重扣。</p>
+  <table class="t">
+    <tr><th>组</th><th>维度</th><th>看什么（评分口径）</th><th>谁来评</th></tr>
+    <tr><td rowspan="3"><span class="g g1"></span>语言与合规</td><td><b>话术规范</b></td><td>开场、确认、收尾等标准话术是否到位，称呼和语气是否专业</td><td>AI</td></tr>
+    <tr><td><b>语法准确性</b></td><td>外语拼写、语法、用词是否准确，有无机翻腔</td><td>AI</td></tr>
+    <tr><td><b>违规用语合规</b></td><td>有无绝对化宣传、违规承诺、泄露隐私；命中违规词库直接扣分（红线）</td><td>AI + 违规词库</td></tr>
+    <tr><td rowspan="3"><span class="g g2"></span>沟通与关系</td><td><b>沟通有效性</b></td><td>是否先回应买家最关心的问题、一次说清、没有答非所问</td><td>AI</td></tr>
+    <tr><td><b>客户情绪安抚</b></td><td>识别不满并先共情再给方案；买家情绪是否好转（看导演记录的情绪走势）</td><td>AI + 情绪走势</td></tr>
+    <tr><td class="new"><b>跨文化与语言适配</b><i>新增</i></td><td>是否用买家的语言回复、符合对方的礼仪习惯（称呼、节假日、时差）</td><td>AI</td></tr>
+    <tr><td rowspan="3"><span class="g g3"></span>业务与结果</td><td><b>问题解决</b></td><td>方案是否可执行（补发 / 退款 / 改地址）、写清时限和步骤，问题是否闭环</td><td>AI</td></tr>
+    <tr><td class="new"><b>商品知识准确性</b><i>新增</i></td><td>参数、规格、物流时效、售后政策是否和店铺商品资料一致（买家 AI 手里有同一份资料卡，可对照）</td><td>AI + 商品资料</td></tr>
+    <tr><td class="new"><b>销售与挽留</b><i>新增</i></td><td>售前是否推进到下单（邀请下单、优惠券用得恰当），售后是否挽回（改评、撤纠纷、复购意向）</td><td>AI + 实际动作</td></tr>
+    <tr><td><span class="g g4"></span>效率与规范</td><td class="new"><b>响应时效</b><i>新增</i></td><td>首次响应、平均响应、有无让买家催促或离开；顺带看工具使用（发订单卡、写备注、选咨询类型）</td><td><b>系统按数据算</b></td></tr>
+  </table>
+  <p class="note">参数要求的 6 项一个不少；新增 4 项让能力分析覆盖“说、懂、办、快”。来源：<a href="https://eesel.ai/blog/zendesk-qa-scorecard-criteria">Zendesk QA 评分表</a> · <a href="https://www.supportbench.com/?p=24139">Supportbench：QA 评分表模板</a> · <a href="https://info.scorebuddyqa.com/hubfs/Scorecard-Templates-by-Scorebuddy.pdf">Scorebuddy 评分表模板</a> · <a href="https://www.calabrio.com/blog/quality-assurance-qa-scorecard">Calabrio：QA 评分表</a></p>
+
+  <h2>二、改进建议从哪来</h2>
+  <div class="diag">
+    <div><b>现在</b>代码里写死的句子，只给最弱两项；话术规范 51、情绪安抚 46 没及格也没有提示。</div>
+    <div><b>改后</b>每次评分，AI 按维度给“扣分原因 + 原话举例 + 下次怎么说”；能力区汇总近期接待里该维度最常见的问题。<b>每个维度都有建议</b>：悬停雷达顶点看；分数最低的 3 项固定显示在“重点提升”里。</div>
+  </div>
+
+  <h2>三、学生端 · 我的记录</h2>
+  <div class="cap"><b>雷达图 + 重点提升</b><span>蓝色实心是近期平均，灰色虚线是训前测评；轴名前的色点是分组；低于 60 的顶点标红。鼠标停在“客户情绪安抚”上，浮层给分数、较训前、口径和建议</span></div>
+  <div class="frame" data-h="940"><div class="screen s" data-tpl="records"></div></div>
+  <div class="cap"><b>还没有成绩时</b><span>雷达照常画：做过训前测评就画灰色虚线，近期多边形不画；重点提升用一句话代替</span></div>
+  <div class="frame" data-h="760"><div class="screen s" data-tpl="recordsEmpty"></div></div>
+
+  <h2>四、复盘弹窗</h2>
+  <div class="cap"><b>单次接待的 10 项</b><span>雷达对比“这次”和“近期平均”；下面按组列 10 项分数，每项一行 AI 建议（带原话），扣分最多的在前</span></div>
+  <div class="frame" data-h="760"><div class="screen s" data-tpl="review"></div></div>
+
+  <h2>五、教师端怎么跟着变</h2>
+  <div class="cap"><b>新建任务 · 评分权重</b><span>10 项按 4 组显示；预设方案改为 10 项（均衡 / 按业务环节推荐 / 重合规 / 重安抚 / 重成交），合计永远 100；响应时效默认 10%</span></div>
+  <div class="frame" data-h="560"><div class="screen s" data-tpl="weights"></div></div>
+  <div class="cap"><b>考核报表 · 班级能力雷达</b><span>班级平均和训前对比；右侧“全班最弱三项”带典型问题，老师据此安排讲评</span></div>
+  <div class="frame" data-h="700"><div class="screen s" data-tpl="report"></div></div>
+
+  <h2>六、影响与改动</h2>
+  <table class="t">
+    <tr><th>项</th><th>内容</th></tr>
+    <tr><td>评分</td><td>评分提示词改为 10 项，每项输出分数 + 扣分原因 + 原话举例 + 改进建议；响应时效由系统按 conversation_metrics 和会话消息时间计算，不交给 AI</td></tr>
+    <tr><td>老数据</td><td>历史评分没有新增 4 项：在雷达上这 4 个轴画灰色虚线、分数显示“—”；平均分只按有分的维度算</td></tr>
+    <tr><td>任务权重</td><td>已下发的任务保留原来的 6 项权重（新增 4 项按 0 计），新建任务用 10 项</td></tr>
+    <tr><td>训前测评</td><td>测评题目目前覆盖 6 项；新增 4 项先不在测评里出题，训前虚线在这 4 轴上不画（可后续补题）</td></tr>
+    <tr><td>页面</td><td>学生端我的记录、复盘弹窗；教师端新建任务权重、考核报表、回放与评分的复核面板</td></tr>
+  </table>
+</div>
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const I = (n) => `<i data-lucide="${n}"></i>`;
+const H = `<span class="help">${I("circle-help")}</span>`;
+const GROUPS = { g1: "#1d5fd1", g2: "#0a7a70", g3: "#8c5b0f", g4: "#6c4fc9" };
+const DIMS = [
+  ["话术规范", "g1"], ["语法准确性", "g1"], ["违规用语合规", "g1"],
+  ["沟通有效性", "g2"], ["客户情绪安抚", "g2"], ["跨文化与语言适配", "g2"],
+  ["问题解决", "g3"], ["商品知识准确性", "g3"], ["销售与挽留", "g3"],
+  ["响应时效", "g4"],
+];
+const NOW = [74, 81, 92, 58, 52, 70, 63, 55, 66, 48];
+const BASE = [62, 70, 85, 66, 48, null, 55, null, null, null];
+
+function radar({ size = 420, now, base, hover = -1, compare, compareLabel }) {
+  const c = size / 2, R = size / 2 - 120, n = DIMS.length;
+  const pt = (i, v) => { const a = -Math.PI / 2 + (i * 2 * Math.PI) / n; const r = (R * v) / 100; return [c + r * Math.cos(a), c + r * Math.sin(a)]; };
+  const ring = (v) => DIMS.map((_, i) => pt(i, v).join(",")).join(" ");
+  let s = `<svg viewBox="0 0 ${size} ${size}" class="rd" style="width:${size}px;height:${size}px;overflow:visible">`;
+  [20, 40, 60, 80, 100].forEach((v) => (s += `<polygon points="${ring(v)}" fill="${v === 60 ? "none" : "none"}" stroke="${v === 60 ? "#e8b4ae" : "#edf0f4"}" stroke-width="${v === 60 ? 1 : 1}" ${v === 60 ? 'stroke-dasharray="3 3"' : ""}/>`));
+  DIMS.forEach((_, i) => { const [x, y] = pt(i, 100); s += `<line x1="${c}" y1="${c}" x2="${x}" y2="${y}" stroke="#edf0f4"/>`; });
+  const poly = (vals, cls) => { const pts = vals.map((v, i) => (v == null ? null : pt(i, v))); if (pts.some((p) => !p)) { return pts.map((p, i) => { const q = pts[(i + 1) % n]; return p && q ? `<line x1="${p[0]}" y1="${p[1]}" x2="${q[0]}" y2="${q[1]}" class="${cls}"/>` : ""; }).join(""); } return `<polygon points="${pts.map((p) => p.join(",")).join(" ")}" class="${cls}"/>`; };
+  if (base) s += poly(base, "base");
+  if (compare) s += poly(compare, "cmp");
+  if (now) { s += poly(now, "now"); now.forEach((v, i) => { const [x, y] = pt(i, v); s += `<circle cx="${x}" cy="${y}" r="${i === hover ? 6 : 3.5}" class="dot${v < 60 ? " lo" : ""}${i === hover ? " hv" : ""}"/>`; }); }
+  DIMS.forEach(([name, g], i) => {
+    const [x, y] = pt(i, 122); const anchor = Math.abs(x - c) < 8 ? "middle" : x > c ? "start" : "end";
+    const v = now ? now[i] : null; const lo = v != null && v < 60;
+    s += `<text x="${x}" y="${y}" text-anchor="${anchor}" class="ax${i === hover ? " hv" : ""}"><tspan fill="${GROUPS[g]}">● </tspan>${name}</text>`;
+    s += `<text x="${x}" y="${y + 15}" text-anchor="${anchor}" class="axv${lo ? " lo" : ""}">${v == null ? "—" : v}</text>`;
+  });
+  return s + `</svg>`;
+}
+
+const shell = (active, title, body) => `<div class="app"><nav class="side"><div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>
+  ${[["layout-dashboard", "任务大厅"], ["graduation-cap", "我的记录"]].map(([i, l]) => `<div class="nav${l === active ? " on" : ""}">${I(i)}${l}</div>`).join("")}
+  <div class="navlabel">${I("store")}店铺后台 · Aurora Mart</div>
+  ${[["message-square-more", "客服工作台"], ["package-search", "订单"], ["star", "评价"], ["mail", "邮件"]].map(([i, l]) => `<div class="nav">${I(i)}${l}</div>`).join("")}</nav>
+  <div class="main"><header class="head"><h1>${title}</h1><div class="right">${I("bell")}<span class="av">张</span>张三</div></header><div class="body">${body}</div></div></div>`;
+const tshell = (active, title, body) => `<div class="app"><nav class="side"><div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>
+  ${[["chart-column", "数据总览"], ["clipboard-list", "实训任务"], ["users-round", "班级与学生"], ["megaphone", "通知公告"], ["message-square-more", "实训跟踪"], ["file-chart-column", "考核报表"], ["boxes", "场景配置"]].map(([i, l]) => `<div class="nav${l === active ? " on" : ""}">${I(i)}${l}</div>`).join("")}</nav>
+  <div class="main"><header class="head"><h1>${title}</h1><div class="right">${I("bell")}<span class="av">王</span>王老师</div></header><div class="body">${body}</div></div></div>`;
+
+const kc = (lb, v, sub) => `<div class="kc"><div class="lb">${lb}${H}</div><div class="v">${v}</div><div class="sub">${sub}</div></div>`;
+const legend = `<div class="lg"><span><i class="ln now"></i>近期平均</span><span><i class="ln base"></i>训前测评</span><span><i class="ln red"></i>60 分线</span></div>`;
+const groupsLegend = `<div class="gl">${[["g1", "语言与合规"], ["g2", "沟通与关系"], ["g3", "业务与结果"], ["g4", "效率与规范"]].map(([g, l]) => `<span><i style="background:${GROUPS[g]}"></i>${l}</span>`).join("")}</div>`;
+const focus = (name, v, d, tip, ex) => `<div class="fc"><div class="fc-h"><b>${name}</b><span class="sc${v < 60 ? " lo" : ""}">${v}</span>${d == null ? "" : `<span class="pill ${d >= 0 ? "up" : "down"}">${d >= 0 ? "↑" : "↓"}${Math.abs(d)} 较训前</span>`}</div><p>${tip}</p>${ex ? `<div class="ex">${ex}</div>` : ""}</div>`;
+
+const records = () => shell("我的记录", "我的记录", `
+  <div class="kc-row">${kc("平均分", `<b>64</b><small>/ 100</small>`, `<span class="pill up">↑7</span>较训前`)}${kc("班级排名", `<b>第 18</b><small>/ 45</small>`, "较上周 ↑3")}${kc("达标率", `<b>75%</b>`, "4 次任务接待 3 次达标")}${kc("累计对话", `<b>18</b><small>次</small>`, "共 48 轮 · 其中练习 8 次")}</div>
+  <div class="ab">
+    <div class="ab-h"><h3>个人能力</h3><span class="muted">近 30 天 6 次任务接待的平均</span><div class="seg"><span class="on">全部</span><span>近 7 天</span><span>近 30 天</span></div></div>
+    <div class="ab-b">
+      <div class="ab-radar">${radar({ size: 520, now: NOW, base: BASE, hover: 4 })}
+        <div class="tipbox" style="left:250px;top:330px"><div class="tb-h"><i style="background:${GROUPS.g2}"></i>客户情绪安抚 <b class="lo">52</b><span class="pill up">↑4 较训前</span></div>
+          <div class="tb-k">看什么</div><div class="tb-t">识别买家不满，先共情再给方案；买家情绪是否好转</div>
+          <div class="tb-k">你的问题</div><div class="tb-t">6 次里 4 次直接给方案，没有先回应买家的情绪</div>
+          <div class="tb-k">下次这样说</div><div class="tb-t ex">“I completely understand how frustrating this is — let me fix it for you right now.”</div></div>
+        ${legend}${groupsLegend}</div>
+      <div class="ab-side"><div class="fs-h">重点提升<span>分数最低的三项</span></div>
+        ${focus("响应时效", 48, null, "平均 3 分 54 秒才回复，2 位买家等到催促后离开。买家进线后先发一句确认，再去查资料。", "")}
+        ${focus("客户情绪安抚", 52, 4, "直接给方案前，先用一句话回应买家的情绪。", "“I'm so sorry about the wait — I know you need this before Friday.”")}
+        ${focus("商品知识准确性", 55, null, "两次把续航说成 10 小时（资料是单次 7 小时、配合充电盒 28 小时）。回答参数前先打开商品详情核对。", "")}
+        <div class="fs-more">其余 7 项的建议：鼠标移到雷达图的点上查看</div></div>
+    </div>
+  </div>`);
+
+const recordsEmpty = () => shell("我的记录", "我的记录", `
+  <div class="kc-row">${kc("平均分", `<b class="dash">—</b>`, "")}${kc("班级排名", `<b class="dash">—</b>`, "45 人")}${kc("达标率", `<b class="dash">—</b>`, "")}${kc("累计对话", `<b class="dash">0</b><small>次</small>`, "")}</div>
+  <div class="ab"><div class="ab-h"><h3>个人能力</h3><span class="muted">训前测评 64 分</span></div>
+    <div class="ab-b"><div class="ab-radar">${radar({ size: 520, base: BASE })}${legend}${groupsLegend}</div>
+      <div class="ab-side"><div class="fs-h">重点提升</div><div class="empty">${I("message-square-dashed")}<b>完成第一次任务接待后，这里会列出最需要提升的三项</b><span>灰色虚线是你的训前测评；新增的 4 项测评里没有题，先不画</span></div></div></div></div>`);
+
+const review = () => `<div class="dlg"><div class="dh"><b>售中物流同步演练 · 清关延误安抚</b><span class="muted">Diego Fernandez · 澳大利亚 · 10 月 13 日</span><span class="tot">总分 80 · 达标（达标线 60）</span>${I("x")}</div>
+  <div class="db"><div class="db-l">${radar({ size: 450, now: [82, 85, 100, 75, 65, 80, 80, 70, 72, 88], compare: NOW })}<div class="lg"><span><i class="ln now"></i>这次</span><span><i class="ln cmp"></i>近期平均</span></div></div>
+  <div class="db-r"><div class="k">这次扣分最多</div>
+    ${[["客户情绪安抚", 65, "买家说“两周了”时直接报物流节点，没有先道歉。", "“Two weeks is a long time to wait, I'm really sorry.”"], ["商品知识准确性", 70, "说清关一般 1–2 天，资料写的是 3–5 个工作日。", ""], ["销售与挽留", 72, "买家提到要找别家进货，没有给补偿或优先发货。", ""], ["沟通有效性", 75, "第三条消息同时讲了物流、退款和优惠券，买家追问了两次。", ""]].map(([n, v, t, e]) => `<div class="rv"><div class="rv-h"><b>${n}</b><span class="sc">${v}</span></div><p>${t}</p>${e ? `<div class="ex">${e}</div>` : ""}</div>`).join("")}
+    <div class="more">其余 6 项 ${I("chevron-down")}</div></div></div></div>`;
+
+const wrow = (n, g, w) => `<div class="wr"><span><i style="background:${GROUPS[g]}"></i>${n}</span><div class="wb"><em style="width:${w * 4}%;background:${GROUPS[g]}"></em></div><span class="st"><b>−</b>${w}%<b>+</b></span></div>`;
+const weights = () => `<div class="drawer"><div class="dh"><b>新建任务</b><span class="muted">· 第 5 步 评分权重</span></div><div class="wbody">
+  <div class="presets"><span class="on">均衡</span><span>按业务环节推荐</span><span>重合规</span><span>重安抚</span><span>重成交</span></div>
+  <div class="stack">${DIMS.map(([n, g], i) => `<em style="flex:${[10, 10, 10, 10, 10, 10, 15, 8, 7, 10][i]};background:${GROUPS[g]};opacity:${0.55 + (i % 3) * 0.15}"></em>`).join("")}</div><div class="muted small">合计 100%</div>
+  <div class="wgrid">${DIMS.map(([n, g], i) => wrow(n, g, [10, 10, 10, 10, 10, 10, 15, 8, 7, 10][i])).join("")}</div></div></div>`;
+
+const report = () => tshell("考核报表", "考核报表", `<div class="ab"><div class="ab-h"><h3>班级能力</h3><span class="muted">跨境电商2601班 · 40 人有成绩</span></div>
+  <div class="ab-b"><div class="ab-radar">${radar({ size: 520, now: [72, 76, 90, 64, 58, 61, 66, 57, 60, 55], base: [60, 68, 84, 62, 50, null, 54, null, null, null] })}<div class="lg"><span><i class="ln now"></i>班级平均</span><span><i class="ln base"></i>训前</span></div></div>
+  <div class="ab-side"><div class="fs-h">全班最弱三项<span>可用于课堂讲评</span></div>
+    ${focus("响应时效", 55, null, "18 人平均响应超过 2 分钟；共有 23 位买家因等待离开。", "")}
+    ${focus("商品知识准确性", 57, null, "最常答错：带电产品的运输时效、退货运费由谁承担。", "")}
+    ${focus("客户情绪安抚", 58, 8, "多数人先给方案再道歉，买家情绪好转比例 41%。", "")}</div></div></div>`);
+
+const T = { records, recordsEmpty, review, weights, report };
+document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
+if (window.lucide) lucide.createIcons();
+function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const h = +(f.dataset.h || 900); s.style.height = `${h}px`; const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${h * k}px`; }); }
+fit(); addEventListener("resize", fit);
+</script></body></html>
