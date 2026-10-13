@@ -13,6 +13,7 @@ import {
   type StudentTask,
 } from "../../api/client";
 import { writePractice } from "./practice";
+import { ScenarioPicker } from "./ScenarioPicker";
 import { Bench, Button, Drawer } from "../../ui";
 import { dueText } from "../teacher/widgets";
 import { BaselineQuiz } from "./BaselineQuiz";
@@ -312,12 +313,7 @@ export function TaskHall({
           </button>
         ))}
       </div>
-      <select className="ui-select sl-prac-sc" value={practiceScenario} onChange={(event) => setPracticeScenario(event.target.value)} aria-label="练习场景">
-        <option value="">{practiceStage === "random" ? "场景：全部随机" : "场景：本环节随机"}</option>
-        {(practiceStage === "random" ? scenarios : scenarios.filter((item) => item.stage === practiceStage)).map((item) => (
-          <option key={item.id} value={item.id}>{item.name}</option>
-        ))}
-      </select>
+      <ScenarioPicker scenarios={scenarios} stage={practiceStage} value={practiceScenario} onChange={setPracticeScenario} />
       {practiceError ? <p className="sl-form-error" role="alert">{practiceError}</p> : null}
       <Button onClick={() => void startPractice()} loading={practiceBusy} disabled={!session}>开始练习</Button>
     </section>

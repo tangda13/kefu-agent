@@ -209,3 +209,22 @@
 .th3-th { border-bottom: 0; padding-bottom: 4px; }
 .th3-cur + .th3-tr { margin-top: 6px; }
 .th3-main > :last-child { margin-bottom: 8px; }
+
+/* 自由练习的场景选择（替换原生下拉：向下展开、限高滚动、按环节分组） */
+.spk { position: relative; }
+.spk-btn { width: 100%; height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px; border: 1px solid var(--c-line-strong); border-radius: 6px; background: var(--c-surface); color: var(--c-ink); font: inherit; font-size: 13px; cursor: pointer; }
+.spk-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spk-btn svg { flex: none; color: var(--c-ink-3); }
+.spk-btn[aria-expanded="true"] { border-color: var(--c-brand); box-shadow: var(--focus-ring); }
+.spk-pop { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30; padding: 6px; border: 1px solid var(--c-line); border-radius: 8px; background: var(--c-surface); box-shadow: var(--sh-popover); }
+.spk-search { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; margin-bottom: 4px; border-radius: 6px; background: var(--c-surface-2); color: var(--c-ink-3); }
+.spk-search input { flex: 1; min-width: 0; border: 0; background: none; font: inherit; font-size: 13px; color: var(--c-ink); outline: none; }
+.spk-list { max-height: 240px; overflow-y: auto; }
+.spk-list button { width: 100%; display: flex; align-items: center; justify-content: space-between; height: 30px; padding: 0 8px; border: 0; border-radius: 4px; background: none; font: inherit; font-size: 13px; color: var(--c-ink-2); text-align: left; cursor: pointer; }
+.spk-list button:hover { background: var(--c-surface-hover); }
+.spk-list button.is-on { color: var(--c-brand-ink); font-weight: 600; }
+.spk-list button svg { color: var(--c-brand); flex: none; }
+.spk-g { display: flex; align-items: center; gap: 6px; padding: 8px 8px 2px; font-size: 12px; color: var(--c-ink-3); }
+.spk-g i { width: 6px; height: 6px; border-radius: 50%; }
+.spk-none { margin: 8px; font-size: 12px; color: var(--c-ink-3); }
+.spk-search input:focus-visible { outline: none; }
