@@ -546,6 +546,18 @@ table.api-t td:first-child { white-space: nowrap; font-weight: 600; }
 .h3-main { display: flex; flex-direction: column; }
 .h3-side .btn { margin-top: auto; }
 
+/* 没有任务时 */
+.h3-card .v b.dash { color: #c3cad5; }
+.h3-track.empty { background: repeating-linear-gradient(90deg, #e3e8ef 0 6px, transparent 6px 10px); }
+.h3-base { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+.h3-base .ic { width: 40px; height: 40px; border-radius: 10px; background: var(--brand-soft); color: var(--brand); display: flex; align-items: center; justify-content: center; }
+.h3-base b { display: block; font-size: 15px; }
+.h3-base small { font-size: 13px; color: var(--ink-3); }
+.h3-empty { flex: 1; display: grid; justify-items: center; align-content: center; gap: 8px; padding: 40px 24px; text-align: center; }
+.h3-empty .ic { width: 48px; height: 48px; border-radius: 12px; background: var(--surface-2); color: var(--ink-4); display: flex; align-items: center; justify-content: center; }
+.h3-empty b { font-size: 15px; }
+.h3-empty p { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-3); }
+
 /* 任务大厅第三版（修订） */
 .h3-col { display: grid; gap: 16px; align-content: start; }
 .h3-week { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; gap: 14px; }
@@ -879,6 +891,8 @@ table.api-t td:first-child { white-space: nowrap; font-weight: 600; }
   <div class="frame" data-h="820"><div class="screen s" data-tpl="hall3"></div></div>
   <div class="cap"><b>第三版（二次修订）· 已完成页签</b><span>已完成单独一个页签，不在进行中的列表里拼一段；每行一个成绩块：分数 + 达标 / 未达标 + 达标线</span></div>
   <div class="frame" data-h="820"><div class="screen s" data-tpl="hall3done"></div></div>
+  <div class="cap"><b>第三版 · 没有任务时（第一次登录）</b><span>顶部四张卡照常画骨架（灰色 0 和“—”）；任务板里先放训前测评（做完就消失），再一句话说明任务会出现在哪；自由练习照常可用</span></div>
+  <div class="frame" data-h="820"><div class="screen s" data-tpl="hall3empty"></div></div>
 
   <h2>任务大厅 × 我的记录：去掉重复的仪表盘 <small>2026-10-13 · 待选</small></h2>
   <p class="lede">两页顶部现在是同样四张卡（已完成任务 / 平均分 / 班级排名 / 累计对话）。按“这一页回答什么问题”分开：<b>任务大厅回答“我现在该做什么”，我的记录回答“我做得怎么样、哪里要补”</b>。下面两个方案各画两页的首屏，数据是编的。</p>
@@ -1403,6 +1417,31 @@ const hall3 = () => shell("任务大厅", "任务大厅", `
     </section>
     ${practiceCard}
   </div>`, { notice: false });
+const topCardsEmpty = () => `<div class="h3-cards">
+  <section class="h3-card"><div class="lb">本周接待</div><div class="v"><b class="dash">0</b><small>次</small></div>
+    <div class="h3-bars">${week.map(() => `<div><i style="height:2px" class="zero"></i></div>`).join("")}</div></section>
+  <section class="h3-card"><div class="lb">进行中的任务</div><div class="v"><b class="dash">—</b></div><div class="ft">老师下发后显示</div></section>
+  <section class="h3-card"><div class="lb">最近截止</div><div class="v"><b class="dash">—</b></div><div class="ft">暂时没有要截止的任务</div></section>
+  <section class="h3-card"><div class="lb">已完成任务</div><div class="v"><b class="dash">—</b></div><div class="h3-track empty"></div></section>
+</div>`;
+const hall3empty = () => shell("任务大厅", "任务大厅", `
+  ${topCardsEmpty()}
+  <div class="h3-grid">
+    <section class="h3-main">
+      <div class="h3-h"><div class="h3-tabs"><span class="on">进行中 <i>0</i></span><span>已完成 <i>0</i></span></div></div>
+      <div class="h3-base">
+        <span class="ic">${I("clipboard-pen-line")}</span>
+        <div><b>先做一次训前测评</b><small>10 道题，约 8 分钟。测出六项能力的起点，以后的成绩都和它比。</small></div>
+        <span class="btn primary">开始测评</span>
+      </div>
+      <div class="h3-empty">
+        <span class="ic">${I("inbox")}</span>
+        <b>老师还没有下发任务</b>
+        <p>任务下发后会出现在这里，右上角的铃铛也会提醒你。<br>在那之前，可以先用右边的自由练习熟悉客服工作台。</p>
+      </div>
+    </section>
+    ${practiceCard}
+  </div>`, { notice: false });
 const hall3done = () => shell("任务大厅", "任务大厅", `
   ${topCards()}
   <div class="h3-grid">
@@ -1414,7 +1453,7 @@ const hall3done = () => shell("任务大厅", "任务大厅", `
     </section>
     ${practiceCard}
   </div>`, { notice: false });
-const T = { hall3, hall3done, hallA, hallB, recordsA, store, storeEdit: storeEditFull, hall, hallEmpty, wb, wbProduct, wbEnd, reviews, reviews2, reviews2b, mail, orders, records, recordsEmpty };
+const T = { hall3, hall3done, hall3empty, hallA, hallB, recordsA, store, storeEdit: storeEditFull, hall, hallEmpty, wb, wbProduct, wbEnd, reviews, reviews2, reviews2b, mail, orders, records, recordsEmpty };
 document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
 if (window.lucide) lucide.createIcons();
 function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const h = +(f.dataset.h || 900); s.style.height = `${h}px`; const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${h * k}px`; }); }
