@@ -1,5 +1,6 @@
 import {
   Archive,
+  ChevronDown,
   ChevronUp,
   FileText,
   PackageSearch,
@@ -230,7 +231,11 @@ interface EditorProps {
 
 function MailEditor(props: EditorProps) {
   const [showTpl, setShowTpl] = useState(false);
+  /** 选中一版后草稿列表自动收起成一行，可再展开换版本；新一批草稿到了自动展开 */
+  const [folded, setFolded] = useState(false);
   const { assist, assistVersions, violations } = props;
+  useEffect(() => { setFolded(false); }, [assistVersions]);
+  const pickedIndex = assistVersions.findIndex((version) => props.body.startsWith(version.body));
   return (
     <div className={props.dock ? "ml2-reply is-dock" : "ml2-reply"} style={props.flush ? { margin: 0 } : undefined}>
       <div className="h">
@@ -259,15 +264,21 @@ function MailEditor(props: EditorProps) {
         <div className="ml2-assist">
           <div className="hd">
             <Sparkles size={13} />
-            {assist === "loading" ? "AI 正在结合买家资料与邮件内容写三版草稿…" : "选一版填入下方，可再修改"}
+            {assist === "loading"
+              ? "AI 正在结合买家资料与邮件内容写三版草稿…"
+              : folded
+                ? <>AI 草稿 {assistVersions.length} 版{pickedIndex >= 0 ? <span className="hd-cur">· 已填入版本 {pickedIndex + 1}</span> : null}</>
+                : "选一版填入下方，可再修改"}
             {assist === "open" ? (
               <span className="r">
-                <button type="button" className="sx-link" disabled={props.busy} onClick={props.onAssist}><RefreshCw size={12} />换一批</button>
-                <button type="button" className="sx-link" onClick={props.onCloseAssist}><ChevronUp size={12} />收起</button>
+                <button type="button" className="sx-link" disabled={props.busy} onClick={props.onAssist}><RefreshCw size={12} />重新生成</button>
+                <button type="button" className="sx-link" onClick={() => setFolded((value) => !value)} aria-expanded={!folded}>
+                  {folded ? <><ChevronDown size={12} />展开</> : <><ChevronUp size={12} />收起</>}
+                </button>
               </span>
             ) : null}
           </div>
-          {assist === "open" ? (
+          {assist === "open" && !folded ? (
             <div className="vs">
               {assistVersions.map((version, index) => (
                 <button
@@ -275,7 +286,7 @@ function MailEditor(props: EditorProps) {
                   type="button"
                   className={props.body.startsWith(version.body) ? "v is-on" : "v"}
                   title={version.body}
-                  onClick={() => props.onPickVersion(version)}
+                  onClick={() => { props.onPickVersion(version); setFolded(true); }}
                 >
                   <em>版本 {index + 1}</em>
                   {version.subject ? <strong>{version.subject}</strong> : null}
@@ -287,6 +298,7 @@ function MailEditor(props: EditorProps) {
           ) : null}
         </div>
       ) : null}
+      <div className="ml2-box">
       <textarea
         value={props.body}
         onChange={(event) => props.onBody(event.target.value)}
@@ -310,6 +322,7 @@ function MailEditor(props: EditorProps) {
           <Button size="sm" variant="ghost" icon={Archive} disabled={props.busy || !props.body.trim()} onClick={props.onSaveDraft}>存草稿</Button>
           <Button size="sm" variant="primary" icon={Send} loading={props.busy} disabled={!props.body.trim()} onClick={props.onSend}>发送</Button>
         </div>
+      </div>
       </div>
     </div>
   );

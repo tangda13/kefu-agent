@@ -314,3 +314,24 @@
 .ml2-reply.is-dock .ml2-assist .v.is-on { background: var(--c-brand-soft); box-shadow: none; }
 .ml2-reply.is-dock .ml2-assist .v strong { grid-column: 2; }
 .ml2-reply.is-dock .ml2-assist .v p { grid-column: 2; -webkit-line-clamp: 3; white-space: normal; line-height: 20px; }
+
+/* 回复输入框：正文和底栏（保存提示、违规检查、存草稿、发送）在同一个框里 */
+.ml2-box { border: 1px solid var(--c-line-strong); border-radius: 8px; background: var(--c-surface); }
+.ml2-box:focus-within { border-color: var(--c-brand); box-shadow: var(--focus-ring); }
+.ml2-reply .ml2-box textarea, .ml2-reply.is-dock .ml2-box textarea { border: 0; border-radius: 8px 8px 0 0; box-shadow: none; padding: 10px 12px; min-height: 92px; }
+.ml2-reply .ml2-box textarea:focus { border: 0; box-shadow: none; }
+.ml2-reply .ml2-box .ml2-viol { margin: 0 8px; border: 0; border-radius: 6px; }
+.ml2-reply .ml2-box .bt, .ml2-reply.is-dock .ml2-box .bt { padding: 6px 8px 8px 12px; border: 0; }
+.ml2-assist .hd-cur { margin-left: 6px; color: var(--c-ink-3); font-weight: 400; }
+.ml2-reply:not(.is-dock) { display: grid; gap: 10px; border: 0; border-radius: 0; }
+.ml2-reply:not(.is-dock):focus-within { box-shadow: none; }
+.ml2-reply:not(.is-dock) > .h, .ml2-reply:not(.is-dock) > .ml2-tpl, .ml2-reply:not(.is-dock) > .ml2-assist { padding-left: 0; padding-right: 0; border: 0; background: none; }
+/* 评价回复：输入框和底栏同一个框；草稿列表可收起成一行 */
+.rr-box { border: 1px solid var(--c-line-strong); border-radius: 8px; background: var(--c-surface); }
+.rr-box:focus-within { border-color: var(--c-brand); box-shadow: var(--focus-ring); }
+.rr-box .rr-input { border: 0; border-radius: 8px 8px 0 0; }
+.rr-box .rr-input:focus { border: 0; box-shadow: none; }
+.rr-box .rr-ft { padding: 6px 8px 8px 12px; }
+.rr-fold { display: flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--c-ink-2); font-size: 12px; text-align: left; cursor: pointer; }
+.rr-fold span { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; color: var(--c-brand-ink); font-weight: 600; }
+.ml2-reply.is-dock .ml2-box textarea { min-height: 132px; }

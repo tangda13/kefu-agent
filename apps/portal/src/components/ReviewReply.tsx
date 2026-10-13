@@ -1,4 +1,4 @@
-import { CircleAlert, ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, CircleAlert, ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   ApiError,
@@ -70,6 +70,8 @@ export function ReviewReply({
   const [draft, setDraft] = useState(initialText);
   const [variants, setVariants] = useState<Variant[]>([]);
   const [picked, setPicked] = useState<number | null>(null);
+  /** 选中一版后自动收起成一行，可再展开换版本 */
+  const [folded, setFolded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -98,6 +100,7 @@ export function ReviewReply({
         : result.suggestions.slice(0, 3).map((text, index) => ({ angle: `版本 ${index + 1}`, text, zh: "" }));
       setVariants(list);
       setPicked(null);
+      setFolded(false);
     } catch (cause) {
       setError(errorText(cause));
     } finally {
@@ -108,6 +111,7 @@ export function ReviewReply({
   function pick(index: number) {
     setPicked(index);
     setDraft(variants[index]?.text ?? "");
+    setFolded(true);
   }
 
   async function send() {
@@ -145,10 +149,16 @@ export function ReviewReply({
         <b>{buyerName ? `回复 ${buyerName}` : "回复买家"}</b>
         <span>公开显示在评价下面</span>
         <button type="button" className="rr-ai" disabled={loading} onClick={() => void assist()}>
-          <Sparkles size={14} />{loading ? "正在写…" : variants.length ? "换一批" : "AI 帮写"}
+          <Sparkles size={14} />{loading ? "正在写…" : variants.length ? "重新生成" : "AI 帮写"}
         </button>
       </div>
       {variants.length > 0 ? (
+        <button type="button" className="rr-fold" onClick={() => setFolded((value) => !value)} aria-expanded={!folded}>
+          AI 草稿 {variants.length} 版{picked !== null ? ` · 已填入「${variants[picked]?.angle}」` : ""}
+          <span>{folded ? <><ChevronDown size={13} />展开</> : <><ChevronUp size={13} />收起</>}</span>
+        </button>
+      ) : null}
+      {variants.length > 0 && !folded ? (
         <div className="rr-vers" role="radiogroup" aria-label="三版参考回复">
           {variants.map((variant, index) => (
             <button
@@ -169,6 +179,7 @@ export function ReviewReply({
           ))}
         </div>
       ) : null}
+      <div className="rr-box">
       <textarea
         className="rr-input"
         value={draft}
@@ -193,6 +204,7 @@ export function ReviewReply({
           ) : null}
           <Button variant="primary" size="sm" loading={busy} disabled={!draft.trim()} onClick={() => void send()}>发布回复</Button>
         </span>
+      </div>
       </div>
     </div>
   );
