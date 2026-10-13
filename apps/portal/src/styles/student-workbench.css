@@ -427,16 +427,17 @@
 
 /* 客服状态：头像 + 状态角标，点开切换（参照千牛 / 飞鸽） */
 .wbk-agent { position: relative; }
-.wbk-agent-btn { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 2px; border: 0; border-radius: 16px; background: none; cursor: pointer; }
+.wbk-agent-btn { display: inline-flex; align-items: center; gap: 6px; padding: 2px; border: 0; border-radius: 16px; background: none; cursor: pointer; }
 .wbk-agent-btn:hover { background: var(--c-surface-hover); }
 .wbk-agent-state { display: inline-flex; align-items: center; gap: 2px; height: 20px; padding: 0 6px; border-radius: 10px; font-size: 12px; font-weight: 600; color: #fff; background: var(--c-ok); }
 .wbk-agent-btn.is-rest .wbk-agent-state { background: #e8692c; }
 .wbk-agent-btn.is-offline .wbk-agent-state { background: var(--c-ink-4, #9aa3b0); }
-.wbk-agent-pop { position: absolute; left: 0; top: calc(100% + 8px); z-index: 40; width: 340px; padding: 16px 18px 10px; }
+.wbk-agent-pop { position: absolute; left: 0; top: calc(100% + 8px); z-index: 40; width: 340px; padding: 12px 14px 8px; }
 .wbk-agent-who { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--c-line); }
 .wbk-agent-who b { display: block; font-size: 15px; }
 .wbk-agent-who small { color: var(--c-ink-3); font-size: 12px; }
-.wbk-agent-sec { display: grid; gap: 2px; padding: 12px 0; border-bottom: 1px solid var(--c-line); }
+.wbk-agent-sec { display: grid; gap: 2px; padding: 0 0 10px; }
+.wbk-agent-sec:has(+ .wbk-agent-max) { border-bottom: 1px solid var(--c-line); }
 .wbk-agent-sec .t { font-size: 12px; color: var(--c-ink-3); margin-bottom: 4px; }
 .wbk-agent-sec button { display: grid; grid-template-columns: 10px auto 1fr 16px; gap: 8px; align-items: center; padding: 7px 6px; border: 0; border-radius: 6px; background: none; text-align: left; cursor: pointer; font-size: 13px; color: var(--c-ink); }
 .wbk-agent-sec button:hover { background: var(--c-surface-hover); }
@@ -451,3 +452,9 @@
 .wbk-agent-max .stepper button { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--c-line-strong); border-radius: 6px; background: var(--c-surface); cursor: pointer; }
 .wbk-agent-max .stepper button:disabled { opacity: .4; cursor: default; }
 .wbk-agent-max .stepper b { min-width: 14px; text-align: center; font-size: 15px; }
+
+/* 框里的文本框不再画自己的焦点框：外层输入框（composer / 备注 / 回复框）已经有聚焦高亮 */
+.wbk-ta:focus-visible, .wbk-note textarea:focus-visible, .ml2-box textarea:focus-visible, .ml2-reply textarea:focus-visible, .rr-box .rr-input:focus-visible { outline: none; }
+.wbk-taskpop-reason { display: grid; gap: 8px; border-top: 1px solid var(--c-line); padding-top: 10px; font-size: 13px; }
+.wbk-taskpop-reason > span { font-size: 12px; color: var(--c-ink-3); }
+.wbk-taskpop .wbk-reason-grid { grid-template-columns: repeat(3, 1fr); }

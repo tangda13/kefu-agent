@@ -52,6 +52,17 @@ export function ReasonPicker({ conversation, disabled, onPick }: {
   );
 }
 
+/** 咨询类型选项网格（自由练习时放在任务条的弹层里） */
+export function ReasonGrid({ value, onPick }: { value: string | null; onPick: (reason: string) => void }) {
+  return (
+    <div className="wbk-reason-grid">
+      {CONTACT_REASONS.map((reason) => (
+        <button key={reason} type="button" className={reason === value ? "is-on" : ""} onClick={() => onPick(reason)}>{reason}</button>
+      ))}
+    </div>
+  );
+}
+
 export function FollowUpToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
     <button type="button" className={on ? "wbk-fup is-on" : "wbk-fup"} aria-pressed={on} onClick={onToggle}>

@@ -16,8 +16,9 @@ interface Props {
   practice: boolean;
   switchable: StudentTask[];
   onPickTask: (taskId: string) => void;
+  reason?: { value: string | null; disabled: boolean; onPick: (reason: string) => void } | null;
   /** 客服状态与最大接待人数（同千牛 / 飞鸽） */
-  agent: { name: string; avatarUrl?: string | null; storeName: string; state: AgentState; onState: (next: AgentState) => void; maxServe: number; onMaxServe: (next: number) => void };
+  agent: { state: AgentState; onState: (next: AgentState) => void; maxServe: number; onMaxServe: (next: number) => void };
   /** 当前聚焦的任务；null = 自由练习或空闲 */
   task: StudentTask | null;
   /** 倒计时依据：当前这场会话的开始时间 */
@@ -37,7 +38,7 @@ function endsAtOf(task: StudentTask | null, startedAt: number | null): number | 
   return candidates.length ? Math.min(...candidates) : null;
 }
 
-export function ShiftBar({ task, practice, switchable, onPickTask, agent, startedAt, timerKey, stats, onTimeUp }: Props) {
+export function ShiftBar({ task, practice, switchable, onPickTask, reason, agent, startedAt, timerKey, stats, onTimeUp }: Props) {
   const slot = useContext(ShellSlotContext);
   const now = useNow(1000);
   const endsAt = endsAtOf(task, startedAt);
@@ -79,7 +80,7 @@ export function ShiftBar({ task, practice, switchable, onPickTask, agent, starte
 
   const bar = (
     <div className="wbk-shift">
-      <AgentStatus {...agent} />
+      <AgentStatus {...agent} canSetMax={practice} />
       <span className="wbk-sep" />
       <div className="wbk-stats">
         <span>今日接待<b className="num">{stats?.todayConversations ?? "—"}</b></span>
@@ -101,7 +102,7 @@ export function ShiftBar({ task, practice, switchable, onPickTask, agent, starte
         </div>
       </div>
       <span className="wbk-shift-right">
-      <TaskChip task={task} practice={practice} switchable={switchable} onPick={onPickTask} />
+      <TaskChip task={task} practice={practice} switchable={switchable} onPick={onPickTask} reason={reason} />
       {remaining !== null && task ? (
         <span className={`wbk-clock is-quiet ${clockTone}`} title="当前会话剩余时间">
           <Timer size={14} />剩余 <span className="num">{clockLabel(remaining)}</span>

@@ -1,8 +1,7 @@
 import { Check, ChevronDown, Minus, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { UserAvatar } from "../../../components/AccountCenter";
 
-/* 客服状态（参照千牛 / 飞鸽）：头像 + 状态角标，点开切换在线 / 小休 / 离线，设置最大接待人数。
+/* 客服状态（参照千牛 / 飞鸽）：状态标签，点开切换在线 / 小休 / 离线，设置最大接待人数。
    在线：正常进线；小休：可接待当前买家，不再进线新买家；离线：不进线，也不能发送消息。 */
 
 export type AgentState = "online" | "rest" | "offline";
@@ -15,10 +14,9 @@ const STATES: Array<{ id: AgentState; label: string; desc: string }> = [
 
 export const MAX_SERVE_LIMIT = 5;
 
-export function AgentStatus({ name, avatarUrl, storeName, state, onState, maxServe, onMaxServe }: {
-  name: string;
-  avatarUrl?: string | null;
-  storeName: string;
+export function AgentStatus({ state, onState, maxServe, onMaxServe, canSetMax }: {
+  /** 最大接待人数只在自由练习时可设；任务里按老师的进线规则，固定 3 位 */
+  canSetMax: boolean;
   state: AgentState;
   onState: (next: AgentState) => void;
   maxServe: number;
@@ -39,15 +37,10 @@ export function AgentStatus({ name, avatarUrl, storeName, state, onState, maxSer
   return (
     <div className="wbk-agent" ref={ref}>
       <button type="button" className={`wbk-agent-btn is-${state}`} aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        <UserAvatar name={name} url={avatarUrl} size={28} />
         <span className="wbk-agent-state">{current.label}<ChevronDown size={12} /></span>
       </button>
       {open ? (
         <div className="wbk-pop wbk-agent-pop" role="dialog" aria-label="客服状态">
-          <div className="wbk-agent-who">
-            <UserAvatar name={name} url={avatarUrl} size={44} />
-            <div><b>{name}</b><small>{storeName}</small></div>
-          </div>
           <div className="wbk-agent-sec">
             <span className="t">切换状态</span>
             {STATES.map((item) => (
@@ -59,6 +52,7 @@ export function AgentStatus({ name, avatarUrl, storeName, state, onState, maxSer
               </button>
             ))}
           </div>
+          {canSetMax ? (
           <div className="wbk-agent-max">
             <span>最大接待人数</span>
             <span className="stepper">
@@ -67,6 +61,7 @@ export function AgentStatus({ name, avatarUrl, storeName, state, onState, maxSer
               <button type="button" aria-label="增加" disabled={maxServe >= MAX_SERVE_LIMIT} onClick={() => onMaxServe(maxServe + 1)}><Plus size={13} /></button>
             </span>
           </div>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -170,9 +170,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       return MAX_CONCURRENT;
     }
   });
-  const maxServeRef = useRef(maxServe);
-  maxServeRef.current = maxServe;
-  const [storeName, setStoreName] = useState("");
+
   const [dataReady, setDataReady] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [panelTab, setPanelTab] = useState<PanelTab>("order");
@@ -326,7 +324,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     void loadClosed();
     fetchStoreProducts(session).then(setProducts).catch(() => undefined);
     fetchStoreCoupons(session).then(setCoupons).catch(() => undefined);
-    fetchStoreProfile(session).then((profile) => { setTiers(profile.tiers); setStoreName(profile.name); }).catch(() => undefined);
+    fetchStoreProfile(session).then((profile) => setTiers(profile.tiers)).catch(() => undefined);
   }, [loadConversations, loadClosed, session]);
 
   // 列表 20 秒校一次：服务端到点结束的会话、新进线的会话都能及时反映
@@ -1039,7 +1037,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         if (task.locked || task.progressStatus !== "in_progress") continue;
         if (closedTasksRef.current.has(task.id)) continue;
         if (task.deadline && Date.now() > new Date(task.deadline).getTime()) continue;
-        if (openList.length >= maxServeRef.current) {
+        if (openList.length >= MAX_CONCURRENT) {
           arrivalNotBeforeRef.current.delete(task.id);
           continue;
         }
@@ -1181,6 +1179,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         task={focusTask}
         practice={Boolean(activeOpen && !activeOpen.taskId)}
         switchable={inProgressTasks}
+        reason={active && !active.taskId ? { value: active.contactReason ?? null, disabled: isClosed, onPick: (value) => void saveMeta({ contactReason: value }) } : null}
         onPickTask={(taskId) => {
           // 切换训练任务的聚焦：倒计时、任务条跟着变，并打开这个任务正在接待的买家（会话列表仍显示全部）
           setTaskFocus(taskId);
@@ -1188,9 +1187,6 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
           if (first) pickConversation(first.id);
         }}
         agent={{
-          name: session.user.displayName,
-          avatarUrl: session.user.avatarUrl,
-          storeName,
           state: agentState,
           onState: setAgentState,
           maxServe,
@@ -1235,7 +1231,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
           </div>
           {active ? (
             <div className="wbk-ch-end">
-              <ReasonPicker conversation={active} disabled={isClosed} onPick={(reason) => void saveMeta({ contactReason: reason })} />
+              {/* 自由练习时咨询类型收进顶栏“自由练习”任务条 */}
+              {active.taskId ? <ReasonPicker conversation={active} disabled={isClosed} onPick={(reason) => void saveMeta({ contactReason: reason })} /> : null}
               <FollowUpToggle on={Boolean(active.followUp)} onToggle={() => void saveMeta({ followUp: !active.followUp })} />
               {isClosed ? <span className="wbk-tag is-closed">已结束</span> : <EndButton onClick={() => setEndConfirm(true)} />}
             </div>

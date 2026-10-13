@@ -2,6 +2,7 @@ import { ChevronDown, GraduationCap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { BUSINESS_STAGE_LABELS } from "@cecs/contracts";
 import { type StudentTask } from "../../../api/client";
+import { ReasonGrid } from "./HeadControls";
 
 /* 任务条：训练信息（环节、任务、进度、要求）放在平台外壳顶栏，用虚线框和学士帽图标
    和仿真的客服软件区分开；收起时一行，点开看完整要求、切换任务。 */
@@ -15,13 +16,15 @@ function deadlineText(deadline: string | null): string {
   return `${date.getMonth() + 1} 月 ${date.getDate()} 日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")} 截止`;
 }
 
-export function TaskChip({ task, practice, switchable, onPick }: {
+export function TaskChip({ task, practice, switchable, onPick, reason }: {
   task: StudentTask | null;
   /** 当前接待的是自由练习 */
   practice: boolean;
   /** 进行中的任务，可切换聚焦 */
   switchable: StudentTask[];
   onPick: (taskId: string) => void;
+  /** 自由练习时，咨询类型收在这里（不放会话头） */
+  reason?: { value: string | null; disabled: boolean; onPick: (reason: string) => void } | null;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -37,8 +40,23 @@ export function TaskChip({ task, practice, switchable, onPick }: {
   if (!task && !practice) return null;
   if (!task) {
     return (
-      <div className="wbk-taskchip is-practice" title="自由练习不限时间、不计成绩">
-        <GraduationCap size={14} />自由练习
+      <div className="wbk-taskchip-wrap" ref={ref}>
+        <button type="button" className="wbk-taskchip" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+          <GraduationCap size={14} />自由练习
+          {reason?.value ? <span className="wbk-taskchip-stage">· {reason.value}</span> : null}
+          <ChevronDown size={13} />
+        </button>
+        {open ? (
+          <div className="wbk-pop wbk-taskpop" role="dialog" aria-label="自由练习">
+            <div className="wbk-taskpop-h"><b>自由练习</b><span className="wbk-taskchip-stage">不限时、不计成绩</span></div>
+            {reason ? (
+              <div className="wbk-taskpop-reason">
+                <span>咨询类型</span>
+                {reason.disabled ? <b>{reason.value ?? "未选择"}</b> : <ReasonGrid value={reason.value} onPick={(value) => { reason.onPick(value); setOpen(false); }} />}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     );
   }
