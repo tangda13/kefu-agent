@@ -476,6 +476,19 @@ export function registerTaskRoutes(
         ),
         db.query("select total from baseline_assessments where student_id = $1", [user.sub]),
       ]);
+      /* 达标率：任务接待里达到该任务达标线（没设按 60）的次数占比；本周练习：本周开始的接待次数（含自由练习） */
+      const [pass, week] = await Promise.all([
+        db.query(
+          `select count(*)::int as assessed, count(*) filter (where a.total >= coalesce(t.pass_score, 60))::int as passed
+           from assessments a join conversations c on c.id = a.conversation_id join tasks t on t.id = c.task_id
+           where a.student_id = $1`,
+          [user.sub],
+        ),
+        db.query(
+          "select count(*)::int as n from conversations where student_id = $1 and created_at >= date_trunc('week', now())",
+          [user.sub],
+        ),
+      ]);
       const classId = me.rows[0]?.class_id ?? null;
       const classSize = classId
         ? Number((await db.query("select count(*)::int as n from users where class_id = $1 and role = 'student' and status = 'active'", [classId])).rows[0]?.n ?? 0)
@@ -499,6 +512,8 @@ export function registerTaskRoutes(
           /* 正数 = 名次上升 */
           change: now.position != null && before.position != null ? before.position - now.position : null,
         },
+        pass: { assessed: Number(pass.rows[0]?.assessed ?? 0), passed: Number(pass.rows[0]?.passed ?? 0) },
+        weekConversations: Number(week.rows[0]?.n ?? 0),
         conversations: {
           total: Number(talk.rows[0]?.conversations ?? 0),
           practice: Number(talk.rows[0]?.practice ?? 0),

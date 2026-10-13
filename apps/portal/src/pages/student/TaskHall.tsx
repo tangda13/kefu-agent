@@ -15,7 +15,8 @@ import { writePractice } from "./practice";
 import { Bench, Board, Button, Drawer, FilterChips, StageTag } from "../../ui";
 import { dueText } from "../teacher/widgets";
 import { BaselineQuiz } from "./BaselineQuiz";
-import { StudentKpis } from "./StudentKpis";
+import { CalendarCheck, ListTodo, ChevronDown as ChevronDownIcon } from "lucide-react";
+import { fetchStudentSummary } from "../../api/client";
 import "../../styles/student-learn.css";
 
 type HallFilter = "all" | "todo" | "done";
@@ -188,6 +189,17 @@ export function TaskHall({
     return { todo: [...active, ...pending, ...upcoming], done, current: active[0] ?? pending[0] ?? null };
   }, [tasks]);
   const current = groups.current;
+  /** 最近要截止的未完成任务 */
+  const nearest = useMemo(
+    () => groups.todo.filter((task) => task.deadline).sort((a, b) => new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime())[0] ?? null,
+    [groups],
+  );
+  const nearestDue = nearest ? dueText(nearest.deadline) : { text: "", tone: "" as const };
+  const [weekCount, setWeekCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!session) return;
+    fetchStudentSummary(session).then((summary) => setWeekCount(summary.weekConversations)).catch(() => undefined);
+  }, [session, reloadTick]);
   const needBaseline = !!session && !!baseline && !baseline.completed;
 
   async function startPractice() {
@@ -289,7 +301,19 @@ export function TaskHall({
         </section>
       ) : null}
 
-      <StudentKpis session={session} />
+      {/* 方案 A：任务大厅不放数字卡，一行本周进度；成绩类数字在“我的记录” */}
+      <div className="sl-week">
+        <span><CalendarCheck size={15} aria-hidden="true" />本周练了 <b>{weekCount ?? "—"}</b> 次</span>
+        <span><ListTodo size={15} aria-hidden="true" />{groups.todo.length ? <>还有 <b>{groups.todo.length}</b> 个任务要完成</> : "没有要完成的任务"}</span>
+        {nearest ? (
+          <span className={nearestDue.tone ? `is-${nearestDue.tone}` : undefined}><AlarmClock size={15} aria-hidden="true" />最近截止：「{nearest.name}」<b>{nearestDue.text}</b></span>
+        ) : null}
+        {tasks.length ? (
+          <button type="button" className="sl-week-lk" onClick={() => document.getElementById("sl-all-tasks")?.scrollIntoView({ behavior: "smooth" })}>
+            看全部任务<ChevronDownIcon size={14} aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
 
       {loadError ? <p className="sl-form-error" role="alert">{loadError}<button type="button" className="sl-retry" onClick={() => setReloadTick((tick) => tick + 1)}>重试</button></p> : null}
 
@@ -311,7 +335,8 @@ export function TaskHall({
 
       {tasks.length > 0 ? (
         <Board
-          title="全部任务"
+          className="sl-all-anchor"
+          title={<span id="sl-all-tasks">全部任务</span>}
           count={tasks.length}
           extra={
             <FilterChips<HallFilter>

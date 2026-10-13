@@ -529,6 +529,24 @@ table.api-t td:first-child { white-space: nowrap; font-weight: 600; }
 .r2-c-h { display: flex; align-items: center; gap: 10px; }
 .r2-compose .ver .en { -webkit-line-clamp: 3; }
 
+/* 去重方案 */
+.wk { display: flex; align-items: center; gap: 22px; padding: 12px 18px; margin-bottom: 16px; background: #fff; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; color: var(--ink-2); }
+.wk span { display: inline-flex; align-items: center; gap: 6px; }
+.wk svg { width: 15px; height: 15px; color: var(--ink-3); }
+.wk b { color: var(--ink); }
+.wk .w, .wk .w b, .wk .w svg { color: var(--warn); }
+.wk .lk { margin-left: auto; color: var(--brand-ink); }
+.wk .lk svg { color: var(--brand-ink); }
+.td2-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+.td2 { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+.td2 .ic { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--brand-soft); color: var(--brand); flex: none; }
+.td2.warm .ic { background: var(--warn-wash); color: var(--warn); }
+.td2 .lb { font-size: 13px; color: var(--ink-2); }
+.td2 .nm b { font-size: 26px; font-weight: 700; } .td2 .nm small { margin-left: 4px; font-size: 13px; color: var(--ink-3); }
+.td2.warm .nm b { color: var(--warn); }
+.td2 .ft { font-size: 12px; color: var(--ink-3); }
+.focus + .board { margin-top: 16px; }
+
 /* 邮件 */
 .ml { display: grid; grid-template-columns: 380px minmax(0, 1fr); grid-template-rows: minmax(0,1fr); flex: 1; min-height: 0; background: #fff; }
 .ml .list { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
@@ -747,6 +765,19 @@ table.api-t td:first-child { white-space: nowrap; font-weight: 600; }
   <div class="frame" data-h="900"><div class="screen s" data-tpl="store"></div></div>
   <div class="cap"><b>改后 · 编辑店铺资料（右侧抽屉）</b><span>按“店铺是谁 / 怎么联系 / 客户怎么分层”分三组；右边实时看学生端侧栏、邮件和标签会变成什么样</span></div>
   <div class="frame" data-h="900"><div class="screen s" data-tpl="storeEdit"></div></div>
+
+  <h2>任务大厅 × 我的记录：去掉重复的仪表盘 <small>2026-10-13 · 待选</small></h2>
+  <p class="lede">两页顶部现在是同样四张卡（已完成任务 / 平均分 / 班级排名 / 累计对话）。按“这一页回答什么问题”分开：<b>任务大厅回答“我现在该做什么”，我的记录回答“我做得怎么样、哪里要补”</b>。下面两个方案各画两页的首屏，数据是编的。</p>
+  <div class="diag">
+    <div><b>方案 A（推荐）：任务大厅不放数字卡</b>问候语下面一行“本周进度”：本周练了几次 · 还有几个任务 · 最近截止。下面直接是“现在要做的”和自由练习。<br>我的记录放成绩类四张卡：平均分（较训前）· 班级排名（较上周）· 达标率（新）· 累计对话。<br><span class="fix">好处：首页第一眼就是要做的事；成绩只在一个地方看。</span></div>
+    <div><b>方案 B：两页都有卡，但内容不同</b>任务大厅放“行动类”三张卡：待完成任务、最近截止、本周练习；我的记录放成绩类四张卡（同方案 A）。<br><span class="fix">好处：首页信息更满；代价：首页仍是一排数字，“现在要做的”被推到第二屏位置。</span></div>
+  </div>
+  <div class="cap"><b>方案 A · 任务大厅</b><span>问候语下面一行进度，任务卡直接上来</span></div>
+  <div class="frame" data-h="760"><div class="screen s" data-tpl="hallA"></div></div>
+  <div class="cap"><b>方案 B · 任务大厅</b><span>三张行动类卡片：要做多少、多久截止、这周练了多少</span></div>
+  <div class="frame" data-h="760"><div class="screen s" data-tpl="hallB"></div></div>
+  <div class="cap"><b>两个方案共用 · 我的记录</b><span>成绩类四张卡：平均分、班级排名、达标率、累计对话；下面接六项能力和成绩走势</span></div>
+  <div class="frame" data-h="760"><div class="screen s" data-tpl="recordsA"></div></div>
 
   <h2>改动清单与接口</h2>
   <table class="api-t">
@@ -1196,7 +1227,21 @@ Aurora Mart Customer Support</div></div>
     </div></div>
     <div class="df"><span class="l">改完立即生效：学生端侧栏、新发出的邮件和下一位进线的买家</span><div class="r"><span class="btn ghost">取消</span><span class="btn primary">保存</span></div></div>
   </div></div>`); };
-const T = { store, storeEdit: storeEditFull, hall, hallEmpty, wb, wbProduct, wbEnd, reviews, reviews2, reviews2b, mail, orders, records, recordsEmpty };
+/* ============ 去重方案 ============ */
+const focusBlock = () => hall().split('<div class="focus">')[1].split('<div class="board" style="margin-top:16px">')[0];
+const weekLine = `<div class="wk"><span>${I("calendar-check")}本周练了 <b>3</b> 次</span><span>${I("list-todo")}还有 <b>2</b> 个任务要完成</span><span class="w">${I("alarm-clock")}最近截止：「售后差评挽回」<b>明天 18:00</b></span><span class="lk">看全部任务 ${I("chevron-down")}</span></div>`;
+const hallA = () => shell("任务大厅", "任务大厅", `<div class="greet"><h2>下午好，张三</h2><span>跨境电商2601班</span></div>${weekLine}<div class="focus">${focusBlock()}`);
+const act = (icon, cls, label, n, unit, fact) => `<div class="td2 ${cls}"><span class="ic">${I(icon)}</span><div><div class="lb">${label}</div><div class="nm"><b>${n}</b><small>${unit}</small></div><div class="ft">${fact}</div></div></div>`;
+const hallB = () => shell("任务大厅", "任务大厅", `<div class="greet"><h2>下午好，张三</h2><span>跨境电商2601班</span></div>
+  <div class="td2-row">${act("list-todo", "", "待完成任务", 2, "个", "其中 1 个进行中")}${act("alarm-clock", "warm", "最近截止", "明天", "18:00", "「售后差评挽回」还差 2 个场景")}${act("calendar-check", "", "本周练习", 3, "次", "其中自由练习 1 次")}</div>
+  <div class="focus">${focusBlock()}`);
+const recordsA = () => records().replace(/<div class="kc-row">[\s\S]*?<\/div>\s*<div class="two">/, `<div class="kc-row">
+    ${kc("平均分", `<b>72</b><small>/ 100</small>`, `<span class="pill up">${I("arrow-up")}17</span>较训前`, gauge(72))}
+    ${kc("班级排名", `<b>第 18</b><small>/ 45</small>`, `<span class="pill up">${I("arrow-up")}3</span>较上周`, rank(18, 45))}
+    ${kc("达标率", `<b>67%</b>`, "6 次任务接待 4 次达标", ring(67, "#1a7445"))}
+    ${kc("累计对话", `<b>11</b><small>次</small>`, "共 164 轮 · 其中练习 4 次", ring(64, "#0a7a70"))}</div>
+  <div class="two">`);
+const T = { hallA, hallB, recordsA, store, storeEdit: storeEditFull, hall, hallEmpty, wb, wbProduct, wbEnd, reviews, reviews2, reviews2b, mail, orders, records, recordsEmpty };
 document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
 if (window.lucide) lucide.createIcons();
 function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const h = +(f.dataset.h || 900); s.style.height = `${h}px`; const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${h * k}px`; }); }

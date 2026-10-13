@@ -466,6 +466,10 @@ export interface StudentSummary {
   baseline: number | null;
   rank: { position: number | null; classSize: number; change: number | null };
   conversations: { total: number; practice: number; rounds: number };
+  /** 任务接待达标次数 / 已评分次数 */
+  pass: { assessed: number; passed: number };
+  /** 本周接待次数（含自由练习） */
+  weekConversations: number;
 }
 
 export const fetchStudentSummary = (session: Session) => apiGet<StudentSummary>("/v1/student/summary", session);

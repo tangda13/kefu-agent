@@ -29,7 +29,7 @@ function RankBars({ position, total }: { position: number | null; total: number 
   );
 }
 
-/** 学生端“学习区”两页共用的四张关键数字卡（C1）：任务进度、平均分、班级排名、累计对话 */
+/** “我的记录”顶部四张成绩卡（C1）：平均分、班级排名、达标率、累计对话；任务进度在任务大厅那一行 */
 export function StudentKpis({ session }: { session?: Session | null }) {
   const [summary, setSummary] = useState<StudentSummary | null>(null);
 
@@ -42,23 +42,16 @@ export function StudentKpis({ session }: { session?: Session | null }) {
     return () => { cancelled = true; };
   }, [session]);
 
-  const tasks = summary?.tasks;
-  const hasTasks = !!tasks && tasks.total > 0;
   const average = summary?.average ?? null;
   const baseline = summary?.baseline ?? null;
   const rank = summary?.rank;
   const convo = summary?.conversations;
   const taskConvo = convo ? convo.total - convo.practice : 0;
+  const pass = summary?.pass;
+  const passRate = pass && pass.assessed > 0 ? Math.round((pass.passed / pass.assessed) * 100) : null;
 
   return (
     <div className="kpi-cards sl-kpis">
-      <KpiCard
-        label="已完成任务"
-        help="老师下发给你的任务里，已经完成的个数。每个任务要接待完要求的场景才算完成。"
-        value={hasTasks ? <><b>{tasks!.done}</b><small>/ {tasks!.total}</small></> : null}
-        sub={hasTasks ? (tasks!.done >= tasks!.total ? "任务都做完了" : `还有 ${tasks!.total - tasks!.done} 个要完成`) : "老师下发后显示"}
-        bar={hasTasks ? tasks!.done / tasks!.total : 0}
-      />
       <KpiCard
         label="平均分"
         help="只算任务接待的综合分，自由练习不计入。“较训前”是和训前测评总分的差。"
@@ -72,6 +65,13 @@ export function StudentKpis({ session }: { session?: Session | null }) {
         value={rank?.position != null ? <><b>第 {rank.position}</b><small>/ {rank.classSize}</small></> : null}
         sub={rank?.position != null ? (rank.change != null ? <DeltaPill value={rank.change} label="较上周" /> : undefined) : rank ? `${rank.classSize} 人` : undefined}
         chart={<RankBars position={rank?.position ?? null} total={rank?.classSize ?? 0} />}
+      />
+      <KpiCard
+        label="达标率"
+        help="任务接待里分数达到该任务达标线（老师没设时按 60 分）的次数占比，自由练习不计入。"
+        value={passRate != null ? <b>{passRate}%</b> : null}
+        sub={pass && pass.assessed > 0 ? `${pass.assessed} 次任务接待 ${pass.passed} 次达标` : undefined}
+        chart={<RateRing value={passRate} color="var(--c-ok)" />}
       />
       <KpiCard
         label="累计对话"
