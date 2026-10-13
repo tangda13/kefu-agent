@@ -17,6 +17,8 @@ interface Props {
   switchable: StudentTask[];
   onPickTask: (taskId: string) => void;
   reason?: { value: string | null; disabled: boolean; onPick: (reason: string) => void } | null;
+  /** 自由练习进行中：练习范围与“结束练习” */
+  practiceInfo?: { scope: string; max: number; onStop: () => void } | null;
   /** 客服状态与最大接待人数（同千牛 / 飞鸽） */
   agent: { state: AgentState; onState: (next: AgentState) => void; maxServe: number; onMaxServe: (next: number) => void };
   /** 当前聚焦的任务；null = 自由练习或空闲 */
@@ -38,7 +40,7 @@ function endsAtOf(task: StudentTask | null, startedAt: number | null): number | 
   return candidates.length ? Math.min(...candidates) : null;
 }
 
-export function ShiftBar({ task, practice, switchable, onPickTask, reason, agent, startedAt, timerKey, stats, onTimeUp }: Props) {
+export function ShiftBar({ task, practice, switchable, onPickTask, reason, practiceInfo, agent, startedAt, timerKey, stats, onTimeUp }: Props) {
   const slot = useContext(ShellSlotContext);
   const now = useNow(1000);
   const endsAt = endsAtOf(task, startedAt);
@@ -102,7 +104,7 @@ export function ShiftBar({ task, practice, switchable, onPickTask, reason, agent
         </div>
       </div>
       <span className="wbk-shift-right">
-      <TaskChip task={task} practice={practice} switchable={switchable} onPick={onPickTask} reason={reason} />
+      <TaskChip task={task} practice={practice} switchable={switchable} onPick={onPickTask} reason={reason} practiceInfo={practiceInfo} />
       {remaining !== null && task ? (
         <span className={`wbk-clock is-quiet ${clockTone}`} title="当前会话剩余时间">
           <Timer size={14} />剩余 <span className="num">{clockLabel(remaining)}</span>

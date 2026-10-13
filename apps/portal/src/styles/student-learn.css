@@ -154,3 +154,4 @@
 
 /* 复盘弹窗：雷达图容器的 compact 类被全局 .compact（控件高 28）误伤，把高度还原 */
 .rec-radar.compact { height: auto; }
+.sl-prac-sc { width: 100%; }

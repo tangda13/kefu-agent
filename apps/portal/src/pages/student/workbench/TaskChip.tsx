@@ -16,7 +16,7 @@ function deadlineText(deadline: string | null): string {
   return `${date.getMonth() + 1} 月 ${date.getDate()} 日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")} 截止`;
 }
 
-export function TaskChip({ task, practice, switchable, onPick, reason }: {
+export function TaskChip({ task, practice, switchable, onPick, reason, practiceInfo }: {
   task: StudentTask | null;
   /** 当前接待的是自由练习 */
   practice: boolean;
@@ -25,6 +25,7 @@ export function TaskChip({ task, practice, switchable, onPick, reason }: {
   onPick: (taskId: string) => void;
   /** 自由练习时，咨询类型收在这里（不放会话头） */
   reason?: { value: string | null; disabled: boolean; onPick: (reason: string) => void } | null;
+  practiceInfo?: { scope: string; max: number; onStop: () => void } | null;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -49,11 +50,20 @@ export function TaskChip({ task, practice, switchable, onPick, reason }: {
         {open ? (
           <div className="wbk-pop wbk-taskpop" role="dialog" aria-label="自由练习">
             <div className="wbk-taskpop-h"><b>自由练习</b><span className="wbk-taskchip-stage">不限时、不计成绩</span></div>
+            {practiceInfo ? (
+              <dl>
+                <dt>练习场景</dt><dd>{practiceInfo.scope}</dd>
+                <dt>进线</dt><dd>陆续进线，同时最多 {practiceInfo.max} 位</dd>
+              </dl>
+            ) : null}
             {reason ? (
               <div className="wbk-taskpop-reason">
                 <span>咨询类型</span>
                 {reason.disabled ? <b>{reason.value ?? "未选择"}</b> : <ReasonGrid value={reason.value} onPick={(value) => { reason.onPick(value); setOpen(false); }} />}
               </div>
+            ) : null}
+            {practiceInfo ? (
+              <button type="button" className="wbk-taskpop-stop" onClick={() => { practiceInfo.onStop(); setOpen(false); }}>结束练习（不再进线新买家）</button>
             ) : null}
           </div>
         ) : null}

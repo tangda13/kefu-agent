@@ -458,3 +458,4 @@
 .wbk-taskpop-reason { display: grid; gap: 8px; border-top: 1px solid var(--c-line); padding-top: 10px; font-size: 13px; }
 .wbk-taskpop-reason > span { font-size: 12px; color: var(--c-ink-3); }
 .wbk-taskpop .wbk-reason-grid { grid-template-columns: repeat(3, 1fr); }
+.wbk-taskpop-stop { justify-self: start; padding: 0; border: 0; background: none; color: var(--c-danger); font-size: 13px; cursor: pointer; }

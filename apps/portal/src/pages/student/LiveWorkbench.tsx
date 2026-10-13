@@ -22,6 +22,8 @@ import {
   assetUrl,
   closeConversation,
   createConversation,
+  fetchScenarios,
+  type ScenarioSummary,
   createMyPhrase,
   deleteMyPhrase,
   fetchConversationMessages,
@@ -68,6 +70,8 @@ import { OrdersTab } from "./workbench/OrdersTab";
 import { ProductDrawer } from "./workbench/ProductDrawer";
 import { ProductsTab } from "./workbench/ProductsTab";
 import { ShiftBar } from "./workbench/ShiftBar";
+import { BUSINESS_STAGE_LABELS } from "@cecs/contracts";
+import { PRACTICE_EVENT, readPractice, writePractice, type PracticeConfig } from "./practice";
 import { MAX_SERVE_LIMIT, type AgentState } from "./workbench/AgentStatus";
 import { Av, MessageBody, errorMessage, goToPage, hashSeed, isCardKind, timeLabel } from "./workbench/shared";
 
@@ -155,6 +159,19 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const [railTab, setRailTab] = useState<RailTab>("current");
   /* 任务隔离：会话/进线按任务过滤。"all" 全部 | "practice" 自由练习 | 任务 id 聚焦该任务 */
   const [taskFilter, setTaskFilter] = useState<string>("all");
+  /** 自由练习：开着时练习买家自动陆续进线，同时进行的练习会话不超过“最大接待人数” */
+  const [practice, setPractice] = useState<PracticeConfig | null>(readPractice);
+  useEffect(() => {
+    const sync = () => setPractice(readPractice());
+    window.addEventListener(PRACTICE_EVENT, sync);
+    return () => window.removeEventListener(PRACTICE_EVENT, sync);
+  }, []);
+  const [practiceScenarios, setPracticeScenarios] = useState<ScenarioSummary[]>([]);
+  useEffect(() => {
+    if (!practice) return;
+    fetchScenarios(session).then((rows) => setPracticeScenarios(rows.filter((row) => row.enabled !== false))).catch(() => undefined);
+  }, [practice, session]);
+
   /** 任务条里选中的任务（只影响任务条和倒计时，不筛会话列表）；从任务大厅进入时就是那个任务 */
   const [taskFocus, setTaskFocus] = useState<string | null>(initialTaskId ?? null);
   /** 客服状态：挂起时暂停进线（不存本机，打开工作台默认在线） */
@@ -1080,6 +1097,50 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataReady, tasks, conversations, closedLocal, session]);
 
+  /* 自由练习进线：和任务一样陆续进线（每位隔 3-8 秒），同时进行的练习会话最多“最大接待人数”位；
+     场景按选定的来，没选就在所选环节（或全部）里随机。小休 / 离线时不进线 */
+  const practiceBusyRef = useRef(false);
+  const practiceNotBeforeRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!dataReady || !practice) return;
+    const evaluate = () => {
+      if (agentStateRef.current !== "online" || practiceBusyRef.current) return;
+      const open = conversations.filter((item) => !item.taskId && !closedLocal.has(item.id)).length;
+      if (open >= maxServe) {
+        practiceNotBeforeRef.current = null;
+        return;
+      }
+      if (practiceNotBeforeRef.current === null) {
+        practiceNotBeforeRef.current = Date.now() + (open === 0 ? 800 : 3000 + Math.random() * 5000);
+        return;
+      }
+      if (Date.now() < practiceNotBeforeRef.current) return;
+      const pool = practice.scenarioId
+        ? [practice.scenarioId]
+        : practiceScenarios.filter((item) => practice.stage === "random" || item.stage === practice.stage).map((item) => item.id);
+      if (!pool.length) return;
+      practiceNotBeforeRef.current = null;
+      practiceBusyRef.current = true;
+      const scenarioId = pool[Math.floor(Math.random() * pool.length)]!;
+      void createConversation(session, { scenarioId })
+        .then((created) => {
+          openingRequested.current.add(created.id);
+          void streamConversationOpening(session, created.id, {
+            onDelta: () => undefined,
+            onDone: () => void loadConversations(),
+            onError: () => openingRequested.current.delete(created.id),
+          });
+          return loadConversations();
+        })
+        .catch(() => { practiceNotBeforeRef.current = Date.now() + 60_000; })
+        .finally(() => { practiceBusyRef.current = false; });
+    };
+    evaluate();
+    const timer = setInterval(evaluate, 2000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataReady, practice, practiceScenarios, conversations, closedLocal, maxServe, session]);
+
   // ---------- 派生数据 ----------
 
   const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
@@ -1177,7 +1238,14 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     <div className="wbk">
       <ShiftBar
         task={focusTask}
-        practice={Boolean(activeOpen && !activeOpen.taskId)}
+        practice={Boolean(practice) || Boolean(activeOpen && !activeOpen.taskId)}
+        practiceInfo={practice ? {
+          scope: practice.scenarioId
+            ? practiceScenarios.find((item) => item.id === practice.scenarioId)?.name ?? "指定场景"
+            : practice.stage === "random" ? "全部环节随机" : `${BUSINESS_STAGE_LABELS[practice.stage]} · 随机`,
+          max: maxServe,
+          onStop: () => writePractice(null),
+        } : null}
         switchable={inProgressTasks}
         reason={active && !active.taskId ? { value: active.contactReason ?? null, disabled: isClosed, onPick: (value) => void saveMeta({ contactReason: value }) } : null}
         onPickTask={(taskId) => {

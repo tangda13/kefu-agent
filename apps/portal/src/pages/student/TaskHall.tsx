@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import { ASSESSMENT_DIMENSIONS, BUSINESS_STAGES, BUSINESS_STAGE_LABELS, type BusinessStage } from "@cecs/contracts";
 import {
   apiGet,
-  createConversation,
   fetchBaselineStatus,
   fetchScenarios,
   fetchStudentTasks,
@@ -12,7 +11,7 @@ import {
   type Session,
   type StudentTask,
 } from "../../api/client";
-import { OPEN_CONVERSATION_EVENT, OPEN_CONVERSATION_KEY } from "../../App";
+import { writePractice } from "./practice";
 import { Bench, Board, Button, Drawer, FilterChips, StageTag } from "../../ui";
 import { dueText } from "../teacher/widgets";
 import { BaselineQuiz } from "./BaselineQuiz";
@@ -143,6 +142,8 @@ export function TaskHall({
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([]);
   const [practiceStage, setPracticeStage] = useState<BusinessStage | "random">("random");
   const [practiceBusy, setPracticeBusy] = useState(false);
+  /** 指定场景；空 = 所选环节里随机 */
+  const [practiceScenario, setPracticeScenario] = useState("");
   const [practiceError, setPracticeError] = useState("");
 
   useEffect(() => {
@@ -198,10 +199,8 @@ export function TaskHall({
         setPracticeError("这个环节暂时没有可练的场景。");
         return;
       }
-      const chosen = pool.length ? pool[Math.floor(Math.random() * pool.length)]!.id : undefined;
-      const created = await createConversation(session, chosen ? { scenarioId: chosen } : {});
-      sessionStorage.setItem(OPEN_CONVERSATION_KEY, created.id);
-      window.dispatchEvent(new Event(OPEN_CONVERSATION_EVENT));
+      // 进入练习模式：工作台按这里的选择陆续进线练习买家（同时最多“最大接待人数”位）
+      writePractice({ stage: practiceStage, scenarioId: practiceScenario || null });
       onStart(undefined);
     } catch {
       setPracticeError("练习会话创建失败，请稍后重试。");
@@ -215,15 +214,21 @@ export function TaskHall({
       <h4><Dumbbell size={16} aria-hidden="true" />自由练习</h4>
       <p>不计成绩，场景随便挑，可以反复练。</p>
       <div className="sl-prac-opts" role="radiogroup" aria-label="练习环节">
-        <button type="button" role="radio" aria-checked={practiceStage === "random"} className={practiceStage === "random" ? "is-on" : undefined} onClick={() => setPracticeStage("random")}>
+        <button type="button" role="radio" aria-checked={practiceStage === "random"} className={practiceStage === "random" ? "is-on" : undefined} onClick={() => { setPracticeStage("random"); setPracticeScenario(""); }}>
           <Shuffle size={14} aria-hidden="true" />随机
         </button>
         {BUSINESS_STAGES.map((stage) => (
-          <button key={stage} type="button" role="radio" aria-checked={practiceStage === stage} className={practiceStage === stage ? "is-on" : undefined} onClick={() => setPracticeStage(stage)}>
+          <button key={stage} type="button" role="radio" aria-checked={practiceStage === stage} className={practiceStage === stage ? "is-on" : undefined} onClick={() => { setPracticeStage(stage); setPracticeScenario(""); }}>
             <i style={{ background: `var(--c-cat-${STAGE_CAT[stage]})` }} aria-hidden="true" />{BUSINESS_STAGE_LABELS[stage]}
           </button>
         ))}
       </div>
+      <select className="ui-select sl-prac-sc" value={practiceScenario} onChange={(event) => setPracticeScenario(event.target.value)} aria-label="练习场景">
+        <option value="">{practiceStage === "random" ? "场景：全部随机" : "场景：本环节随机"}</option>
+        {(practiceStage === "random" ? scenarios : scenarios.filter((item) => item.stage === practiceStage)).map((item) => (
+          <option key={item.id} value={item.id}>{item.name}</option>
+        ))}
+      </select>
       {practiceError ? <p className="sl-form-error" role="alert">{practiceError}</p> : null}
       <Button variant={tasks.length === 0 ? "primary" : "secondary"} onClick={() => void startPractice()} loading={practiceBusy} disabled={!session}>开始练习</Button>
     </section>
