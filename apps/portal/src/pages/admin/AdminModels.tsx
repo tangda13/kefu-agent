@@ -42,6 +42,7 @@ interface ProvidersState {
     voicePool: Record<string, { female: Array<{ vendor: string; id: string }>; male: Array<{ vendor: string; id: string }> }>;
     poolLanguages: Array<{ key: string; label: string }>;
     missingVoices: Array<{ language: string; label: string; gender: string; message: string }>;
+    aliyunFallback: { count: number; authFailed: number; keyInvalid: boolean };
   };
   usage: { llmCalls: number; llmTokens: number; llmCost: number; ttsCalls: number; ttsChars: number; ttsCost: number; asrCalls: number; asrMinutes: number; asrCost: number; totalCost: number };
   quota: { monthlyBudgetYuan: number; monthlyTokens: number; warnPercent: number; budgetPercent: number; tokenPercent: number; usedPercent: number; alert: boolean };
@@ -491,6 +492,7 @@ function VoiceSection({ session, data, reload }: { session: Session; data: Provi
   const [pool, setPool] = useState<VoicePoolState>(data.voice.voicePool);
   const [busy, setBusy] = useState(false);
   const u = data.usage;
+  const fallback = data.voice.aliyunFallback;
 
   async function save() {
     setBusy(true);
@@ -525,8 +527,27 @@ function VoiceSection({ session, data, reload }: { session: Session; data: Provi
   return (
     <>
       <SettingSection
-        title="豆包语音（火山引擎）"
-        desc={`语音识别，以及英语、西班牙语、日语等豆包支持语种的买家朗读。当前密钥 ${data.voice.apiKeyMasked || "未设置"}。`}
+        title="阿里云百炼 · 主用"
+        desc={`买家朗读优先用千问3-TTS（只做朗读，不做识别）。当前密钥 ${data.voice.aliyunApiKeyMasked || "未设置"}。出错时这一次自动改用豆包，不配置时全部由豆包朗读。`}
+        actions={saveButton}
+      >
+        {fallback.keyInvalid ? (
+          <div className="voice-missing">
+            <Callout tone="danger" icon={AlertTriangle} title="阿里云密钥无效">
+              近 24 小时有 {fallback.authFailed} 次因鉴权失败改用豆包，请检查 API Key，以及接口地址与 Key 所在地域是否一致。
+            </Callout>
+          </div>
+        ) : null}
+        <div className="form-grid-2 form-max">
+          <Field label="百炼 API Key" hint="不改就留空；在阿里云百炼控制台“API-KEY”页创建"><Input type="password" value={voice.aliyunApiKey} onChange={set("aliyunApiKey")} autoComplete="off" /></Field>
+          <Field label="模型"><Input value={voice.aliyunModel} onChange={set("aliyunModel")} /></Field>
+          <Field label="接口地址" hint="北京地域；新加坡地域需换成国际站地址和对应 Key"><Input value={voice.aliyunBaseUrl} onChange={set("aliyunBaseUrl")} /></Field>
+        </div>
+        <p className="muted">近 24 小时阿里云出错、自动改用豆包 <strong className="num">{fallback.count}</strong> 次（限流、超时、服务端错误、密钥无效等）。</p>
+      </SettingSection>
+      <SettingSection
+        title="豆包语音（火山引擎）· 备用"
+        desc={`语音识别固定走豆包；朗读作为阿里云的备用，阿里云没有对应语种或音色、或这一次请求出错时由豆包朗读。当前密钥 ${data.voice.apiKeyMasked || "未设置"}。`}
         actions={saveButton}
       >
         <div className="form-grid-2 form-max">
@@ -537,19 +558,8 @@ function VoiceSection({ session, data, reload }: { session: Session; data: Provi
         </div>
       </SettingSection>
       <SettingSection
-        title="阿里云百炼（补充语种）"
-        desc={`豆包没有的语种（德、法、意、葡、俄、韩，以及部分男声）用千问3-TTS 朗读，只做朗读不做识别。当前密钥 ${data.voice.aliyunApiKeyMasked || "未设置"}。不配置时这些语种的买家退回英语音色。`}
-        actions={saveButton}
-      >
-        <div className="form-grid-2 form-max">
-          <Field label="百炼 API Key" hint="不改就留空；在阿里云百炼控制台“API-KEY”页创建"><Input type="password" value={voice.aliyunApiKey} onChange={set("aliyunApiKey")} autoComplete="off" /></Field>
-          <Field label="模型"><Input value={voice.aliyunModel} onChange={set("aliyunModel")} /></Field>
-          <Field label="接口地址" hint="北京地域；新加坡地域需换成国际站地址和对应 Key"><Input value={voice.aliyunBaseUrl} onChange={set("aliyunBaseUrl")} /></Field>
-        </div>
-      </SettingSection>
-      <SettingSection
         title="买家音色池"
-        desc="每个买家按画像固定分到池里的一个音色，同一买家始终同一个声音。买家用英语写就用英语音色（国籍是英国、澳大利亚时优先对应口音）；该语种豆包有音色就用豆包，没有再用阿里云。点“试听”用一句该语种的买家原话听效果。"
+        desc="每个买家按画像固定分到池里的一个音色，同一买家始终同一个声音。买家用英语写就用英语音色（国籍是英国、澳大利亚时优先对应口音）；每个语种优先用阿里云音色，阿里云没有该语种或性别的音色才用豆包；同一买家的备用豆包音色也是固定的。点“试听”用一句该语种的买家原话听效果。"
         actions={saveButton}
       >
         {data.voice.missingVoices.length > 0 ? (

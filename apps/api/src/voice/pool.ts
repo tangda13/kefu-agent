@@ -34,13 +34,15 @@ export interface PoolVoice {
 
 export type VoicePool = Record<string, { female: PoolVoice[]; male: PoolVoice[] }>;
 
-/** 豆包优先，没有该语种音色时才轮到其他厂商 */
-export const PRIMARY_VENDOR = "doubao";
+/** 厂商优先级：阿里云主用，豆包备用（阿里云池里没有该语种 × 性别的音色才用豆包；阿里云出错时单次转豆包） */
+export const VENDOR_PRIORITY = ["aliyun", "doubao"] as const;
+export const BACKUP_VENDOR = "doubao";
 
 /**
- * 默认音色池。豆包 2.0（seed-tts-2.0）只有英语（美式 3 个、英式 1 个女声）和 Vivi 多语种女声
- * （中、英、日、西、印尼）；德、法、意、葡、俄、韩，以及西语、日语男声走阿里云千问3-TTS-Flash。
- * 阿拉伯语国内厂商暂无系统音色，留空，运行时退回英语。
+ * 默认音色池（阿里云主用、豆包备用，各语种阿里云音色排前面）。
+ * 阿里云千问3-TTS-Flash 覆盖英、西、法、德、意、葡、俄、日、韩；豆包 2.0（seed-tts-2.0）只有英语
+ * （美式 3 个、英式 1 个女声）和 Vivi 多语种女声（中、英、日、西、印尼），作为备用。
+ * 英式口音只有豆包 Tina，保留给英国买家；阿拉伯语国内厂商暂无系统音色，留空，运行时退回英语。
  */
 const ALIYUN_FEMALE = ["Cherry", "Jennifer", "Katerina", "Elias"];
 const ALIYUN_MALE = ["Ethan", "Nofish", "Ryan"];
@@ -48,20 +50,21 @@ const aliyun = (ids: string[]): PoolVoice[] => ids.map((id) => ({ vendor: "aliyu
 const doubao = (ids: string[]): PoolVoice[] => ids.map((id) => ({ vendor: "doubao", id }));
 
 export function defaultVoicePool(): VoicePool {
+  const vivi = doubao(["zh_female_vv_uranus_bigtts"]);
   return {
     en: {
-      female: doubao(["en_female_dacey_uranus_bigtts", "en_female_stokie_uranus_bigtts", "zh_female_vv_uranus_bigtts"]),
-      male: doubao(["en_male_tim_uranus_bigtts"]),
+      female: [...aliyun(ALIYUN_FEMALE), ...doubao(["en_female_dacey_uranus_bigtts", "en_female_stokie_uranus_bigtts"]), ...vivi],
+      male: [...aliyun(ALIYUN_MALE), ...doubao(["en_male_tim_uranus_bigtts"])],
     },
     "en-GB": { female: doubao(["zh_female_yingyujiaoxue_uranus_bigtts"]), male: [] },
     "en-AU": { female: [], male: [] },
-    es: { female: doubao(["zh_female_vv_uranus_bigtts"]), male: aliyun(ALIYUN_MALE) },
+    es: { female: [...aliyun(ALIYUN_FEMALE), ...vivi], male: aliyun(ALIYUN_MALE) },
     fr: { female: aliyun(ALIYUN_FEMALE), male: aliyun(ALIYUN_MALE) },
     de: { female: aliyun(ALIYUN_FEMALE), male: aliyun(ALIYUN_MALE) },
     it: { female: aliyun(ALIYUN_FEMALE), male: aliyun(ALIYUN_MALE) },
     pt: { female: aliyun(ALIYUN_FEMALE), male: aliyun(ALIYUN_MALE) },
     ru: { female: aliyun(ALIYUN_FEMALE), male: aliyun(ALIYUN_MALE) },
-    ja: { female: doubao(["zh_female_vv_uranus_bigtts"]), male: aliyun(ALIYUN_MALE) },
+    ja: { female: [...aliyun(ALIYUN_FEMALE), ...vivi], male: aliyun(ALIYUN_MALE) },
     ko: { female: aliyun(ALIYUN_FEMALE), male: aliyun(ALIYUN_MALE) },
     ar: { female: [], male: [] },
   };
@@ -132,19 +135,53 @@ export interface VoiceSelection {
   language: PoolLanguage;
   /** 该语种没有可用音色，退回了英语（此时朗读语种应交给厂商自动识别） */
   fellBack: boolean;
+  /** 备用音色：主用是阿里云时，出错单次转豆包用（同语种同性别，同一买家固定同一个；豆包没有该语种则为英语音色，fellBack = true） */
+  fallback: VoiceSelection | null;
 }
 
-function usableVoices(pool: VoicePool, language: string, gender: VoiceGender, available: Set<string>): PoolVoice[] {
+/** 按厂商优先级取第一个“已配置且池里有音色”的厂商的全部音色；vendors 可限定厂商顺序 */
+function usableVoices(
+  pool: VoicePool,
+  language: string,
+  gender: VoiceGender,
+  available: Set<string>,
+  vendors: readonly string[] = VENDOR_PRIORITY,
+): PoolVoice[] {
   const all = (pool[language]?.[gender] ?? []).filter((item) => available.has(item.vendor));
-  const primary = all.filter((item) => item.vendor === PRIMARY_VENDOR);
-  return primary.length > 0 ? primary : all;
+  for (const vendor of vendors) {
+    const list = all.filter((item) => item.vendor === vendor);
+    if (list.length > 0) return list;
+  }
+  return vendors === VENDOR_PRIORITY ? all : [];
+}
+
+function pickStable(list: PoolVoice[], seed: string): PoolVoice {
+  return list[stableHash(seed) % list.length]!;
+}
+
+/** 备用（豆包）音色：同语种同性别；没有该语种时用豆包英语音色（fellBack = true）。种子与主音色相同，保证稳定 */
+function selectBackup(
+  pool: VoicePool, language: PoolLanguage, chain: string[], gender: VoiceGender, available: Set<string>, seed: string,
+): VoiceSelection | null {
+  if (!available.has(BACKUP_VENDOR)) return null;
+  const only = [BACKUP_VENDOR];
+  for (const poolLanguage of chain) {
+    const list = usableVoices(pool, poolLanguage, gender, available, only);
+    if (list.length > 0) return { voice: pickStable(list, seed), poolLanguage, language, fellBack: false, fallback: null };
+  }
+  const english = usableVoices(pool, "en", gender, available, only);
+  if (english.length > 0) {
+    return { voice: pickStable(english, seed), poolLanguage: "en", language, fellBack: !language.startsWith("en"), fallback: null };
+  }
+  return null;
 }
 
 /**
- * 语种 → 厂商 → 音色。
- * 候选链：买家语种 →（英语口音）英语。每一级里豆包有就只用豆包，否则用其他已配置的厂商。
- * 全部没有时退回英语（fellBack = true）；英语也没有返回 null。
- * 同一画像种子 + 性别永远得到同一个音色；不同买家按散列均匀落到池里。
+ * 语种 → 厂商 → 音色（阿里云主用、豆包备用）。
+ * 候选链：买家语种 →（英语口音）英语。每一级里阿里云池有就用阿里云，没有再用豆包。
+ * 全部没有时退回英语（fellBack = true，两家都不会说该语种，直接用豆包英语）；英语也没有返回 null。
+ * 主用是阿里云时附带 fallback（豆包备用音色）。
+ * 同一画像种子 + 性别永远得到同一个主音色和同一个备用音色；不同买家按散列均匀落到池里。
  */
 export function selectVoice(options: {
   pool: VoicePool;
@@ -159,14 +196,14 @@ export function selectVoice(options: {
   for (const poolLanguage of chain) {
     const list = usableVoices(pool, poolLanguage, gender, available);
     if (list.length > 0) {
-      return { voice: list[stableHash(seed) % list.length]!, poolLanguage, language, fellBack: false };
+      const voice = pickStable(list, seed);
+      const fallback = voice.vendor === "aliyun" ? selectBackup(pool, language, chain, gender, available, seed) : null;
+      return { voice, poolLanguage, language, fellBack: false, fallback };
     }
   }
-  if (language !== "en" && !language.startsWith("en")) {
-    const list = usableVoices(pool, "en", gender, available);
-    if (list.length > 0) {
-      return { voice: list[stableHash(seed) % list.length]!, poolLanguage: "en", language, fellBack: true };
-    }
+  if (!language.startsWith("en")) {
+    const list = usableVoices(pool, "en", gender, available, [BACKUP_VENDOR, "aliyun"]);
+    if (list.length > 0) return { voice: pickStable(list, seed), poolLanguage: "en", language, fellBack: true, fallback: null };
   }
   return null;
 }

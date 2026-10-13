@@ -183,7 +183,7 @@ describe("D-41 买家头像多样化", () => {
       count[pick.avatarKind] = (count[pick.avatarKind] ?? 0) + 1;
       if (pick.avatarKind === "default" || pick.avatarKind === "initial") expect(pick.avatarUrl).toBe("");
       else if (pick.avatarKind === "object") expect(pick.avatarUrl).toMatch(/^avatars\/o-\d{2}\.jpg$/);
-      else expect(pick.avatarUrl).toMatch(/^avatars\/a-(eu|la|ea|sea|sa|me|af)-(f|m)-\d{2}\.jpg$/);
+      else expect(pick.avatarUrl).toMatch(/^avatars\/a-(eu|la|ea|sea|sa|me|af)-(f|m)-\d{2,3}\.jpg$/);
     }
     expect(count.default).toBeGreaterThan(60);
     expect(count.default).toBeLessThan(150);
@@ -213,7 +213,7 @@ describe("D-41 买家头像多样化", () => {
         const pick = pickAvatar(gender, seeded(`n-${nationality}-${i}`), nationality);
         if (pick.avatarKind !== "photo") continue;
         photo += 1;
-        const match = /^avatars\/a-(\w+)-(f|m)-(\d{2})\.jpg$/.exec(pick.avatarUrl)!;
+        const match = /^avatars\/a-(\w+)-(f|m)-(\d{2,3})\.jpg$/.exec(pick.avatarUrl)!;
         expect(match[2]).toBe(gender === "female" ? "f" : "m");
         expect(Number(match[3])).toBeLessThanOrEqual(AVATAR_LIBRARY.portraits[match[1] as keyof typeof AVATAR_LIBRARY.portraits][gender]);
         if (match[1] === region) same += 1;

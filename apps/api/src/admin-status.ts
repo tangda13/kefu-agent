@@ -44,6 +44,20 @@ export interface AlertItem {
   page: "providers" | "backup" | "system";
 }
 
+/** 近 24 小时阿里云出错转豆包的次数；密钥无效 = 有鉴权失败转移且之后没有阿里云成功朗读 */
+export async function aliyunFallbackStats(db: Db) {
+  const result = await db.query(`select
+    count(*) filter (where fallback) as total,
+    count(*) filter (where fallback and fallback_reason = 'auth') as auth,
+    max(created_at) filter (where fallback and fallback_reason = 'auth') as last_auth,
+    max(created_at) filter (where vendor = 'aliyun' and outcome = 'success' and not fallback) as last_ok
+    from voice_metrics where kind = 'tts' and created_at > now() - interval '24 hours'`);
+  const row = result.rows[0];
+  const lastAuth = row.last_auth ? new Date(row.last_auth).getTime() : 0;
+  const lastOk = row.last_ok ? new Date(row.last_ok).getTime() : 0;
+  return { count: Number(row.total), authFailed: Number(row.auth), keyInvalid: lastAuth > 0 && lastAuth > lastOk };
+}
+
 /** 本月用量与额度（金额含语音，或按 tokens），G6 */
 export async function computeUsage(db: Db, voice: VoiceService) {
   const profile = await voice.profile();
@@ -147,6 +161,12 @@ export async function collectAlerts(db: Db, voice: VoiceService): Promise<AlertI
       page: "providers",
     });
   }
+  const fallback = await aliyunFallbackStats(db);
+  if (fallback.keyInvalid) {
+    alerts.push({ level: "danger", title: "阿里云密钥无效，朗读已自动改用豆包", detail: "在「AI 与语音服务」检查阿里云百炼 API Key（以及接口地址与 Key 所在地域是否一致）。", page: "providers" });
+  } else if (fallback.count > 0) {
+    alerts.push({ level: "warn", title: `近 24 小时阿里云朗读失败转豆包 ${fallback.count} 次`, detail: "多为限流或网络波动，朗读已自动由豆包备用音色完成；频繁出现请检查阿里云额度。", page: "providers" });
+  }
   const schedule = (await getSetting<{ enabled: boolean; hour: number }>(db, "backupSchedule")) ?? { enabled: false, hour: 2 };
   const backup = latestBackup();
   if (!backup) {
@@ -194,11 +214,13 @@ export async function collectServices(db: Db, gateway: LlmGateway, voice: VoiceS
       from voice_metrics where created_at > now() - interval '24 hours'`);
     const total = Number(recent.rows[0].total);
     const failed = Number(recent.rows[0].failed);
+    const fb = await aliyunFallbackStats(db);
+    const fallbackNote = fb.keyInvalid ? " · 阿里云密钥无效，已改用豆包" : fb.count > 0 ? ` · 阿里云转豆包 ${fb.count} 次` : "";
     services.push({
       key: "voice",
       name: "语音服务",
       status: total > 0 && failed === total ? "error" : failed > 0 ? "warn" : "ok",
-      detail: total === 0 ? "已配置 · 近 24 小时没有使用" : `已配置 · 近 24 小时 ${total} 次，失败 ${failed} 次`,
+      detail: (total === 0 ? "已配置 · 近 24 小时没有使用" : `已配置 · 近 24 小时 ${total} 次，失败 ${failed} 次`) + fallbackNote,
     });
   }
 

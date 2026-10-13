@@ -586,4 +586,12 @@ create table if not exists text_translations (
 alter table voice_metrics add column if not exists vendor text not null default 'doubao';
 `,
   },
+  {
+    /* 阿里云主用、豆包备用：阿里云出错单次转豆包的朗读记录 fallback = true，原因存 fallback_reason（throttled / server / timeout / network / auth / quota） */
+    id: "036_voice_metrics_fallback",
+    sql: `
+alter table voice_metrics add column if not exists fallback boolean not null default false;
+alter table voice_metrics add column if not exists fallback_reason text;
+`,
+  },
 ];

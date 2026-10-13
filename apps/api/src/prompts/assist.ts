@@ -69,13 +69,15 @@ export function buildReviewReplyMessages(input: {
   storeName: string;
   signature: string;
 }): ChatMessage[] {
+  // 用买家的语言回复（买家用德语留评，就用德语回）；中文意思照常给学生看
+  const replyLanguage = languageNameOf(input.persona.language as string | undefined);
   return [
     {
       role: "system",
       content:
         `You are a customer service coach for the cross-border online store "${input.storeName}". ` +
         "Write exactly 3 alternative PUBLIC replies to the buyer's product review (rating and text are in order.review). " +
-        "All replies MUST be in English regardless of the buyer's country. Each reply takes a different angle " +
+        `All replies MUST be written in ${replyLanguage}, the buyer's language. Each reply takes a different angle ` +
         "(e.g. apologise and reship, offer a refund option, invite a private conversation; for positive reviews: thank, invite to buy again, ask to share photos). " +
         "2-4 sentences each, address the buyer by first name, concrete remedy for reviews of 3 stars or lower, no absolute claims ('best', '100% guaranteed'), no signature line. " +
         "For each reply also give `angle`: a 4-8 character Simplified Chinese label of the approach, and `zh`: a faithful Simplified Chinese translation. " +

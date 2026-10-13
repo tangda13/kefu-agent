@@ -22,10 +22,16 @@ describe("音色池：语种判定", () => {
 describe("音色池：语种 → 厂商 → 音色", () => {
   const buyer = (language: string, name = "Anna", nationality?: string) => ({ language, name, sourceTemplateId: "P-001", nationality });
 
-  it("豆包有的语种用豆包，没有的用阿里云", () => {
-    expect(selectVoice({ pool, persona: buyer("en-US"), gender: "female", available: both })!.voice.vendor).toBe("doubao");
-    expect(selectVoice({ pool, persona: buyer("ja-JP"), gender: "female", available: both })!.voice.vendor).toBe("doubao");
+  it("主用选择：阿里云池里有就用阿里云，没有的语种 / 性别才用豆包", () => {
+    expect(selectVoice({ pool, persona: buyer("en-US"), gender: "female", available: both })!.voice.vendor).toBe("aliyun");
+    expect(selectVoice({ pool, persona: buyer("en-US"), gender: "male", available: both })!.voice.vendor).toBe("aliyun");
+    expect(selectVoice({ pool, persona: buyer("ja-JP"), gender: "female", available: both })!.voice.vendor).toBe("aliyun");
     expect(selectVoice({ pool, persona: buyer("ja-JP"), gender: "male", available: both })!.voice.vendor).toBe("aliyun");
+    // 阿里云池里没有该语种：只有豆包有（自定义池）
+    const doubaoOnlyPool = { ...pool, ja: { female: [{ vendor: "doubao", id: "zh_female_vv_uranus_bigtts" }], male: [] } };
+    expect(selectVoice({ pool: doubaoOnlyPool, persona: buyer("ja-JP"), gender: "female", available: both })!.voice.vendor).toBe("doubao");
+    // 阿里云未配置：豆包有的语种仍用豆包
+    expect(selectVoice({ pool, persona: buyer("en-US"), gender: "female", available: doubaoOnly })!.voice.vendor).toBe("doubao");
     expect(selectVoice({ pool, persona: buyer("de-DE"), gender: "female", available: both })!.voice.vendor).toBe("aliyun");
     expect(selectVoice({ pool, persona: buyer("ko-KR"), gender: "male", available: both })!.voice.vendor).toBe("aliyun");
   });
@@ -49,6 +55,7 @@ describe("音色池：语种 → 厂商 → 音色", () => {
     const ar = selectVoice({ pool, persona: buyer("ar-SA"), gender: "male", available: both })!;
     expect(ar.fellBack).toBe(true);
     expect(ar.voice.id).toBe("en_male_tim_uranus_bigtts");
+    expect(ar.fallback).toBeNull();
   });
 
   it("什么都没配置返回 null", () => {
@@ -60,6 +67,25 @@ describe("音色池：语种 → 厂商 → 音色", () => {
     expect(pick("Claire")).toBe(pick("Claire"));
     const used = new Set(Array.from({ length: 40 }, (_, index) => pick(`Buyer ${index}`)));
     expect(used.size).toBe(4);
+  });
+
+  it("备用音色：同语种同性别的豆包音色，同一买家固定；豆包没有该语种时用英语音色", () => {
+    const ja = selectVoice({ pool, persona: buyer("ja-JP", "Yui"), gender: "female", available: both })!;
+    expect(ja.voice.vendor).toBe("aliyun");
+    expect(ja.fallback).toMatchObject({ voice: { vendor: "doubao", id: "zh_female_vv_uranus_bigtts" }, poolLanguage: "ja", fellBack: false });
+    const de = selectVoice({ pool, persona: buyer("de-DE", "Hans"), gender: "male", available: both })!;
+    expect(de.fallback).toMatchObject({ voice: { vendor: "doubao", id: "en_male_tim_uranus_bigtts" }, poolLanguage: "en", fellBack: true });
+    // 豆包英语女声有两个以上：同一买家每次都是同一个备用音色，不同买家分散
+    const backup = (name: string) => selectVoice({ pool, persona: buyer("en-US", name), gender: "female", available: both })!.fallback!.voice.id;
+    expect(backup("Claire")).toBe(backup("Claire"));
+    expect(new Set(Array.from({ length: 40 }, (_, index) => backup(`Buyer ${index}`))).size).toBe(3);
+    // 备用音色与主音色用同一个种子，重复选择结果完全一致
+    expect(selectVoice({ pool, persona: buyer("de-DE", "Hans"), gender: "male", available: both })).toEqual(de);
+  });
+
+  it("没配豆包就没有备用；主用是豆包也没有备用", () => {
+    expect(selectVoice({ pool, persona: buyer("de-DE"), gender: "female", available: new Set(["aliyun"]) })!.fallback).toBeNull();
+    expect(selectVoice({ pool, persona: buyer("en-US", "Emma", "英国"), gender: "female", available: both })!.fallback).toBeNull();
   });
 
   it("缺口提示：阿里云未配置时德语缺；配置后只剩阿拉伯语", () => {

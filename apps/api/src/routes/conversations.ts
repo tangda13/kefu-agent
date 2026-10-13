@@ -860,30 +860,37 @@ export function registerConversationRoutes(
       const path = await import("node:path");
       const fs = await import("node:fs");
       const { VOICE_VENDORS } = await import("../voice/service");
-      // 缓存文件名带厂商和音色 id：换音色不串音
-      const safeVoice = selection.voice.id.replace(/[^A-Za-z0-9_.-]/g, "_");
-      const fileName = `${message.id}-${selection.voice.vendor}-${safeVoice}.${VOICE_VENDORS[selection.voice.vendor]!.audioExt}`;
-      const target = path.resolve(process.cwd(), "uploads", "tts", fileName);
-      const audioUrl = `/uploads/tts/${fileName}`;
-      if (fs.existsSync(target)) return { audioUrl, cached: true };
+      const { VoiceSynthesisError } = await import("../voice/fallback");
+      // 缓存文件名带实际使用的厂商和音色 id：换音色不串音
+      const nameOf = (item: { voice: { vendor: string; id: string } }) =>
+        `${message.id}-${item.voice.vendor}-${item.voice.id.replace(/[^A-Za-z0-9_.-]/g, "_")}.${VOICE_VENDORS[item.voice.vendor]!.audioExt}`;
+      const resolveTarget = (name: string) => path.resolve(process.cwd(), "uploads", "tts", name);
+      // 主音色和备用音色（阿里云转豆包后落盘的就是备用文件）任一已有缓存就直接用，不再请求阿里云
+      const cacheNames = [nameOf(selection), ...(selection.fallback ? [nameOf(selection.fallback)] : [])];
+      const cachedName = cacheNames.find((name) => fs.existsSync(resolveTarget(name)));
+      if (cachedName) return { audioUrl: `/uploads/tts/${cachedName}`, cached: true };
       try {
         // 自动播报和手动点击可能同时到：同一条消息只合成一次
-        const { elapsedMs, fresh } = await once(`tts:${fileName}`, async () => {
-          if (fs.existsSync(target)) return { elapsedMs: 0, fresh: false };
-          const spoken = await voice.synthesizeWith(selection, message.content.slice(0, 500));
+        const { elapsedMs, fresh, fileName } = await once(`tts:${cacheNames[0]}`, async () => {
+          const existing = cacheNames.find((name) => fs.existsSync(resolveTarget(name)));
+          if (existing) return { elapsedMs: 0, fresh: false, fileName: existing };
+          const spoken = await voice.synthesizeWith(selection, message.content.slice(0, 500), (text, meta) => request.log.warn(meta, text));
+          const name = nameOf({ voice: { vendor: spoken.vendor, id: spoken.voiceId } });
+          const target = resolveTarget(name);
           fs.mkdirSync(path.dirname(target), { recursive: true });
           fs.writeFileSync(target, spoken.audio);
           await db.query(
-            "insert into voice_metrics (kind, elapsed_ms, chars, outcome, vendor) values ('tts', $1, $2, 'success', $3)",
-            [spoken.elapsedMs, message.content.length, spoken.vendor],
+            "insert into voice_metrics (kind, elapsed_ms, chars, outcome, vendor, fallback, fallback_reason) values ('tts', $1, $2, 'success', $3, $4, $5)",
+            [spoken.elapsedMs, message.content.length, spoken.vendor, Boolean(spoken.fallback), spoken.fallbackReason ?? null],
           );
-          return { elapsedMs: spoken.elapsedMs, fresh: true };
+          return { elapsedMs: spoken.elapsedMs, fresh: true, fileName: name };
         });
-        return { audioUrl, cached: !fresh, elapsedMs };
+        return { audioUrl: `/uploads/tts/${fileName}`, cached: !fresh, elapsedMs };
       } catch (error) {
+        const failure = error instanceof VoiceSynthesisError ? error : null;
         await db.query(
-          "insert into voice_metrics (kind, elapsed_ms, chars, outcome, vendor) values ('tts', 0, $1, 'error', $2)",
-          [message.content.length, selection.voice.vendor],
+          "insert into voice_metrics (kind, elapsed_ms, chars, outcome, vendor, fallback, fallback_reason) values ('tts', 0, $1, 'error', $2, $3, $4)",
+          [message.content.length, failure?.vendor ?? selection.voice.vendor, Boolean(failure?.fallbackReason), failure?.fallbackReason ?? null],
         );
         request.log.error(error, "tts failed");
         reply.code(502);

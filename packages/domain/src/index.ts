@@ -272,13 +272,13 @@ export const AVATAR_REGIONS: readonly AvatarRegion[] = ["eu", "la", "ea", "sea",
  */
 export const AVATAR_LIBRARY = {
   portraits: {
-    eu: { female: 95, male: 95 },
-    la: { female: 28, male: 27 },
-    ea: { female: 28, male: 28 },
-    sea: { female: 24, male: 24 },
-    sa: { female: 24, male: 24 },
-    me: { female: 24, male: 24 },
-    af: { female: 24, male: 24 },
+    eu: { female: 125, male: 127 },
+    la: { female: 43, male: 42 },
+    ea: { female: 43, male: 44 },
+    sea: { female: 39, male: 40 },
+    sa: { female: 38, male: 39 },
+    me: { female: 40, male: 40 },
+    af: { female: 39, male: 38 },
   } as Record<AvatarRegion, Record<"male" | "female", number>>,
   object: 30,
 };

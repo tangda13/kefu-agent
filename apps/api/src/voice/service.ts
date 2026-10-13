@@ -3,6 +3,7 @@ import type { ApiEnv } from "../env";
 import { getSetting, setSetting } from "../settings";
 import type { SecretSealer } from "../llm/secret";
 import { mapAsrLanguage, mapExplicitLanguage, recognizeSpeech, synthesizeSpeech } from "../voice-provider";
+import { synthesizeWithFallback, type FallbackReason } from "./fallback";
 import { ALIYUN_DEFAULT_BASE_URL, ALIYUN_DEFAULT_MODEL, synthesizeAliyun } from "./aliyun";
 import {
   defaultVoicePool, findMissingVoices, normalizeVoicePool, selectVoice,
@@ -11,8 +12,8 @@ import {
 
 /**
  * 语音服务档案（G7）：配置存 app_settings.voice，Key 加密；厂商通过 VoiceProvider 接口接入。
- * 目前有豆包（火山引擎，朗读 + 识别）和阿里云（千问3-TTS，只做朗读，补豆包没有的语种）。
- * 买家朗读按 D-42 走音色池：语种 → 厂商 → 音色，见 pool.ts。
+ * 目前有阿里云（千问3-TTS，只做朗读，主用）和豆包（火山引擎，朗读 + 识别，朗读备用）。
+ * 买家朗读按 D-42 走音色池：语种 → 厂商 → 音色，见 pool.ts；阿里云出错单次转豆包，见 fallback.ts。
  */
 export interface VoiceProfile {
   vendor: string;
@@ -49,6 +50,9 @@ export interface SynthesizedSpeech {
   voiceId: string;
   /** 音频文件扩展名（豆包 mp3，阿里云 wav） */
   ext: string;
+  /** 本次由阿里云转到了豆包（vendor 是实际出声的豆包） */
+  fallback?: boolean;
+  fallbackReason?: FallbackReason;
 }
 
 export interface VoiceProvider {
@@ -256,7 +260,7 @@ export class VoiceService {
   }
 
   /**
-   * 买家能不能用这个语种朗读（D-43）：该语种 × 性别在音色池里有已配置厂商的音色才算。
+   * 买家能不能用这个语种朗读（D-43）：阿里云或豆包任一能说该语种 × 性别（池里有已配置厂商的音色）就算能说。
    * 英语口音（en-GB / en-AU）缺音色会自然落到通用英语，仍算可用；其他语种缺音色（含语音整体未配置）为 false。
    */
   async canSpeak(language: string, gender: VoiceGender, nationality?: string): Promise<boolean> {
@@ -264,13 +268,23 @@ export class VoiceService {
     return Boolean(selection && !selection.fellBack);
   }
 
-  /** 按选定音色合成。退回英语时语种交给厂商自动识别，避免用英语规则硬读其他语言 */
-  async synthesizeWith(selection: VoiceSelection, text: string): Promise<SynthesizedSpeech> {
+  /**
+   * 按选定音色合成。退回英语时语种交给厂商自动识别，避免用英语规则硬读其他语言。
+   * 主用阿里云出错（限流 / 欠费 / 5xx / 超时 / 网络 / 鉴权）时，这一次自动改用 selection.fallback（豆包备用音色）。
+   */
+  async synthesizeWith(
+    selection: VoiceSelection,
+    text: string,
+    log?: (message: string, meta: Record<string, unknown>) => void,
+  ): Promise<SynthesizedSpeech> {
     const profile = await this.profile();
-    const vendor = VOICE_VENDORS[selection.voice.vendor]!;
-    const language = selection.fellBack ? undefined : selection.poolLanguage;
-    const result = await vendor.provider.synthesize(profile, text, selection.voice.id, language);
-    return { ...result, vendor: selection.voice.vendor, voiceId: selection.voice.id, ext: vendor.audioExt };
+    const spoken = await synthesizeWithFallback(
+      selection,
+      text,
+      (item, content) => VOICE_VENDORS[item.voice.vendor]!.provider.synthesize(profile, content, item.voice.id, item.fellBack ? undefined : item.poolLanguage),
+      log,
+    );
+    return { ...spoken, ext: VOICE_VENDORS[spoken.vendor]!.audioExt };
   }
 
   /** 管理端：当前音色池下缺哪些语种的音色 */

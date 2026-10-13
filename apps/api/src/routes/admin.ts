@@ -15,7 +15,7 @@ import { POOL_LANGUAGES } from "../voice/pool";
 import { loadEnv } from "../env";
 import { generateTemporaryPassword, hashPassword } from "../security";
 import { clearLoginFailures } from "../login-throttle";
-import { BACKUP_DIR, BACKUP_KEEP_OPTIONS, DEFAULT_BACKUP_KEEP, DEFAULT_QUOTA, pruneBackups, collectAlerts, collectServices, collectVersion, computeUsage } from "../admin-status";
+import { BACKUP_DIR, BACKUP_KEEP_OPTIONS, DEFAULT_BACKUP_KEEP, DEFAULT_QUOTA, pruneBackups, aliyunFallbackStats, collectAlerts, collectServices, collectVersion, computeUsage } from "../admin-status";
 
 const execFileAsync = promisify(execFile);
 
@@ -102,6 +102,7 @@ export function registerAdminRoutes(
         voicePool: profile.voicePool,
         poolLanguages: POOL_LANGUAGES,
         missingVoices: await voice.missingVoices(),
+        aliyunFallback: await aliyunFallbackStats(db),
         asrPricePerHour: profile.asrPricePerHour,
       },
       usage,

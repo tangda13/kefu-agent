@@ -34,7 +34,7 @@ function errorText(cause: unknown): string {
   return cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。";
 }
 
-/** 一版回复：angle 是切入角度，text 是英文，zh 是中文对照 */
+/** 一版回复：angle 是切入角度，text 是买家语言的回复，zh 是中文对照 */
 interface Variant {
   angle: string;
   text: string;
@@ -44,7 +44,7 @@ interface Variant {
 const MAX_LENGTH = 1000;
 
 /**
- * 评价回复区：先点“AI 帮写”拿三版英文回复（并排卡片，带中文对照），
+ * 评价回复区：先点“AI 帮写”拿三版买家语言的回复（带中文对照），
  * 选一版填进下方编辑框再改，也可以直接自己写；发送沿用原有逻辑（发进关联会话并保存回复记录）。
  */
 export function ReviewReply({
@@ -185,7 +185,7 @@ export function ReviewReply({
         value={draft}
         maxLength={MAX_LENGTH}
         onChange={(event) => { setDraft(event.target.value); setPicked(null); }}
-        placeholder="用英文回复买家，也可以点“AI 帮写”选一版再改"
+        placeholder="用买家的语言回复，也可以点“AI 帮写”选一版再改"
         aria-label="回复内容"
       />
       <div className="rr-ft">

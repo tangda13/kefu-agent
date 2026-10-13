@@ -38,16 +38,54 @@ export function buildAliyunTtsRequest(config: AliyunConfig, text: string, voice:
   };
 }
 
-/** 纯函数：解析响应，返回音频地址或内联 base64；失败抛带上游 code 的错误 */
+/**
+ * 失败类型（用于决定是否转豆包）：
+ * auth 鉴权失败（HTTP 401/403、InvalidApiKey、AccessDenied）；throttled 限流（HTTP 429、Throttling / Throttling.RateQuota /
+ * Throttling.AllocationQuota / LimitRequests）；quota 欠费或额度用尽（Arrearage、AllocationQuota.*、QuotaExceeded）；
+ * server 服务端错误（HTTP 5xx、InternalError、ServiceUnavailable）；timeout 超时；network 网络错误；other 其他 4xx（参数错误等，不转移）。
+ * 错误码依据百炼官方“错误信息”文档：https://help.aliyun.com/zh/model-studio/error-code
+ */
+export type AliyunFailureKind = "auth" | "throttled" | "quota" | "server" | "timeout" | "network" | "other";
+
+export class AliyunTtsError extends Error {
+  constructor(message: string, readonly kind: AliyunFailureKind, readonly status?: number, readonly code?: string) {
+    super(message);
+    this.name = "AliyunTtsError";
+  }
+}
+
+export function classifyAliyunResponse(status: number, code: string | undefined): AliyunFailureKind {
+  const c = code ?? "";
+  if (/^Throttling|^LimitRequests|RateQuota|^RequestLimit/i.test(c) || status === 429) return "throttled";
+  if (/^Arrearage|^AllocationQuota|^QuotaExceeded|FreeTierOnly/i.test(c)) return "quota";
+  if (/^InvalidApiKey|^AccessDenied|^InvalidAccessKey|^Unauthorized/i.test(c) || status === 401 || status === 403) return "auth";
+  if (/^InternalError|^ServiceUnavailable|^ModelServingError|^SystemError/i.test(c) || status >= 500) return "server";
+  return "other";
+}
+
+/** 任意错误 → 失败类型；不是 AliyunTtsError 的（fetch 超时、连接重置等）按超时 / 网络错误算 */
+export function classifyAliyunFailure(error: unknown): AliyunFailureKind {
+  if (error instanceof AliyunTtsError) return error.kind;
+  const name = (error as { name?: string } | null)?.name;
+  if (name === "TimeoutError" || name === "AbortError") return "timeout";
+  return "network";
+}
+
+/** 纯函数：解析响应，返回音频地址或内联 base64；失败抛带失败类型和上游 code 的 AliyunTtsError */
 export function parseAliyunTtsResponse(status: number, json: unknown): { url?: string; data?: string } {
   const body = (json ?? {}) as { code?: string; message?: string; output?: { audio?: { url?: string; data?: string } } };
   if (status < 200 || status >= 300 || body.code) {
-    throw new Error(`ALIYUN_TTS_${status}${body.code ? `_${body.code}` : ""}: ${String(body.message ?? "").slice(0, 200)}`);
+    throw new AliyunTtsError(
+      `ALIYUN_TTS_${status}${body.code ? `_${body.code}` : ""}: ${String(body.message ?? "").slice(0, 200)}`,
+      classifyAliyunResponse(status, body.code),
+      status,
+      body.code,
+    );
   }
   const audio = body.output?.audio;
   if (audio?.url) return { url: audio.url };
   if (audio?.data) return { data: audio.data };
-  throw new Error("ALIYUN_TTS_EMPTY_AUDIO");
+  throw new AliyunTtsError("ALIYUN_TTS_EMPTY_AUDIO", "server", status);
 }
 
 export async function synthesizeAliyun(
@@ -59,22 +97,28 @@ export async function synthesizeAliyun(
 ): Promise<{ audio: Buffer; elapsedMs: number }> {
   const started = Date.now();
   const request = buildAliyunTtsRequest(config, text, voice, language);
-  const response = await fetch(request.url, {
-    method: "POST",
-    headers: request.headers,
-    body: JSON.stringify(request.body),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const json = await response.json().catch(() => null);
-  const parsed = parseAliyunTtsResponse(response.status, json);
-  let audio: Buffer;
-  if (parsed.data) {
-    audio = Buffer.from(parsed.data, "base64");
-  } else {
-    const file = await fetch(parsed.url!, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!file.ok) throw new Error(`ALIYUN_TTS_DOWNLOAD_${file.status}`);
-    audio = Buffer.from(await file.arrayBuffer());
+  try {
+    const response = await fetch(request.url, {
+      method: "POST",
+      headers: request.headers,
+      body: JSON.stringify(request.body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const json = await response.json().catch(() => null);
+    const parsed = parseAliyunTtsResponse(response.status, json);
+    let audio: Buffer;
+    if (parsed.data) {
+      audio = Buffer.from(parsed.data, "base64");
+    } else {
+      const file = await fetch(parsed.url!, { signal: AbortSignal.timeout(timeoutMs) });
+      if (!file.ok) throw new AliyunTtsError(`ALIYUN_TTS_DOWNLOAD_${file.status}`, "server", file.status);
+      audio = Buffer.from(await file.arrayBuffer());
+    }
+    if (audio.length === 0) throw new AliyunTtsError("ALIYUN_TTS_EMPTY_AUDIO", "server");
+    return { audio, elapsedMs: Date.now() - started };
+  } catch (error) {
+    if (error instanceof AliyunTtsError) throw error;
+    const kind = classifyAliyunFailure(error);
+    throw new AliyunTtsError(`ALIYUN_TTS_${kind.toUpperCase()}: ${String((error as Error)?.message ?? error).slice(0, 200)}`, kind);
   }
-  if (audio.length === 0) throw new Error("ALIYUN_TTS_EMPTY_AUDIO");
-  return { audio, elapsedMs: Date.now() - started };
 }
