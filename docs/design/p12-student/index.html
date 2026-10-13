@@ -559,6 +559,15 @@ table.api-t td:first-child { white-space: nowrap; font-weight: 600; }
 .h3-s3.wait b { color: var(--ink-3); font-weight: 500; }
 .h3-s3-st { font-size: 12px; color: var(--ink-4); }
 
+/* 开始三步：竖线流程（去掉行间横线，步骤之间用一条竖线连起来） */
+.h3-steps3 { padding: 4px 0 20px; }
+.h3-s3 { position: relative; border-top: 0; padding: 12px 24px 22px; align-items: start; }
+.h3-s3 .no { position: relative; z-index: 1; background: #fff; }
+.h3-s3.cur .no { background: var(--brand); }
+.h3-s3:not(:last-child)::before { content: ""; position: absolute; left: 36px; top: 40px; bottom: -12px; width: 2px; background: var(--line); }
+.h3-s3.cur:not(:last-child)::before { background: linear-gradient(var(--brand) 0 40%, var(--line) 40%); }
+.h3-s3 > .btn, .h3-s3 > .h3-s3-st { align-self: center; }
+
 /* 没有任务时 */
 .h3-card .v b.dash { color: #c3cad5; }
 .h3-track.empty { background: repeating-linear-gradient(90deg, #e3e8ef 0 6px, transparent 6px 10px); }
@@ -1443,7 +1452,7 @@ const hall3empty = () => shell("任务大厅", "任务大厅", `
     <section class="h3-main">
       <div class="h3-h"><div class="h3-tabs"><span class="on">进行中 <i>0</i></span><span>已完成 <i>0</i></span></div></div>
       <div class="h3-steps3">
-        <div class="h3-s3h"><b>开始三步</b><span>做完一步打一个勾，老师下发任务后这里换成任务列表</span></div>
+        <div class="h3-s3h"><b>开始三步</b><span>按顺序做，老师下发任务后这里换成任务列表</span></div>
         <div class="h3-s3 cur"><span class="no">1</span><div><b>做训前测评</b><small>10 道题，约 8 分钟。测出六项能力的起点，以后的成绩都和它比</small></div><span class="btn primary">开始测评</span></div>
         <div class="h3-s3"><span class="no">2</span><div><b>用自由练习熟悉客服工作台</b><small>接待一位练习买家：回消息、查订单、发商品，不计成绩</small></div><span class="btn">开始练习</span></div>
         <div class="h3-s3 wait"><span class="no">3</span><div><b>等老师下发任务</b><small>下发后会出现在这里，右上角的铃铛也会提醒你</small></div><span class="h3-s3-st">等待中</span></div>
