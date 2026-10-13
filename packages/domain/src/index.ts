@@ -5,55 +5,130 @@ import {
   PERSONALITIES,
   SUPPORTED_LANGUAGES,
   type BusinessStage,
+  type BuyerRole,
+  type DecisionStyle,
+  personaDisplayName,
+  type OrderKind,
+  type ProductDetails,
   type PersonaTemplate,
   type TrainingScenario,
 } from "@cecs/contracts";
 
 export const trainingScenarios = [
-  { id: "PRE-001", name: "新品咨询与卖点介绍", stage: "pre_sale", objective: "识别需求并以合规英文介绍新品卖点", defaultLanguage: "en-US", enabled: true },
-  { id: "PRE-002", name: "新客开发邮件", stage: "pre_sale", objective: "完成新客开发邮件并修正违规宣传用语", defaultLanguage: "en-US", enabled: true },
-  { id: "IN-001", name: "未付款订单催付", stage: "in_sale", objective: "在不施压的前提下说明库存与付款安排", defaultLanguage: "en-US", enabled: true },
-  { id: "IN-002", name: "清关延误安抚", stage: "in_sale", objective: "同步物流节点并安抚焦虑客户", defaultLanguage: "en-US", enabled: true },
-  { id: "AFTER-001", name: "货损退款协商", stage: "after_sale", objective: "核实证据并提出退款、补发或补偿方案", defaultLanguage: "en-US", enabled: true },
-  { id: "AFTER-002", name: "差评挽回", stage: "after_sale", objective: "回应负面评价并推动问题闭环", defaultLanguage: "en-US", enabled: true },
-  { id: "CARE-001", name: "复购老客优惠沟通", stage: "customer_care", objective: "结合历史偏好完成个性化复购推荐", defaultLanguage: "en-US", enabled: true },
-  { id: "CARE-002", name: "沉睡客户唤醒", stage: "customer_care", objective: "以节日关怀和新品信息重新建立联系", defaultLanguage: "en-US", enabled: true },
-] as const satisfies readonly TrainingScenario[];
+  { id: "PRE-001", name: "新品咨询与卖点介绍", stage: "pre_sale", objective: "识别需求，用合规英文介绍新品卖点", channel: "chat", orderKind: "none" },
+  { id: "PRE-003", name: "尺码与适配咨询", stage: "pre_sale", objective: "根据身材数据推荐尺码，说明尺码表差异", channel: "chat", orderKind: "none" },
+  { id: "PRE-004", name: "运费、关税与时效咨询", stage: "pre_sale", objective: "讲清运费、关税由谁承担和各地区时效", channel: "chat", orderKind: "none" },
+  { id: "PRE-005", name: "议价与批量询价", stage: "pre_sale", objective: "守住价格底线，给出阶梯价或赠品方案", channel: "chat", orderKind: "none" },
+  { id: "PRE-006", name: "新品推广邮件", stage: "pre_sale", objective: "写一封不夸大、有行动号召的新品推广邮件", channel: "mail", orderKind: "none" },
+  { id: "PRE-002", name: "新客开发邮件", stage: "pre_sale", objective: "完成新客开发邮件并修正违规宣传用语", channel: "mail", orderKind: "none" },
+  { id: "IN-001", name: "未付款订单催付", stage: "in_sale", objective: "不施压地说明库存保留与付款安排", channel: "chat", orderKind: "pending_payment" },
+  { id: "IN-003", name: "修改地址或规格", stage: "in_sale", objective: "确认是否已发货，给出能改和不能改的方案", channel: "chat", orderKind: "paid" },
+  { id: "IN-004", name: "取消订单挽留", stage: "in_sale", objective: "了解取消原因，不强留，给出替代方案", channel: "chat", orderKind: "paid" },
+  { id: "IN-005", name: "发货延迟说明", stage: "in_sale", objective: "主动告知延迟原因和新的发货时间", channel: "chat", orderKind: "paid" },
+  { id: "IN-007", name: "订单进度跟进", stage: "in_sale", objective: "查清物流节点，给出预计到达时间并主动跟进", channel: "chat", orderKind: "in_transit" },
+  { id: "IN-002", name: "清关延误安抚", stage: "in_sale", objective: "同步物流节点并安抚焦虑客户", channel: "chat", orderKind: "customs" },
+  { id: "IN-006", name: "丢件与派送失败", stage: "in_sale", objective: "核实轨迹，协调重派、补发或退款", channel: "chat", orderKind: "delivery_failed" },
+  { id: "AFTER-001", name: "货损退款协商", stage: "after_sale", objective: "核实证据并提出退款、补发或补偿方案", channel: "chat", orderKind: "delivered" },
+  { id: "AFTER-003", name: "错发漏发处理", stage: "after_sale", objective: "确认错发事实，安排补发与退回", channel: "chat", orderKind: "delivered" },
+  { id: "AFTER-004", name: "质量争议处理", stage: "after_sale", objective: "区分质量问题和使用不当，给出合理方案", channel: "chat", orderKind: "delivered" },
+  { id: "AFTER-005", name: "退换货申请", stage: "after_sale", objective: "按政策办理换尺码或退货，说明流程和运费", channel: "chat", orderKind: "delivered" },
+  { id: "AFTER-006", name: "平台纠纷协商", stage: "after_sale", objective: "买家已开纠纷，协商撤诉并留下证据", channel: "chat", orderKind: "delivered" },
+  { id: "AFTER-007", name: "好评维系", stage: "after_sale", objective: "感谢好评，自然引导复购和晒单", channel: "chat", orderKind: "delivered_positive" },
+  { id: "AFTER-002", name: "差评挽回", stage: "after_sale", objective: "回应负面评价并推动问题闭环", channel: "chat", orderKind: "delivered_negative" },
+  { id: "CARE-003", name: "潜在意向客信任建立", stage: "customer_care", objective: "解答顾虑、展示口碑，促成首单", channel: "chat", orderKind: "none", customerTypes: ["潜在意向客"] },
+  { id: "CARE-001", name: "复购老客优惠推送", stage: "customer_care", objective: "结合历史偏好推送合适的优惠", channel: "chat", orderKind: "completed", customerTypes: ["复购老客"] },
+  { id: "CARE-004", name: "粉丝客节日关怀", stage: "customer_care", objective: "节日问候与新品内测邀请，不硬推销", channel: "mail", orderKind: "completed", customerTypes: ["粉丝客"] },
+  { id: "CARE-002", name: "沉睡客户唤醒", stage: "customer_care", objective: "以关怀和新品信息重新建立联系", channel: "chat", orderKind: "completed", customerTypes: ["沉睡客"] },
+].map((item) => ({ ...item, defaultLanguage: "en-US", enabled: true })) as TrainingScenario[];
 
-export const personaTemplates = [
-  ["P-001", "Jessica Miller", "female", "美国", "独立站零售买家", "友好健谈", "期待", "en-US", "重视到货速度", "粉丝客"],
-  ["P-002", "Lukas Schneider", "male", "德国", "小型采购商", "理性谨慎", "平静", "en-US", "关注参数与合规", "复购老客"],
-  ["P-003", "Camille Bernard", "female", "法国", "生活方式买手", "敏感挑剔", "不满", "fr-FR", "关注包装与设计", "潜在意向客"],
-  ["P-004", "Yuki Tanaka", "female", "日本", "平台个人买家", "犹豫保守", "焦虑", "en-US", "重视细节与礼貌", "潜在意向客"],
-  ["P-005", "Daniel Johnson", "male", "加拿大", "企业行政采购", "直接高效", "平静", "en-US", "关注交付确定性", "复购老客"],
-  ["P-006", "Olivia Brown", "female", "英国", "社媒内容创作者", "友好健谈", "期待", "en-US", "喜欢新品试用", "粉丝客"],
-  ["P-007", "Sophie Martin", "female", "法国", "精品店主", "理性谨慎", "平静", "fr-FR", "关注批量价格", "复购老客"],
-  ["P-008", "Mateo Garcia", "male", "西班牙", "平台个人买家", "直接高效", "焦虑", "es-ES", "关注物流追踪", "潜在意向客"],
-  ["P-009", "Emma Wilson", "female", "澳大利亚", "户外用品爱好者", "友好健谈", "期待", "en-US", "关注耐用性", "粉丝客"],
-  ["P-010", "Marco Rossi", "male", "意大利", "小型批发商", "敏感挑剔", "不满", "en-US", "关注质量一致性", "复购老客"],
-  ["P-011", "Ana Souza", "female", "巴西", "平台个人买家", "友好健谈", "期待", "es-ES", "偏好折扣活动", "潜在意向客"],
-  ["P-012", "Noah Williams", "male", "美国", "独立站沉睡用户", "犹豫保守", "平静", "en-US", "需要明确购买理由", "沉睡客"],
-  ["P-013", "Charlotte Taylor", "female", "英国", "礼品采购人", "理性谨慎", "焦虑", "en-US", "重视节日前到货", "潜在意向客"],
-  ["P-014", "Felix Weber", "male", "德国", "技术产品评测者", "敏感挑剔", "平静", "en-US", "关注技术规格", "粉丝客"],
-  ["P-015", "Mia Thompson", "female", "加拿大", "平台沉睡用户", "友好健谈", "平静", "en-US", "喜欢个性化推荐", "沉睡客"],
-  ["P-016", "Hana Sato", "female", "日本", "生活家居买家", "犹豫保守", "期待", "en-US", "关注售后保障", "潜在意向客"],
-  ["P-017", "Isabella Romano", "female", "意大利", "精品店主", "直接高效", "平静", "en-US", "关注新品供货", "复购老客"],
-  ["P-018", "Lucas Silva", "male", "巴西", "社媒活跃买家", "友好健谈", "不满", "es-ES", "重视公开评价", "粉丝客"],
-  ["P-019", "Amelia Clark", "female", "澳大利亚", "独立站沉睡用户", "理性谨慎", "平静", "en-US", "关注环保材料", "沉睡客"],
-  ["P-020", "Diego Fernandez", "male", "西班牙", "小型零售商", "直接高效", "焦虑", "es-ES", "关注库存与补货", "复购老客"],
-].map(([id, name, gender, nationality, identity, personality, emotion, language, preference, customerType]) => ({
+/**
+ * 内置买家画像模板（D-33）：每条是“一类买家”，按 买家角色 × 决策风格 × 客户价值层 铺开，再补关注点和沟通方式。
+ * 名称 = 决策风格 + 买家角色；一次性的购买情境写在场景剧本里，不放进画像。
+ * 姓名、性别、头像在每次会话时随机生成；国籍、语言、性格、情绪是默认值，任务的随机规则可以改掉。
+ */
+const PERSONA_ROWS: Array<[string, BuyerRole, DecisionStyle, (typeof CUSTOMER_TYPES)[number], string[], string, (typeof NATIONALITIES)[number], (typeof SUPPORTED_LANGUAGES)[number], (typeof PERSONALITIES)[number], (typeof EMOTIONS)[number]]> = [
+  // 潜在意向客
+  ["P-001", "个人消费者", "价格敏感型", "潜在意向客", ["价格优惠", "物流时效"], "习惯先在几家店比价，喜欢问有没有优惠码", "美国", "en-US", "直接高效", "期待"],
+  ["P-002", "个人消费者", "选择困难型", "潜在意向客", ["尺码合身", "退换政策"], "常在两个规格之间拿不定主意", "日本", "en-US", "犹豫保守", "焦虑"],
+  ["P-003", "个人消费者", "品质导向型", "潜在意向客", ["材质参数", "售后保修"], "第一次在这家店买，先问清楚再下单", "德国", "en-US", "理性谨慎", "平静"],
+  ["P-004", "个人消费者", "品牌口碑型", "潜在意向客", ["正品资质", "退换政策"], "被网购坑过，特别在意店铺靠不靠谱", "西班牙", "es-ES", "敏感挑剔", "焦虑"],
+  ["P-005", "礼品购买者", "选择困难型", "潜在意向客", ["包装礼盒", "物流时效"], "不确定对方喜欢哪款，希望客服推荐", "英国", "en-US", "犹豫保守", "焦虑"],
+  ["P-006", "礼品购买者", "冲动下单型", "潜在意向客", ["物流时效", "包装礼盒"], "临时想起要送礼，时间很紧", "加拿大", "en-US", "直接高效", "焦虑"],
+  ["P-007", "小B店主", "价格敏感型", "潜在意向客", ["批量价格", "物流时效"], "开小店，想先小批量试单", "意大利", "en-US", "理性谨慎", "平静"],
+  ["P-008", "批发采购商", "品质导向型", "潜在意向客", ["材质参数", "正品资质", "批量价格"], "要求质量稳定，会问质检报告", "德国", "en-US", "敏感挑剔", "平静"],
+  ["P-009", "企业采购", "品牌口碑型", "潜在意向客", ["发票交期", "正品资质"], "替公司采购，要发票和确定的交期", "加拿大", "en-US", "直接高效", "平静"],
+  ["P-010", "代购转售", "价格敏感型", "潜在意向客", ["批量价格", "包装礼盒"], "要留出转卖利润，包装要能直接转售", "美国", "en-US", "直接高效", "平静"],
+  ["P-011", "个人消费者", "享受逛买型", "潜在意向客", ["新品", "价格优惠"], "随便逛逛，聊得投机就多买几件", "巴西", "en-US", "友好健谈", "期待"],
+  ["P-012", "个人消费者", "冲动下单型", "潜在意向客", ["价格优惠", "物流时效"], "看到限时优惠就想马上下单", "澳大利亚", "en-US", "友好健谈", "期待"],
+  // 复购老客
+  ["P-013", "个人消费者", "习惯忠诚型", "复购老客", ["尺码合身", "价格优惠"], "上次买的很合身，想再买同款别的颜色", "美国", "en-US", "友好健谈", "平静"],
+  ["P-014", "个人消费者", "品质导向型", "复购老客", ["材质参数", "售后保修"], "上次用着不错，但对一个小问题有意见", "法国", "fr-FR", "敏感挑剔", "不满"],
+  ["P-015", "小B店主", "习惯忠诚型", "复购老客", ["批量价格", "物流时效"], "固定在这家补货，关心补货节奏和老客价", "法国", "fr-FR", "理性谨慎", "平静"],
+  ["P-016", "批发采购商", "价格敏感型", "复购老客", ["批量价格", "发票交期"], "量大，每次都要谈阶梯价和账期", "意大利", "en-US", "直接高效", "平静"],
+  ["P-017", "批发采购商", "品质导向型", "复购老客", ["材质参数", "批量价格"], "上一批有少量瑕疵，这次要求更严", "德国", "en-US", "敏感挑剔", "不满"],
+  ["P-018", "企业采购", "习惯忠诚型", "复购老客", ["发票交期", "批量价格"], "每季度给员工采购一次", "英国", "en-US", "理性谨慎", "平静"],
+  ["P-019", "代购转售", "价格敏感型", "复购老客", ["批量价格", "物流时效"], "帮家人朋友代买，常要求合并发货", "加拿大", "en-US", "直接高效", "期待"],
+  ["P-020", "礼品购买者", "品牌口碑型", "复购老客", ["包装礼盒", "正品资质"], "上次送的礼物对方很喜欢，又来买", "日本", "en-US", "友好健谈", "期待"],
+  ["P-021", "个人消费者", "价格敏感型", "复购老客", ["价格优惠", "退换政策"], "觉得老客户应该有专属优惠", "西班牙", "es-ES", "敏感挑剔", "期待"],
+  ["P-022", "小B店主", "新奇尝鲜型", "复购老客", ["新品", "批量价格"], "店里要不断上新，常问有没有新款", "澳大利亚", "en-US", "友好健谈", "期待"],
+  ["P-023", "个人消费者", "选择困难型", "复购老客", ["尺码合身", "材质参数"], "想换新款，但拿不准和旧款的差别", "英国", "en-US", "犹豫保守", "平静"],
+  ["P-024", "企业采购", "品质导向型", "复购老客", ["正品资质", "售后保修", "发票交期"], "公司对供应商有审核要求", "日本", "en-US", "敏感挑剔", "平静"],
+  // 粉丝客
+  ["P-025", "个人消费者", "新奇尝鲜型", "粉丝客", ["新品", "包装礼盒"], "会在社媒晒单，很想参加新品试用", "英国", "en-US", "友好健谈", "期待"],
+  ["P-026", "个人消费者", "享受逛买型", "粉丝客", ["新品", "价格优惠"], "店铺的忠实粉丝，喜欢和客服聊天", "美国", "en-US", "友好健谈", "期待"],
+  ["P-027", "个人消费者", "品牌口碑型", "粉丝客", ["正品资质", "新品"], "经常给店铺写好评，在意店铺口碑", "巴西", "en-US", "友好健谈", "平静"],
+  ["P-028", "个人消费者", "冲动下单型", "粉丝客", ["新品", "物流时效"], "新品一上架就想第一个拿到", "澳大利亚", "en-US", "直接高效", "期待"],
+  ["P-029", "个人消费者", "品质导向型", "粉丝客", ["材质参数", "新品"], "懂行的老粉，会认真提改进建议", "德国", "en-US", "敏感挑剔", "平静"],
+  ["P-030", "小B店主", "习惯忠诚型", "粉丝客", ["新品", "批量价格"], "合作很久，愿意帮店铺试推新品", "法国", "fr-FR", "友好健谈", "期待"],
+  ["P-031", "代购转售", "新奇尝鲜型", "粉丝客", ["新品", "批量价格"], "在社群里转卖，追爆款", "西班牙", "es-ES", "直接高效", "期待"],
+  ["P-032", "礼品购买者", "享受逛买型", "粉丝客", ["包装礼盒", "新品"], "每逢节日都会来挑礼物", "加拿大", "en-US", "友好健谈", "期待"],
+  // 沉睡客
+  ["P-033", "个人消费者", "价格敏感型", "沉睡客", ["价格优惠", "物流时效"], "半年没下单，被别家的优惠吸引走了", "美国", "en-US", "直接高效", "平静"],
+  ["P-034", "个人消费者", "品质导向型", "沉睡客", ["售后保修", "退换政策"], "上次售后体验一般，之后没再来", "法国", "fr-FR", "敏感挑剔", "不满"],
+  ["P-035", "个人消费者", "习惯忠诚型", "沉睡客", ["尺码合身", "新品"], "以前常买，后来慢慢忘了这家店", "加拿大", "en-US", "友好健谈", "平静"],
+  ["P-036", "个人消费者", "选择困难型", "沉睡客", ["退换政策", "价格优惠"], "收到过推送，但一直没找到下单的理由", "日本", "en-US", "犹豫保守", "平静"],
+  ["P-037", "小B店主", "价格敏感型", "沉睡客", ["批量价格", "物流时效"], "生意淡了，暂停了补货", "意大利", "en-US", "理性谨慎", "平静"],
+  ["P-038", "批发采购商", "品牌口碑型", "沉睡客", ["正品资质", "批量价格"], "换了别的供应商，正在观望", "德国", "en-US", "理性谨慎", "平静"],
+  ["P-039", "礼品购买者", "冲动下单型", "沉睡客", ["包装礼盒", "价格优惠"], "只在节日前才会想起来买", "英国", "en-US", "友好健谈", "平静"],
+  ["P-040", "个人消费者", "新奇尝鲜型", "沉睡客", ["新品", "价格优惠"], "早期粉丝，觉得店里很久没有新东西了", "巴西", "en-US", "友好健谈", "平静"],
+];
+
+/** 由结构化字段派生旧字段：identity = 买家角色；preference = 关注点 + 补充说明（旧提示词和旧会话快照仍读这两个字段） */
+export function derivePersonaLegacy(input: { buyerRole?: string | null; concerns?: string[]; note?: string | null; identity?: string; preference?: string }) {
+  const concerns = (input.concerns ?? []).filter(Boolean);
+  return {
+    identity: input.buyerRole || input.identity || "",
+    preference: [concerns.length ? `看重${concerns.join("、")}` : "", input.note?.trim() ?? ""].filter(Boolean).join("；") || input.preference || "",
+  };
+}
+
+export const personaTemplates = PERSONA_ROWS.map(([id, buyerRole, decisionStyle, customerType, concerns, note, nationality, language, personality, emotion]) => ({
   id,
-  name,
-  gender,
+  name: personaDisplayName(decisionStyle, buyerRole),
+  gender: "female" as const,
   nationality,
-  identity,
   personality,
   emotion,
   language,
-  preference,
   customerType,
+  buyerRole,
+  decisionStyle,
+  concerns,
+  note,
+  ...derivePersonaLegacy({ buyerRole, concerns, note }),
   enabled: true,
-})) as PersonaTemplate[];
+})) as Array<PersonaTemplate & { buyerRole: BuyerRole; decisionStyle: DecisionStyle; concerns: string[]; note: string }>;
+
+/** D-33 之前的内置模板（人名）：只用来给很早的会话快照回填性别和头像 */
+const LEGACY_TEMPLATE_GENDER: Record<string, { name: string; gender: "male" | "female" }> = Object.fromEntries(
+  ([
+    ["P-001", "Jessica Miller", "female"], ["P-002", "Lukas Schneider", "male"], ["P-003", "Camille Bernard", "female"], ["P-004", "Yuki Tanaka", "female"],
+    ["P-005", "Daniel Johnson", "male"], ["P-006", "Olivia Brown", "female"], ["P-007", "Sophie Martin", "female"], ["P-008", "Mateo Garcia", "male"],
+    ["P-009", "Emma Wilson", "female"], ["P-010", "Marco Rossi", "male"], ["P-011", "Ana Souza", "female"], ["P-012", "Noah Williams", "male"],
+    ["P-013", "Charlotte Taylor", "female"], ["P-014", "Felix Weber", "male"], ["P-015", "Mia Thompson", "female"], ["P-016", "Hana Sato", "female"],
+    ["P-017", "Isabella Romano", "female"], ["P-018", "Lucas Silva", "male"], ["P-019", "Amelia Clark", "female"], ["P-020", "Diego Fernandez", "male"],
+  ] as const).map(([id, name, gender]) => [id, { name, gender }]),
+);
 
 export const emailTemplates = [
   {
@@ -170,6 +245,8 @@ export const standardPhrases = [
 
 export interface PersonaSnapshot extends PersonaTemplate {
   sourceTemplateId: string;
+  /** 抽中的画像模板名称（如“价格敏感型个人消费者”），只给老师看 */
+  templateName?: string;
   generatedAt: string;
   avatarUrl: string;
 }
@@ -295,26 +372,53 @@ const PREFERENCE_POOL = [
   "偏好折扣活动", "重视售后保障", "关注环保材料", "重视公开评价", "关注库存与补货",
 ] as const;
 
-/** 会话画像随机规则（来自教师任务配置） */
+/**
+ * 会话画像随机规则（来自教师任务配置，D-33 两步）：
+ * 第一步“从哪些人群里抽”——customerTypes / buyerRoles / decisionStyles / templateIds 只筛选模板，不改模板的身份；
+ * 第二步“每次随机变化的”——nationalityPool / personalityPool / emotionPool / languages 覆盖模板的默认值，不选就用默认值。
+ */
 export interface PersonaRule {
   nationalityPool?: string[];
   personalityPool?: string[];
   emotionPool?: string[];
   languages?: string[];
   customerTypes?: string[];
+  buyerRoles?: string[];
+  decisionStyles?: string[];
+  templateIds?: string[];
 }
 
 /** 可参与抽取的画像模板最小形状（来自 DB persona_templates，教师可维护） */
 export interface PersonaTemplateBase {
   id: string;
+  name?: string;
   identity: string;
   preference: string;
   customerType: string;
+  buyerRole?: string | null;
+  decisionStyle?: string | null;
+  concerns?: string[];
+  note?: string | null;
   /** D3：模板上的这些字段在任务规则没约束时生效 */
   nationality?: string;
   personality?: string;
   emotion?: string;
   language?: string;
+}
+
+/** 第一步：按任务规则筛出可以抽的模板（指定了画像就只用指定的） */
+export function filterPersonaTemplates<T extends PersonaTemplateBase>(templates: readonly T[], rule: PersonaRule = {}): T[] {
+  if (rule.templateIds?.length) return templates.filter((item) => rule.templateIds!.includes(item.id));
+  return templates.filter((item) =>
+    (!rule.customerTypes?.length || rule.customerTypes.includes(item.customerType))
+    && (!rule.buyerRoles?.length || rule.buyerRoles.includes(item.buyerRole ?? ""))
+    && (!rule.decisionStyles?.length || rule.decisionStyles.includes(item.decisionStyle ?? "")));
+}
+
+export class NoMatchingPersonaError extends Error {
+  constructor() {
+    super("NO_MATCHING_PERSONA");
+  }
 }
 
 function pickConstrained<T extends string>(
@@ -330,18 +434,18 @@ function pickConstrained<T extends string>(
 }
 
 /**
- * 真随机画像合成：模板库（DB，教师可维护）提供身份/偏好/客户类型底子，
- * 姓名按国籍从姓名池生成（性别随机、姓名-国籍强绑定），
- * 国籍/性格/情绪/语言受任务随机规则约束。学生开始前不可预知。
+ * 真随机画像合成：先按规则筛模板（身份、决策风格、关注点、客户价值层原样保留），
+ * 姓名按国籍从姓名池生成（性别随机、姓名-国籍强绑定），国籍/性格/情绪/语言受规则约束。学生开始前不可预知。
+ * 没有符合规则的模板时抛 NoMatchingPersonaError。
  */
 export function composePersonaWithRule(
   templates: readonly PersonaTemplateBase[],
   rule: PersonaRule = {},
   random: () => number = Math.random,
 ): PersonaSnapshot {
-  const template = templates.length
-    ? pick(templates, random)
-    : pick(personaTemplates, random);
+  const pool = filterPersonaTemplates(templates.length ? templates : personaTemplates, rule);
+  if (!pool.length) throw new NoMatchingPersonaError();
+  const template = pick(pool, random);
   const nationality = pickConstrained(NATIONALITIES, rule.nationalityPool, random, template.nationality);
   const gender: "male" | "female" = random() < 0.5 ? "male" : "female";
   const namePool = NAME_POOLS[nationality] ?? EN_POOL;
@@ -356,19 +460,22 @@ export function composePersonaWithRule(
   return {
     id: `SNAP-${Date.now()}-${Math.floor(random() * 10000)}`,
     sourceTemplateId: template.id,
+    templateName: template.name ?? personaDisplayName(template.decisionStyle, template.buyerRole),
     name,
     gender,
     nationality,
-    identity: template.identity || pick(IDENTITY_POOL, random),
+    identity: template.identity || template.buyerRole || pick(IDENTITY_POOL, random),
+    buyerRole: template.buyerRole ?? null,
+    decisionStyle: template.decisionStyle ?? null,
+    concerns: template.concerns ?? [],
+    note: template.note ?? null,
     personality: pickConstrained(PERSONALITIES, rule.personalityPool, random, template.personality),
     emotion: pickConstrained(EMOTIONS, rule.emotionPool, random, template.emotion),
     language,
     preference: template.preference || pick(PREFERENCE_POOL, random),
-    customerType: rule.customerTypes?.length
-      ? pickConstrained(CUSTOMER_TYPES, rule.customerTypes, random)
-      : (CUSTOMER_TYPES.includes(template.customerType as never)
-          ? (template.customerType as (typeof CUSTOMER_TYPES)[number])
-          : pick(CUSTOMER_TYPES, random)),
+    customerType: CUSTOMER_TYPES.includes(template.customerType as never)
+      ? (template.customerType as (typeof CUSTOMER_TYPES)[number])
+      : pick(CUSTOMER_TYPES, random),
     enabled: true,
     avatarUrl: pickAvatarUrl(gender, random),
     generatedAt: new Date().toISOString(),
@@ -382,10 +489,10 @@ export function resolvePersonaGender(snapshot: {
   name?: string;
 }): "male" | "female" {
   if (snapshot.gender === "male" || snapshot.gender === "female") return snapshot.gender;
-  const template =
-    personaTemplates.find((item) => item.id === snapshot.sourceTemplateId) ??
-    personaTemplates.find((item) => item.name === snapshot.name);
-  return template?.gender ?? "female";
+  const legacy =
+    (snapshot.sourceTemplateId ? LEGACY_TEMPLATE_GENDER[snapshot.sourceTemplateId] : undefined) ??
+    Object.values(LEGACY_TEMPLATE_GENDER).find((item) => item.name === snapshot.name);
+  return legacy?.gender ?? "female";
 }
 
 /** 历史画像快照缺头像时，按来源模板性别 + 稳定种子补齐（同一会话头像恒定） */
@@ -607,66 +714,62 @@ export const POSITIVE_REVIEW_POOL = [
 ] as const;
 
 /** 根据业务环节生成当前咨询关联的订单；售前咨询返回 null */
+/** 业务环节的默认订单状态（场景没指定 orderKind 时用，保持旧行为：售中/售后各一半随机） */
+function defaultOrderKind(stage: BusinessStage, random: () => number): OrderKind {
+  if (stage === "pre_sale") return "none";
+  if (stage === "in_sale") return random() < 0.5 ? "pending_payment" : "customs";
+  if (stage === "after_sale") return random() < 0.5 ? "delivered_negative" : "delivered";
+  return "completed";
+}
+
 export function generateOrderForScenario(
   stage: BusinessStage,
   random: () => number = Math.random,
   now: Date = new Date(),
   products: OrderProductPool = PRODUCTS,
   persona?: { name?: string; nationality?: string },
+  orderKind?: OrderKind | null,
 ): OrderInfo | null {
-  if (stage === "pre_sale") return null;
+  const kind = orderKind ?? defaultOrderKind(stage, random);
+  if (kind === "none") return null;
   const base = orderBase(random, now, products, persona);
-  if (stage === "in_sale") {
-    // 一半催付（待付款），一半物流跟进（卡在清关）
-    if (random() < 0.5) {
+  switch (kind) {
+    case "pending_payment":
+      return { ...base, status: "pending_payment", statusLabel: "待付款", placedAt: daysAgo(now, 2), logistics: null, review: null };
+    case "paid":
+      return { ...base, status: "paid", statusLabel: "待发货", placedAt: daysAgo(now, 3), logistics: null, review: null };
+    case "in_transit":
+      return { ...base, status: "in_transit", statusLabel: "国际运输中", placedAt: daysAgo(now, 8), logistics: buildLogistics(now, random, 2, 6), review: null };
+    case "customs":
+      return { ...base, status: "in_transit", statusLabel: "国际运输中（清关）", placedAt: daysAgo(now, 12), logistics: buildLogistics(now, random, 3, 10), review: null };
+    case "delivery_failed":
+      return { ...base, status: "in_transit", statusLabel: "派送异常", placedAt: daysAgo(now, 18), logistics: buildLogistics(now, random, 4, 15), review: null };
+    case "delivered":
+    case "delivered_negative":
+    case "delivered_positive":
       return {
         ...base,
-        status: "pending_payment",
-        statusLabel: "待付款",
-        placedAt: daysAgo(now, 2),
-        logistics: null,
-        review: null,
+        status: "delivered",
+        statusLabel: "已送达",
+        placedAt: daysAgo(now, 20),
+        logistics: buildLogistics(now, random, 5, 18),
+        review: kind === "delivered_negative"
+          ? { rating: 1 + Math.floor(random() * 2), content: pick(NEGATIVE_REVIEW_POOL, random), at: daysAgo(now, 1) }
+          : kind === "delivered_positive"
+            ? { rating: 5, content: pick(POSITIVE_REVIEW_POOL, random), at: daysAgo(now, 1) }
+            : null,
       };
-    }
-    return {
-      ...base,
-      status: "in_transit",
-      statusLabel: "国际运输中（清关）",
-      placedAt: daysAgo(now, 12),
-      logistics: buildLogistics(now, random, 3, 10),
-      review: null,
-    };
+    default:
+      // completed：客户维护场景的历史已完成订单
+      return {
+        ...base,
+        status: "completed",
+        statusLabel: "已完成",
+        placedAt: daysAgo(now, 45 + Math.floor(random() * 60)),
+        logistics: buildLogistics(now, random, 5, 40),
+        review: { rating: 4 + Math.floor(random() * 2), content: pick(POSITIVE_REVIEW_POOL, random), at: daysAgo(now, 40) },
+      };
   }
-  if (stage === "after_sale") {
-    const negativeReview = random() < 0.5;
-    return {
-      ...base,
-      status: "delivered",
-      statusLabel: "已送达",
-      placedAt: daysAgo(now, 20),
-      logistics: buildLogistics(now, random, 5, 18),
-      review: negativeReview
-        ? {
-            rating: 1 + Math.floor(random() * 2),
-            content: pick(NEGATIVE_REVIEW_POOL, random),
-            at: daysAgo(now, 1),
-          }
-        : null,
-    };
-  }
-  // customer_care：历史已完成订单
-  return {
-    ...base,
-    status: "completed",
-    statusLabel: "已完成",
-    placedAt: daysAgo(now, 45 + Math.floor(random() * 60)),
-    logistics: buildLogistics(now, random, 5, 40),
-    review: {
-      rating: 4 + Math.floor(random() * 2),
-      content: pick(POSITIVE_REVIEW_POOL, random),
-      at: daysAgo(now, 40),
-    },
-  };
 }
 
 /** 买家历史订单数量：新客无历史，老客/粉丝有若干笔 */
@@ -754,3 +857,37 @@ export function generateBuyerOrderHistory(
 }
 
 export { scenarioScripts } from "./scenario-scripts";
+export { productLibrary } from "./product-library";
+
+/**
+ * 商品资料卡（D-32）：给买家 AI 的“店铺真实信息”，用来判断客服说得对不对、让追问有依据。
+ * 只取学生在商品详情里也能查到的内容，控制在一千来字以内。
+ */
+export function productFactSheet(product: {
+  name: string;
+  spec?: string | null;
+  price: number;
+  category?: string | null;
+  details?: ProductDetails | null;
+}): string {
+  const d = product.details ?? {};
+  const lines = [`Product: ${product.name} · USD ${product.price}${product.spec ? ` · ${product.spec}` : ""}${product.category ? ` · ${product.category}` : ""}`];
+  if (d.options?.length) lines.push(`Options: ${d.options.map((o) => `${o.name} ${o.values.join("/")}`).join("; ")}`);
+  const outOfStock = d.skus?.filter((sku) => sku.stock <= 0).map((sku) => Object.values(sku.values).join(" ")) ?? [];
+  const lowStock = d.skus?.filter((sku) => sku.stock > 0 && sku.stock < 10).map((sku) => Object.values(sku.values).join(" ")) ?? [];
+  if (outOfStock.length) lines.push(`Out of stock: ${outOfStock.slice(0, 8).join(", ")}`);
+  if (lowStock.length) lines.push(`Low stock (<10): ${lowStock.slice(0, 8).join(", ")}`);
+  if (d.bullets?.length) lines.push(`Selling points: ${d.bullets.slice(0, 5).join(" | ")}`);
+  if (d.specs?.length) lines.push(`Specs: ${d.specs.slice(0, 8).map((row) => `${row.name}=${row.value}`).join("; ")}`);
+  if (d.sizeChart?.rows.length) {
+    lines.push(`Size chart (${d.sizeChart.headers.join(", ")}): ${d.sizeChart.rows.slice(0, 8).map((row) => row.join(" ")).join(" | ")}`);
+  }
+  if (d.shipping) {
+    const methods = d.shipping.methods?.map((m) => `${m.region} ${m.method} ${m.days} ${m.fee > 0 ? `USD ${m.fee}` : "free"}`).join("; ");
+    lines.push(`Shipping: from ${d.shipping.shipsFrom ?? "?"}, handling ${d.shipping.handlingDays ?? "?"} business days${methods ? `; ${methods}` : ""}`);
+  }
+  if (d.afterSale?.returnPolicy) lines.push(`Return policy: ${d.afterSale.returnPolicy}`);
+  if (d.afterSale?.warranty) lines.push(`Warranty: ${d.afterSale.warranty}`);
+  if (d.faq?.length) lines.push(`FAQ: ${d.faq.slice(0, 4).map((item) => `Q ${item.q} A ${item.a}`).join(" | ")}`);
+  return lines.join("\n").slice(0, 1600);
+}

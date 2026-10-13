@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>场景配置扩充</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+:root { --doc-bg:#e9edf3; --doc-ink:#161c26; --doc-ink-2:#465163; --doc-line:#d6dce5; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--doc-bg); color: var(--doc-ink); font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 24px; font-weight: 700; }
+.doc h2 { margin: 64px 0 6px; font-size: 20px; font-weight: 700; }
+.doc .lede { margin: 0 0 20px; color: var(--doc-ink-2); max-width: 980px; }
+.diag { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0 8px; }
+.diag div { background: #fff; border: 1px solid var(--doc-line); border-radius: 10px; padding: 14px 16px; font-size: 13px; color: var(--doc-ink-2); }
+.diag b { display: block; margin-bottom: 4px; color: var(--doc-ink); font-size: 14px; }
+.diag .fix { color: #174aa8; }
+.diag .api { display: inline-block; margin-top: 6px; padding: 1px 6px; border-radius: 4px; background: #fdf0dc; color: #9a5200; font-size: 12px; }
+.cap { display: flex; justify-content: space-between; gap: 24px; margin: 22px 0 8px; font-size: 13px; color: var(--doc-ink-2); }
+.cap b { color: var(--doc-ink); white-space: nowrap; }
+.frame { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid var(--doc-line); box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); background: #fff; }
+.screen { position: absolute; top: 0; left: 0; width: 1440px; height: 900px; transform-origin: 0 0; overflow: hidden; }
+.before { width: 100%; display: block; border-radius: 10px; border: 1px solid var(--doc-line); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.trio-b { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+figure { margin: 0; }
+figcaption { font-size: 12px; color: var(--doc-ink-2); margin-top: 6px; }
+
+/* ===== 织 UI 令牌（同 apps/portal/src/styles/tokens.css） ===== */
+.s { --canvas:#f4f6f9; --surface:#fff; --surface-2:#f8f9fb; --hover:#eef2f7; --line:#e3e7ee; --line-2:#c8cfda; --ink:#161c26; --ink-2:#465163; --ink-3:#5e6a7b; --ink-4:#9aa3b0;
+  --brand:#1d5fd1; --brand-soft:#e8effc; --brand-ink:#174aa8; --ok:#1a7445; --ok-wash:#e3f4ea; --warn:#9a5200; --warn-wash:#fdf0dc; --bad:#b8302a; --bad-wash:#fbe8e6;
+  --c1:#1d5fd1; --c1s:#e8effc; --c2:#0a7a70; --c2s:#e0f3f0; --c3:#8c5b0f; --c3s:#fbefdc; --c4:#6c4fc9; --c4s:#eeeafb;
+  background: var(--surface); color: var(--ink); font: 400 14px/22px Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.s svg { width: 18px; height: 18px; stroke-width: 1.75; flex: none; }
+.num { font-variant-numeric: tabular-nums; }
+.app { position: relative; display: grid; grid-template-columns: 232px 1fr; height: 100%; }
+.side { display: flex; flex-direction: column; padding: 14px 12px; border-right: 1px solid var(--line); background: var(--surface); }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 18px; font-size: 14px; font-weight: 700; }
+.mark { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 6px; background: var(--brand); color: #fff; }
+.mark svg { width: 16px; height: 16px; }
+.nav { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 6px; color: var(--ink-2); font-size: 14px; }
+.nav svg { color: var(--ink-3); }
+.nav.on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.nav.on svg { color: var(--brand-ink); }
+.nav .badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.grow { flex: 1; }
+.foot { border-top: 1px solid var(--line); padding-top: 8px; }
+.main { display: flex; flex-direction: column; min-width: 0; background: var(--canvas); }
+.head { display: flex; align-items: flex-end; gap: 28px; height: 56px; padding: 0 40px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; }
+.head h1 { margin: 0 0 13px; font-size: 20px; font-weight: 700; white-space: nowrap; }
+.head .tabs { display: flex; gap: 24px; align-self: stretch; align-items: flex-end; }
+.head .tab { padding-bottom: 15px; border-bottom: 2px solid transparent; color: var(--ink-2); font-size: 14px; white-space: nowrap; }
+.head .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--brand); }
+.head .tab .n { color: var(--ink-3); font-weight: 400; margin-left: 4px; }
+.head .tab.on .n { color: var(--brand-ink); }
+.head .right { margin-left: auto; display: flex; align-items: center; gap: 14px; margin-bottom: 13px; color: var(--ink-2); }
+.av { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--hover); font-size: 12px; font-weight: 700; color: var(--ink-2); flex: none; }
+.body { flex: 1; overflow: hidden; padding: 28px 40px; }
+.body.flush { padding: 0; }
+.wrap { max-width: 1120px; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--line-2); background: #fff; color: var(--ink); white-space: nowrap; font-size: 14px; font-weight: 500; }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 13px; }
+.btn svg { width: 16px; height: 16px; }
+.search { display: flex; align-items: center; gap: 8px; width: 260px; height: 34px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 6px; background: #fff; color: var(--ink-3); }
+.search svg { width: 15px; height: 15px; }
+.bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.bar-row .r { margin-left: auto; display: flex; gap: 8px; }
+.chips { display: flex; gap: 6px; }
+.chip { height: 28px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--line-2); background: #fff; color: var(--ink-2); font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+.chip.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-ink); font-weight: 600; }
+.chip i { font-style: normal; opacity: .7; }
+.tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; font-size: 12px; font-weight: 500; background: var(--surface-2); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
+.tag.c1 { background: var(--c1s); color: var(--c1); box-shadow: none; } .tag.c2 { background: var(--c2s); color: var(--c2); box-shadow: none; }
+.tag.c3 { background: var(--c3s); color: var(--c3); box-shadow: none; } .tag.c4 { background: var(--c4s); color: var(--c4); box-shadow: none; }
+.tag.bad { background: var(--bad-wash); color: var(--bad); box-shadow: none; } .tag.warn { background: var(--warn-wash); color: var(--warn); box-shadow: none; }
+.tag.ok { background: var(--ok-wash); color: var(--ok); box-shadow: none; } .tag.brand { background: var(--brand-soft); color: var(--brand-ink); box-shadow: none; }
+.sw { position: relative; width: 36px; height: 20px; border-radius: 10px; background: var(--line-2); flex: none; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.sw.on { background: var(--brand); } .sw.on::after { left: 18px; }
+.sw.sm { width: 30px; height: 17px; } .sw.sm::after { width: 13px; height: 13px; } .sw.sm.on::after { left: 15px; }
+.board { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.board + .board { margin-top: 16px; }
+.bhead { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+.bhead h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.bhead .n { color: var(--ink-3); font-size: 13px; }
+.bhead .end { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.muted { color: var(--ink-3); }
+.small { font-size: 13px; }
+.cap-s { font-size: 12px; color: var(--ink-3); font-weight: 500; }
+
+/* 发布抽屉 */
+.scrim { position: absolute; inset: 0; background: rgba(14,20,32,.42); }
+.drawer { position: absolute; top: 0; right: 0; bottom: 0; width: 880px; background: #fff; box-shadow: 0 24px 64px rgba(16,24,40,.25); display: flex; flex-direction: column; }
+.drawer .dh { display: flex; align-items: center; height: 64px; padding: 0 28px; border-bottom: 1px solid var(--line); }
+.drawer .dh h3 { margin: 0; font-size: 18px; font-weight: 600; }
+.drawer .dh svg { margin-left: auto; color: var(--ink-3); }
+.drawer .db { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+.drawer .form { padding: 24px 28px; display: grid; gap: 18px; align-content: start; }
+.field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.field .in { height: 36px; border: 1px solid var(--line-2); border-radius: 6px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; }
+.field .in.focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.field .ta { min-height: 120px; border: 1px solid var(--line-2); border-radius: 6px; padding: 10px 12px; line-height: 22px; }
+.field .hint { font-size: 12px; color: var(--ink-3); margin-top: 6px; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); }
+.seg span { height: 28px; padding: 0 12px; display: inline-flex; align-items: center; border-radius: 4px; font-size: 13px; color: var(--ink-2); }
+.seg span.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.1); }
+.drawer .pv { background: var(--surface-2); border-left: 1px solid var(--line); padding: 24px; }
+.drawer .df { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 28px; border-top: 1px solid var(--line); }
+/* ===== 场景配置 ===== */
+.cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.col-h { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.col-h .n { font-size: 12px; color: var(--ink-3); }
+.col-h .ic { margin-left: auto; color: var(--ink-3); }
+.col-h .ic svg { width: 16px; height: 16px; }
+.sc-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: 0 1px 2px rgba(16,24,40,.04); display: grid; gap: 10px; }
+.sc-card + .sc-card { margin-top: 12px; }
+.sc-card .t { display: flex; align-items: flex-start; gap: 10px; }
+.sc-card .t b { font-size: 15px; font-weight: 600; line-height: 22px; flex: 1; }
+.sc-card p { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2); min-height: 40px; }
+.sc-card .ft { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+.sc-card .ft span { display: inline-flex; align-items: center; gap: 4px; }
+.sc-card .ft svg { width: 14px; height: 14px; }
+.sc-card .ft .ok { color: var(--ok); } .sc-card .ft .warn { color: var(--warn); font-weight: 600; }
+.sc-card.off { background: var(--surface-2); } .sc-card.off b, .sc-card.off p { color: var(--ink-3); }
+.sc-add { margin-top: 12px; height: 44px; border: 1px dashed var(--line-2); border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--ink-3); font-size: 13px; }
+.sc-add svg { width: 15px; height: 15px; }
+.legend { display: flex; gap: 18px; font-size: 12px; color: var(--ink-3); margin-left: 4px; }
+/* 画像卡片 */
+.pgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.pc { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 12px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.pc .top { display: flex; gap: 12px; align-items: center; }
+.pc img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
+.pc .ph { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 17px; }
+.pc b { display: block; font-size: 15px; }
+.pc .sub { font-size: 12px; color: var(--ink-3); }
+.pc .sw { margin-left: auto; align-self: flex-start; }
+.pc .traits { display: flex; flex-wrap: wrap; gap: 6px; }
+.pc .ln { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-3); padding-top: 10px; border-top: 1px solid var(--line); }
+.pc.off { opacity: .55; }
+/* 商品卡片 */
+.ggrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.gc { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.gc .img { height: 150px; display: flex; align-items: center; justify-content: center; position: relative; }
+.gc .img img { width: 100%; height: 100%; object-fit: cover; }
+.gc .img svg { width: 40px; height: 40px; stroke-width: 1.3; }
+.gc .img .st { position: absolute; top: 10px; left: 10px; }
+.gc .bd { padding: 12px 14px 14px; display: grid; gap: 4px; }
+.gc b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc .spec { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc .row { display: flex; align-items: baseline; justify-content: space-between; margin-top: 6px; }
+.gc .price { font-size: 18px; font-weight: 700; }
+.gc .stock { font-size: 12px; color: var(--ink-3); }
+.gc .stock.warn { color: var(--warn); font-weight: 600; }
+.drawer .dh .search svg, .drawer .dh .tag svg { margin-left: 0; }
+/* ===== p8 新增 ===== */
+.chip { white-space: nowrap; }
+.track { height: 6px; border-radius: 999px; background: var(--hover); overflow: hidden; }
+.track i { display: block; height: 100%; border-radius: 999px; background: var(--brand); }
+.kv { display: grid; grid-template-columns: 64px 1fr; gap: 6px 10px; font-size: 13px; }
+.kv dt { color: var(--ink-3); } .kv dd { margin: 0; }
+.help { display: inline-flex; color: var(--ink-4); vertical-align: -3px; }
+.help svg { width: 15px; height: 15px; }
+.cols.tight .sc-card { padding: 12px 14px; gap: 6px; }
+.cols.tight .sc-card + .sc-card { margin-top: 10px; }
+.cols.tight .sc-card .t b { font-size: 14px; }
+.cols.tight .sc-card p { min-height: 0; font-size: 12px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cols.tight .sc-card .ft { padding-top: 8px; }
+.newdot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); margin-top: 8px; flex: none; }
+.pc .tico { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex: none; }
+.pc .tico svg { width: 22px; height: 22px; }
+.pc .pref { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dlg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #fff; border-radius: 14px; box-shadow: 0 24px 64px rgba(16,24,40,.28); display: flex; flex-direction: column; overflow: hidden; }
+.dlg .dh { display: flex; align-items: center; gap: 10px; height: 60px; padding: 0 24px; border-bottom: 1px solid var(--line); flex: none; }
+.dlg .dh h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.dlg .dh .x { margin-left: auto; color: var(--ink-3); display: inline-flex; }
+.dlg .df { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--line); flex: none; }
+.dlg .df .l { margin-right: auto; font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.dlg .df .l svg { width: 15px; height: 15px; }
+.draw { display: grid; grid-template-columns: 300px 1fr; }
+.draw .tpl-side { padding: 20px 24px; border-right: 1px solid var(--line); background: var(--surface-2); }
+.draw h5 { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.draw h5 svg { width: 14px; height: 14px; }
+.draw .grp2 + .grp2 { margin-top: 18px; }
+.draw .kv { grid-template-columns: 72px 1fr; margin: 0; }
+.draw .rnd { display: flex; gap: 6px; flex-wrap: wrap; }
+.samples { padding: 20px 24px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-content: start; }
+.smp { border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 10px; align-content: start; }
+.smp .top { display: flex; gap: 10px; align-items: center; }
+.smp img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+.smp b { display: block; font-size: 15px; }
+.smp .sub { font-size: 12px; color: var(--ink-3); }
+.smp .traits { display: flex; flex-wrap: wrap; gap: 6px; }
+.smp .chg { font-size: 12px; color: var(--brand-ink); background: var(--brand-soft); border-radius: 6px; padding: 6px 8px; line-height: 18px; }
+.gc .full { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+.gc .full .track { flex: 1; height: 4px; }
+.gc .full .track i.warn { background: #d98a1c; }
+.gc .full b { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.gc .full b.warn { color: var(--warn); }
+.gc .src { position: absolute; bottom: 10px; left: 10px; }
+.ways { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 24px; }
+.way { border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 8px; align-content: start; }
+.way.rec { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.way .wi { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--brand-soft); color: var(--brand); }
+.way .wi svg { width: 20px; height: 20px; }
+.way b { font-size: 15px; display: flex; align-items: center; }
+.way p { margin: 0; font-size: 13px; color: var(--ink-2); line-height: 20px; }
+.way .meta { font-size: 12px; color: var(--ink-3); }
+.ways-2 { display: flex; gap: 10px; padding: 0 24px 22px; }
+.ways-2 .alt { flex: 1; display: flex; align-items: center; gap: 10px; border: 1px dashed var(--line-2); border-radius: 10px; padding: 12px 14px; font-size: 13px; color: var(--ink-2); }
+.ways-2 .alt svg { color: var(--ink-3); }
+.ways-2 .alt span { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.collect { padding: 22px 24px; display: grid; gap: 16px; }
+.urlbox { display: flex; gap: 8px; }
+.urlbox .in { flex: 1; height: 40px; border: 1px solid var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 13px; color: var(--ink); }
+.urlbox .in svg { color: var(--ink-3); width: 16px; height: 16px; }
+.steps { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.step { display: flex; align-items: center; gap: 12px; padding: 11px 16px; font-size: 13px; border-top: 1px solid var(--line); }
+.step:first-child { border-top: 0; }
+.step .si { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; }
+.step .si svg { width: 14px; height: 14px; }
+.step.done .si { background: var(--ok-wash); color: var(--ok); }
+.step.run .si { background: var(--brand-soft); color: var(--brand); }
+.step.wait .si { background: var(--hover); color: var(--ink-4); }
+.step.wait { color: var(--ink-3); }
+.step .r { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.mini-win { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.mini-win .bar { height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: #eef1f5; font-size: 12px; color: var(--ink-3); }
+.mini-win .bar i { width: 7px; height: 7px; border-radius: 50%; background: #c8cfda; }
+.mini-win .pg { display: grid; grid-template-columns: 150px 1fr; gap: 16px; padding: 14px; background: #fff; }
+.mini-win .pg img { width: 150px; height: 150px; object-fit: cover; border-radius: 6px; }
+.mini-win .gl { display: grid; gap: 8px; align-content: start; }
+.mini-win .gl span { height: 9px; border-radius: 4px; background: #e9edf2; }
+.mini-win .gl span.hl { background: #cfe0fb; box-shadow: 0 0 0 2px #e8effc; }
+.note { display: flex; gap: 8px; font-size: 12px; color: var(--ink-3); line-height: 18px; }
+.note svg { width: 14px; height: 14px; margin-top: 2px; }
+.drawer.wide { width: 1000px; }
+.drawer .dh .x { margin-left: auto; color: var(--ink-3); display: inline-flex; }
+.pe { flex: 1; display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 0; }
+.pe-nav { border-right: 1px solid var(--line); padding: 16px 12px; display: grid; gap: 2px; align-content: start; background: var(--surface-2); }
+.pe-nav > div { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: 6px; font-size: 13px; color: var(--ink-2); }
+.pe-nav > div.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.08); }
+.pe-nav > div svg { width: 15px; height: 15px; margin-left: auto; }
+.pe-nav .ok svg { color: var(--ok); } .pe-nav .miss svg { color: #d98a1c; }
+.pe-nav > div.sum { margin-top: 14px; padding: 12px 10px 0; border-top: 1px solid var(--line); border-radius: 0; font-size: 12px; line-height: 18px; color: var(--ink-3); display: block; height: auto; }
+.pe-nav .sum b { font-size: 20px; color: var(--ink); }
+.pe-body { padding: 18px 28px; display: grid; gap: 18px; align-content: start; overflow: hidden; }
+.banner2 { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; background: var(--warn-wash); color: var(--warn); font-size: 13px; }
+.banner2 svg { width: 16px; height: 16px; }
+.banner2 a { margin-left: auto; font-size: 12px; color: var(--ink-2); text-decoration: underline; white-space: nowrap; }
+.sec h4 { margin: 0 0 10px; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.sec h4 .n { font-weight: 400; color: var(--ink-3); font-size: 12px; }
+.thumbs { display: flex; gap: 10px; }
+.thumbs > div { width: 80px; height: 80px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); position: relative; display: flex; align-items: center; justify-content: center; color: var(--ink-4); background: var(--surface-2); }
+.thumbs img { width: 100%; height: 100%; object-fit: cover; }
+.thumbs .main-tag { position: absolute; left: 4px; bottom: 4px; font-size: 10px; line-height: 16px; padding: 0 5px; border-radius: 3px; background: rgba(22,28,38,.7); color: #fff; }
+.thumbs .add { border-style: dashed; border-color: var(--line-2); }
+.f2 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
+.f2 .field .in { height: 34px; font-size: 13px; }
+.f2 .field .in svg { width: 15px; height: 15px; color: var(--ink-3); }
+.sku { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; font-size: 13px; }
+.sku .r { display: grid; grid-template-columns: 1fr 1fr 110px 110px 40px; gap: 10px; padding: 7px 12px; border-top: 1px solid var(--line); align-items: center; }
+.sku .r.h { border-top: 0; background: var(--surface-2); font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.sku .r svg { width: 15px; height: 15px; }
+.sku .dim { display: flex; gap: 6px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-3); flex-wrap: wrap; }
+.bul { display: grid; gap: 6px; font-size: 13px; }
+.bul div { display: flex; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; }
+.bul div i { font-style: normal; color: var(--ink-4); width: 14px; }
+.lib { flex: 1; display: grid; grid-template-columns: 180px minmax(0, 1fr); min-height: 0; }
+.lib-cat { border-right: 1px solid var(--line); padding: 14px 10px; display: grid; gap: 2px; align-content: start; }
+.lib-cat div { display: flex; justify-content: space-between; height: 34px; align-items: center; padding: 0 10px; border-radius: 6px; font-size: 13px; color: var(--ink-2); }
+.lib-cat div.on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.lib-cat div i { font-style: normal; color: var(--ink-3); font-size: 12px; font-weight: 400; }
+.lib-main { padding: 16px 20px; overflow: hidden; }
+.lgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.lg { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; position: relative; }
+.lg.sel { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
+.lg .img { height: 112px; display: flex; align-items: center; justify-content: center; }
+.lg .img img { width: 100%; height: 100%; object-fit: cover; }
+.lg .img svg { width: 34px; height: 34px; stroke-width: 1.3; color: rgba(22,28,38,.45); }
+.lg .bd { padding: 9px 11px 11px; }
+.lg .bd > b { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg .row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.lg .row b { font-size: 14px; color: var(--ink); }
+.lg .ck { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid var(--line-2); background: #fff; display: flex; align-items: center; justify-content: center; }
+.lg.sel .ck { background: var(--brand); border-color: var(--brand); color: #fff; }
+.lg .ck svg { width: 14px; height: 14px; stroke-width: 3; }
+.lg .have { position: absolute; top: 8px; left: 8px; }
+.lg.in { opacity: .6; }
+.pe-empty { padding: 44px 48px; }
+.pe-empty h3 { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
+.pe-empty > p { margin: 0 0 8px; color: var(--ink-2); }
+.pe-empty .ways { padding: 16px 0 0; }
+.pe-empty .ways-2 { padding: 14px 0 0; }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>场景配置扩充：场景库 · 买家画像 · 店铺商品</h1>
+  <p class="lede">这份稿回答三个问题：场景覆盖面不够怎么补；画像怎么避免被误认成固定客户；老师没有商品资料时怎么快速把商品建起来。外壳、颜色、字体沿用织 UI，不变。示例数据是编的，只看版式。不做“AI 生成完整商品”。</p>
+
+  <div class="diag">
+    <div><b>1. 场景只覆盖了参数任务的三分之一</b>参数 1.1–1.4 列了 20 多类具体任务，现在的 8 个场景只占其中一部分；议价、尺码咨询、改地址、丢件、错发、质量争议、平台纠纷、好评维系、粉丝客关怀都没有。<br><span class="fix">改：内置场景扩到 24 个，四个环节各 4–8 个，每个配齐剧本。卡片底部标出沟通方式（在线会话或邮件），可以按沟通方式筛选。</span><br><span class="api">要补：迁移写入 16 个新场景和剧本；场景表加“沟通方式”字段，邮件类场景接到现有邮件模块</span></div>
+    <div><b>2. 只能复制场景，不能从空白新建</b>老师想加一个本校特色场景，只能先复制一个再大改。<br><span class="fix">改：右上角主按钮“新建场景”，打开现有的场景编辑抽屉（业务环节、沟通方式、名称、目标、剧本五项）。列底部的“复制一个场景”保留。</span><br><span class="api">要补接口：新建场景支持不带来源的空白创建</span></div>
+    <div><b>3. 画像看起来像 20 个固定客户</b>卡片上是人名和真人照片，但代码里每次会话的姓名、性别、头像都会重新随机，模板里的“Jessica Miller”学生根本见不到。<br><span class="fix">改：卡片标题改成人群名（如“独立站零售买家”），头像换成客户类型图标；国籍写成“默认 美国 · 英语”；底部写“被抽中 N 次”。</span><br><span class="api">要补：20 条内置模板的名称改成人群名（迁移，老师改过的不动）</span></div>
+    <div><b>4. 老师看不到“随机”是什么效果</b>不知道一个模板到了学生那边会变成什么样的买家。<br><span class="fix">改：加“试抽”。弹窗左边列出模板里哪些固定、哪些是默认值、哪些每次随机；右边一次抽 3 个示例买家，真人头像和姓名只出现在这里。可以切到“按某个任务的规则”抽，看规则改掉了什么。</span><br><span class="api">要补接口：试抽（复用现有的画像组合逻辑，不写库）</span></div>
+    <div><b>5. 商品只有名称、规格、价格、库存</b>学生答不出材质、尺码、运费、退换政策，评测里买家常常不满离开。<br><span class="fix">改：商品补齐 8 组信息：图片（最多 6 张）、基本信息、规格（颜色 × 尺码，各自的价格和库存）、卖点与描述、参数、尺码表、物流（发货地、备货期、各地区时效和运费）、售后与常见问题。卡片底部显示完整度，缺得多的标橙。</span><br><span class="api">要补：商品表加详情字段；买家 AI 的提示词和学生端商品详情读这些字段</span></div>
+    <div><b>6. 老师手上没有商品资料</b>现在只能手填，或者导入固定目录结构的资料包，现实中老师基本不会准备。<br><span class="fix">改：“添加商品”先选方式：粘贴链接采集（推荐）、粘贴详情页文字、从内置商品库挑选；手动填写和 Excel 批量导入放在下面一行。旧的“导入资料包”由 Excel 批量导入取代。</span><br><span class="api">要补：客户端内嵌窗口打开链接、读取页面；LLM 把页面内容整理成商品字段；内置商品库约 80 个（带图）；Excel 模板</span></div>
+  </div>
+
+  <h2>场景</h2>
+  <figure><img class="before" src="assets/59.png" alt="" style="max-width:760px"><figcaption>现在：8 个场景，每个环节 2 个</figcaption></figure>
+  <div class="cap"><b>改后 · 24 个内置场景</b><span>四列不变，卡片改紧凑；剧本完整的不再写“剧本完整”，只有缺剧本才标橙；蓝点表示这次新增（只在稿里标，上线不显示）</span></div>
+  <div class="frame" data-h="1180"><div class="screen s" data-tpl="scenes"></div></div>
+
+  <h2>买家画像</h2>
+  <figure><img class="before" src="assets/60.png" alt="" style="max-width:760px"><figcaption>现在：人名 + 真人照片，像 20 个固定客户</figcaption></figure>
+  <div class="cap"><b>改后 · 人群模板</b><span>标题是人群名，图标表示客户类型；国籍语言前写“默认”，任务的随机规则可以改掉它们；“被抽中 N 次”代替“接待 N 次”；“模板是什么”放进问号</span></div>
+  <div class="frame"><div class="screen s" data-tpl="personas"></div></div>
+  <div class="cap"><b>改后 · 试抽</b><span>左边：哪些固定、哪些是默认、哪些每次随机；右边：抽出的 3 个示例买家，第 3 个示意任务规则把情绪改成了“不满”</span></div>
+  <div class="frame"><div class="screen s" data-tpl="personaDraw"></div></div>
+
+  <h2>店铺商品</h2>
+  <div class="pair">
+    <figure><img class="before" src="assets/61.png" alt=""><figcaption>现在：卡片只有名称、规格、价格</figcaption></figure>
+    <figure><img class="before" src="assets/62.png" alt=""><figcaption>现在：添加商品只有 5 个字段</figcaption></figure>
+  </div>
+  <div class="cap"><b>改后 · 商品列表</b><span>卡片底部加详情完整度（少于 5 组标橙）；“详情不全”可以单独筛出来；图片角上标出来源</span></div>
+  <div class="frame"><div class="screen s" data-tpl="products"></div></div>
+  <div class="cap"><b>改后 · 添加商品：先选方式</b><span>三种主要方式并排，推荐“粘贴商品链接”；手动填写和 Excel 批量放在下面一行</span></div>
+  <div class="frame"><div class="screen s" data-tpl="addWays"></div></div>
+  <div class="cap"><b>改后 · 粘贴链接采集</b><span>在客户端里打开页面（遇到验证时停下来让老师点一下），读完交给 AI 整理；读不到时顶部切到“粘贴文字”</span></div>
+  <div class="frame"><div class="screen s" data-tpl="collect"></div></div>
+  <div class="cap"><b>改后 · 核对采集结果（也是商品编辑页）</b><span>左边 8 组信息带完整度，缺的标橙；右边是采集到的内容，老师核对、补齐后上架。手动添加和编辑商品也用这个抽屉</span></div>
+  <div class="frame"><div class="screen s" data-tpl="editor"></div></div>
+  <div class="cap"><b>改后 · 内置商品库</b><span>按类目挑选，勾选后一次上架；店铺里已有的变淡并标“已上架”</span></div>
+  <div class="frame"><div class="screen s" data-tpl="library"></div></div>
+  <div class="cap"><b>改后 · 店铺还没有商品</b><span>空状态直接放添加方式，不只是一句话</span></div>
+  <div class="frame"><div class="screen s" data-tpl="productsEmpty"></div></div>
+</div>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const I = (n) => `<i data-lucide="${n}"></i>`;
+const H = `<span class="help"><i data-lucide="circle-help"></i></span>`;
+const shell = (active, title, tabs, body, opts = {}) => `<div class="app">
+  <nav class="side">
+    <div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>
+    ${[["chart-column","数据总览"],["clipboard-list","实训任务"],["users-round","班级与学生"],["megaphone","通知公告"],["message-square-more","实训跟踪"],["file-chart-column","考核报表"],["boxes","场景配置"]].map(([i,l]) => `<div class="nav${l===active?" on":""}">${I(i)}${l}</div>`).join("")}
+    <div class="grow"></div><div class="foot"><div class="nav">${I("book-open")}使用帮助</div></div>
+  </nav>
+  <div class="main" style="position:relative">
+    <header class="head"><h1>${title}</h1><div class="tabs">${tabs.map(([l,on,n]) => `<span class="tab${on?" on":""}">${l}${n!=null?`<span class="n">${n}</span>`:""}</span>`).join("")}</div>
+      <div class="right">${I("bell")}<span class="av">王</span>王老师 ${I("chevron-down")}</div></header>
+    <div class="body"><div class="wrap" style="max-width:none">${body}</div></div>
+  </div>${opts.overlay || ""}</div>`;
+const A = (f) => `assets/${f}.jpg`;
+const tabsS = (a, g = 9) => [["场景", a === 0, 24], ["买家画像", a === 1, 20], ["店铺商品", a === 2, g]];
+
+/* ---------- 场景 ---------- */
+const card = (name, obj, ch, tasks, opt = {}) => `<div class="sc-card${opt.off ? " off" : ""}"><div class="t">${opt.nu ? `<span class="newdot"></span>` : ""}<b>${name}</b><span class="sw sm${opt.off ? "" : " on"}"></span></div><p>${obj}</p>
+  <div class="ft"><span>${I(ch === "mail" ? "mail" : "message-circle")}${ch === "mail" ? "邮件" : "在线会话"}</span>${opt.miss ? `<span class="warn">${I("circle-alert")}剧本缺 ${opt.miss} 项</span>` : ""}<span style="margin-left:auto">${tasks ? `${tasks} 个任务在用` : "没有任务在用"}</span></div></div>`;
+const col = (tag, cls, n, cards) => `<div><div class="col-h"><span class="tag ${cls}">${tag}</span><span class="n">${n}</span></div>${cards}<div class="sc-add">${I("copy-plus")}复制一个场景</div></div>`;
+const N = { nu: true };
+const scenes = () => shell("场景配置", "场景配置", tabsS(0), `
+  <div class="bar-row"><span class="search">${I("search")}搜索场景</span><div class="chips"><span class="chip on">全部 <i>24</i></span><span class="chip">在线会话 <i>21</i></span><span class="chip">邮件 <i>3</i></span></div>
+    <span class="small muted" style="display:inline-flex;gap:4px;align-items:center;margin-left:6px">${I("lock")}学生看不到剧本</span>
+    <div class="r"><span class="btn primary">${I("plus")}新建场景</span></div></div>
+  <div class="cols tight">
+    ${col("售前沟通", "c2", "6 个 · 全部启用",
+      card("新品咨询与卖点介绍", "识别需求，用合规英文介绍新品卖点", "chat", 1) +
+      card("尺码与适配咨询", "根据身材数据推荐尺码，说明尺码表差异", "chat", 0, N) +
+      card("运费、关税与时效咨询", "讲清运费、关税由谁承担和各地区时效", "chat", 0, N) +
+      card("议价与批量询价", "守住价格底线，给出阶梯价或赠品方案", "chat", 0, N) +
+      card("新品推广邮件", "写一封不夸大、有行动号召的推广邮件", "mail", 0, N) +
+      card("新客开发邮件", "完成新客开发邮件并修正违规宣传用语", "mail", 1))}
+    ${col("售中处理", "c1", "6 个 · 全部启用",
+      card("未付款订单催付", "不施压地说明库存保留与付款安排", "chat", 1) +
+      card("修改地址或规格", "确认是否已发货，给出能改和不能改的方案", "chat", 0, N) +
+      card("取消订单挽留", "了解取消原因，不强留，给出替代方案", "chat", 0, N) +
+      card("发货延迟说明", "主动告知延迟原因和新的发货时间", "chat", 0, N) +
+      card("清关延误安抚", "同步物流节点并安抚焦虑客户", "chat", 1) +
+      card("丢件与派送失败", "核实轨迹，协调重派、补发或退款", "chat", 0, N))}
+    ${col("售后处理", "c3", "8 个 · 7 个启用",
+      card("货损退款协商", "核实证据并提出退款、补发或补偿方案", "chat", 2) +
+      card("错发漏发处理", "确认错发事实，安排补发与退回", "chat", 0, N) +
+      card("质量争议处理", "区分质量问题和使用不当，给出合理方案", "chat", 0, N) +
+      card("退换货申请", "按政策办理换尺码或退货，说明流程和运费", "chat", 0, N) +
+      card("平台纠纷协商", "买家已开纠纷，协商撤诉并留下证据", "chat", 0, N) +
+      card("好评维系", "感谢好评，自然引导复购和晒单", "chat", 0, N) +
+      card("差评挽回", "回应负面评价并推动问题闭环", "chat", 1) +
+      card("退货地址变更（副本）", "复制自“退换货申请”，还没改", "chat", 0, { off: true, miss: 3 }))}
+    ${col("客户分层维护", "c4", "4 个 · 全部启用",
+      card("潜在意向客信任建立", "解答顾虑、展示口碑，促成首单", "chat", 0, N) +
+      card("复购老客优惠推送", "结合历史偏好推送合适的优惠", "chat", 0) +
+      card("粉丝客节日关怀", "节日问候与新品内测邀请，不硬推销", "mail", 0, N) +
+      card("沉睡客户唤醒", "以关怀和新品信息重新建立联系", "chat", 0))}
+  </div>`);
+
+/* ---------- 画像 ---------- */
+const TYPE = { 潜在意向客: ["c2", "sprout"], 复购老客: ["c1", "repeat-2"], 粉丝客: ["c4", "heart"], 沉睡客: ["", "moon"] };
+const pc = (name, place, pref, type, traits, used, on = true) => { const [c, ic] = TYPE[type]; return `<div class="pc${on ? "" : " off"}"><div class="top"><span class="tico" style="background:${c ? `var(--${c}s)` : "var(--hover)"};color:${c ? `var(--${c})` : "var(--ink-3)"}">${I(ic)}</span><div style="min-width:0"><b>${name}</b><span class="sub">默认 ${place}</span></div><span class="sw sm${on ? " on" : ""}"></span></div>
+  <div class="pref">偏好：${pref}</div>
+  <div class="traits"><span class="tag ${c}">${type}</span>${traits.map((t) => `<span class="tag">${t}</span>`).join("")}</div>
+  <div class="ln"><span>${used ? `被抽中 ${used} 次` : "还没被抽中"}</span><span>${I("ellipsis")}</span></div></div>`; };
+const personaGrid = () => `
+  <div class="bar-row"><span class="search" style="width:220px">${I("search")}搜索人群、国籍或偏好</span><div class="chips"><span class="chip on">全部 <i>20</i></span><span class="chip">潜在意向客 <i>6</i></span><span class="chip">复购老客 <i>6</i></span><span class="chip">粉丝客 <i>5</i></span><span class="chip">沉睡客 <i>3</i></span></div>
+    <span style="margin-left:2px">${H}</span>
+    <div class="r"><span class="btn">${I("dices")}试抽</span><span class="btn ghost">${I("download")}模板</span><span class="btn">${I("file-up")}批量导入</span><span class="btn primary">${I("plus")}新建模板</span></div></div>
+  <div class="pgrid">
+    ${pc("独立站零售买家", "美国 · 英语", "环保材质、快速发货", "粉丝客", ["友好健谈", "期待"], 32)}
+    ${pc("小型采购商", "德国 · 英语", "稳定供货、批量折扣", "复购老客", ["理性谨慎", "平静"], 27)}
+    ${pc("生活方式买手", "法国 · 法语", "设计感、包装质感", "潜在意向客", ["敏感挑剔", "不满"], 19)}
+    ${pc("平台个人买家", "日本 · 英语", "细节参数、售后保障", "潜在意向客", ["犹豫保守", "焦虑"], 24)}
+    ${pc("企业行政采购", "加拿大 · 英语", "发票齐全、交期准确", "复购老客", ["直接高效", "平静"], 15)}
+    ${pc("社媒内容创作者", "英国 · 英语", "新品首发、上镜效果", "粉丝客", ["友好健谈", "期待"], 21)}
+    ${pc("精品店主", "法国 · 法语", "小批量、独家款", "复购老客", ["理性谨慎", "平静"], 9)}
+    ${pc("价格敏感型买家", "西班牙 · 西班牙语", "折扣、包邮", "潜在意向客", ["直接高效", "焦虑"], 11)}
+    ${pc("户外用品爱好者", "澳大利亚 · 英语", "耐用、防水等级", "粉丝客", ["友好健谈", "期待"], 8)}
+    ${pc("小型批发商", "意大利 · 英语", "阶梯价、账期", "复购老客", ["敏感挑剔", "不满"], 14)}
+    ${pc("半年未下单的老客", "美国 · 英语", "上次买过家居小件", "沉睡客", ["犹豫保守", "平静"], 6)}
+    ${pc("礼品采购人", "英国 · 英语", "礼盒包装、准时送达", "潜在意向客", ["理性谨慎", "焦虑"], 0, false)}
+  </div>`;
+const personas = () => shell("场景配置", "场景配置", tabsS(1), personaGrid());
+const smp = (img, name, place, type, traits, chg) => { const [c] = TYPE[type]; return `<div class="smp"><div class="top"><img src="${A(img)}" alt=""><div><b>${name}</b><span class="sub">${place}</span></div></div>
+  <div class="traits"><span class="tag ${c}">${type}</span>${traits.map((t) => `<span class="tag">${t}</span>`).join("")}</div>${chg ? `<div class="chg">${chg}</div>` : ""}</div>`; };
+const personaDraw = () => shell("场景配置", "场景配置", tabsS(1), personaGrid(), { overlay: `<div class="scrim"></div>
+  <div class="dlg" style="width:1000px">
+    <div class="dh"><h3>试抽 · 独立站零售买家</h3><span class="x">${I("x")}</span></div>
+    <div class="draw" style="flex:1;min-height:0">
+      <div class="tpl-side">
+        <div class="grp2"><h5>${I("pin")}固定</h5><dl class="kv"><dt>身份</dt><dd>独立站零售买家</dd><dt>偏好</dt><dd>环保材质、快速发货</dd></dl></div>
+        <div class="grp2"><h5>${I("sliders-horizontal")}默认值 ${H}</h5><dl class="kv"><dt>国籍</dt><dd>美国</dd><dt>语言</dt><dd>英语</dd><dt>客户类型</dt><dd>粉丝客</dd><dt>性格</dt><dd>友好健谈</dd><dt>情绪</dt><dd>期待</dd></dl></div>
+        <div class="grp2"><h5>${I("shuffle")}每次随机</h5><div class="rnd"><span class="tag">姓名</span><span class="tag">性别</span><span class="tag">头像</span></div></div>
+      </div>
+      <div style="display:flex;flex-direction:column">
+        <div class="seg" style="margin:20px 24px 0;align-self:flex-start"><span>只按模板</span><span class="on">按任务「售后处理 · 第 3 周」的规则</span></div>
+        <div class="samples">
+          ${smp("f-01", "Emily Carter", "美国 · 英语", "粉丝客", ["友好健谈", "期待"])}
+          ${smp("m-03", "Ryan Brooks", "美国 · 英语", "粉丝客", ["友好健谈", "期待"])}
+          ${smp("f-05", "Sophia Hayes", "美国 · 英语", "粉丝客", ["友好健谈", "不满"], "情绪被任务规则改成了“不满”")}
+        </div>
+      </div>
+    </div>
+    <div class="df"><span class="l">${I("eye-off")}学生开始接待前看不到抽中的是谁</span><span class="btn">${I("rotate-cw")}再抽一次</span><span class="btn primary">好的</span></div>
+  </div>` });
+
+/* ---------- 商品 ---------- */
+const gc = (img, color, icon, name, spec, price, stock, full, src) => `<div class="gc"><div class="img" style="background:${color}">${img ? `<img src="${A(img)}" alt="">` : `<span style="color:rgba(22,28,38,.45)">${I(icon)}</span>`}${!img ? `<span class="st tag warn">缺图片</span>` : ""}${src ? `<span class="src tag" style="background:rgba(255,255,255,.92)">${src}</span>` : ""}</div>
+  <div class="bd"><b>${name}</b><span class="spec">${spec}</span><div class="row"><span class="price num">${price}</span><span class="stock num">库存 ${stock}</span></div>
+  <div class="full"><span>详情</span><div class="track"><i class="${full < 5 ? "warn" : ""}" style="width:${full / 8 * 100}%"></i></div><b class="num ${full < 5 ? "warn" : ""}">${full}/8</b></div></div></div>`;
+const productGrid = () => `
+  <div class="bar-row"><span class="search">${I("search")}搜索商品</span><div class="chips"><span class="chip on">全部 <i>9</i></span><span class="chip">详情不全 <i>6</i></span><span class="chip">缺图片 <i>4</i></span><span class="chip">已下架 <i>0</i></span></div>
+    <div class="r"><span class="btn primary">${I("plus")}添加商品</span></div></div>
+  <div class="ggrid">
+    ${gc("p3", "#f1f3f6", "", "Wrap V-Neck Short Sleeve Maxi Dress", "4 色 × 5 码 · 20 个规格", "$23.99", 1640, 8, "链接采集")}
+    ${gc("p1", "#f1f3f6", "", "Sleeveless Floral Print Swing Dress", "3 色 × 4 码 · 12 个规格", "$19.90", 980, 7, "链接采集")}
+    ${gc("p2", "#f1f3f6", "", "Basic Crew Neck Pullover Tee", "6 色 × 5 码 · 30 个规格", "$12.50", 2300, 8, "商品库")}
+    ${gc("", "#e8effc", "headphones", "Wireless Noise-Cancelling Earbuds", "Black / USB-C / with charging case", "$39.99", 452, 3)}
+    ${gc("", "#fbefdc", "lamp", "Smart LED String Lights 10m", "RGB / App control / IP65", "$21.50", 1210, 3)}
+    ${gc("", "#e0f3f0", "cup-soda", "Stainless Insulated Tumbler 600ml", "Matte green / double wall", "$15.80", 866, 3)}
+    ${gc("p1", "#f1f3f6", "", "Floral Midi Dress (Summer)", "2 色 × 4 码 · 8 个规格", "$21.00", 300, 4, "粘贴文字")}
+    ${gc("", "#eeeafb", "dumbbell", "Foldable Yoga Mat", "6mm / TPE / carry strap", "$18.90", 330, 3)}
+  </div>`;
+const products = () => shell("场景配置", "场景配置", tabsS(2), productGrid());
+const way = (ic, t, p, meta, rec) => `<div class="way${rec ? " rec" : ""}"><span class="wi">${I(ic)}</span><b>${t}${rec ? `<span class="tag brand" style="margin-left:8px">推荐</span>` : ""}</b><p>${p}</p><span class="meta">${meta}</span></div>`;
+const WAYS = () => `<div class="ways">
+    ${way("link", "粘贴商品链接", "粘贴速卖通、亚马逊、Shopee、1688 等平台的商品页链接，读取页面后由 AI 整理成商品信息。", "约 20 秒一个 · 消耗少量模型额度", true)}
+    ${way("clipboard-paste", "粘贴详情页文字", "链接打不开时，把详情页全选复制进来，AI 同样整理成商品信息，图片另外上传。", "任何来源都能用 · 消耗少量模型额度")}
+    ${way("library-big", "从商品库挑选", "系统内置约 80 个跨类目商品，图片和详情都已齐全，勾选后直接上架。", "不消耗额度 · 适合快速开课")}
+  </div>
+  <div class="ways-2"><div class="alt">${I("square-pen")}手动填写<span>一个一个填</span></div><div class="alt">${I("file-spreadsheet")}Excel 批量导入<span>下载模板，填好后上传</span></div></div>`;
+const addWays = () => shell("场景配置", "场景配置", tabsS(2), productGrid(), { overlay: `<div class="scrim"></div>
+  <div class="dlg" style="width:900px"><div class="dh"><h3>添加商品</h3><span class="x">${I("x")}</span></div>${WAYS()}</div>` });
+const step = (st, t, r) => `<div class="step ${st}"><span class="si">${I(st === "done" ? "check" : st === "run" ? "loader" : "circle")}</span>${t}<span class="r">${r || ""}</span></div>`;
+const collect = () => shell("场景配置", "场景配置", tabsS(2), productGrid(), { overlay: `<div class="scrim"></div>
+  <div class="dlg" style="width:760px">
+    <div class="dh"><h3>添加商品</h3><div class="seg" style="margin-left:14px"><span class="on">粘贴链接</span><span>粘贴文字</span><span>商品库</span></div><span class="x">${I("x")}</span></div>
+    <div class="collect">
+      <div class="urlbox"><div class="in">${I("link")}https://www.aliexpress.com/item/1005006812345678.html</div><span class="btn primary" style="height:40px">读取中…</span></div>
+      <div class="mini-win"><div class="bar"><i></i><i></i><i></i><span style="margin-left:6px">aliexpress.com · 正在读取页面</span></div>
+        <div class="pg"><img src="${A("p3")}" alt=""><div class="gl"><span class="hl" style="width:85%"></span><span class="hl" style="width:40%"></span><span style="width:60%"></span><span class="hl" style="width:92%"></span><span class="hl" style="width:88%"></span><span class="hl" style="width:75%"></span><span style="width:50%"></span><span class="hl" style="width:66%"></span></div></div></div>
+      <div class="steps">
+        ${step("done", "打开页面", "2.1 秒")}
+        ${step("done", "读取标题、图片、价格、规格", "6 张图 · 20 个规格")}
+        ${step("run", "AI 整理卖点、参数、尺码表、物流和售后", "约 10 秒")}
+        ${step("wait", "核对并上架")}
+      </div>
+      <div class="note">${I("info")}<span>页面要求验证时，这个窗口会停下来，手动点一下即可继续。采集的图片和文字仅限校内教学使用。</span></div>
+    </div>
+  </div>` });
+const nav = (t, s) => `<div class="${s === "on" ? "on ok" : s ? "ok" : "miss"}">${t}${I(s ? "circle-check" : "circle-alert")}</div>`;
+const editor = () => shell("场景配置", "场景配置", tabsS(2), productGrid(), { overlay: `<div class="scrim"></div>
+  <div class="drawer wide">
+    <div class="dh"><h3>核对商品信息</h3><span class="tag" style="margin-left:12px">来自链接采集</span><span class="x">${I("x")}</span></div>
+    <div class="pe">
+      <div class="pe-nav">
+        ${nav("图片", "on")}${nav("基本信息", 1)}${nav("规格与库存", 1)}${nav("卖点与描述", 1)}${nav("参数", 1)}${nav("尺码表", 1)}${nav("物流", 0)}${nav("售后与常见问题", 0)}
+        <div class="sum"><b class="num">6</b> / 8 组已填</div>
+      </div>
+      <div class="pe-body">
+        <div class="banner2">${I("circle-alert")}页面上没写物流和售后，需要你补上，否则买家问起时学生答不出。<a>查看原页面</a></div>
+        <div class="sec"><h4>图片 <span class="n">6 张，第一张是主图</span></h4>
+          <div class="thumbs"><div><img src="${A("p3")}" alt=""><span class="main-tag">主图</span></div><div><img src="${A("p3")}" alt="" style="filter:hue-rotate(150deg)"></div><div><img src="${A("p3")}" alt="" style="filter:grayscale(.7)"></div><div><img src="${A("p3")}" alt="" style="filter:sepia(.5)"></div><div><img src="${A("p3")}" alt="" style="object-position:top"></div><div><img src="${A("p3")}" alt="" style="object-position:bottom"></div><div class="add">${I("plus")}</div></div></div>
+        <div class="sec"><h4>基本信息</h4>
+          <div class="f2"><div class="field"><label>商品标题</label><div class="in">Wrap V-Neck Short Sleeve Maxi Dress</div></div><div class="field"><label>类目</label><div class="in">女装 · 连衣裙 ${I("chevron-down")}</div></div><div class="field"><label>价格（美元）</label><div class="in num">23.99</div></div></div></div>
+        <div class="sec"><h4>规格与库存 <span class="n">颜色 4 × 尺码 5 = 20 个规格</span></h4>
+          <div class="sku"><div class="dim">颜色 <span class="tag">雾蓝</span><span class="tag">米白</span><span class="tag">黑色</span><span class="tag">酒红</span><span style="width:12px"></span>尺码 <span class="tag">S</span><span class="tag">M</span><span class="tag">L</span><span class="tag">XL</span><span class="tag">XXL</span></div>
+            <div class="r h"><span>颜色</span><span>尺码</span><span>价格</span><span>库存</span><span></span></div>
+            <div class="r"><span>雾蓝</span><span>S</span><span class="num">$23.99</span><span class="num">120</span><span class="muted">${I("ellipsis")}</span></div>
+            <div class="r"><span>雾蓝</span><span>M</span><span class="num">$23.99</span><span class="num">186</span><span class="muted">${I("ellipsis")}</span></div>
+            <div class="r"><span>雾蓝</span><span>L</span><span class="num">$23.99</span><span class="num" style="color:var(--warn);font-weight:600">8</span><span class="muted">${I("ellipsis")}</span></div>
+            <div class="r" style="color:var(--ink-3);font-size:12px"><span>还有 17 个规格</span><span></span><span></span><span></span><span></span></div></div></div>
+        <div class="sec"><h4>卖点 <span class="n">5 条</span> ${H}</h4>
+          <div class="bul"><div><i>1</i>Soft breathable fabric: 95% polyester, 5% spandex</div><div><i>2</i>Adjustable wrap waist flatters every body shape</div><div><i>3</i>Flowy maxi length, perfect for beach and vacation</div></div></div>
+      </div>
+    </div>
+    <div class="df" style="justify-content:space-between"><span class="small muted">保存后可以随时再编辑</span><span style="display:flex;gap:8px"><span class="btn">存为草稿</span><span class="btn primary">上架</span></span></div>
+  </div>` });
+const lg = (img, color, icon, name, price, cat, st) => `<div class="lg${st === "sel" ? " sel" : st === "in" ? " in" : ""}"><div class="img" style="background:${color}">${img ? `<img src="${A(img)}" alt="">` : I(icon)}</div>${st === "in" ? `<span class="have tag">已上架</span>` : `<span class="ck">${st === "sel" ? I("check") : ""}</span>`}
+  <div class="bd"><b>${name}</b><div class="row"><b class="num">${price}</b><span>${cat}</span></div></div></div>`;
+const library = () => shell("场景配置", "场景配置", tabsS(2), productGrid(), { overlay: `<div class="scrim"></div>
+  <div class="drawer wide">
+    <div class="dh"><h3>从商品库挑选</h3><span class="search" style="margin-left:20px;width:240px;height:32px">${I("search")}搜索商品</span><span class="x">${I("x")}</span></div>
+    <div class="lib">
+      <div class="lib-cat"><div class="on">全部<i>82</i></div><div>女装<i>14</i></div><div>男装<i>8</i></div><div>3C 数码<i>12</i></div><div>家居日用<i>12</i></div><div>户外运动<i>10</i></div><div>美妆个护<i>9</i></div><div>宠物用品<i>7</i></div><div>母婴玩具<i>6</i></div><div>节日礼品<i>4</i></div></div>
+      <div class="lib-main"><div class="lgrid">
+        ${lg("p2", "#f1f3f6", "", "Basic Crew Neck Pullover Tee", "$12.50", "女装", "in")}
+        ${lg("", "#fae7ee", "shirt", "Linen Wide-Leg Pants", "$26.90", "女装", "sel")}
+        ${lg("", "#e8effc", "headphones", "Open-Ear Sport Earphones", "$32.00", "3C 数码", "sel")}
+        ${lg("", "#e8effc", "battery-charging", "20000mAh Power Bank", "$27.50", "3C 数码", "sel")}
+        ${lg("", "#e0f3f0", "cup-soda", "Glass Water Bottle 750ml", "$13.90", "家居日用")}
+        ${lg("", "#e0f3f0", "lamp-desk", "Dimmable LED Desk Lamp", "$29.00", "家居日用", "sel")}
+        ${lg("", "#fbefdc", "tent", "Pop-Up Beach Tent", "$45.00", "户外运动")}
+        ${lg("", "#fbefdc", "backpack", "Waterproof Hiking Daypack", "$34.90", "户外运动", "sel")}
+        ${lg("", "#fae7ee", "sparkles", "Silk Sleep Eye Mask", "$11.50", "美妆个护")}
+        ${lg("", "#eeeafb", "dog", "Slow Feeder Dog Bowl", "$14.20", "宠物用品", "sel")}
+        ${lg("", "#eeeafb", "baby", "Silicone Teething Toy Set", "$9.80", "母婴玩具")}
+        ${lg("", "#fae7ee", "gift", "Christmas Gift Box Set", "$22.00", "节日礼品")}
+      </div></div>
+    </div>
+    <div class="df" style="justify-content:space-between"><span class="small muted">上架后可以改价格和库存 ${H}</span><span style="display:flex;gap:12px;align-items:center"><span class="small" style="color:var(--ink-2)">已选 <b>6</b> 个</span><span class="btn primary">上架 6 个商品</span></span></div>
+  </div>` });
+const productsEmpty = () => shell("场景配置", "场景配置", tabsS(2, 0), `<div class="board pe-empty" style="max-width:1120px">
+  <h3>店铺里还没有商品</h3><p>学生接待时会查商品详情，买家也会围绕这些商品提问。先上架几个，再下发售前任务。</p>${WAYS()}</div>`);
+
+const T = { scenes, personas, personaDraw, products, addWays, collect, editor, library, productsEmpty };
+document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
+if (window.lucide) lucide.createIcons();
+function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const h = +(f.dataset.h || 900); s.style.height = `${h}px`; const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${h * k}px`; }); }
+fit(); addEventListener("resize", fit);
+</script>
+</body>
+</html>

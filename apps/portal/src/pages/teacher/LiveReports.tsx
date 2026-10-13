@@ -5,13 +5,8 @@ import { ASSESSMENT_DIMENSIONS } from "@cecs/contracts";
 import { ApiError, apiGet, fetchClassStudents, fetchClasses, fetchTeacherTasks, type ClassStudent, type ClassSummary, type Session, type TeacherTask } from "../../api/client";
 import { Bench, Board, Button, Callout, DataTable, HelpTip, Select, toast } from "../../ui";
 import { AttentionBoard } from "./AttentionBoard";
-import { ChartEmptyNote, DimensionBars, KpiCard, RateRing, ScoreDistribution, ScoreGauge, SCORE_BUCKETS } from "./widgets";
+import { ChartEmptyNote, DimensionBars, KpiCard, RateRing, ScoreDistribution, ScoreGauge, SCORE_BUCKETS, takeReportTask } from "./widgets";
 
-declare global {
-  interface Window {
-    desktopRuntime?: { isDesktop: boolean; savePdf?: (options: { fileName: string; landscape?: boolean }) => Promise<{ ok: boolean; filePath?: string; canceled?: boolean }> };
-  }
-}
 
 interface ReportData {
   distribution: number[];
@@ -59,7 +54,7 @@ export function LiveReports({ session, onNavigate }: { session: Session; onNavig
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [classId, setClassId] = useState<string>("");
   const [tasks, setTasks] = useState<TeacherTask[]>([]);
-  const [taskId, setTaskId] = useState<string>("");
+  const [taskId, setTaskId] = useState<string>(() => takeReportTask());
   const [data, setData] = useState<ReportData | null>(null);
   const [error, setError] = useState("");
   const [roster, setRoster] = useState<ClassStudent[]>([]);

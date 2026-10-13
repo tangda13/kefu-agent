@@ -1,3 +1,4 @@
+import type { OrderKind, ProductDetails, ProductSource } from "@cecs/contracts";
 // 生产部署走 nginx 同域反代时设 VITE_API_URL 为空字符串（API_BASE="" → 相对路径 /v1/...）；
 // 未设置则回退本地开发地址。显式空串不等于 undefined，故不用 ?? 而显式判 undefined。
 const apiUrl = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL;
@@ -17,6 +18,8 @@ export interface SessionUser {
   role: "student" | "teacher" | "admin";
   classId: string | null;
   mustChangePassword: boolean;
+  /** 头像（/uploads/avatars/...），没上传时为空，显示姓名首字 */
+  avatarUrl?: string | null;
 }
 
 export interface Session {
@@ -221,6 +224,8 @@ export interface ClassSummary {
   /** 授权任课教师（不含班主任） */
   teachers: Array<{ id: string; displayName: string }>;
   studentCount: number;
+  /** 待改密的账号数（D-35 班级清单角标） */
+  pendingPasswordCount?: number;
   createdAt: string;
 }
 
@@ -253,6 +258,11 @@ export interface ScenarioSummary {
   objective: string;
   defaultLanguage: string;
   enabled: boolean;
+  /** D-32：沟通方式（在线会话 / 邮件）与开会话时生成的订单状态（null = 按业务环节默认） */
+  channel?: "chat" | "mail";
+  orderKind?: OrderKind | null;
+  /** D-33：适用客户价值层，新建任务时预选人群范围；空 = 不限 */
+  customerTypes?: string[];
   /** 场景剧本（J5）：买家目标、隐藏信息、情绪触发点、让步底线、结束条件 */
   script: Partial<Record<"buyerGoal" | "hiddenInfo" | "emotionTriggers" | "bottomLine" | "endConditions", string>> | null;
   /** 被几个未关闭的任务使用（场景卡片显示影响面） */
@@ -424,22 +434,59 @@ export interface StoreProduct {
   tone: string;
   imageUrl?: string | null;
   enabled?: boolean;
+  /** D-32 商品详情：多图（第一张是主图）、类目、规格矩阵、卖点、参数、尺码表、物流、售后、常见问题 */
+  images?: string[];
+  category?: string | null;
+  details?: ProductDetails;
+  source?: ProductSource;
+  sourceUrl?: string | null;
+  libraryId?: string | null;
 }
 
+/** 内置商品库的一条（教师端「从商品库挑选」） */
+export interface LibraryItem {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  spec: string;
+  imageUrl: string;
+  inStore: boolean;
+}
+
+/** AI 整理出的商品草稿（链接采集 / 粘贴文字），老师核对后再上架 */
+export interface ProductDraft {
+  name: string;
+  category: string | null;
+  price: number | null;
+  details: ProductDetails;
+}
+
+/** 上传头像（已在前端裁成正方形并压缩） */
+export async function uploadMyAvatar(session: Session, image: Blob): Promise<{ avatarUrl: string }> {
+  const form = new FormData();
+  form.append("file", image, "avatar.jpg");
+  const response = await fetch(`${API_BASE}/v1/me/avatar`, { method: "POST", headers: { authorization: `Bearer ${session.accessToken}` }, body: form });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as { avatarUrl: string };
+}
+
+/** 上传一张商品图（追加到末尾；main = 放到第一张作主图） */
 export async function uploadProductImage(
   session: Session,
   productId: string,
-  file: File,
-): Promise<{ imageUrl: string }> {
+  file: Blob,
+  main = false,
+): Promise<{ imageUrl: string; images: string[] }> {
   const form = new FormData();
-  form.append("file", file);
-  const response = await fetch(`${API_BASE}/v1/store/products/${productId}/image`, {
+  form.append("file", file, file instanceof File ? file.name : "image.jpg");
+  const response = await fetch(`${API_BASE}/v1/store/products/${productId}/images${main ? "?main=1" : ""}`, {
     method: "POST",
     headers: { authorization: `Bearer ${session.accessToken}` },
     body: form,
   });
   if (!response.ok) await parseError(response);
-  return (await response.json()) as { imageUrl: string };
+  return (await response.json()) as { imageUrl: string; images: string[] };
 }
 
 export interface StoreCoupon {
@@ -1021,6 +1068,29 @@ export async function migrateLocalOnce<T>(key: string, upload: (value: T) => Pro
   }
 }
 
+/** 试抽出的示例买家（D-32） */
+export interface PersonaSample {
+  name: string;
+  templateName?: string;
+  gender: "male" | "female";
+  avatarUrl: string;
+  nationality: string;
+  language: string;
+  personality: string;
+  emotion: string;
+  customerType: string;
+}
+
+export const samplePersona = (session: Session, personaId: string, taskId?: string) =>
+  apiPost<{ samples: PersonaSample[] }>(`/v1/catalog/personas/${personaId}/sample`, session, taskId ? { taskId } : {});
+
+/** 新建任务的买家范围预览（D-33）：符合的画像和 3 个试抽结果 */
+export const previewPersonaRule = (session: Session, rule: Record<string, unknown>) =>
+  apiPost<{ matchCount: number; matched: Array<{ id: string; name: string; customerType: string }>; samples: PersonaSample[] }>("/v1/catalog/personas/preview", session, { rule });
+
+export const generatePersonaDraft = (session: Session, description: string) =>
+  apiPost<Omit<PersonaTemplate, "id" | "enabled" | "avatarUrl" | "conversationCount">>("/v1/catalog/personas/generate", session, { description });
+
 export interface PersonaTemplate {
   id: string;
   name: string;
@@ -1032,6 +1102,11 @@ export interface PersonaTemplate {
   preference: string;
   customerType: string;
   enabled: boolean;
+  /** D-33 结构化字段 */
+  buyerRole?: string | null;
+  decisionStyle?: string | null;
+  concerns?: string[];
+  note?: string | null;
   /** 列表接口附带：画像卡片头像、被用来接待过几次 */
   avatarUrl?: string;
   conversationCount?: number;

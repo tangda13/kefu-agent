@@ -28,8 +28,7 @@ import {
   loadSession,
   type GuidanceItem,
   type Session,
-  type StudentAnnouncement,
-} from "./api/client";
+  type StudentAnnouncement, saveSession } from "./api/client";
 
 /** 旧版本的指导已读状态存在本机（且不分账号），首次进入时迁到云端（K4） */
 const LEGACY_GUIDANCE_READ_KEY = "cecs.guidance.read";
@@ -204,6 +203,8 @@ export function App() {
       announcements={announcements}
       banner={adminBanner}
       badges={teacherWaiting ? { tracking: teacherWaiting } : undefined}
+      session={demo ? null : session}
+      onSessionChange={(next) => { saveSession(next); setSession(next); }}
       onSignOut={
         demo
           ? undefined

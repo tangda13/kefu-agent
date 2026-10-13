@@ -1,19 +1,31 @@
 import type { FastifyInstance } from "fastify";
 import {
+  BUYER_ROLES,
+  DECISION_STYLES,
+  PERSONA_CONCERNS,
+  PERSONA_CONCERN_MAX,
+  personaDisplayName,
+  BUSINESS_STAGES,
   CUSTOMER_TYPES,
+  ORDER_KINDS,
+  SCENARIO_CHANNELS,
   EMOTIONS,
   NATIONALITIES,
   PERSONALITIES,
   SCENARIO_SCRIPT_FIELDS,
   SUPPORTED_LANGUAGES,
 } from "@cecs/contracts";
-import { ensurePersonaAvatar } from "@cecs/domain";
+import { composePersonaWithRule, derivePersonaLegacy, filterPersonaTemplates, trainingScenarios, type PersonaRule } from "@cecs/domain";
+
+/** 场景卡片按内置定义的顺序排（同一环节里由浅入深），老师新建的排在后面 */
+const BUILTIN_SCENARIO_ORDER = trainingScenarios.map((item) => item.id);
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import { writeAudit } from "../auth-context";
 import type { LlmGateway } from "../llm/gateway";
 import { buildMailComposeDraftMessages, buildMailReplyDraftMessages, mailDraftsSchema } from "../prompts/assist";
 import { generateBuyerMailReply } from "../mail-reply";
+import { buildPersonaDraftMessages, personaDraftSchema } from "../prompts/catalog";
 
 interface PersonaBody {
   id?: string;
@@ -26,19 +38,51 @@ interface PersonaBody {
   preference?: string;
   customerType?: string;
   enabled?: boolean;
+  buyerRole?: string | null;
+  decisionStyle?: string | null;
+  concerns?: string[];
+  note?: string | null;
 }
 
-function validatePersona(body: PersonaBody): string | null {
-  if (!body.name?.trim()) return "缺少买家姓名";
-  if (!body.identity?.trim()) return "缺少买家身份";
-  if (!body.preference?.trim()) return "缺少消费偏好";
-  if (!NATIONALITIES.includes(body.nationality as never)) return "国籍不在支持范围";
-  if (!PERSONALITIES.includes(body.personality as never)) return "性格不在支持范围";
-  if (!EMOTIONS.includes(body.emotion as never)) return "情绪不在支持范围";
-  if (!SUPPORTED_LANGUAGES.includes(body.language as never)) return "语言不在支持范围";
-  if (!CUSTOMER_TYPES.includes(body.customerType as never)) return "客户类型不在支持范围";
-  return null;
+/** 画像入参清洗（D-33）：结构化字段必填并校验；名称不填时用“决策风格 + 买家角色”；identity / preference 由结构化字段派生 */
+function normalizePersona(body: PersonaBody): { problem: string | null; values: Required<Omit<PersonaBody, "id">> } {
+  const concerns = Array.isArray(body.concerns) ? [...new Set(body.concerns.filter((item) => PERSONA_CONCERNS.includes(item as never)))] : [];
+  const note = typeof body.note === "string" ? body.note.trim().slice(0, 120) : "";
+  const buyerRole = BUYER_ROLES.includes(body.buyerRole as never) ? (body.buyerRole as string) : null;
+  const decisionStyle = DECISION_STYLES.includes(body.decisionStyle as never) ? (body.decisionStyle as string) : null;
+  const legacy = derivePersonaLegacy({ buyerRole, concerns, note, identity: body.identity, preference: body.preference });
+  const values = {
+    name: (body.name?.trim() || personaDisplayName(decisionStyle, buyerRole)).slice(0, 30),
+    nationality: body.nationality ?? "",
+    identity: legacy.identity,
+    personality: body.personality ?? "",
+    emotion: body.emotion ?? "",
+    language: body.language ?? "",
+    preference: legacy.preference,
+    customerType: body.customerType ?? "",
+    enabled: body.enabled ?? true,
+    buyerRole,
+    decisionStyle,
+    concerns,
+    note,
+  };
+  let problem: string | null = null;
+  if (!buyerRole) problem = "请选择买家角色";
+  else if (!decisionStyle) problem = "请选择决策风格";
+  else if (!CUSTOMER_TYPES.includes(values.customerType as never)) problem = "请选择客户价值层";
+  else if (!concerns.length) problem = "至少选一个关注点";
+  else if (concerns.length > PERSONA_CONCERN_MAX) problem = `关注点最多选 ${PERSONA_CONCERN_MAX} 个`;
+  else if (!NATIONALITIES.includes(values.nationality as never)) problem = "国籍不在支持范围";
+  else if (!PERSONALITIES.includes(values.personality as never)) problem = "性格不在支持范围";
+  else if (!EMOTIONS.includes(values.emotion as never)) problem = "情绪不在支持范围";
+  else if (!SUPPORTED_LANGUAGES.includes(values.language as never)) problem = "语言不在支持范围";
+  return { problem, values };
 }
+
+const personaColumns = "name, nationality, identity, personality, emotion, language, preference, customer_type, enabled, buyer_role, decision_style, concerns, note";
+const personaParams = (v: ReturnType<typeof normalizePersona>["values"]) => [
+  v.name, v.nationality, v.identity, v.personality, v.emotion, v.language, v.preference, v.customerType, v.enabled, v.buyerRole, v.decisionStyle, JSON.stringify(v.concerns), v.note,
+];
 
 function personaRowToJson(row: Record<string, unknown>) {
   return {
@@ -52,7 +96,36 @@ function personaRowToJson(row: Record<string, unknown>) {
     preference: row.preference,
     customerType: row.customer_type,
     enabled: row.enabled,
+    buyerRole: (row.buyer_role as string | null) ?? null,
+    decisionStyle: (row.decision_style as string | null) ?? null,
+    concerns: (row.concerns as string[] | null) ?? [],
+    note: (row.note as string | null) ?? null,
   };
+}
+
+/** 抽取用的模板形状（DB 行 → 领域对象） */
+function personaRowToTemplate(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    identity: String(row.identity ?? ""),
+    preference: String(row.preference ?? ""),
+    customerType: String(row.customer_type ?? ""),
+    nationality: row.nationality as string,
+    personality: row.personality as string,
+    emotion: row.emotion as string,
+    language: row.language as string,
+    buyerRole: (row.buyer_role as string | null) ?? null,
+    decisionStyle: (row.decision_style as string | null) ?? null,
+    concerns: (row.concerns as string[] | null) ?? [],
+    note: (row.note as string | null) ?? null,
+  };
+}
+
+/** 读取全部启用的画像模板（任务规则预览、开会话抽取共用） */
+export async function loadEnabledPersonaTemplates(db: Db) {
+  const result = await db.query("select * from persona_templates where enabled order by id");
+  return result.rows.map(personaRowToTemplate);
 }
 
 export function registerCatalogRoutes(
@@ -68,9 +141,11 @@ export function registerCatalogRoutes(
       /* 剧本只给 AI 买家和老师看：学生请求不返回 script；taskCount = 被几个未关闭的任务使用（场景卡片显示影响面） */
       const isStudent = request.user!.role === "student";
       const result = await db.query(
-        `select s.id, s.name, s.stage, s.objective, s.default_language, s.enabled, s.script,
+        `select s.id, s.name, s.stage, s.objective, s.default_language, s.enabled, s.script, s.channel, s.order_kind, s.customer_types,
                 (select count(*) from tasks t where t.status <> 'closed' and t.scenario_ids ? s.id) as task_count
-         from scenarios s order by s.id`,
+         from scenarios s
+         order by array_position($1::text[], s.id) nulls last, s.id`,
+        [BUILTIN_SCENARIO_ORDER],
       );
       return result.rows.map((row) => ({
         id: row.id,
@@ -79,6 +154,9 @@ export function registerCatalogRoutes(
         objective: row.objective,
         defaultLanguage: row.default_language,
         enabled: row.enabled,
+        channel: row.channel ?? "chat",
+        orderKind: row.order_kind ?? null,
+        customerTypes: (row.customer_types as string[] | null) ?? [],
         script: isStudent ? null : row.script ?? null,
         taskCount: Number(row.task_count),
       }));
@@ -87,29 +165,56 @@ export function registerCatalogRoutes(
 
   // 启停场景 / 修改场景剧本（J5）。两项可分别提交
   // D6：复制一个场景再定制（内置场景本身也能改，复制是为了保留原版）
-  app.post<{ Body: { fromId?: string; name?: string } }>(
+  app.post<{ Body: { fromId?: string; name?: string; stage?: string; objective?: string; channel?: string; orderKind?: string } }>(
     "/v1/catalog/scenarios",
     { preHandler: guard.requireRole("teacher", "admin") },
     async (request, reply) => {
-      const source = await db.query("select * from scenarios where id = $1", [request.body?.fromId ?? ""]);
-      const row = source.rows[0];
-      if (!row) {
-        reply.code(404);
-        return { code: "NOT_FOUND", message: "要复制的场景不存在。" };
-      }
-      const name = (request.body?.name?.trim() || `${row.name}（副本）`).slice(0, 40);
+      const body = request.body ?? {};
       const id = `SC-${Date.now().toString(36).toUpperCase()}`;
+      if (body.fromId) {
+        const source = await db.query("select * from scenarios where id = $1", [body.fromId]);
+        const row = source.rows[0];
+        if (!row) {
+          reply.code(404);
+          return { code: "NOT_FOUND", message: "要复制的场景不存在。" };
+        }
+        const name = (body.name?.trim() || `${row.name}（副本）`).slice(0, 40);
+        await db.query(
+          `insert into scenarios (id, name, stage, objective, default_language, enabled, script, channel, order_kind, customer_types)
+           values ($1, $2, $3, $4, $5, true, $6, $7, $8, $9)`,
+          [id, name, row.stage, row.objective, row.default_language, row.script ? JSON.stringify(row.script) : null, row.channel, row.order_kind, JSON.stringify(row.customer_types ?? [])],
+        );
+        await writeAudit(db, request.user!.sub, "scenario.copy", id, { from: row.id });
+        return { id, name };
+      }
+      // D-32：从空白新建（剧本留空，老师在编辑抽屉里补）
+      const name = body.name?.trim() ?? "";
+      const objective = body.objective?.trim() ?? "";
+      if (!name || name.length > 40) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "场景名称 1–40 个字。" };
+      }
+      if (!objective || objective.length > 300) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "训练目标 1–300 个字。" };
+      }
+      if (!BUSINESS_STAGES.includes(body.stage as never)) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "请选择业务环节。" };
+      }
+      const channel = SCENARIO_CHANNELS.includes(body.channel as never) ? body.channel : "chat";
+      const orderKind = ORDER_KINDS.includes(body.orderKind as never) ? body.orderKind : null;
       await db.query(
-        `insert into scenarios (id, name, stage, objective, default_language, enabled, script)
-         values ($1, $2, $3, $4, $5, true, $6)`,
-        [id, name, row.stage, row.objective, row.default_language, row.script ? JSON.stringify(row.script) : null],
+        `insert into scenarios (id, name, stage, objective, default_language, enabled, channel, order_kind)
+         values ($1, $2, $3, $4, 'en-US', true, $5, $6)`,
+        [id, name, body.stage, objective, channel, orderKind],
       );
-      await writeAudit(db, request.user!.sub, "scenario.copy", id, { from: row.id });
+      await writeAudit(db, request.user!.sub, "scenario.create", id);
       return { id, name };
     },
   );
 
-  app.patch<{ Params: { scenarioId: string }; Body: { enabled?: boolean; script?: Record<string, unknown>; name?: string; objective?: string } }>(
+  app.patch<{ Params: { scenarioId: string }; Body: { enabled?: boolean; script?: Record<string, unknown>; name?: string; objective?: string; channel?: string; orderKind?: string | null; customerTypes?: string[] } }>(
     "/v1/catalog/scenarios/:scenarioId",
     { preHandler: guard.requireRole("teacher", "admin") },
     async (request, reply) => {
@@ -117,7 +222,22 @@ export function registerCatalogRoutes(
       const { enabled, script } = request.body ?? {};
       const name = request.body?.name?.trim();
       const objective = request.body?.objective?.trim();
-      if (typeof enabled !== "boolean" && script === undefined && name === undefined && objective === undefined) {
+      const channel = request.body?.channel;
+      const orderKind = request.body?.orderKind;
+      const customerTypes = request.body?.customerTypes;
+      if (customerTypes !== undefined && (!Array.isArray(customerTypes) || customerTypes.some((item) => !CUSTOMER_TYPES.includes(item as never)))) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "客户价值层无效。" };
+      }
+      if (channel !== undefined && !SCENARIO_CHANNELS.includes(channel as never)) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "沟通方式无效。" };
+      }
+      if (orderKind !== undefined && orderKind !== null && !ORDER_KINDS.includes(orderKind as never)) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "订单状态无效。" };
+      }
+      if (typeof enabled !== "boolean" && script === undefined && name === undefined && objective === undefined && channel === undefined && orderKind === undefined && customerTypes === undefined) {
         reply.code(400);
         return { code: "INVALID_INPUT", message: "没有要修改的内容。" };
       }
@@ -154,9 +274,12 @@ export function registerCatalogRoutes(
            enabled = coalesce($1, enabled),
            script = case when $3 then $2::jsonb else script end,
            name = coalesce($5, name),
-           objective = coalesce($6, objective)
+           objective = coalesce($6, objective),
+           channel = coalesce($7, channel),
+           order_kind = case when $9 then $8 else order_kind end,
+           customer_types = coalesce($10::jsonb, customer_types)
          where id = $4 returning id`,
-        [typeof enabled === "boolean" ? enabled : null, cleanScript ? JSON.stringify(cleanScript) : null, cleanScript !== null, scenarioId, name ?? null, objective ?? null],
+        [typeof enabled === "boolean" ? enabled : null, cleanScript ? JSON.stringify(cleanScript) : null, cleanScript !== null, scenarioId, name ?? null, objective ?? null, channel ?? null, orderKind ?? null, orderKind !== undefined, customerTypes ? JSON.stringify([...new Set(customerTypes)]) : null],
       );
       if (!result.rowCount) {
         reply.code(404);
@@ -164,7 +287,9 @@ export function registerCatalogRoutes(
       }
       if (typeof enabled === "boolean") await writeAudit(db, request.user!.sub, "scenario.toggle", scenarioId, { enabled });
       if (cleanScript) await writeAudit(db, request.user!.sub, "scenario.script_update", scenarioId);
-      if (name !== undefined || objective !== undefined) await writeAudit(db, request.user!.sub, "scenario.update", scenarioId, { name, objective });
+      if (name !== undefined || objective !== undefined || channel !== undefined || orderKind !== undefined || customerTypes !== undefined) {
+        await writeAudit(db, request.user!.sub, "scenario.update", scenarioId, { name, objective, channel, orderKind, customerTypes });
+      }
       return { ok: true };
     },
   );
@@ -239,120 +364,6 @@ export function registerCatalogRoutes(
     },
   );
 
-  // 店铺商品（DB 维护，教师端场景配置可增删改启停 CFG-05）
-  app.get<{ Querystring: { all?: string } }>(
-    "/v1/store/products",
-    { preHandler: guard.requireRole() },
-    async (request) => {
-      const showAll = request.query.all === "1" && request.user!.role !== "student";
-      const result = await db.query(
-        `select * from store_products ${showAll ? "" : "where enabled"} order by id`,
-      );
-      return result.rows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        spec: row.spec,
-        price: Number(row.price),
-        sales: row.sales,
-        stock: row.stock,
-        tone: row.tone,
-        enabled: row.enabled,
-        imageUrl: row.image_url ?? null,
-      }));
-    },
-  );
-
-  // 商品主图上传（multipart 单文件）
-  app.post<{ Params: { productId: string } }>(
-    "/v1/store/products/:productId/image",
-    { preHandler: guard.requireRole("teacher", "admin") },
-    async (request, reply) => {
-      const exists = await db.query("select 1 from store_products where id = $1", [request.params.productId]);
-      if (!exists.rowCount) {
-        reply.code(404);
-        return { code: "NOT_FOUND", message: "商品不存在。" };
-      }
-      const file = await request.file();
-      if (!file || !/^image\/(png|jpe?g|webp)$/.test(file.mimetype)) {
-        reply.code(400);
-        return { code: "INVALID_INPUT", message: "请上传 png/jpg/webp 图片。" };
-      }
-      const path = await import("node:path");
-      const { createWriteStream } = await import("node:fs");
-      const { pipeline } = await import("node:stream/promises");
-      const ext = file.mimetype === "image/png" ? "png" : file.mimetype === "image/webp" ? "webp" : "jpg";
-      const fileName = `${request.params.productId}-${Date.now()}.${ext}`;
-      const target = path.resolve(process.cwd(), "uploads", "products", fileName);
-      await pipeline(file.file, createWriteStream(target));
-      const imageUrl = `/uploads/products/${fileName}`;
-      await db.query("update store_products set image_url = $1 where id = $2", [imageUrl, request.params.productId]);
-      await writeAudit(db, request.user!.sub, "product.image", request.params.productId);
-      return { ok: true, imageUrl };
-    },
-  );
-
-  app.post<{ Body: { id?: string; name?: string; spec?: string; price?: number; sales?: number; stock?: number; tone?: string } }>(
-    "/v1/store/products",
-    { preHandler: guard.requireRole("teacher", "admin") },
-    async (request, reply) => {
-      const body = request.body ?? {};
-      if (!body.name?.trim() || !body.spec?.trim() || typeof body.price !== "number" || body.price <= 0) {
-        reply.code(400);
-        return { code: "INVALID_INPUT", message: "请填写商品名称、规格与正数价格。" };
-      }
-      const id = body.id?.trim() || `SKU-${Date.now().toString(36).toUpperCase()}`;
-      try {
-        await db.query(
-          `insert into store_products (id, name, spec, price, sales, stock, tone)
-           values ($1, $2, $3, $4, $5, $6, $7)`,
-          [id, body.name.trim(), body.spec.trim(), body.price, body.sales ?? 0, body.stock ?? 0, body.tone ?? "#2f6f8f"],
-        );
-      } catch (error: unknown) {
-        if ((error as { code?: string }).code === "23505") {
-          reply.code(409);
-          return { code: "PRODUCT_EXISTS", message: "商品编号已存在。" };
-        }
-        throw error;
-      }
-      await writeAudit(db, request.user!.sub, "product.create", id);
-      return { ok: true, id };
-    },
-  );
-
-  app.patch<{ Params: { productId: string }; Body: Record<string, unknown> }>(
-    "/v1/store/products/:productId",
-    { preHandler: guard.requireRole("teacher", "admin") },
-    async (request, reply) => {
-      const body = request.body ?? {};
-      const result = await db.query(
-        `update store_products set
-           name = coalesce($1, name), spec = coalesce($2, spec), price = coalesce($3, price),
-           sales = coalesce($4, sales), stock = coalesce($5, stock), enabled = coalesce($6, enabled)
-         where id = $7 returning id`,
-        [body.name ?? null, body.spec ?? null, body.price ?? null, body.sales ?? null, body.stock ?? null, body.enabled ?? null, request.params.productId],
-      );
-      if (!result.rowCount) {
-        reply.code(404);
-        return { code: "NOT_FOUND", message: "商品不存在。" };
-      }
-      await writeAudit(db, request.user!.sub, "product.update", request.params.productId);
-      return { ok: true };
-    },
-  );
-
-  app.delete<{ Params: { productId: string } }>(
-    "/v1/store/products/:productId",
-    { preHandler: guard.requireRole("teacher", "admin") },
-    async (request, reply) => {
-      const result = await db.query("delete from store_products where id = $1 returning id", [request.params.productId]);
-      if (!result.rowCount) {
-        reply.code(404);
-        return { code: "NOT_FOUND", message: "商品不存在。" };
-      }
-      await writeAudit(db, request.user!.sub, "product.delete", request.params.productId);
-      return { ok: true };
-    },
-  );
   // 邮件模板与违规词库（前端实时检测用）
   app.get(
     "/v1/catalog/mail-templates",
@@ -557,17 +568,101 @@ export function registerCatalogRoutes(
     "/v1/catalog/personas",
     { preHandler: guard.requireRole("teacher", "admin") },
     async () => {
-      /* conversationCount：这个画像被用来接待过几次（画像卡片底部显示） */
+      /* conversationCount：这个画像被抽中过几次（画像卡片底部显示） */
       const result = await db.query(
         `select p.*, (select count(*) from conversations c where c.persona->>'sourceTemplateId' = p.id) as conversation_count
          from persona_templates p order by p.id`,
       );
-      return result.rows.map((row) => ({
-        ...personaRowToJson(row),
-        conversationCount: Number(row.conversation_count),
-        /* 画像卡片头像：按画像编号固定挑一张，同一画像每次都是同一张 */
-        avatarUrl: ensurePersonaAvatar({ sourceTemplateId: String(row.id), name: String(row.name) }, String(row.id)).avatarUrl,
-      }));
+      return result.rows.map((row) => ({ ...personaRowToJson(row), conversationCount: Number(row.conversation_count) }));
+    },
+  );
+
+  const sampleView = (item: ReturnType<typeof composePersonaWithRule>) => ({
+    name: item.name,
+    gender: item.gender,
+    avatarUrl: item.avatarUrl,
+    templateName: item.templateName ?? "",
+    nationality: item.nationality,
+    language: item.language,
+    personality: item.personality,
+    emotion: item.emotion,
+    customerType: item.customerType,
+  });
+
+  // 试抽（单个模板）：可选再套某个任务的随机规则，组合 3 个示例买家，不写库
+  app.post<{ Params: { personaId: string }; Body: { taskId?: string } }>(
+    "/v1/catalog/personas/:personaId/sample",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request, reply) => {
+      const result = await db.query("select * from persona_templates where id = $1", [request.params.personaId]);
+      const row = result.rows[0];
+      if (!row) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "画像不存在。" };
+      }
+      let rule: PersonaRule = {};
+      const taskId = request.body?.taskId;
+      if (taskId) {
+        const user = request.user!;
+        const task = await db.query(
+          `select t.persona_rule from tasks t where t.id = $1 and ($2::boolean or t.created_by = $3 or exists (
+             select 1 from task_classes tc join teacher_classes tcls on tcls.class_id = tc.class_id
+             where tc.task_id = t.id and tcls.teacher_id = $3))`,
+          [taskId, user.role === "admin", user.sub],
+        );
+        if (!task.rows[0]) {
+          reply.code(404);
+          return { code: "NOT_FOUND", message: "任务不存在。" };
+        }
+        // 单个模板试抽只套用“每次随机变化的”部分，人群范围不参与
+        const { nationalityPool, personalityPool, emotionPool, languages } = (task.rows[0].persona_rule ?? {}) as PersonaRule;
+        rule = { nationalityPool, personalityPool, emotionPool, languages };
+      }
+      const template = personaRowToTemplate(row);
+      return { samples: Array.from({ length: 3 }, () => sampleView(composePersonaWithRule([template], rule))) };
+    },
+  );
+
+  // D-33 新建任务里的画像规则预览：符合的模板数量、名称和 3 个试抽结果
+  app.post<{ Body: { rule?: PersonaRule } }>(
+    "/v1/catalog/personas/preview",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request) => {
+      const rule = (request.body?.rule ?? {}) as PersonaRule;
+      const templates = await loadEnabledPersonaTemplates(db);
+      const matched = filterPersonaTemplates(templates, rule);
+      return {
+        matchCount: matched.length,
+        matched: matched.map((item) => ({ id: item.id, name: item.name, customerType: item.customerType })),
+        samples: matched.length ? Array.from({ length: 3 }, () => sampleView(composePersonaWithRule(templates, rule))) : [],
+      };
+    },
+  );
+
+  // AI 生成画像：按老师的一句话描述生成一个模板草稿（结构化字段），返回给表单，由老师确认后再保存
+  app.post<{ Body: { description?: string } }>(
+    "/v1/catalog/personas/generate",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request, reply) => {
+      if (!gateway.isConfigured("assist")) {
+        reply.code(503);
+        return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "请由管理员配置 LLM 服务。" };
+      }
+      const description = String(request.body?.description ?? "").slice(0, 300);
+      const existing = await db.query("select name from persona_templates order by id");
+      try {
+        const { data } = await gateway.completeJson(
+          "assist",
+          buildPersonaDraftMessages({ description, existingNames: existing.rows.map((item) => String(item.name)) }),
+          personaDraftSchema,
+          { temperature: 0.9, maxTokens: 400 },
+        );
+        return { ...data, concerns: data.concerns.slice(0, PERSONA_CONCERN_MAX), name: personaDisplayName(data.decisionStyle, data.buyerRole) };
+      } catch (error) {
+        request.log.error(error, "persona generate failed");
+        reply.code(502);
+        return { code: "GENERATE_FAILED", message: "生成失败，请稍后重试或换个描述。" };
+      }
     },
   );
 
@@ -576,7 +671,7 @@ export function registerCatalogRoutes(
     { preHandler: guard.requireRole("teacher", "admin") },
     async (request, reply) => {
       const body = request.body ?? {};
-      const problem = validatePersona(body);
+      const { problem, values } = normalizePersona(body);
       if (problem) {
         reply.code(400);
         return { code: "INVALID_INPUT", message: problem };
@@ -584,22 +679,8 @@ export function registerCatalogRoutes(
       const id = body.id?.trim() || `P-${Date.now().toString(36).toUpperCase()}`;
       try {
         const result = await db.query(
-          `insert into persona_templates
-             (id, name, nationality, identity, personality, emotion, language, preference, customer_type, enabled)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-           returning *`,
-          [
-            id,
-            body.name!.trim(),
-            body.nationality,
-            body.identity!.trim(),
-            body.personality,
-            body.emotion,
-            body.language,
-            body.preference!.trim(),
-            body.customerType,
-            body.enabled ?? true,
-          ],
+          `insert into persona_templates (id, ${personaColumns}) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning *`,
+          [id, ...personaParams(values)],
         );
         await writeAudit(db, request.user!.sub, "persona.create", id);
         return personaRowToJson(result.rows[0]);
@@ -618,49 +699,28 @@ export function registerCatalogRoutes(
     { preHandler: guard.requireRole("teacher", "admin") },
     async (request, reply) => {
       const { personaId } = request.params;
-      const existing = await db.query(
-        "select * from persona_templates where id = $1",
-        [personaId],
-      );
+      const existing = await db.query("select * from persona_templates where id = $1", [personaId]);
       const current = existing.rows[0];
       if (!current) {
         reply.code(404);
         return { code: "NOT_FOUND", message: "画像不存在。" };
       }
-      const merged: PersonaBody = {
-        name: request.body?.name ?? current.name,
-        nationality: request.body?.nationality ?? current.nationality,
-        identity: request.body?.identity ?? current.identity,
-        personality: request.body?.personality ?? current.personality,
-        emotion: request.body?.emotion ?? current.emotion,
-        language: request.body?.language ?? current.language,
-        preference: request.body?.preference ?? current.preference,
-        customerType: request.body?.customerType ?? current.customer_type,
-        enabled: request.body?.enabled ?? current.enabled,
-      };
-      const problem = validatePersona(merged);
+      const body = request.body ?? {};
+      // 只改启停：旧结构的画像（还没选角色和风格）也能开关
+      if (Object.keys(body).length === 1 && typeof body.enabled === "boolean") {
+        const result = await db.query("update persona_templates set enabled = $1 where id = $2 returning *", [body.enabled, personaId]);
+        await writeAudit(db, request.user!.sub, "persona.toggle", personaId, { enabled: body.enabled });
+        return personaRowToJson(result.rows[0]);
+      }
+      const merged: PersonaBody = { ...personaRowToJson(current), ...body } as PersonaBody;
+      const { problem, values } = normalizePersona(merged);
       if (problem) {
         reply.code(400);
         return { code: "INVALID_INPUT", message: problem };
       }
       const result = await db.query(
-        `update persona_templates
-         set name = $1, nationality = $2, identity = $3, personality = $4, emotion = $5,
-             language = $6, preference = $7, customer_type = $8, enabled = $9
-         where id = $10
-         returning *`,
-        [
-          merged.name!.trim(),
-          merged.nationality,
-          merged.identity!.trim(),
-          merged.personality,
-          merged.emotion,
-          merged.language,
-          merged.preference!.trim(),
-          merged.customerType,
-          merged.enabled,
-          personaId,
-        ],
+        `update persona_templates set (${personaColumns}) = ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) where id = $14 returning *`,
+        [...personaParams(values), personaId],
       );
       await writeAudit(db, request.user!.sub, "persona.update", personaId);
       return personaRowToJson(result.rows[0]);
@@ -672,10 +732,7 @@ export function registerCatalogRoutes(
     { preHandler: guard.requireRole("teacher", "admin") },
     async (request, reply) => {
       const { personaId } = request.params;
-      const result = await db.query(
-        "delete from persona_templates where id = $1 returning id",
-        [personaId],
-      );
+      const result = await db.query("delete from persona_templates where id = $1 returning id", [personaId]);
       if (!result.rowCount) {
         reply.code(404);
         return { code: "NOT_FOUND", message: "画像不存在。" };
@@ -697,7 +754,7 @@ export function registerCatalogRoutes(
       const created: string[] = [];
       const failed: Array<{ index: number; reason: string }> = [];
       for (const [index, body] of rows.entries()) {
-        const problem = validatePersona(body);
+        const { problem, values } = normalizePersona(body);
         if (problem) {
           failed.push({ index, reason: problem });
           continue;
@@ -705,35 +762,16 @@ export function registerCatalogRoutes(
         const id = body.id?.trim() || `P-${Date.now().toString(36).toUpperCase()}-${index}`;
         try {
           await db.query(
-            `insert into persona_templates
-               (id, name, nationality, identity, personality, emotion, language, preference, customer_type, enabled)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [
-              id,
-              body.name!.trim(),
-              body.nationality,
-              body.identity!.trim(),
-              body.personality,
-              body.emotion,
-              body.language,
-              body.preference!.trim(),
-              body.customerType,
-              body.enabled ?? true,
-            ],
+            `insert into persona_templates (id, ${personaColumns}) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            [id, ...personaParams(values)],
           );
           created.push(id);
         } catch (error: unknown) {
-          if ((error as { code?: string }).code === "23505") {
-            failed.push({ index, reason: "画像编号已存在" });
-          } else {
-            throw error;
-          }
+          if ((error as { code?: string }).code === "23505") failed.push({ index, reason: "画像编号已存在" });
+          else throw error;
         }
       }
-      await writeAudit(db, request.user!.sub, "persona.import", undefined, {
-        created: created.length,
-        failed: failed.length,
-      });
+      await writeAudit(db, request.user!.sub, "persona.import", undefined, { created: created.length, failed: failed.length });
       return { created, failed };
     },
   );

@@ -13,7 +13,7 @@ import { LiveTracking } from "./LiveTracking";
 import { LiveReports } from "./LiveReports";
 
 export function TeacherPages({ page, session, onNavigate }: { page: string; session?: Session | null; onNavigate?: (page: string) => void }) {
-  if (page === "assignments") return session ? <LiveAssignments session={session} /> : <Assignments />;
+  if (page === "assignments") return session ? <LiveAssignments session={session} onNavigate={onNavigate} /> : <Assignments />;
   if (page === "classes") return session ? <LiveClasses session={session} /> : <Classes />;
   if (page === "notices") return session ? <LiveNotices session={session} /> : <Notices />;
   if (page === "tracking") return session ? <LiveTracking session={session} onNavigate={onNavigate} /> : <Tracking />;

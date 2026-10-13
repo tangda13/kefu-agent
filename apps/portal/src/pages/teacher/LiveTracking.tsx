@@ -1,13 +1,14 @@
-import { Archive, Clock, Download, Lightbulb, List, Lock, MonitorPlay, Send } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Archive, Clock, Download, Lightbulb, List, Lock, MessagesSquare, MonitorPlay, Send, Target } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ASSESSMENT_DIMENSIONS } from "@cecs/contracts";
 import {
   ApiError, apiGet, apiPost, apiRequestPatch, assetUrl,
   type BuyerPublicView, type ConversationMessage, type Session,
 } from "../../api/client";
 import { BuyerAvatar } from "../../components/BuyerAvatar";
+import { UserAvatar } from "../../components/AccountCenter";
 import {
-  Bench, Board, Button, Drawer, Empty, Field, FilterChips, HeaderTabs, Input, MoreMenu, SearchBox, Tag, Textarea, Toolbar, toast,
+  Bench, Board, Button, Drawer, Empty, Field, FilterChips, HeaderTabs, HelpTip, Input, MoreMenu, SearchBox, Tag, Textarea, Toolbar, toast,
 } from "../../ui";
 import { formatIdle, takeReplaySearch, takeTrackingTab } from "./widgets";
 
@@ -38,10 +39,14 @@ interface TrackingItem {
   personality?: string | null;
   emotion?: string | null;
   satisfactionTrend?: number[];
+  studentAvatarUrl?: string | null;
   scoreTrend?: number[];
   objective?: string | null;
   buyerGoal?: string | null;
   bottomLine?: string | null;
+  hiddenInfo?: string | null;
+  emotionTriggers?: string | null;
+  endConditions?: string | null;
 }
 
 const LANGUAGE_NAMES: Record<string, string> = { "en-US": "英语", "es-ES": "西班牙语", "fr-FR": "法语" };
@@ -159,25 +164,32 @@ export function LiveTracking({ session, onNavigate }: { session: Session; onNavi
 
 // ---------- 实时监控 ----------
 
-/** 满意度走势：两轮以上才画 */
-function Sparkline({ values }: { values: number[] }) {
-  if (values.length < 2) return null;
+/** 现场走势：满意度（实线）+ 实时得分（虚线）；不足两轮时画虚线骨架，结构不随数据有无变化 */
+function TrendChart({ satisfaction, score }: { satisfaction: number[]; score: number[] }) {
   const width = 240;
-  const height = 40;
-  const points = values.map((value, index) => `${(index / (values.length - 1)) * width},${height - 4 - (Math.max(0, Math.min(100, value)) / 100) * (height - 8)}`);
-  const down = values[values.length - 1]! < values[0]!;
-  const color = down ? "var(--c-danger)" : "var(--c-brand)";
+  const height = 64;
+  const toPoints = (values: number[]) => values.map((value, index) => `${(index / Math.max(1, values.length - 1)) * width},${height - 6 - (Math.max(0, Math.min(100, value)) / 100) * (height - 12)}`).join(" ");
+  const ready = satisfaction.length >= 2;
+  const down = ready && satisfaction[satisfaction.length - 1]! < satisfaction[0]!;
   return (
-    <svg className="mon-spark" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-      <polyline points={`0,${height} ${points.join(" ")} ${width},${height}`} fill={down ? "var(--c-danger-wash)" : "var(--c-brand-soft)"} stroke="none" />
-      <polyline points={points.join(" ")} fill="none" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+    <svg className="mon-trend" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+      {[0.25, 0.5, 0.75].map((ratio) => <line key={ratio} x1={0} x2={width} y1={height * ratio} y2={height * ratio} className="mon-trend-grid" />)}
+      <line x1={0} x2={width} y1={height - 6 - 0.6 * (height - 12)} y2={height - 6 - 0.6 * (height - 12)} className="mon-trend-pass" />
+      {ready ? (
+        <>
+          <polyline points={`0,${height} ${toPoints(satisfaction)} ${width},${height}`} fill={down ? "var(--c-danger-wash)" : "var(--c-brand-soft)"} stroke="none" />
+          <polyline points={toPoints(satisfaction)} fill="none" stroke={down ? "var(--c-danger)" : "var(--c-brand)"} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+          {score.length >= 2 ? <polyline points={toPoints(score)} fill="none" stroke="var(--c-ink-3)" strokeWidth={1.5} strokeDasharray="4 3" vectorEffect="non-scaling-stroke" /> : null}
+        </>
+      ) : <polyline points={`0,${height * 0.55} ${width * 0.3},${height * 0.45} ${width * 0.6},${height * 0.5} ${width},${height * 0.4}`} fill="none" className="mon-trend-skeleton" vectorEffect="non-scaling-stroke" />}
     </svg>
   );
 }
 
 const EMOTION_TONE: Record<string, "danger" | "warn" | "neutral"> = { 愤怒: "danger", 不满: "danger", 焦虑: "warn", 犹豫: "warn" };
 
-interface TrackingToday { activeToday: number; pendingReviews: number; notPracticedToday: number; studentTotal: number }
+interface TodayStudent { id: string; name: string; username: string; className: string | null; lastAt: string | null }
+interface TrackingToday { activeToday: number; pendingReviews: number; notPracticedToday: number; studentTotal: number; activeList?: TodayStudent[]; idleList?: TodayStudent[] }
 
 function LiveConsole({ session, items, onReplay, onNavigate }: { session: Session; items: TrackingItem[]; onReplay: () => void; onNavigate?: (page: string) => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -187,11 +199,12 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
   const [snapshot, setSnapshot] = useState<TrackingItem | null>(null);
   const [showStale, setShowStale] = useState(false);
   const [today, setToday] = useState<TrackingToday | null>(null);
+  const [roster, setRoster] = useState<"active" | "idle" | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pinnedRef = useRef(true);
 
-  /* 按紧急程度分组：需介入（买家等 3–30 分钟）→ 进行中 → 暂离；超过 1 天没动的收进“已中断”一行 */
+  /* 按紧急程度分组：需介入（买家等 3–30 分钟）→ 进行中 → 暂离（10 分钟以上没人发言；买家等超过 30 分钟也算暂离） */
   const byRecent = (a: TrackingItem, b: TrackingItem) => new Date(b.lastAt ?? b.startedAt).getTime() - new Date(a.lastAt ?? a.startedAt).getTime();
   const groups = useMemo(() => {
     const active = items.filter((item) => !item.suspended);
@@ -250,7 +263,7 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
       setDraft("");
       pinnedRef.current = true;
       await loadMessages();
-      toast.ok("已发给学生，买家看不到");
+      // 指导已经出现在时间线里，不再弹提示
     } catch (cause) {
       toast.error(errorText(cause));
     } finally {
@@ -271,10 +284,10 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
         className={item.conversationId === selectedId ? "mon-qi is-on" : "mon-qi"}
         onClick={() => setSelectedId(item.conversationId)}
       >
-        <BuyerAvatar buyer={item.buyer} />
+        <UserAvatar name={item.studentName} url={item.studentAvatarUrl} size={36} />
         <span className="mon-qi-main">
           <span className="mon-qi-name">{item.studentName}{item.practice ? <small>练习</small> : null}</span>
-          <span className="mon-qi-meta">{item.buyer.name} · {item.scenarioName}</span>
+          <span className="mon-qi-meta" title={item.scenarioName}>{item.scenarioName}</span>
         </span>
         <span className="mon-qi-side">
           <span className={`mon-qi-wait ${waitCls}`}>{wait}</span>
@@ -293,12 +306,24 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
           <p>学生打开客服工作台开始接待后，会话会出现在这里，你可以旁观并随时发指导。</p>
           {today ? (
             <div className="board mon-today">
-              <div><small>今天接待过</small><b>{today.activeToday}<span> 人</span></b><button type="button" className="board-link" onClick={() => onNavigate?.("classes")}>看名单 →</button></div>
+              <div><small>今天接待过</small><b>{today.activeToday}<span> 人</span></b>{today.activeToday ? <button type="button" className="board-link" onClick={() => setRoster("active")}>看名单 →</button> : null}</div>
               <div><small>等你复核</small><b className={today.pendingReviews ? "is-bad" : undefined}>{today.pendingReviews}<span> 份</span></b><button type="button" className="board-link" onClick={onReplay}>去复核 →</button></div>
-              <div><small>今天还没练</small><b className={today.notPracticedToday ? "is-warn" : undefined}>{today.notPracticedToday}<span> 人</span></b><button type="button" className="board-link" onClick={() => onNavigate?.("classes")}>看是谁 →</button></div>
+              <div><small>今天还没练</small><b className={today.notPracticedToday ? "is-warn" : undefined}>{today.notPracticedToday}<span> 人</span></b>{today.notPracticedToday ? <button type="button" className="board-link" onClick={() => setRoster("idle")}>看是谁 →</button> : null}</div>
             </div>
           ) : null}
-          {groups.stale.length ? <p className="mon-empty-note">另有 {groups.stale.length} 个会话超过 1 天没动，已经不再提醒。</p> : null}
+          {roster && today ? (
+            <Drawer title={roster === "active" ? `今天接待过的学生 · ${today.activeToday} 人` : `今天还没练的学生 · ${today.notPracticedToday} 人`} onClose={() => setRoster(null)}>
+              <ul className="today-roster">
+                {(roster === "active" ? today.activeList : today.idleList)?.map((item) => (
+                  <li key={item.id}>
+                    <UserAvatar name={item.name} size={32} />
+                    <span><b>{item.name}</b><small>{item.className ?? "未分班"} · {item.username}</small></span>
+                    <em>{item.lastAt ? `${roster === "active" ? "今天" : "上次"} ${new Date(item.lastAt).toLocaleString("zh-CN", roster === "active" ? { hour: "2-digit", minute: "2-digit" } : { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : "还没练过"}</em>
+                  </li>
+                ))}
+              </ul>
+            </Drawer>
+          ) : null}
         </div>
       </div>
     );
@@ -323,7 +348,7 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
           {groups.stale.length ? (
             <>
               <button type="button" className="mon-fold" onClick={() => setShowStale((value) => !value)}>
-                <Archive size={14} />已中断 {groups.stale.length} 个 · 超过 1 天没动<span>{showStale ? "收起" : "展开"}</span>
+                <Archive size={14} /><em title="超过 1 天没有任何消息，不再提醒">已中断 {groups.stale.length} 个</em><span>{showStale ? "收起" : "展开"}</span>
               </button>
               {showStale ? groups.stale.map(queueItem) : null}
             </>
@@ -335,8 +360,7 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
         {view ? (
           <>
             <header className="mon-conv-head">
-              <b>{view.studentName}</b>
-              <span>正在接待 {view.buyer.name} · {view.scenarioName} · {new Date(view.startedAt).toDateString() === new Date().toDateString() ? time(view.startedAt) : new Date(view.startedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 开始</span>
+              <div className="mon-conv-title"><b>{view.studentName}</b><span className="mon-conv-sub">正在接待 {view.buyer.name} · {view.scenarioName} · {new Date(view.startedAt).toDateString() === new Date().toDateString() ? time(view.startedAt) : new Date(view.startedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 开始</span></div>
               <span className="mon-conv-state">
                 {view.practice ? <Tag>自由练习，不计成绩</Tag> : null}
                 {closed ? <Tag>已结束</Tag>
@@ -354,7 +378,7 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
                 pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
               }}
             >
-              {messages === null ? <p className="console-hint">正在读取对话…</p> : messages.length === 0 ? <p className="console-hint">刚开始，还没有消息</p>
+              {messages === null ? <p className="console-hint">正在读取对话…</p> : messages.length === 0 ? <div className="mon-empty-chat"><MessagesSquare size={26} /><b>还没有消息</b><span>学生或买家发出第一条消息后，会实时出现在这里</span></div>
                 : messages.map((message) => <MessageBubble key={message.id} message={message} buyer={view.buyer} studentName={view.studentName} />)}
               {!closed && !view.suspended && view.lastSender === "buyer" && view.idleSeconds >= 60 ? (
                 <div className="mon-typing">学生还没有回复 · {formatIdle(view.idleSeconds)}</div>
@@ -413,12 +437,12 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
                 <div><small>轮次</small><b>{view.studentTurns}</b></div>
                 <div><small>已用时</small><b>{elapsed < 60 ? elapsed : elapsed < 1440 ? Math.floor(elapsed / 60) : Math.floor(elapsed / 1440)}<span>{elapsed < 60 ? "分钟" : elapsed < 1440 ? "小时" : "天"}</span></b></div>
               </div>
-              {trend.length >= 2 ? (
-                <>
-                  <span className="mon-cap">满意度走势 · 从 {trend[0]} {trend[trend.length - 1]! < trend[0]! ? "降到" : "升到"} {trend[trend.length - 1]}</span>
-                  <Sparkline values={trend} />
-                </>
-              ) : <span className="mon-cap">满意度走势在第 2 轮之后出现</span>}
+              <div className="mon-trend-h">
+                <span>走势</span>
+                <span className="mon-legend"><i className="is-sat" />满意度<i className="is-score" />得分<HelpTip>虚横线是 60 分。满意度由导演每轮评估，得分是实时六维评分的加权分</HelpTip></span>
+              </div>
+              <TrendChart satisfaction={trend} score={view.scoreTrend ?? []} />
+              <span className="mon-cap">{trend.length >= 2 ? `满意度从 ${trend[0]} ${trend[trend.length - 1]! < trend[0]! ? "降到" : "升到"} ${trend[trend.length - 1]}` : "第 2 轮之后出现走势"}</span>
             </div>
             <div className="mon-pb">
               <h5>买家</h5>
@@ -433,16 +457,22 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
                 <dt>身份</dt><dd>{view.buyer.identity}</dd>
               </dl>
             </div>
-            {view.objective || view.buyerGoal || view.bottomLine ? (
-              <div className="mon-pb">
-                <h5>场景目标<span className="mon-lock"><Lock size={12} />只有老师能看到</span></h5>
-                <div className="mon-goal">
-                  {view.objective ? <p><b>学生要做到：</b>{view.objective}</p> : null}
-                  {view.buyerGoal ? <p><b>买家想要：</b>{view.buyerGoal}</p> : null}
-                  {view.bottomLine ? <p><b>买家底线：</b>{view.bottomLine}</p> : null}
-                </div>
-              </div>
-            ) : null}
+            <div className="mon-pb is-last">
+              <h5>场景剧本<span className="mon-lock"><Lock size={12} />只有老师能看到</span></h5>
+              {view.objective ? <p className="mon-objective"><Target size={14} />{view.objective}</p> : null}
+              <dl className="mon-script">
+                {([
+                  ["买家想要", view.buyerGoal],
+                  ["隐藏信息", view.hiddenInfo, "学生问到点子上，买家才会说出来"],
+                  ["情绪触发点", view.emotionTriggers],
+                  ["买家底线", view.bottomLine],
+                  ["结束条件", view.endConditions],
+                ] as Array<[string, string | null | undefined, string?]>).filter(([, value]) => value).map(([label, value, tip]) => (
+                  <Fragment key={label}><dt>{label}{tip ? <HelpTip>{tip}</HelpTip> : null}</dt><dd>{value}</dd></Fragment>
+                ))}
+              </dl>
+              {!view.buyerGoal && !view.hiddenInfo && !view.bottomLine ? <p className="mon-cap">这个场景还没写剧本，可以到「场景配置」补上</p> : null}
+            </div>
           </>
         ) : null}
       </aside>
@@ -452,7 +482,13 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
 
 // ---------- 回放与评分 ----------
 
+interface UnfinishedItem { conversationId: string; studentName: string; scenarioName: string; taskName: string | null; reason: string; turns: number; closedAt: string }
+
 function Replay({ session, rows, reload }: { session: Session; rows: TeacherAssessment[]; reload: () => Promise<unknown> }) {
+  // D-36：中途放弃、学生不足 3 轮的接待不评分，收在列表底部
+  const [unfinished, setUnfinished] = useState<UnfinishedItem[]>([]);
+  const [showUnfinished, setShowUnfinished] = useState(false);
+  useEffect(() => { apiGet<UnfinishedItem[]>("/v1/teacher/unfinished", session).then(setUnfinished).catch(() => undefined); }, [session, rows]);
   const [keyword, setKeyword] = useState(takeReplaySearch);
   const [filter, setFilter] = useState<"pending" | "low" | "reviewed" | "all">(() => (keyword ? "all" : "pending"));
   const [reviewing, setReviewing] = useState<TeacherAssessment | null>(null);
@@ -520,6 +556,27 @@ function Replay({ session, rows, reload }: { session: Session; rows: TeacherAsse
           </>
         )}
       </Board>
+      {unfinished.length ? (
+        <div className="rv-unfinished">
+          <button type="button" className="rv-unfinished-h" onClick={() => setShowUnfinished(!showUnfinished)}>
+            <Archive size={15} />未完成、不计分 {unfinished.length} 次
+            <HelpTip>学生 2 小时没有发言、或任务结束时还没做完，且学生说了不到 3 轮，这次接待不评分</HelpTip>
+            <span>{showUnfinished ? "收起" : "展开"}</span>
+          </button>
+          {showUnfinished ? (
+            <ul>
+              {unfinished.map((item) => (
+                <li key={item.conversationId}>
+                  <b>{item.studentName}</b>
+                  <span>{item.taskName ? `${item.taskName} · ` : ""}{item.scenarioName}</span>
+                  <em>{item.reason === "task_closed" ? "任务已结束" : "2 小时没发言"} · 学生说了 {item.turns} 轮</em>
+                  <time>{when(item.closedAt)}</time>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
       {reviewing ? (
         <ReviewDrawer
           session={session}

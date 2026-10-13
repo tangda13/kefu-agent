@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>买家画像重构</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+:root { --doc-bg:#e9edf3; --doc-ink:#161c26; --doc-ink-2:#465163; --doc-line:#d6dce5; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--doc-bg); color: var(--doc-ink); font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 24px; font-weight: 700; }
+.doc h2 { margin: 64px 0 6px; font-size: 20px; font-weight: 700; }
+.doc .lede { margin: 0 0 20px; color: var(--doc-ink-2); max-width: 980px; }
+.diag { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0 8px; }
+.diag div { background: #fff; border: 1px solid var(--doc-line); border-radius: 10px; padding: 14px 16px; font-size: 13px; color: var(--doc-ink-2); }
+.diag b { display: block; margin-bottom: 4px; color: var(--doc-ink); font-size: 14px; }
+.diag .fix { color: #174aa8; }
+.diag .api { display: inline-block; margin-top: 6px; padding: 1px 6px; border-radius: 4px; background: #fdf0dc; color: #9a5200; font-size: 12px; }
+.cap { display: flex; justify-content: space-between; gap: 24px; margin: 22px 0 8px; font-size: 13px; color: var(--doc-ink-2); }
+.cap b { color: var(--doc-ink); white-space: nowrap; }
+.frame { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid var(--doc-line); box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); background: #fff; }
+.screen { position: absolute; top: 0; left: 0; width: 1440px; height: 900px; transform-origin: 0 0; overflow: hidden; }
+.before { width: 100%; display: block; border-radius: 10px; border: 1px solid var(--doc-line); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.trio-b { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+figure { margin: 0; }
+figcaption { font-size: 12px; color: var(--doc-ink-2); margin-top: 6px; }
+
+/* ===== 织 UI 令牌（同 apps/portal/src/styles/tokens.css） ===== */
+.s { --canvas:#f4f6f9; --surface:#fff; --surface-2:#f8f9fb; --hover:#eef2f7; --line:#e3e7ee; --line-2:#c8cfda; --ink:#161c26; --ink-2:#465163; --ink-3:#5e6a7b; --ink-4:#9aa3b0;
+  --brand:#1d5fd1; --brand-soft:#e8effc; --brand-ink:#174aa8; --ok:#1a7445; --ok-wash:#e3f4ea; --warn:#9a5200; --warn-wash:#fdf0dc; --bad:#b8302a; --bad-wash:#fbe8e6;
+  --c1:#1d5fd1; --c1s:#e8effc; --c2:#0a7a70; --c2s:#e0f3f0; --c3:#8c5b0f; --c3s:#fbefdc; --c4:#6c4fc9; --c4s:#eeeafb;
+  background: var(--surface); color: var(--ink); font: 400 14px/22px Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.s svg { width: 18px; height: 18px; stroke-width: 1.75; flex: none; }
+.num { font-variant-numeric: tabular-nums; }
+.app { position: relative; display: grid; grid-template-columns: 232px 1fr; height: 100%; }
+.side { display: flex; flex-direction: column; padding: 14px 12px; border-right: 1px solid var(--line); background: var(--surface); }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 18px; font-size: 14px; font-weight: 700; }
+.mark { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 6px; background: var(--brand); color: #fff; }
+.mark svg { width: 16px; height: 16px; }
+.nav { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 6px; color: var(--ink-2); font-size: 14px; }
+.nav svg { color: var(--ink-3); }
+.nav.on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.nav.on svg { color: var(--brand-ink); }
+.nav .badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.grow { flex: 1; }
+.foot { border-top: 1px solid var(--line); padding-top: 8px; }
+.main { display: flex; flex-direction: column; min-width: 0; background: var(--canvas); }
+.head { display: flex; align-items: flex-end; gap: 28px; height: 56px; padding: 0 40px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; }
+.head h1 { margin: 0 0 13px; font-size: 20px; font-weight: 700; white-space: nowrap; }
+.head .tabs { display: flex; gap: 24px; align-self: stretch; align-items: flex-end; }
+.head .tab { padding-bottom: 15px; border-bottom: 2px solid transparent; color: var(--ink-2); font-size: 14px; white-space: nowrap; }
+.head .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--brand); }
+.head .tab .n { color: var(--ink-3); font-weight: 400; margin-left: 4px; }
+.head .tab.on .n { color: var(--brand-ink); }
+.head .right { margin-left: auto; display: flex; align-items: center; gap: 14px; margin-bottom: 13px; color: var(--ink-2); }
+.av { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--hover); font-size: 12px; font-weight: 700; color: var(--ink-2); flex: none; }
+.body { flex: 1; overflow: hidden; padding: 28px 40px; }
+.body.flush { padding: 0; }
+.wrap { max-width: 1120px; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--line-2); background: #fff; color: var(--ink); white-space: nowrap; font-size: 14px; font-weight: 500; }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 13px; }
+.btn svg { width: 16px; height: 16px; }
+.search { display: flex; align-items: center; gap: 8px; width: 260px; height: 34px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 6px; background: #fff; color: var(--ink-3); }
+.search svg { width: 15px; height: 15px; }
+.bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.bar-row .r { margin-left: auto; display: flex; gap: 8px; }
+.chips { display: flex; gap: 6px; }
+.chip { height: 28px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--line-2); background: #fff; color: var(--ink-2); font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+.chip.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-ink); font-weight: 600; }
+.chip i { font-style: normal; opacity: .7; }
+.tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; font-size: 12px; font-weight: 500; background: var(--surface-2); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
+.tag.c1 { background: var(--c1s); color: var(--c1); box-shadow: none; } .tag.c2 { background: var(--c2s); color: var(--c2); box-shadow: none; }
+.tag.c3 { background: var(--c3s); color: var(--c3); box-shadow: none; } .tag.c4 { background: var(--c4s); color: var(--c4); box-shadow: none; }
+.tag.bad { background: var(--bad-wash); color: var(--bad); box-shadow: none; } .tag.warn { background: var(--warn-wash); color: var(--warn); box-shadow: none; }
+.tag.ok { background: var(--ok-wash); color: var(--ok); box-shadow: none; } .tag.brand { background: var(--brand-soft); color: var(--brand-ink); box-shadow: none; }
+.sw { position: relative; width: 36px; height: 20px; border-radius: 10px; background: var(--line-2); flex: none; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.sw.on { background: var(--brand); } .sw.on::after { left: 18px; }
+.sw.sm { width: 30px; height: 17px; } .sw.sm::after { width: 13px; height: 13px; } .sw.sm.on::after { left: 15px; }
+.board { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.board + .board { margin-top: 16px; }
+.bhead { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+.bhead h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.bhead .n { color: var(--ink-3); font-size: 13px; }
+.bhead .end { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.muted { color: var(--ink-3); }
+.small { font-size: 13px; }
+.cap-s { font-size: 12px; color: var(--ink-3); font-weight: 500; }
+
+/* 发布抽屉 */
+.scrim { position: absolute; inset: 0; background: rgba(14,20,32,.42); }
+.drawer { position: absolute; top: 0; right: 0; bottom: 0; width: 880px; background: #fff; box-shadow: 0 24px 64px rgba(16,24,40,.25); display: flex; flex-direction: column; }
+.drawer .dh { display: flex; align-items: center; height: 64px; padding: 0 28px; border-bottom: 1px solid var(--line); }
+.drawer .dh h3 { margin: 0; font-size: 18px; font-weight: 600; }
+.drawer .dh svg { margin-left: auto; color: var(--ink-3); }
+.drawer .db { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+.drawer .form { padding: 24px 28px; display: grid; gap: 18px; align-content: start; }
+.field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.field .in { height: 36px; border: 1px solid var(--line-2); border-radius: 6px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; }
+.field .in.focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.field .ta { min-height: 120px; border: 1px solid var(--line-2); border-radius: 6px; padding: 10px 12px; line-height: 22px; }
+.field .hint { font-size: 12px; color: var(--ink-3); margin-top: 6px; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); }
+.seg span { height: 28px; padding: 0 12px; display: inline-flex; align-items: center; border-radius: 4px; font-size: 13px; color: var(--ink-2); }
+.seg span.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.1); }
+.drawer .pv { background: var(--surface-2); border-left: 1px solid var(--line); padding: 24px; }
+.drawer .df { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 28px; border-top: 1px solid var(--line); }
+/* ===== 场景配置 ===== */
+.cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.col-h { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.col-h .n { font-size: 12px; color: var(--ink-3); }
+.col-h .ic { margin-left: auto; color: var(--ink-3); }
+.col-h .ic svg { width: 16px; height: 16px; }
+.sc-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: 0 1px 2px rgba(16,24,40,.04); display: grid; gap: 10px; }
+.sc-card + .sc-card { margin-top: 12px; }
+.sc-card .t { display: flex; align-items: flex-start; gap: 10px; }
+.sc-card .t b { font-size: 15px; font-weight: 600; line-height: 22px; flex: 1; }
+.sc-card p { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2); min-height: 40px; }
+.sc-card .ft { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+.sc-card .ft span { display: inline-flex; align-items: center; gap: 4px; }
+.sc-card .ft svg { width: 14px; height: 14px; }
+.sc-card .ft .ok { color: var(--ok); } .sc-card .ft .warn { color: var(--warn); font-weight: 600; }
+.sc-card.off { background: var(--surface-2); } .sc-card.off b, .sc-card.off p { color: var(--ink-3); }
+.sc-add { margin-top: 12px; height: 44px; border: 1px dashed var(--line-2); border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--ink-3); font-size: 13px; }
+.sc-add svg { width: 15px; height: 15px; }
+.legend { display: flex; gap: 18px; font-size: 12px; color: var(--ink-3); margin-left: 4px; }
+/* 画像卡片 */
+.pgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.pc { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 12px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.pc .top { display: flex; gap: 12px; align-items: center; }
+.pc img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
+.pc .ph { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 17px; }
+.pc b { display: block; font-size: 15px; }
+.pc .sub { font-size: 12px; color: var(--ink-3); }
+.pc .sw { margin-left: auto; align-self: flex-start; }
+.pc .traits { display: flex; flex-wrap: wrap; gap: 6px; }
+.pc .ln { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-3); padding-top: 10px; border-top: 1px solid var(--line); }
+.pc.off { opacity: .55; }
+/* 商品卡片 */
+.ggrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.gc { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.gc .img { height: 150px; display: flex; align-items: center; justify-content: center; position: relative; }
+.gc .img img { width: 100%; height: 100%; object-fit: cover; }
+.gc .img svg { width: 40px; height: 40px; stroke-width: 1.3; }
+.gc .img .st { position: absolute; top: 10px; left: 10px; }
+.gc .bd { padding: 12px 14px 14px; display: grid; gap: 4px; }
+.gc b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc .spec { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc .row { display: flex; align-items: baseline; justify-content: space-between; margin-top: 6px; }
+.gc .price { font-size: 18px; font-weight: 700; }
+.gc .stock { font-size: 12px; color: var(--ink-3); }
+.gc .stock.warn { color: var(--warn); font-weight: 600; }
+.drawer .dh .search svg, .drawer .dh .tag svg { margin-left: 0; }
+/* ===== p8 新增 ===== */
+.chip { white-space: nowrap; }
+.track { height: 6px; border-radius: 999px; background: var(--hover); overflow: hidden; }
+.track i { display: block; height: 100%; border-radius: 999px; background: var(--brand); }
+.kv { display: grid; grid-template-columns: 64px 1fr; gap: 6px 10px; font-size: 13px; }
+.kv dt { color: var(--ink-3); } .kv dd { margin: 0; }
+.help { display: inline-flex; color: var(--ink-4); vertical-align: -3px; }
+.help svg { width: 15px; height: 15px; }
+.cols.tight .sc-card { padding: 12px 14px; gap: 6px; }
+.cols.tight .sc-card + .sc-card { margin-top: 10px; }
+.cols.tight .sc-card .t b { font-size: 14px; }
+.cols.tight .sc-card p { min-height: 0; font-size: 12px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cols.tight .sc-card .ft { padding-top: 8px; }
+.newdot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); margin-top: 8px; flex: none; }
+.pc .tico { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex: none; }
+.pc .tico svg { width: 22px; height: 22px; }
+.pc .pref { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dlg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #fff; border-radius: 14px; box-shadow: 0 24px 64px rgba(16,24,40,.28); display: flex; flex-direction: column; overflow: hidden; }
+.dlg .dh { display: flex; align-items: center; gap: 10px; height: 60px; padding: 0 24px; border-bottom: 1px solid var(--line); flex: none; }
+.dlg .dh h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.dlg .dh .x { margin-left: auto; color: var(--ink-3); display: inline-flex; }
+.dlg .df { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--line); flex: none; }
+.dlg .df .l { margin-right: auto; font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.dlg .df .l svg { width: 15px; height: 15px; }
+.draw { display: grid; grid-template-columns: 300px 1fr; }
+.draw .tpl-side { padding: 20px 24px; border-right: 1px solid var(--line); background: var(--surface-2); }
+.draw h5 { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.draw h5 svg { width: 14px; height: 14px; }
+.draw .grp2 + .grp2 { margin-top: 18px; }
+.draw .kv { grid-template-columns: 72px 1fr; margin: 0; }
+.draw .rnd { display: flex; gap: 6px; flex-wrap: wrap; }
+.samples { padding: 20px 24px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-content: start; }
+.smp { border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 10px; align-content: start; }
+.smp .top { display: flex; gap: 10px; align-items: center; }
+.smp img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+.smp b { display: block; font-size: 15px; }
+.smp .sub { font-size: 12px; color: var(--ink-3); }
+.smp .traits { display: flex; flex-wrap: wrap; gap: 6px; }
+.smp .chg { font-size: 12px; color: var(--brand-ink); background: var(--brand-soft); border-radius: 6px; padding: 6px 8px; line-height: 18px; }
+.gc .full { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+.gc .full .track { flex: 1; height: 4px; }
+.gc .full .track i.warn { background: #d98a1c; }
+.gc .full b { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.gc .full b.warn { color: var(--warn); }
+.gc .src { position: absolute; bottom: 10px; left: 10px; }
+.ways { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 24px; }
+.way { border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 8px; align-content: start; }
+.way.rec { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.way .wi { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--brand-soft); color: var(--brand); }
+.way .wi svg { width: 20px; height: 20px; }
+.way b { font-size: 15px; display: flex; align-items: center; }
+.way p { margin: 0; font-size: 13px; color: var(--ink-2); line-height: 20px; }
+.way .meta { font-size: 12px; color: var(--ink-3); }
+.ways-2 { display: flex; gap: 10px; padding: 0 24px 22px; }
+.ways-2 .alt { flex: 1; display: flex; align-items: center; gap: 10px; border: 1px dashed var(--line-2); border-radius: 10px; padding: 12px 14px; font-size: 13px; color: var(--ink-2); }
+.ways-2 .alt svg { color: var(--ink-3); }
+.ways-2 .alt span { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.collect { padding: 22px 24px; display: grid; gap: 16px; }
+.urlbox { display: flex; gap: 8px; }
+.urlbox .in { flex: 1; height: 40px; border: 1px solid var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 13px; color: var(--ink); }
+.urlbox .in svg { color: var(--ink-3); width: 16px; height: 16px; }
+.steps { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.step { display: flex; align-items: center; gap: 12px; padding: 11px 16px; font-size: 13px; border-top: 1px solid var(--line); }
+.step:first-child { border-top: 0; }
+.step .si { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; }
+.step .si svg { width: 14px; height: 14px; }
+.step.done .si { background: var(--ok-wash); color: var(--ok); }
+.step.run .si { background: var(--brand-soft); color: var(--brand); }
+.step.wait .si { background: var(--hover); color: var(--ink-4); }
+.step.wait { color: var(--ink-3); }
+.step .r { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.mini-win { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.mini-win .bar { height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: #eef1f5; font-size: 12px; color: var(--ink-3); }
+.mini-win .bar i { width: 7px; height: 7px; border-radius: 50%; background: #c8cfda; }
+.mini-win .pg { display: grid; grid-template-columns: 150px 1fr; gap: 16px; padding: 14px; background: #fff; }
+.mini-win .pg img { width: 150px; height: 150px; object-fit: cover; border-radius: 6px; }
+.mini-win .gl { display: grid; gap: 8px; align-content: start; }
+.mini-win .gl span { height: 9px; border-radius: 4px; background: #e9edf2; }
+.mini-win .gl span.hl { background: #cfe0fb; box-shadow: 0 0 0 2px #e8effc; }
+.note { display: flex; gap: 8px; font-size: 12px; color: var(--ink-3); line-height: 18px; }
+.note svg { width: 14px; height: 14px; margin-top: 2px; }
+.drawer.wide { width: 1000px; }
+.drawer .dh .x { margin-left: auto; color: var(--ink-3); display: inline-flex; }
+.pe { flex: 1; display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 0; }
+.pe-nav { border-right: 1px solid var(--line); padding: 16px 12px; display: grid; gap: 2px; align-content: start; background: var(--surface-2); }
+.pe-nav > div { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: 6px; font-size: 13px; color: var(--ink-2); }
+.pe-nav > div.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.08); }
+.pe-nav > div svg { width: 15px; height: 15px; margin-left: auto; }
+.pe-nav .ok svg { color: var(--ok); } .pe-nav .miss svg { color: #d98a1c; }
+.pe-nav > div.sum { margin-top: 14px; padding: 12px 10px 0; border-top: 1px solid var(--line); border-radius: 0; font-size: 12px; line-height: 18px; color: var(--ink-3); display: block; height: auto; }
+.pe-nav .sum b { font-size: 20px; color: var(--ink); }
+.pe-body { padding: 18px 28px; display: grid; gap: 18px; align-content: start; overflow: hidden; }
+.banner2 { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; background: var(--warn-wash); color: var(--warn); font-size: 13px; }
+.banner2 svg { width: 16px; height: 16px; }
+.banner2 a { margin-left: auto; font-size: 12px; color: var(--ink-2); text-decoration: underline; white-space: nowrap; }
+.sec h4 { margin: 0 0 10px; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.sec h4 .n { font-weight: 400; color: var(--ink-3); font-size: 12px; }
+.thumbs { display: flex; gap: 10px; }
+.thumbs > div { width: 80px; height: 80px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); position: relative; display: flex; align-items: center; justify-content: center; color: var(--ink-4); background: var(--surface-2); }
+.thumbs img { width: 100%; height: 100%; object-fit: cover; }
+.thumbs .main-tag { position: absolute; left: 4px; bottom: 4px; font-size: 10px; line-height: 16px; padding: 0 5px; border-radius: 3px; background: rgba(22,28,38,.7); color: #fff; }
+.thumbs .add { border-style: dashed; border-color: var(--line-2); }
+.f2 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
+.f2 .field .in { height: 34px; font-size: 13px; }
+.f2 .field .in svg { width: 15px; height: 15px; color: var(--ink-3); }
+.sku { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; font-size: 13px; }
+.sku .r { display: grid; grid-template-columns: 1fr 1fr 110px 110px 40px; gap: 10px; padding: 7px 12px; border-top: 1px solid var(--line); align-items: center; }
+.sku .r.h { border-top: 0; background: var(--surface-2); font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.sku .r svg { width: 15px; height: 15px; }
+.sku .dim { display: flex; gap: 6px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-3); flex-wrap: wrap; }
+.bul { display: grid; gap: 6px; font-size: 13px; }
+.bul div { display: flex; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; }
+.bul div i { font-style: normal; color: var(--ink-4); width: 14px; }
+.lib { flex: 1; display: grid; grid-template-columns: 180px minmax(0, 1fr); min-height: 0; }
+.lib-cat { border-right: 1px solid var(--line); padding: 14px 10px; display: grid; gap: 2px; align-content: start; }
+.lib-cat div { display: flex; justify-content: space-between; height: 34px; align-items: center; padding: 0 10px; border-radius: 6px; font-size: 13px; color: var(--ink-2); }
+.lib-cat div.on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.lib-cat div i { font-style: normal; color: var(--ink-3); font-size: 12px; font-weight: 400; }
+.lib-main { padding: 16px 20px; overflow: hidden; }
+.lgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.lg { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; position: relative; }
+.lg.sel { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
+.lg .img { height: 112px; display: flex; align-items: center; justify-content: center; }
+.lg .img img { width: 100%; height: 100%; object-fit: cover; }
+.lg .img svg { width: 34px; height: 34px; stroke-width: 1.3; color: rgba(22,28,38,.45); }
+.lg .bd { padding: 9px 11px 11px; }
+.lg .bd > b { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg .row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.lg .row b { font-size: 14px; color: var(--ink); }
+.lg .ck { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid var(--line-2); background: #fff; display: flex; align-items: center; justify-content: center; }
+.lg.sel .ck { background: var(--brand); border-color: var(--brand); color: #fff; }
+.lg .ck svg { width: 14px; height: 14px; stroke-width: 3; }
+.lg .have { position: absolute; top: 8px; left: 8px; }
+.lg.in { opacity: .6; }
+.pe-empty { padding: 44px 48px; }
+.pe-empty h3 { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
+.pe-empty > p { margin: 0 0 8px; color: var(--ink-2); }
+.pe-empty .ways { padding: 16px 0 0; }
+.pe-empty .ways-2 { padding: 14px 0 0; }
+/* ===== p9 画像重构 ===== */
+.chip { white-space: nowrap; }
+.track { height: 6px; border-radius: 999px; background: var(--hover); overflow: hidden; }
+.model { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+.model > div { background: #fff; border: 1px solid var(--doc-line); border-radius: 10px; padding: 14px 16px; font-size: 13px; color: var(--doc-ink-2); }
+.model b { display: block; color: var(--doc-ink); font-size: 14px; margin-bottom: 6px; }
+.model .eg { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.model .eg span { padding: 1px 8px; border-radius: 4px; background: #eef2f7; font-size: 12px; color: #465163; }
+.model .src { margin-top: 8px; font-size: 12px; color: #5e6a7b; }
+.cmp { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--doc-line); border-radius: 10px; overflow: hidden; font-size: 13px; margin: 12px 0; }
+.cmp th, .cmp td { padding: 9px 14px; border-top: 1px solid var(--doc-line); text-align: left; vertical-align: top; }
+.cmp th { background: #f4f6f9; font-weight: 600; border-top: 0; }
+.cmp td.bad { color: #b8302a; } .cmp td.ok { color: #1a7445; }
+/* 卡片 */
+.pc .t2 { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc .look { font-size: 12px; color: var(--ink-2); }
+.pc .look em { font-style: normal; color: var(--ink-3); }
+/* 新建弹窗 */
+.dlg2 { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 1040px; background: #fff; border-radius: 14px; box-shadow: 0 24px 64px rgba(16,24,40,.28); display: flex; flex-direction: column; overflow: hidden; }
+.dlg2 .dh { display: flex; align-items: center; height: 56px; padding: 0 24px; border-bottom: 1px solid var(--line); }
+.dlg2 .dh h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.dlg2 .dh .x { margin-left: auto; color: var(--ink-3); display: inline-flex; }
+.dlg2 .db { display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+.dlg2 .fm { padding: 18px 24px 22px; display: grid; gap: 18px; }
+.ai { display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 6px 0 12px; border: 1px solid #c9d8f5; border-radius: 10px; background: linear-gradient(90deg, #f3f7ff, #fff); }
+.ai svg { color: var(--brand); width: 17px; height: 17px; }
+.ai .ph { flex: 1; font-size: 13px; color: var(--ink-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ai .btn { height: 30px; }
+.grp { display: grid; gap: 10px; }
+.grp h5 { margin: 0; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.grp h5 span { font-weight: 400; color: var(--ink-3); font-size: 12px; }
+.row2 { display: grid; grid-template-columns: 76px 1fr; gap: 10px; align-items: start; font-size: 13px; }
+.row2 > label { color: var(--ink-2); padding-top: 5px; }
+.opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.opt { height: 30px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); background: #fff; }
+.opt.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.opt svg { width: 14px; height: 14px; }
+.opt.dis { color: var(--ink-4); border-style: dashed; }
+.sel4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.sel4 .field label { font-weight: 500; color: var(--ink-2); font-size: 12px; margin-bottom: 4px; }
+.sel4 .field .in { height: 32px; font-size: 13px; }
+.sel4 .field .in svg { width: 14px; height: 14px; color: var(--ink-3); }
+.ta2 { min-height: 54px; border: 1px solid var(--line-2); border-radius: 6px; padding: 8px 12px; font-size: 13px; color: var(--ink-4); line-height: 20px; }
+.pv { background: var(--surface-2); border-left: 1px solid var(--line); padding: 18px 20px; display: grid; gap: 12px; align-content: start; }
+.pv h6 { margin: 0; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.pv .pc { box-shadow: 0 1px 3px rgba(16,24,40,.08); }
+.nm { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); }
+.nm b { color: var(--ink); font-size: 13px; }
+.nm svg { width: 13px; height: 13px; }
+.smp2 { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: 12px; color: var(--ink-3); }
+.smp2 img { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; }
+.smp2 b { display: block; font-size: 13px; color: var(--ink); }
+.dlg2 .df { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 24px; border-top: 1px solid var(--line); }
+.tp { flex: 1; overflow: hidden; padding: 20px 28px; display: grid; gap: 12px; align-content: start; }
+.tp-sec-h b { display: block; font-size: 16px; } .tp-sec-h span { font-size: 13px; color: var(--ink-3); }
+.tp-step { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 14px; }
+.tp-n { width: 20px; height: 20px; border-radius: 50%; background: var(--brand); color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.tp-sub { font-size: 12px; color: var(--ink-3); }
+.tp-row { display: grid; grid-template-columns: 120px 1fr; gap: 12px; align-items: start; }
+.tp-l b { display: block; font-size: 13px; font-weight: 600; } .tp-l span { font-size: 12px; color: var(--ink-3); }
+.tp-hint { display: flex; gap: 6px; align-items: center; margin: -4px 0 0 132px; font-size: 12px; color: var(--brand-ink); }
+.tp-hint svg { width: 13px; height: 13px; }
+.tp-match { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
+.tp-match svg { width: 16px; height: 16px; color: var(--ink-3); } .tp-match span { flex: 1; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .tp-match a { color: var(--brand-ink); }
+.tp-try { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--surface-2); display: grid; gap: 10px; }
+.tp-try-h { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; } .tp-try-h svg { width: 15px; height: 15px; } .tp-try-h a { margin-left: auto; font-weight: 400; font-size: 12px; color: var(--brand-ink); }
+.tp-try-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.drawer .dh { display: flex; align-items: center; height: 60px; padding: 0 28px; border-bottom: 1px solid var(--line); } .drawer .dh h3 { margin: 0; font-size: 18px; font-weight: 600; }
+.drawer .df { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 28px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>买家画像重构：按“谁 · 怎么决策 · 看重什么”来建</h1>
+  <p class="lede">两个问题：一是现在的画像名称把一次性的购买情境（为婚礼准备物品）或一条偏好（看重参数合规）当成人群，读起来像在描述某个人；二是新建画像的弹窗是一堆平铺的输入框，AI 生成框挤在顶上，看不出这些字段之间的关系。下面先说依据和新结构，再给改后的画面。示例数据是编的，只看版式。</p>
+
+  <h2 style="margin-top:28px">依据：画像是在“细分”上叠加动机和关注点</h2>
+  <p class="lede">常见的做法是先按人口、地理、心理、行为几个维度把顾客分群，再在每个群上补充目标、痛点和影响购买的因素，形成画像；电商场景里行为维度（购买频次、客单价、生命周期）最常用。“这类人怎么做购买决定”有一个被反复验证的分类：Sproles 与 Kendall 的消费者决策风格量表（CSI，1986），归纳出 8 种决策风格。</p>
+  <div class="model">
+    <div><b>① 买家角色 · 谁在买</b>决定问题的类型：个人消费者问尺码和退换，批发采购商问阶梯价和账期。
+      <div class="eg"><span>个人消费者</span><span>礼品购买者</span><span>小B店主</span><span>批发采购商</span><span>企业采购</span><span>代购转售</span></div>
+      <div class="src">对应：人口 / 职业维度</div></div>
+    <div><b>② 决策风格 · 怎么做决定</b>决定对话的走向：价格敏感型一直压价，选择困难型反复比较，冲动型容易被一句话说动。
+      <div class="eg"><span>品质导向型</span><span>品牌口碑型</span><span>新奇尝鲜型</span><span>享受逛买型</span><span>价格敏感型</span><span>冲动下单型</span><span>选择困难型</span><span>习惯忠诚型</span></div>
+      <div class="src">对应：心理维度，取自 CSI 的 8 种决策风格</div></div>
+    <div><b>③ 客户价值层 · 和店铺的关系</b>参数里要求的 4 类客户，决定有没有历史订单、该用什么沟通策略。
+      <div class="eg"><span>潜在意向客</span><span>复购老客</span><span>粉丝客</span><span>沉睡客</span></div>
+      <div class="src">对应：行为 / 生命周期维度</div></div>
+  </div>
+  <p class="lede">在这三项之上，再给每类人群补上<b>关注点</b>（最多 3 个：价格优惠、物流时效、退换政策……）和<b>沟通方式</b>（性格、进店情绪、国籍语言）。名称由前两项自动组成，例如“价格敏感型个人消费者”，一眼就是一类人。</p>
+  <p class="lede"><b>一次性的购买情境不放进画像</b>：“为婚礼准备”“节日送礼”“搬家”属于这一次接待发生了什么，应该写在场景剧本里（场景里已经有“隐藏信息”“买家目标”）。画像管“谁”，场景管“这次为什么来”，两者随机组合才有变化。</p>
+
+  <table class="cmp">
+    <tr><th style="width:26%">现在的名称</th><th style="width:34%">问题</th><th>改后（决策风格 + 买家角色 · 价值层 · 关注点）</th></tr>
+    <tr><td>看重参数合规的小型采购商</td><td class="bad">一条偏好 + 身份，偏好和身份混在一起，规则也不统一</td><td class="ok">品质导向型批发采购商 · 复购老客 · 看重：材质参数、质检资质</td></tr>
+    <tr><td>为婚礼准备物品的新娘</td><td class="bad">一次性情境，不是人群；换到售后场景就讲不通</td><td class="ok">谨慎犹豫型礼品购买者 · 潜在意向客 · 看重：物流时效、包装礼盒（“婚期前要到”交给场景剧本）</td></tr>
+    <tr><td>重视到货速度的独立站买家</td><td class="bad">名称和“偏好”一栏重复</td><td class="ok">冲动下单型个人消费者 · 粉丝客 · 看重：物流时效、新品</td></tr>
+    <tr><td>预算有限的在校大学生</td><td class="bad">人口属性写进名称，和“价格敏感”是同一件事</td><td class="ok">价格敏感型个人消费者 · 潜在意向客 · 看重：价格优惠、包邮</td></tr>
+  </table>
+
+  <div class="diag">
+    <div><b>1. 名称没有统一规则</b>40 个名称各写各的：有的是偏好，有的是情境，有的是人口属性。老师也学不会怎么起名。<br><span class="fix">改：画像改成结构化字段，名称由“决策风格 + 买家角色”自动生成（允许改）；内置 40 个按“6 种角色 × 8 种风格 × 4 个价值层”重新铺开，覆盖每种组合里有训练价值的部分。</span><br><span class="api">要补：模板表加买家角色、决策风格、关注点、补充说明；买家 AI 的提示词按决策风格给出具体表现（价格敏感型会比价、压价）</span></div>
+    <div><b>2. 新建弹窗字段平铺，看不出关系</b>8 个输入框一样重；“身份”“消费偏好”是自由文本，老师不知道该写多细；AI 生成框是个大文本框，按钮浮在右边。<br><span class="fix">改：分三组——这类买家是谁（角色、风格、价值层，用可点的选项）、看重什么（关注点最多选 3 个 + 一句补充）、怎么沟通（性格、情绪、国籍、语言一行四个）。AI 生成收成顶部一行输入框；右侧实时预览卡片和一个试抽出的买家。</span></div>
+  </div>
+
+  <h2>买家画像列表</h2>
+  <figure><img class="before" src="assets/63.png" alt="" style="max-width:760px"><figcaption>现在：名称规则不统一，两行才放得下</figcaption></figure>
+  <div class="cap"><b>改后 · 人群卡片</b><span>名称一行放得下；第二行是默认国籍语言；“看重”列出关注点；标签是价值层、性格、情绪。筛选多一组按决策风格</span></div>
+  <div class="frame"><div class="screen s" data-tpl="personas"></div></div>
+
+  <h2>新建画像</h2>
+  <figure><img class="before" src="assets/64.png" alt="" style="max-width:760px"><figcaption>现在：字段平铺，AI 生成是一个大文本框</figcaption></figure>
+  <div class="cap"><b>改后 · 新建画像</b><span>顶部一行 AI 生成（填一句描述，自动选好下面的选项）；三组字段；右侧是卡片预览和一个试抽出的买家，改选项马上看到效果</span></div>
+  <div class="frame"><div class="screen s" data-tpl="newPersona"></div></div>
+  <h2>新建任务 · 买家画像</h2>
+  <div class="diag">
+    <div><b>3. 任务规则和画像库只是“半关联”</b>现在后台的做法是：先从全部启用的画像里随便抽一个，再用任务里选的标签把它的字段盖掉。比如任务选了“沉睡客”，抽到的可能是“爱尝新品的社媒创作者”，客户类型被改成沉睡客，偏好却还是“喜欢新品试用”，前后矛盾。老师也看不到会从哪些画像里抽。<br><span class="fix">改：分成两步。第一步“从哪些人群里抽”：按客户价值层、买家角色、决策风格筛选画像（或直接勾选几个），只从符合的画像里抽，不再改它们的身份字段；第二步“每次随机变化的”只管沟通方式（国籍语言、性格、情绪），这些和身份不矛盾，可以随机组合。</span></div>
+    <div><b>4. 说明文字和实际行为不一致；场景和人群没对上</b>页面写“不选就是完全随机”，实际上不选时用的是画像自己的默认值。另外选了“沉睡客户唤醒”场景，抽到的却可能是潜在意向客。<br><span class="fix">改：文案改成“不选就用画像的默认值”。场景加一项“适用客户价值层”（客户分层维护的 4 个场景已对应好，其他场景不限），新建任务选了场景后自动预选，老师可以改。底部实时显示符合的画像数量，并能试抽 3 个。</span><br><span class="api">要补：任务规则加“人群范围”（价值层 / 角色 / 风格 / 指定画像）；场景加“适用客户价值层”；没有符合的画像时禁止下发</span></div>
+  </div>
+  <figure><img class="before" src="assets/65.png" alt="" style="max-width:760px"><figcaption>现在：只能限定标签，看不到会从哪些画像里抽</figcaption></figure>
+  <div class="cap"><b>改后 · 新建任务里的买家画像</b><span>先定人群范围（按场景预选），再定每次随机变化的沟通方式；底部是符合的画像数量和试抽结果</span></div>
+  <div class="frame" data-h="960"><div class="screen s" data-tpl="taskPersona"></div></div>
+</div>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const I = (n) => `<i data-lucide="${n}"></i>`;
+const H = `<span class="help"><i data-lucide="circle-help"></i></span>`;
+const shell = (body, overlay = "") => `<div class="app">
+  <nav class="side">
+    <div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>
+    ${[["chart-column","数据总览"],["clipboard-list","实训任务"],["users-round","班级与学生"],["megaphone","通知公告"],["message-square-more","实训跟踪"],["file-chart-column","考核报表"],["boxes","场景配置"]].map(([i,l]) => `<div class="nav${l==="场景配置"?" on":""}">${I(i)}${l}</div>`).join("")}
+    <div class="grow"></div><div class="foot"><div class="nav">${I("book-open")}使用帮助</div></div>
+  </nav>
+  <div class="main" style="position:relative">
+    <header class="head"><h1>场景配置</h1><div class="tabs"><span class="tab">场景<span class="n">24</span></span><span class="tab on">买家画像<span class="n">40</span></span><span class="tab">店铺商品<span class="n">9</span></span></div>
+      <div class="right">${I("bell")}<span class="av">王</span>王老师 ${I("chevron-down")}</div></header>
+    <div class="body"><div class="wrap" style="max-width:none">${body}</div></div>
+  </div>${overlay}</div>`;
+const A = (f) => `assets/${f}.jpg`;
+const TYPE = { 潜在意向客: ["c2", "sprout"], 复购老客: ["c1", "repeat-2"], 粉丝客: ["c4", "heart"], 沉睡客: ["", "moon"] };
+const pc = (name, place, look, type, traits, used) => { const [c, ic] = TYPE[type]; return `<div class="pc"><div class="top"><span class="tico" style="background:${c ? `var(--${c}s)` : "var(--hover)"};color:${c ? `var(--${c})` : "var(--ink-3)"}">${I(ic)}</span><div style="min-width:0;flex:1"><div class="t2">${name}</div><span class="sub">默认 ${place}</span></div><span class="sw sm on"></span></div>
+  <div class="look"><em>看重：</em>${look}</div>
+  <div class="traits"><span class="tag ${c}">${type}</span>${traits.map((t) => `<span class="tag">${t}</span>`).join("")}</div>
+  <div class="ln"><span>${used ? `被抽中 ${used} 次` : "还没被抽中"}</span><span>${I("ellipsis")}</span></div></div>`; };
+const grid = () => `
+  <div class="bar-row"><span class="search" style="width:220px">${I("search")}搜索人群或关注点</span>
+    <div class="chips"><span class="chip on">全部 <i>40</i></span><span class="chip">潜在意向客 <i>12</i></span><span class="chip">复购老客 <i>12</i></span><span class="chip">粉丝客 <i>8</i></span><span class="chip">沉睡客 <i>8</i></span></div>
+    <span class="chip">决策风格 ${I("chevron-down")}</span>
+    <div class="r"><span class="btn">${I("dices")}试抽</span><span class="btn">${I("file-up")}批量导入</span><span class="btn primary">${I("plus")}新建画像</span></div></div>
+  <div class="pgrid">
+    ${pc("价格敏感型个人消费者", "美国 · 英语", "价格优惠、包邮", "潜在意向客", ["直接高效", "期待"], 12)}
+    ${pc("品质导向型批发采购商", "德国 · 英语", "材质参数、质检资质、批量价格", "复购老客", ["理性谨慎", "平静"], 9)}
+    ${pc("谨慎犹豫型礼品购买者", "英国 · 英语", "物流时效、包装礼盒", "潜在意向客", ["犹豫保守", "焦虑"], 7)}
+    ${pc("新奇尝鲜型个人消费者", "英国 · 英语", "新品、上镜效果", "粉丝客", ["友好健谈", "期待"], 6)}
+    ${pc("选择困难型个人消费者", "日本 · 英语", "尺码合身、退换政策", "潜在意向客", ["犹豫保守", "焦虑"], 5)}
+    ${pc("习惯忠诚型小B店主", "法国 · 法语", "补货节奏、老客优惠", "复购老客", ["理性谨慎", "平静"], 8)}
+    ${pc("品牌口碑型企业采购", "加拿大 · 英语", "正品资质、发票交期", "复购老客", ["直接高效", "平静"], 3)}
+    ${pc("价格敏感型代购转售", "西班牙 · 西班牙语", "批量价格、合并发货", "复购老客", ["敏感挑剔", "不满"], 4)}
+    ${pc("冲动下单型个人消费者", "巴西 · 西班牙语", "物流时效、限时优惠", "粉丝客", ["友好健谈", "期待"], 6)}
+    ${pc("享受逛买型个人消费者", "澳大利亚 · 英语", "新品、搭配推荐", "粉丝客", ["友好健谈", "平静"], 2)}
+    ${pc("品质导向型个人消费者", "美国 · 英语", "售后保修、材质参数", "沉睡客", ["敏感挑剔", "平静"], 3)}
+    ${pc("价格敏感型小B店主", "意大利 · 英语", "批量价格、物流时效", "沉睡客", ["直接高效", "平静"], 0)}
+  </div>`;
+const personas = () => shell(grid());
+const opt = (t, on, ic) => `<span class="opt${on ? " on" : ""}">${ic ? I(ic) : ""}${t}</span>`;
+const sel = (label, v) => `<div class="field"><label>${label}</label><div class="in">${v} ${I("chevron-down")}</div></div>`;
+const newPersona = () => shell(grid(), `<div class="scrim"></div>
+  <div class="dlg2">
+    <div class="dh"><h3>新建画像</h3><span class="x">${I("x")}</span></div>
+    <div class="db">
+      <div class="fm">
+        <div class="ai">${I("sparkles")}<span class="ph">一句话描述想要的买家，如：很在意退换政策、第一次在独立站下单的年轻妈妈</span><span class="btn primary sm">AI 生成</span></div>
+        <div class="grp"><h5>这类买家是谁</h5>
+          <div class="row2"><label>买家角色</label><div class="opts">${opt("个人消费者", 1)}${opt("礼品购买者")}${opt("小B店主")}${opt("批发采购商")}${opt("企业采购")}${opt("代购转售")}</div></div>
+          <div class="row2"><label>决策风格 ${H}</label><div class="opts">${opt("品质导向型")}${opt("品牌口碑型")}${opt("新奇尝鲜型")}${opt("享受逛买型")}${opt("价格敏感型", 1)}${opt("冲动下单型")}${opt("选择困难型")}${opt("习惯忠诚型")}</div></div>
+          <div class="row2"><label>客户价值层</label><div class="opts">${opt("潜在意向客", 1, "sprout")}${opt("复购老客", 0, "repeat-2")}${opt("粉丝客", 0, "heart")}${opt("沉睡客", 0, "moon")}</div></div>
+        </div>
+        <div class="grp"><h5>看重什么 <span>最多选 3 个，买家会围绕这些提问</span></h5>
+          <div class="opts">${opt("价格优惠", 1)}${opt("物流时效", 1)}${opt("退换政策", 1)}${opt("材质参数")}${opt("尺码合身")}${opt("包装礼盒")}${opt("售后保修")}${opt("正品资质")}${opt("批量价格")}${opt("发票交期")}${opt("新品")}</div>
+          <div class="ta2">补充说明（选填）：比如“习惯先在几家店比价，喜欢问有没有优惠码”</div>
+        </div>
+        <div class="grp"><h5>怎么沟通 <span>都是默认值，任务的随机规则可以改掉</span></h5>
+          <div class="sel4">${sel("性格", "直接高效")}${sel("进店情绪", "期待")}${sel("默认国籍", "美国")}${sel("语言", "英语")}</div>
+        </div>
+      </div>
+      <aside class="pv">
+        <h6>卡片预览</h6>
+        <div class="nm">名称 <b>价格敏感型个人消费者</b> ${I("pencil")}</div>
+        ${pc("价格敏感型个人消费者", "美国 · 英语", "价格优惠、物流时效、退换政策", "潜在意向客", ["直接高效", "期待"], 0)}
+        <h6 style="margin-top:6px">试抽一个</h6>
+        <div class="smp2"><img src="${A("f-05")}" alt=""><div><b>Megan Carter</b>美国 · 英语 · 期待</div></div>
+        <div class="smp2"><img src="${A("m-03")}" alt=""><div><b>Jason Miller</b>美国 · 英语 · 期待</div></div>
+      </aside>
+    </div>
+    <div class="df"><span class="btn">取消</span><span class="btn primary">保存</span></div>
+  </div>`);
+const taskShell = (overlay) => `<div class="app">
+  <nav class="side">
+    <div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>
+    ${[["chart-column","数据总览"],["clipboard-list","实训任务"],["users-round","班级与学生"],["megaphone","通知公告"],["message-square-more","实训跟踪"],["file-chart-column","考核报表"],["boxes","场景配置"]].map(([i,l]) => `<div class="nav${l==="实训任务"?" on":""}">${I(i)}${l}</div>`).join("")}
+    <div class="grow"></div><div class="foot"><div class="nav">${I("book-open")}使用帮助</div></div>
+  </nav>
+  <div class="main" style="position:relative">
+    <header class="head"><h1>实训任务</h1><div class="tabs"><span class="tab on">进行中<span class="n">4</span></span><span class="tab">未开始<span class="n">0</span></span><span class="tab">已结束<span class="n">0</span></span></div>
+      <div class="right">${I("bell")}<span class="av">王</span>王老师 ${I("chevron-down")}</div></header>
+    <div class="body"><div class="wrap"><div class="board" style="height:520px"></div></div></div>
+  </div>${overlay}</div>`;
+const chipRow = (label, sub, items, on = []) => `<div class="tp-row"><div class="tp-l"><b>${label}</b><span>${sub}</span></div><div class="opts">${items.map((t) => opt(t, on.includes(t))).join("")}</div></div>`;
+const taskPersona = () => taskShell(`<div class="scrim"></div>
+  <div class="drawer" style="width:1000px">
+    <div class="dh"><h3>新建任务</h3><span class="x">${I("x")}</span></div>
+    <div class="tp">
+      <div class="tp-sec-h"><b>买家画像</b><span>每次接待随机生成一位买家：先定从哪些人群里抽，再定每次随机变化的沟通方式。</span></div>
+      <div class="tp-step"><span class="tp-n">1</span><b>从哪些人群里抽</b><div class="seg" style="margin-left:auto"><span class="on">按条件筛选</span><span>指定画像</span></div></div>
+      ${chipRow("客户价值层", "已按场景预选", ["潜在意向客", "复购老客", "粉丝客", "沉睡客"], ["沉睡客"])}
+      <p class="tp-hint">${I("info")}所选场景「沉睡客户唤醒」适用沉睡客，已自动选上，可以改。</p>
+      ${chipRow("买家角色", "不选 = 不限", ["个人消费者", "礼品购买者", "小B店主", "批发采购商", "企业采购", "代购转售"])}
+      ${chipRow("决策风格", "不选 = 不限", ["品质导向型", "品牌口碑型", "新奇尝鲜型", "享受逛买型", "价格敏感型", "冲动下单型", "选择困难型", "习惯忠诚型"])}
+      <div class="tp-match">${I("users-round")}<b>符合的画像 8 个</b><span>价格敏感型小B店主、品质导向型个人消费者、习惯忠诚型个人消费者、选择困难型礼品购买者……</span><a>查看</a></div>
+      <div class="tp-step"><span class="tp-n">2</span><b>每次随机变化的</b><span class="tp-sub">不选就用画像的默认值</span></div>
+      ${chipRow("国籍", "画像默认", ["美国", "英国", "加拿大", "澳大利亚", "德国", "法国", "西班牙", "意大利", "日本", "巴西"])}
+      ${chipRow("性格", "画像默认", ["理性谨慎", "直接高效", "友好健谈", "敏感挑剔", "犹豫保守"])}
+      ${chipRow("进店情绪", "在 2 种里随机", ["平静", "焦虑", "不满", "期待"], ["焦虑", "不满"])}
+      ${chipRow("语言", "跟随国籍", ["英语", "西班牙语", "法语"])}
+      <div class="tp-try"><span class="tp-try-h">${I("dices")}试抽 3 个<a>再抽一次</a></span>
+        <div class="tp-try-list">
+          <div class="smp2"><img src="${A("f-01")}" alt=""><div><b>Laura Bennett</b>价格敏感型小B店主 · 美国 · 不满</div></div>
+          <div class="smp2"><img src="${A("m-03")}" alt=""><div><b>Pierre Laurent</b>习惯忠诚型个人消费者 · 法国 · 焦虑</div></div>
+          <div class="smp2"><img src="${A("f-05")}" alt=""><div><b>Emma Novak</b>品质导向型个人消费者 · 德国 · 不满</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="df"><span class="btn">取消</span><span class="btn primary">下发</span></div>
+  </div>`);
+const T = { personas, newPersona, taskPersona };
+document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
+if (window.lucide) lucide.createIcons();
+function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const h = +(f.dataset.h || 900); s.style.height = `${h}px`; const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${h * k}px`; }); }
+fit(); addEventListener("resize", fit);
+</script>
+</body>
+</html>

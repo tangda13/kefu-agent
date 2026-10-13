@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, session, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -33,6 +33,110 @@ ipcMain.handle("cecs:save-pdf", async (event, options = {}) => {
   const data = await event.sender.printToPDF({ printBackground: true, pageSize: "A4", landscape: Boolean(options.landscape), margins: { marginType: "default" } });
   fs.writeFileSync(filePath, data);
   return { ok: true, filePath };
+});
+
+// D-32 商品链接采集：在独立窗口里打开商品页（相当于老师本人在浏览，能过验证、带登录态），
+// 读到商品信息后自动关闭并把页面内容交回页面，由服务端 AI 整理成商品字段。窗口不加载任何预加载脚本。
+/* 在商品页里执行（不能引用外部变量）：读正文、结构化数据和大图地址 */
+function readProductPage() {
+  const text = ((document.body && document.body.innerText) || "").replace(/\n{3,}/g, "\n\n");
+  const ld = Array.from(document.querySelectorAll('script[type="application/ld+json"]')).map((el) => el.textContent || "").join("\n").slice(0, 8000);
+  const meta = Array.from(document.querySelectorAll('meta[property^="og:"], meta[property^="product:"], meta[name="description"]'))
+    .map((el) => `${el.getAttribute("property") || el.getAttribute("name")}: ${el.getAttribute("content")}`).join("\n").slice(0, 3000);
+  const images = [];
+  const push = (src) => { if (src && /^https?:/.test(src) && !images.includes(src)) images.push(src); };
+  const og = document.querySelector('meta[property="og:image"]');
+  if (og) push(og.getAttribute("content"));
+  const ldImg = ld.match(/"image"\s*:\s*(\[[^\]]*\]|"[^"]+")/);
+  if (ldImg) { try { [].concat(JSON.parse(ldImg[1])).forEach((item) => push(typeof item === "string" ? item : item && item.url)); } catch (e) { /* 忽略 */ } }
+  Array.from(document.images)
+    .filter((img) => img.naturalWidth >= 400 && img.naturalHeight >= 400)
+    .sort((a, b) => b.naturalWidth * b.naturalHeight - a.naturalWidth * a.naturalHeight)
+    .slice(0, 12)
+    .forEach((img) => push(img.currentSrc || img.src));
+  const blocked = /captcha|unusual traffic|are you a robot|滑动验证|安全验证|验证码|请拖动/i.test(text.slice(0, 3000)) && text.length < 4000;
+  const product = /"@type"\s*:\s*"Product"/.test(ld) || /og:type: (product|og:product)/i.test(meta);
+  // 往下滚一点，触发懒加载的详情描述
+  window.scrollTo(0, Math.min(document.body ? document.body.scrollHeight / 2 : 0, 6000));
+  return { title: document.title, text: text.slice(0, 20000), structured: [ld, meta].filter(Boolean).join("\n\n"), images: images.slice(0, 10), blocked, product, length: text.length };
+}
+const CAPTURE_SCRIPT = `(${readProductPage.toString()})()`;
+
+async function downloadImages(captureSession, urls, referer) {
+  const result = [];
+  for (const url of urls) {
+    if (result.length >= 6) break;
+    try {
+      const response = await captureSession.fetch(url, { headers: { Referer: referer } });
+      const type = response.headers.get("content-type") || "";
+      if (!response.ok || !/^image\/(png|jpe?g|webp)/.test(type)) continue;
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (buffer.length < 8000 || buffer.length > 5 * 1024 * 1024) continue;
+      result.push({ dataUrl: `data:${type.split(";")[0]};base64,${buffer.toString("base64")}` });
+    } catch {
+      // 单张失败跳过
+    }
+  }
+  return result;
+}
+
+ipcMain.handle("cecs:capture-page", async (event, options = {}) => {
+  let target;
+  try {
+    target = new URL(String(options.url || ""));
+  } catch {
+    return { ok: false, reason: "invalid" };
+  }
+  if (target.protocol !== "https:" && target.protocol !== "http:") return { ok: false, reason: "invalid" };
+  const parent = BrowserWindow.fromWebContents(event.sender) || undefined;
+  const captureSession = session.fromPartition("persist:product-capture");
+  const win = new BrowserWindow({
+    parent,
+    width: 1180,
+    height: 820,
+    title: "正在读取商品页面（遇到验证请手动完成，读完会自动关闭）",
+    autoHideMenuBar: true,
+    webPreferences: { session: captureSession, contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  win.on("page-title-updated", (e) => e.preventDefault());
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  const startedAt = Date.now();
+  let loadedAt = 0;
+  win.webContents.on("did-finish-load", () => { loadedAt = Date.now(); });
+  return new Promise((resolve) => {
+    let finished = false;
+    let busy = false;
+    const finish = (value) => {
+      if (finished) return;
+      finished = true;
+      clearInterval(timer);
+      clearTimeout(deadline);
+      if (!win.isDestroyed()) win.destroy();
+      resolve(value);
+    };
+    win.on("closed", () => finish({ ok: false, reason: "closed" }));
+    const deadline = setTimeout(() => finish({ ok: false, reason: "timeout" }), 120_000);
+    const timer = setInterval(async () => {
+      if (busy || finished || !loadedAt || Date.now() - loadedAt < 2500 || win.isDestroyed()) return;
+      busy = true;
+      try {
+        const data = await win.webContents.executeJavaScript(CAPTURE_SCRIPT, true);
+        const waitedLongEnough = Date.now() - startedAt > 20_000 && data.length > 1500;
+        if (!data.blocked && (data.product || data.length > 3000 || waitedLongEnough)) {
+          const pageUrl = win.webContents.getURL();
+          const images = await downloadImages(captureSession, data.images, pageUrl);
+          finish({ ok: true, url: pageUrl, title: data.title, text: data.text, structured: data.structured, images });
+        }
+      } catch {
+        // 页面还在跳转，下一轮再试
+      } finally {
+        busy = false;
+      }
+    }, 1500);
+    // 去掉 UA 里的 Electron 标识，避免被当成爬虫
+    const userAgent = win.webContents.getUserAgent().replace(/\s?Electron\/\S+/, "").replace(/\s?@?cecs\S*/i, "");
+    win.loadURL(target.toString(), { userAgent }).catch(() => undefined);
+  });
 });
 
 function createWindow() {

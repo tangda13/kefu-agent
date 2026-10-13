@@ -8,6 +8,38 @@ export const BUSINESS_STAGE_LABELS: Record<BusinessStage, string> = {
   customer_care: "客户分层维护",
 };
 
+/** 沟通方式：在线会话 / 邮件（场景卡片标注，邮件类场景在学生端走邮件模块） */
+export const SCENARIO_CHANNELS = ["chat", "mail"] as const;
+export type ScenarioChannel = (typeof SCENARIO_CHANNELS)[number];
+export const SCENARIO_CHANNEL_LABELS: Record<ScenarioChannel, string> = { chat: "在线会话", mail: "邮件" };
+
+/** 场景开会话时生成的关联订单状态（D-32）。未指定时按业务环节取默认 */
+export const ORDER_KINDS = [
+  "none",
+  "pending_payment",
+  "paid",
+  "in_transit",
+  "customs",
+  "delivery_failed",
+  "delivered",
+  "delivered_negative",
+  "delivered_positive",
+  "completed",
+] as const;
+export type OrderKind = (typeof ORDER_KINDS)[number];
+export const ORDER_KIND_LABELS: Record<OrderKind, string> = {
+  none: "没有订单（售前咨询）",
+  pending_payment: "待付款",
+  paid: "已付款、待发货",
+  in_transit: "运输中（正常）",
+  customs: "运输中、卡在清关",
+  delivery_failed: "派送异常（丢件或派送失败）",
+  delivered: "已送达",
+  delivered_negative: "已送达，买家给了差评",
+  delivered_positive: "已送达，买家给了好评",
+  completed: "历史已完成订单",
+};
+
 export const CUSTOMER_TYPES = ["潜在意向客", "复购老客", "粉丝客", "沉睡客"] as const;
 export const PERSONALITIES = ["理性谨慎", "直接高效", "友好健谈", "敏感挑剔", "犹豫保守"] as const;
 export const EMOTIONS = ["平静", "焦虑", "不满", "期待"] as const;
@@ -61,6 +93,10 @@ export interface TrainingScenario {
   objective: string;
   defaultLanguage: (typeof SUPPORTED_LANGUAGES)[number];
   enabled: boolean;
+  channel: ScenarioChannel;
+  orderKind: OrderKind;
+  /** D-33：适用客户价值层（新建任务选了这个场景时预选人群范围），空 = 不限 */
+  customerTypes?: string[];
   script?: ScenarioScript;
 }
 
@@ -98,6 +134,11 @@ export interface PersonaTemplate {
   preference: string;
   customerType: (typeof CUSTOMER_TYPES)[number];
   enabled: boolean;
+  /** D-33 结构化字段：买家角色、决策风格、关注点（≤3）、补充说明。identity / preference 由它们派生，保留给旧会话快照和提示词 */
+  buyerRole?: string | null;
+  decisionStyle?: string | null;
+  concerns?: string[];
+  note?: string | null;
 }
 
 export interface ConversationMetric {
@@ -112,3 +153,5 @@ export interface ConversationMetric {
 }
 
 export * from "./llm";
+export * from "./product";
+export * from "./persona";

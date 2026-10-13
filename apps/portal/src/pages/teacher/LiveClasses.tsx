@@ -1,4 +1,4 @@
-import { Download, FileUp, Plus } from "lucide-react";
+import { Download, FileUp, Pencil, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiError, createClass, deleteClass, deleteStudent, fetchClassStudents, fetchClasses, renameClass, resetStudentPassword,
@@ -12,27 +12,18 @@ import {
 
 const errorText = (cause: unknown) => (cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
 const NO_GROUP = "__none";
-const ATTENTION = "__attention";
-const DAY = 86_400_000;
+const PENDING = "__pending";
+const DISABLED = "__disabled";
+const AVATAR_TONES = [1, 2, 3, 4, 5];
 
-/** 需要老师关注的学生：低于 60 分（红）、7 天以上没练或还没开始（橙）；已停用的不算 */
-function attention(row: ClassStudent): { kind: "low" | "idle" | "never"; text: string } | null {
-  if (row.status !== "active") return null;
-  if (row.averageScore != null && row.averageScore < 60) return { kind: "low", text: "低于 60 分" };
-  if (!row.lastActiveAt) return row.tasksTotal ? { kind: "never", text: row.mustChangePassword ? "还没登录" : "还没练过" } : null;
-  const days = Math.floor((Date.now() - new Date(row.lastActiveAt).getTime()) / DAY);
-  return days >= 7 ? { kind: "idle", text: `${days} 天没练` } : null;
+/** 账号状态（D-35：班级页只管名单，不再显示练习数据） */
+function accountState(row: ClassStudent): "ok" | "pending" | "disabled" {
+  if (row.status !== "active") return "disabled";
+  return row.mustChangePassword ? "pending" : "ok";
 }
-
-/** 最近活跃：今天显示时间，7 天内显示“N 天前”，更早显示日期 */
-function activeText(iso: string | null): string {
-  if (!iso) return "还没练过";
-  const date = new Date(iso);
-  const days = Math.floor((Date.now() - date.getTime()) / 86_400_000);
-  if (days < 1 && new Date().getDate() === date.getDate()) return `今天 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-  if (days < 7) return `${Math.max(days, 1)} 天前`;
-  return date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
-}
+const ACCOUNT_LABELS = { ok: "正常", pending: "待改密", disabled: "已停用" } as const;
+const joinedText = (iso: string) => new Date(iso).toLocaleDateString("zh-CN", { year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : "numeric", month: "long", day: "numeric" });
+const toneOf = (text: string) => AVATAR_TONES[[...text].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % AVATAR_TONES.length]!;
 
 export function LiveClasses({ session }: { session: Session }) {
   const [classes, setClasses] = useState<ClassSummary[]>([]);
@@ -82,16 +73,16 @@ export function LiveClasses({ session }: { session: Session }) {
     const word = keyword.trim().toLowerCase();
     return students.filter((row) => {
       if (group === NO_GROUP && row.groupName) return false;
-      if (group === ATTENTION && !attention(row)) return false;
-      if (group && group !== NO_GROUP && group !== ATTENTION && row.groupName !== group) return false;
+      if (group === PENDING && accountState(row) !== "pending") return false;
+      if (group === DISABLED && accountState(row) !== "disabled") return false;
+      if (group && group !== NO_GROUP && group !== PENDING && group !== DISABLED && row.groupName !== group) return false;
       return !word || `${row.displayName} ${row.username}`.toLowerCase().includes(word);
     });
   }, [students, keyword, group]);
   const allChecked = visible.length > 0 && visible.every((row) => selected.includes(row.id));
-  const scored = students.filter((row) => row.averageScore != null);
-  const classAverage = scored.length ? Math.round(scored.reduce((sum, row) => sum + row.averageScore!, 0) / scored.length) : null;
-  const weekActive = students.filter((row) => row.lastActiveAt && Date.now() - new Date(row.lastActiveAt).getTime() < 7 * DAY).length;
-  const idleCount = students.filter((row) => attention(row)?.kind === "idle").length;
+  const pendingCount = students.filter((row) => accountState(row) === "pending").length;
+  const disabledCount = students.filter((row) => accountState(row) === "disabled").length;
+  const myRole = (item: ClassSummary) => (item.headTeacherId === session.user.id ? "班主任" : "任课");
 
   async function run(action: () => Promise<unknown>, message: string, reloadClasses = false) {
     try {
@@ -118,10 +109,9 @@ export function LiveClasses({ session }: { session: Session }) {
 
   function exportRoster() {
     if (!current) return;
-    const header = "学号,姓名,分组,完成任务,参训任务,平均分,最近活跃,状态\n";
+    const header = "学号,姓名,分组,账号状态,加入时间\n";
     const body = students.map((row) => [
-      row.username, row.displayName, row.groupName ?? "", row.tasksDone, row.tasksTotal, row.averageScore ?? "",
-      row.lastActiveAt ? new Date(row.lastActiveAt).toLocaleString("zh-CN") : "", row.status === "active" ? "正常" : "已停用",
+      row.username, row.displayName, row.groupName ?? "", ACCOUNT_LABELS[accountState(row)], new Date(row.createdAt).toLocaleDateString("zh-CN"),
     ].join(",")).join("\n");
     const blob = new Blob(["﻿" + header + body], { type: "text/csv;charset=utf-8" });
     const link = document.createElement("a");
@@ -136,7 +126,6 @@ export function LiveClasses({ session }: { session: Session }) {
       label="班级操作"
       items={[
         { label: "新建班级", onClick: () => setDialog({ kind: "newClass" }) },
-        { label: "重命名班级", disabled: !current, onClick: () => setDialog({ kind: "rename" }) },
         { label: "删除班级", danger: true, disabled: !current, onClick: () => setDialog({ kind: "deleteClass" }) },
       ]}
     />
@@ -144,102 +133,84 @@ export function LiveClasses({ session }: { session: Session }) {
 
   return (
     <>
-      {classes.length > 0 && classes.length <= 6 ? (
-        <HeaderTabs items={classes.map((item) => ({ id: item.id, label: item.name, count: item.studentCount }))} value={classId} onChange={setClassId} />
-      ) : null}
       <Bench>
         {classes.length === 0 ? (
           <Board><p className="board-quiet">还没有班级。新建一个班级，再把学生名单导进来。 <Button variant="primary" icon={Plus} onClick={() => setDialog({ kind: "newClass" })}>新建班级</Button></p></Board>
         ) : (
-          <>
-            <Board>
-              <div className="classbar">
-                <div className="k"><small>学生</small><b>{students.length}</b></div>
-                <span className="sep" />
-                <div className="k"><small>本周练过</small><b>{weekActive}</b></div>
-                <span className="sep" />
-                <div className="k"><small>平均分</small><b className={classAverage == null ? "is-dash" : undefined}>{classAverage ?? "—"}</b></div>
-                <span className="sep" />
-                <div className="k"><small>7 天以上没练</small><b className={idleCount ? "is-warn" : undefined}>{idleCount}</b></div>
-                <div className="end">
-                  {classes.length > 6 ? (
-                    <Select className="toolbar-select" value={classId} onChange={(event) => setClassId(event.target.value)}>
-                      {classes.map((item) => <option key={item.id} value={item.id}>{item.name}（{item.studentCount} 人）</option>)}
-                    </Select>
-                  ) : null}
+          <div className="cls">
+            <aside className="cls-list">
+              <h6>我的班级<span>{classes.length}</span></h6>
+              {classes.map((item) => (
+                <button key={item.id} type="button" className={item.id === classId ? "cls-item is-on" : "cls-item"} onClick={() => setClassId(item.id)}>
+                  <b>{item.name}</b>
+                  <small>{item.studentCount} 名学生 · {myRole(item)}</small>
+                  {item.pendingPasswordCount ? <em title="待改密的账号">{item.pendingPasswordCount}</em> : null}
+                </button>
+              ))}
+              <button type="button" className="cls-add" onClick={() => setDialog({ kind: "newClass" })}><Plus size={14} />新建班级</button>
+            </aside>
+
+            <div className="cls-main">
+              <header className="cls-head">
+                <div>
+                  <h2>{current?.name}<button type="button" title="重命名班级" onClick={() => setDialog({ kind: "rename" })}><Pencil size={15} /></button></h2>
+                  <p className="cls-facts">
+                    <span>班主任 {current?.headTeacherName ?? "未设置"}{current?.teachers.length ? ` · 任课 ${current.teachers.map((item) => item.displayName).join("、")}` : ""}</span>
+                    <i className="cls-sep" />
+                    <span><b>{students.length}</b> 名学生 · <b>{groups.length}</b> 个分组</span>
+                    {pendingCount ? <><i className="cls-sep" /><span className="is-warn">{pendingCount} 个账号待改密</span></> : null}
+                    {disabledCount ? <><i className="cls-sep" /><span>{disabledCount} 个已停用</span></> : null}
+                  </p>
+                </div>
+                <div className="cls-actions">
                   <Button variant="ghost" icon={Download} disabled={students.length === 0} onClick={exportRoster}>导出名单</Button>
                   <Button icon={FileUp} onClick={() => setDialog({ kind: "import" })}>导入学生</Button>
                   {classMenu}
                 </div>
-              </div>
-            </Board>
-            {selected.length > 0 ? (
-              <div className="selection-bar">
-                <strong>已选 {selected.length} 人</strong>
-                <Button size="sm" onClick={() => setDialog({ kind: "group" })}>分到组…</Button>
-                <Button size="sm" variant="ghost" onClick={() => void run(() => setStudentGroup(session, classId, selected, null), "已移出分组").then(() => setSelected([]))}>移出分组</Button>
-                <Button size="sm" variant="ghost" onClick={() => setSelected([])}>取消选择</Button>
-              </div>
-            ) : (
-              <div className="bench-bar">
-                <SearchBox value={keyword} onChange={setKeyword} placeholder="搜索姓名或学号" />
-                <FilterChips
-                  items={[
-                    { id: "", label: "全部", count: students.length },
-                    ...groups.map((name) => ({ id: name, label: name, count: students.filter((row) => row.groupName === name).length })),
-                    ...(groups.length ? [{ id: NO_GROUP, label: "未分组", count: students.filter((row) => !row.groupName).length }] : []),
-                    { id: ATTENTION, label: "需要关注", count: students.filter((row) => attention(row)).length },
-                  ]}
-                  value={group}
-                  onChange={setGroup}
-                />
-              </div>
-            )}
-            <Board>
-              <DataTable
-                loading={loading}
-                rows={visible}
-                rowKey={(row) => row.id}
-                empty={keyword || group ? "没有符合条件的学生" : <>这个班还没有学生。<Button variant="text" onClick={() => setDialog({ kind: "import" })}>导入名单</Button></>}
-                columns={[
-                  {
-                    key: "check", width: 36,
-                    title: <input type="checkbox" aria-label="全选" checked={allChecked} onChange={() => setSelected(allChecked ? [] : visible.map((row) => row.id))} />,
-                    render: (row) => (
-                      <input
-                        type="checkbox" aria-label={`选择 ${row.displayName}`} checked={selected.includes(row.id)}
-                        onChange={() => setSelected((list) => (list.includes(row.id) ? list.filter((id) => id !== row.id) : [...list, row.id]))}
-                      />
-                    ),
-                  },
-                  {
-                    key: "name", title: "学生",
-                    render: (row) => (
-                      <span className={row.status === "active" ? undefined : "is-muted-cell"}>
-                        <span className="cell-title">{row.displayName}{row.status !== "active" ? <Tag>已停用</Tag> : null}</span>
-                        <span className="cell-meta">{row.username}</span>
-                      </span>
-                    ),
-                  },
-                  { key: "group", title: "分组", width: 110, render: (row) => (row.groupName ? <Flag tone="plain">{row.groupName}</Flag> : <span className="faint">—</span>) },
-                  {
-                    key: "tasks", title: "完成任务", width: 160,
-                    render: (row) => (row.tasksTotal
-                      ? <span className="cell-bar"><span><i style={{ width: `${(row.tasksDone / row.tasksTotal) * 100}%` }} /></span>{row.tasksDone} / {row.tasksTotal}</span>
-                      : <span className="faint">还没有任务</span>),
-                  },
-                  { key: "score", title: "平均分", width: 80, align: "right", render: (row) => (row.averageScore == null ? <span className="faint">—</span> : <span className={row.averageScore < 60 ? "strong-num is-bad" : "strong-num"}>{row.averageScore}</span>) },
-                  {
-                    key: "active", title: "最近练习", width: 130,
-                    render: (row) => {
-                      const flag = attention(row);
-                      if (!flag) return <span>{activeText(row.lastActiveAt)}</span>;
-                      return <Flag tone={flag.kind === "low" ? "bad" : "warn"}>{flag.text}</Flag>;
-                    },
-                  },
-                  {
-                    key: "ops", title: "", width: 48, align: "right",
-                    render: (row) => (
+              </header>
+
+              <section className="cls-roster">
+                <div className="cls-tools">
+                  <SearchBox value={keyword} onChange={setKeyword} placeholder="搜索姓名或学号" />
+                  <FilterChips
+                    items={[
+                      { id: "", label: "全部", count: students.length },
+                      ...groups.map((name) => ({ id: name, label: name, count: students.filter((row) => row.groupName === name).length })),
+                      ...(groups.length ? [{ id: NO_GROUP, label: "未分组", count: students.filter((row) => !row.groupName).length }] : []),
+                      ...(pendingCount ? [{ id: PENDING, label: "待改密", count: pendingCount }] : []),
+                      ...(disabledCount ? [{ id: DISABLED, label: "已停用", count: disabledCount }] : []),
+                    ]}
+                    value={group}
+                    onChange={setGroup}
+                  />
+                </div>
+                {selected.length > 0 ? (
+                  <div className="cls-batch">
+                    <strong>已选 {selected.length} 人</strong>
+                    <Button size="sm" onClick={() => setDialog({ kind: "group" })}>分到组…</Button>
+                    <Button size="sm" variant="ghost" onClick={() => void run(() => setStudentGroup(session, classId, selected, null), "已移出分组").then(() => setSelected([]))}>移出分组</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setSelected([])}>取消选择</Button>
+                  </div>
+                ) : null}
+                <div className="cls-row is-head">
+                  <input type="checkbox" aria-label="全选" checked={allChecked} onChange={() => setSelected(allChecked ? [] : visible.map((row) => row.id))} />
+                  <span /><span>学生</span><span>分组</span><span>账号状态</span><span>加入时间</span><span />
+                </div>
+                {loading ? <p className="board-quiet">正在读取…</p> : visible.length === 0 ? (
+                  <p className="board-quiet">{keyword || group ? "没有符合条件的学生" : <>这个班还没有学生。<Button variant="text" onClick={() => setDialog({ kind: "import" })}>导入名单</Button></>}</p>
+                ) : visible.map((row) => {
+                  const state = accountState(row);
+                  const tone = toneOf(row.displayName);
+                  const checked = selected.includes(row.id);
+                  return (
+                    <div key={row.id} className={["cls-row", checked ? "is-sel" : "", state === "disabled" ? "is-off" : ""].filter(Boolean).join(" ")}>
+                      <input type="checkbox" aria-label={`选择 ${row.displayName}`} checked={checked}
+                        onChange={() => setSelected((list) => (list.includes(row.id) ? list.filter((id) => id !== row.id) : [...list, row.id]))} />
+                      <span className="cls-av" style={{ background: `var(--c-cat-${tone}-soft)`, color: `var(--c-cat-${tone})` }}>{row.displayName.slice(0, 1)}</span>
+                      <span className="cls-name"><b>{row.displayName}</b><small>{row.username}</small></span>
+                      <span>{row.groupName ? <Flag tone="plain">{row.groupName}</Flag> : <span className="faint">未分组</span>}</span>
+                      <span className={`cls-acc is-${state}`}><i />{ACCOUNT_LABELS[state]}</span>
+                      <span className="cls-time">{joinedText(row.createdAt)}</span>
                       <MoreMenu items={[
                         { label: "编辑 / 转班", onClick: () => setDialog({ kind: "edit", student: row }) },
                         { label: "重置密码", onClick: () => setDialog({ kind: "reset", student: row }) },
@@ -248,12 +219,12 @@ export function LiveClasses({ session }: { session: Session }) {
                           : { label: "恢复账号", onClick: () => void run(() => setStudentStatus(session, row.id, "active"), `${row.displayName} 已恢复`) },
                         { label: "删除", danger: true, onClick: () => setDialog({ kind: "remove", student: row }) },
                       ]} />
-                    ),
-                  },
-                ]}
-              />
-            </Board>
-          </>
+                    </div>
+                  );
+                })}
+              </section>
+            </div>
+          </div>
         )}
       </Bench>
 

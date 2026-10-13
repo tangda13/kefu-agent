@@ -513,4 +513,46 @@ alter table read_marks drop constraint if exists read_marks_kind_check;
 alter table read_marks add constraint read_marks_kind_check check (kind in ('mail','guidance','notice'));
 `,
   },
+  {
+    /* D-32 场景配置扩充：场景沟通方式与订单状态；商品详情（多图、规格矩阵、卖点、参数、尺码表、物流、售后、FAQ） */
+    id: "029_scene_library",
+    sql: `
+alter table scenarios add column if not exists channel text not null default 'chat';
+alter table scenarios add column if not exists order_kind text;
+alter table store_products add column if not exists category text;
+alter table store_products add column if not exists images jsonb not null default '[]'::jsonb;
+alter table store_products add column if not exists details jsonb not null default '{}'::jsonb;
+alter table store_products add column if not exists source text not null default 'manual';
+alter table store_products add column if not exists source_url text;
+alter table store_products add column if not exists library_id text;
+alter table store_products add column if not exists updated_at timestamptz not null default now();
+update store_products set images = jsonb_build_array(image_url) where image_url is not null and images = '[]'::jsonb;
+`,
+  },
+  {
+    /* D-33 买家画像结构化：买家角色、决策风格、关注点、补充说明；场景适用客户价值层 */
+    id: "030_persona_structure",
+    sql: `
+alter table persona_templates add column if not exists buyer_role text;
+alter table persona_templates add column if not exists decision_style text;
+alter table persona_templates add column if not exists concerns jsonb not null default '[]'::jsonb;
+alter table persona_templates add column if not exists note text;
+alter table scenarios add column if not exists customer_types jsonb not null default '[]'::jsonb;
+`,
+  },
+  {
+    /* 个人中心：用户头像 */
+    id: "031_user_avatar",
+    sql: `
+alter table users add column if not exists avatar_url text;
+`,
+  },
+  {
+    /* D-36 接待生命周期：结束原因与时间（buyer_left / student_ended / timeout / abandoned / task_closed） */
+    id: "032_conversation_close_reason",
+    sql: `
+alter table conversations add column if not exists closed_reason text;
+alter table conversations add column if not exists closed_at timestamptz;
+`,
+  },
 ];

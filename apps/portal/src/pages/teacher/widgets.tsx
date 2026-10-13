@@ -305,6 +305,17 @@ export function takeReplaySearch(): string {
   nextReplaySearch = null;
   return value;
 }
+/** 从实训任务卡片跳到考核报表时预选这个任务 */
+let nextReportTask: string | null = null;
+export function openReportFor(taskId: string) {
+  nextReportTask = taskId;
+}
+export function takeReportTask(): string {
+  const value = nextReportTask ?? "";
+  nextReportTask = null;
+  return value;
+}
+
 export function takeTrackingTab(): "live" | "replay" {
   const tab = nextTrackingTab ?? "live";
   nextTrackingTab = null;

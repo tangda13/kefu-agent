@@ -288,7 +288,7 @@ export function DataTable<T>({ columns, rows, rowKey, empty = "暂无数据", lo
 }
 
 /** 「更多」菜单：收纳次要和危险操作 */
-export function MoreMenu({ items, label = "更多操作", trigger, triggerClassName }: { items: Array<{ label: string; onClick: () => void; danger?: boolean; disabled?: boolean }>; label?: string; /** 自定义触发按钮的内容（默认是“…”图标按钮） */ trigger?: ReactNode; triggerClassName?: string }) {
+export function MoreMenu({ items, label = "更多操作", trigger, triggerClassName }: { items: Array<{ label: string; onClick: () => void; danger?: boolean; disabled?: boolean; icon?: LucideIcon; separated?: boolean }>; label?: string; /** 自定义触发按钮的内容（默认是“…”图标按钮） */ trigger?: ReactNode; triggerClassName?: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -310,12 +310,13 @@ export function MoreMenu({ items, label = "更多操作", trigger, triggerClassN
               type="button"
               role="menuitem"
               disabled={item.disabled}
-              className={cx(item.danger && "is-danger")}
+              className={cx(item.danger && "is-danger", item.separated && "is-separated")}
               onClick={() => {
                 setOpen(false);
                 item.onClick();
               }}
             >
+              {item.icon ? <item.icon size={15} /> : null}
               {item.label}
             </button>
           ))}
@@ -337,7 +338,7 @@ function useEscape(onClose: () => void) {
   }, [onClose]);
 }
 
-export function Dialog({ title, width = 480, onClose, footer, children }: { title: ReactNode; width?: 480 | 640; onClose: () => void; footer?: ReactNode; children: ReactNode }) {
+export function Dialog({ title, width = 480, onClose, footer, children }: { title: ReactNode; width?: 480 | 640 | 760 | 900 | 1000; onClose: () => void; footer?: ReactNode; children: ReactNode }) {
   useEscape(onClose);
   return createPortal(
     <div className="ui-overlay" onMouseDown={onClose}>

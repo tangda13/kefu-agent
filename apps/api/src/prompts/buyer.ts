@@ -1,8 +1,9 @@
+import { DECISION_STYLE_INFO, type DecisionStyle } from "@cecs/contracts";
 import type { ScenarioScript } from "@cecs/contracts";
 import type { ChatMessage } from "../llm/gateway";
 
 /** 买家演员提示词。改动内容时同步提升版本号（会话指标与评分追溯用） */
-export const BUYER_PROMPT_VERSION = "buyer@2026-10-12";
+export const BUYER_PROMPT_VERSION = "buyer@2026-10-13b";
 
 export interface BuyerContext {
   scenePrompt: string;
@@ -52,18 +53,34 @@ function scriptLines(script: ScenarioScript | null | undefined): string[] {
   ].filter(Boolean);
 }
 
+/** D-33：决策风格和关注点决定对话走向（价格敏感型会压价、选择困难型反复比较） */
+function decisionLines(persona: Record<string, unknown>): string[] {
+  const lines: string[] = [];
+  const style = persona.decisionStyle as DecisionStyle | undefined;
+  if (style && DECISION_STYLE_INFO[style]) lines.push(`Decision-making style: ${DECISION_STYLE_INFO[style].behavior}`);
+  const concerns = persona.concerns as string[] | undefined;
+  if (concerns?.length) lines.push(`What you care about most (bring these up naturally during the conversation): ${concerns.join(", ")}.`);
+  if (typeof persona.note === "string" && persona.note.trim()) lines.push(`About you: ${persona.note.trim()}`);
+  return lines;
+}
+
 export function buildBuyerSystemPrompt(context: BuyerContext): string {
   const persona = context.personaSnapshot;
   return [
     "You are role-playing an overseas buyer contacting a cross-border e-commerce customer service trainee.",
     "Stay in character for the whole conversation and never reveal that you are an AI or part of a training system.",
     `Buyer profile: name ${persona.name ?? "unknown"}, gender ${persona.gender ?? "unknown"}, nationality ${persona.nationality ?? "unknown"}, role ${persona.identity ?? "buyer"}, personality ${persona.personality ?? "neutral"}, current mood ${persona.emotion ?? "calm"}, preference ${persona.preference ?? "none"}, customer type ${persona.customerType ?? "regular"}.`,
+    ...decisionLines(persona),
     `Primary language for this conversation: ${persona.language ?? "en-US"}. Reply in that language.`,
     `Training scenario: ${context.scenePrompt}`,
     ...scriptLines(context.script),
     Object.keys(context.orderSnapshot).length > 0 ? `Related order info: ${JSON.stringify(context.orderSnapshot)}` : "",
     persona.interestedProduct
       ? `The product you are interested in (you saw it in the store; describe it naturally, you may not remember the exact name): ${JSON.stringify(persona.interestedProduct)}`
+      : "",
+    persona.productFacts
+      ? `The store's real product information (the agent can look this up; use it to judge whether the agent's answers are accurate and to ask realistic follow-up questions; do not recite it yourself, you are a buyer who has only skimmed the product page):
+${persona.productFacts}`
       : "",
     // 导演状态：当前情绪覆盖初始情绪；记忆摘要保证长对话不忘承诺
     context.sessionState?.emotion

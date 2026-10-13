@@ -331,6 +331,7 @@ export function registerClassRoutes(
       const result = await db.query(
         `select c.id, c.name, c.head_teacher_id, c.created_at, h.display_name as head_teacher_name,
                 (select count(*) from users u where u.class_id = c.id and u.role = 'student') as student_count,
+                (select count(*) from users u where u.class_id = c.id and u.role = 'student' and u.status = 'active' and u.must_change_password) as pending_password_count,
                 coalesce((select json_agg(json_build_object('id', t.id, 'displayName', t.display_name) order by t.display_name)
                           from teacher_classes tc join users t on t.id = tc.teacher_id
                           where tc.class_id = c.id), '[]') as teachers
@@ -347,6 +348,8 @@ export function registerClassRoutes(
         headTeacherName: row.head_teacher_name ?? null,
         teachers: row.teachers as Array<{ id: string; displayName: string }>,
         studentCount: Number(row.student_count),
+        /* D-35：待改密的账号数（班级清单角标） */
+        pendingPasswordCount: Number(row.pending_password_count ?? 0),
         createdAt: row.created_at,
       }));
     },

@@ -3,6 +3,10 @@ import { ASSESSMENT_DIMENSIONS, BUSINESS_STAGES } from "@cecs/contracts";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import { teacherOwnsClass, writeAudit } from "../auth-context";
+import { filterPersonaTemplates, type PersonaRule } from "@cecs/domain";
+import { loadEnabledPersonaTemplates } from "./catalog";
+import type { LlmGateway } from "../llm/gateway";
+import { sweepConversations } from "../lifecycle";
 
 interface CreateTaskBody {
   name?: string;
@@ -89,6 +93,7 @@ export function registerTaskRoutes(
   app: FastifyInstance,
   db: Db,
   guard: AuthGuard,
+  gateway?: LlmGateway,
 ): void {
   app.post<{ Body: CreateTaskBody }>(
     "/v1/tasks",
@@ -171,6 +176,12 @@ export function registerTaskRoutes(
       if (arrivalProblem) {
         reply.code(400);
         return { code: "INVALID_INPUT", message: arrivalProblem };
+      }
+
+      // D-33：买家范围里至少要有一个启用的画像，否则学生一开始接待就会失败
+      if (filterPersonaTemplates(await loadEnabledPersonaTemplates(db), (body.personaRule ?? {}) as PersonaRule).length === 0) {
+        reply.code(400);
+        return { code: "NO_MATCHING_PERSONA", message: "买家范围里没有可用的画像，请放宽条件或先启用画像。" };
       }
 
       const client = await db.connect();
@@ -324,6 +335,8 @@ export function registerTaskRoutes(
         [merged.name, merged.startAt, merged.deadline, merged.timeLimit, merged.status, merged.completionRule, merged.requiredCount, merged.passScore, merged.arrivalMode, merged.arrivalIntervalMinutes, taskId],
       );
       await writeAudit(db, user.sub, "task.update", taskId, { status: merged.status });
+      // D-36：结束任务（或改了截止 / 限时）时立即结束任务里还没完成的接待
+      if (gateway) void sweepConversations(db, gateway, { taskId }).catch(() => undefined);
       const row = result.rows[0];
       return {
         id: row.id,

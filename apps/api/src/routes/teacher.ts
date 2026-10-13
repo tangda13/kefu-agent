@@ -204,7 +204,7 @@ export function registerTeacherRoutes(
       const isAdmin = user.role === "admin";
       const params = isAdmin ? [] : [user.sub];
       const result = await db.query(
-        `select c.id, c.persona, c.state, c.created_at, c.task_id, u.display_name as student_name, u.username,
+        `select c.id, c.persona, c.state, c.created_at, c.task_id, u.display_name as student_name, u.username, u.avatar_url as student_avatar,
                 s.name as scenario_name, s.objective as scenario_objective, s.script as scenario_script,
                 (select count(*) from conversation_messages m where m.conversation_id = c.id and m.sender = 'student') as student_turns,
                 lm.sender as last_sender, lm.created_at as last_at, lm.content as last_content
@@ -213,9 +213,9 @@ export function registerTeacherRoutes(
          left join scenarios s on s.id = c.scenario_id
          left join lateral (
            select sender, content, created_at from conversation_messages m
-           where m.conversation_id = c.id order by m.created_at desc limit 1
+           where m.conversation_id = c.id and m.sender <> 'teacher' order by m.created_at desc limit 1
          ) lm on true
-         where c.status = 'active' and c.student_id in (${scopedStudentsSql(isAdmin)})
+         where c.status = 'active' and c.task_id is not null and c.student_id in (${scopedStudentsSql(isAdmin)})
          order by coalesce(lm.created_at, c.created_at) desc limit 40`,
         params,
       );
@@ -223,12 +223,14 @@ export function registerTeacherRoutes(
       return result.rows.map((row) => {
         const lastAt = row.last_at ? new Date(row.last_at).getTime() : new Date(row.created_at).getTime();
         const idleSeconds = Math.round((now - lastAt) / 1000);
+        /* 只按学生和买家的消息计算活跃时间：老师发指导不代表学生回来了（否则一发指导，暂离的学生就被算成“进行中”） */
         /* 挂起 = 学生已暂离的会话：近 10 分钟无任何消息，且不在"买家等待 30 分钟内"的可介入窗口。
            挂起会话不触发预警（学生不在线，介入无意义），前端折叠分组展示 */
         const suspended = !(idleSeconds < 600 || (row.last_sender === "buyer" && idleSeconds < 1800));
         return {
           conversationId: row.id,
           studentName: row.student_name,
+          studentAvatarUrl: row.student_avatar ?? null,
           username: row.username,
           buyer: toStudentPersonaView(ensurePersonaAvatar(row.persona, row.id) as never),
           scenarioName: row.scenario_name ?? "通用会话",
@@ -248,6 +250,9 @@ export function registerTeacherRoutes(
           objective: row.scenario_objective ?? null,
           buyerGoal: (row.scenario_script as { buyerGoal?: string } | null)?.buyerGoal ?? null,
           bottomLine: (row.scenario_script as { bottomLine?: string } | null)?.bottomLine ?? null,
+          hiddenInfo: (row.scenario_script as { hiddenInfo?: string } | null)?.hiddenInfo ?? null,
+          emotionTriggers: (row.scenario_script as { emotionTriggers?: string } | null)?.emotionTriggers ?? null,
+          endConditions: (row.scenario_script as { endConditions?: string } | null)?.endConditions ?? null,
           /* 超过 1 天没有任何消息：学生早已离开，前端收进“已中断”一行，不再提醒 */
           stale: idleSeconds >= 86400,
           startedAt: row.created_at,
@@ -270,20 +275,27 @@ export function registerTeacherRoutes(
       const isAdmin = user.role === "admin";
       const params = isAdmin ? [] : [user.sub];
       const scoped = scopedStudentsSql(isAdmin);
-      const result = await db.query<{ total: string; active: string; pending: string }>(
-        `select
-           (select count(*) from users u where u.role = 'student' and u.status = 'active' and u.id in (${scoped})) as total,
-           (select count(distinct c.student_id) from conversations c
-              join conversation_messages m on m.conversation_id = c.id and m.sender = 'student'
-             where m.created_at >= date_trunc('day', now()) and c.student_id in (${scoped})) as active,
-           (select count(*) from assessments a join conversations c on c.id = a.conversation_id
-             where a.reviewed_at is null and c.student_id in (${scoped})) as pending`,
+      // 名单直接返回，老师在弹出的名单里看是谁（班级页不显示练习数据，D-35）
+      const students = await db.query(
+        `select u.id, u.display_name, u.username, cl.name as class_name,
+                (select max(m.created_at) from conversation_messages m join conversations c on c.id = m.conversation_id
+                  where c.student_id = u.id and c.task_id is not null and m.sender = 'student' and m.created_at >= date_trunc('day', now())) as today_at,
+                (select max(m.created_at) from conversation_messages m join conversations c on c.id = m.conversation_id
+                  where c.student_id = u.id and c.task_id is not null and m.sender = 'student') as last_at
+         from users u left join classes cl on cl.id = u.class_id
+         where u.role = 'student' and u.status = 'active' and u.id in (${scoped})
+         order by cl.name, u.username`,
         params,
       );
-      const row = result.rows[0];
-      const total = Number(row?.total ?? 0);
-      const active = Number(row?.active ?? 0);
-      return { activeToday: active, pendingReviews: Number(row?.pending ?? 0), notPracticedToday: Math.max(0, total - active), studentTotal: total };
+      const pending = await db.query(
+        `select count(*) as n from assessments a join conversations c on c.id = a.conversation_id
+         where a.reviewed_at is null and c.task_id is not null and c.student_id in (${scoped})`,
+        params,
+      );
+      const view = (row: Record<string, unknown>) => ({ id: row.id, name: row.display_name, username: row.username, className: row.class_name ?? null, lastAt: row.today_at ?? row.last_at ?? null });
+      const activeList = students.rows.filter((row) => row.today_at).map(view);
+      const idleList = students.rows.filter((row) => !row.today_at).map(view);
+      return { activeToday: activeList.length, pendingReviews: Number(pending.rows[0]?.n ?? 0), notPracticedToday: idleList.length, studentTotal: students.rows.length, activeList, idleList };
     },
   );
 
@@ -456,6 +468,39 @@ export function registerTeacherRoutes(
     },
   );
 
+  // D-36 未完成、不计分的接待（中途放弃且学生不足 3 轮）：回放页底部收起显示
+  app.get(
+    "/v1/teacher/unfinished",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request) => {
+      const user = request.user!;
+      const isAdmin = user.role === "admin";
+      const result = await db.query(
+        `select c.id, c.closed_reason, coalesce(c.closed_at, c.created_at) as closed_at, u.display_name as student_name, s.name as scenario_name, t.name as task_name,
+                (select count(*) from conversation_messages m where m.conversation_id = c.id and m.sender = 'student') as turns
+         from conversations c
+         join users u on u.id = c.student_id
+         left join scenarios s on s.id = c.scenario_id
+         left join tasks t on t.id = c.task_id
+         where c.status = 'closed' and c.task_id is not null
+           and not exists (select 1 from assessments a where a.conversation_id = c.id)
+           and c.closed_reason in ('abandoned', 'task_closed')
+           and c.student_id in (${scopedStudentsSql(isAdmin)})
+         order by closed_at desc limit 100`,
+        isAdmin ? [] : [user.sub],
+      );
+      return result.rows.map((row) => ({
+        conversationId: row.id,
+        studentName: row.student_name,
+        scenarioName: row.scenario_name ?? "通用会话",
+        taskName: row.task_name ?? null,
+        reason: row.closed_reason,
+        turns: Number(row.turns),
+        closedAt: row.closed_at,
+      }));
+    },
+  );
+
   // 评分列表（回放与复核）
   app.get(
     "/v1/teacher/assessments",
@@ -472,7 +517,7 @@ export function registerTeacherRoutes(
          join conversations c on c.id = a.conversation_id
          left join scenarios s on s.id = c.scenario_id
          left join tasks t on t.id = c.task_id
-         where a.student_id in (${scopedStudentsSql(isAdmin)})
+         where c.task_id is not null and a.student_id in (${scopedStudentsSql(isAdmin)})
          order by a.created_at desc limit 100`,
         params,
       );

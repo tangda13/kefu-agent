@@ -24,6 +24,7 @@ import { createAuthGuard } from "./auth-context";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerClassRoutes } from "./routes/classes";
 import { registerCatalogRoutes } from "./routes/catalog";
+import { registerProductRoutes } from "./routes/products";
 import { registerTaskRoutes } from "./routes/tasks";
 import { registerConversationRoutes } from "./routes/conversations";
 import { registerOrderRoutes } from "./routes/orders";
@@ -100,9 +101,18 @@ export async function buildServer(options: BuildServerOptions = {}) {
   });
   const uploadsRoot = path.resolve(process.cwd(), "uploads");
   mkdirSync(path.join(uploadsRoot, "products"), { recursive: true });
+  mkdirSync(path.join(uploadsRoot, "avatars"), { recursive: true });
   await app.register(fastifyStatic, {
     root: uploadsRoot,
     prefix: "/uploads/",
+    decorateReply: false,
+  });
+  // 内置商品库图片（D-32）：随代码发布，上架时商品直接引用 /library/<编号>.jpg
+  const libraryRoot = path.resolve(process.cwd(), "assets", "product-library");
+  mkdirSync(libraryRoot, { recursive: true });
+  await app.register(fastifyStatic, {
+    root: libraryRoot,
+    prefix: "/library/",
     decorateReply: false,
   });
 
@@ -131,7 +141,8 @@ export async function buildServer(options: BuildServerOptions = {}) {
   registerAuthRoutes(app, db, env, guard);
   registerClassRoutes(app, db, guard);
   registerCatalogRoutes(app, db, guard, gateway);
-  registerTaskRoutes(app, db, guard);
+  registerProductRoutes(app, db, guard, gateway);
+  registerTaskRoutes(app, db, guard, gateway);
   registerConversationRoutes(app, db, guard, gateway, voice);
   registerOrderRoutes(app, db, guard, gateway);
   registerBaselineRoutes(app, db, guard);
@@ -141,6 +152,16 @@ export async function buildServer(options: BuildServerOptions = {}) {
   registerAdminLlmRoutes(app, db, guard, gateway, sealer);
   registerStudentStateRoutes(app, db, guard);
   registerBrandRoutes(app, db, guard);
+
+  // D-36 接待自动结束：每分钟扫描一次（超时、2 小时无人发言、任务结束 / 过截止）
+  if (process.env.NODE_ENV !== "test") {
+    const { sweepConversations } = await import("./lifecycle");
+    const sweeper = setInterval(() => {
+      sweepConversations(db, gateway).then((count) => { if (count) app.log.info({ closed: count }, "conversations auto-closed"); })
+        .catch((error) => app.log.error(error, "conversation sweep failed"));
+    }, 60 * 1000);
+    app.addHook("onClose", async () => clearInterval(sweeper));
+  }
 
   // 定时备份调度：每 10 分钟检查一次（到达设定小时且当日未备份则执行）
   if (process.env.NODE_ENV !== "test") {

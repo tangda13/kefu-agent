@@ -24,6 +24,7 @@ interface DbUser {
   class_id: string | null;
   status: "active" | "disabled";
   must_change_password: boolean;
+  avatar_url?: string | null;
 }
 
 async function issueSession(db: Db, env: ApiEnv, user: DbUser) {
@@ -54,6 +55,7 @@ async function issueSession(db: Db, env: ApiEnv, user: DbUser) {
       role: user.role,
       classId: user.class_id,
       mustChangePassword: user.must_change_password,
+      avatarUrl: user.avatar_url ?? null,
     },
   };
 }
@@ -208,19 +210,97 @@ export function registerAuthRoutes(
     async (request) => {
       const user = request.user!;
       const result = await db.query(
-        `select id, username, display_name, role, class_id, must_change_password
-         from users where id = $1`,
+        `select u.id, u.username, u.display_name, u.role, u.class_id, u.must_change_password, u.created_at, u.avatar_url, c.name as class_name
+         from users u left join classes c on c.id = u.class_id where u.id = $1`,
         [user.sub],
       );
       const row = result.rows[0];
+      /* 个人资料（顶栏头像）：所带班级、最近登录、上次改密 */
+      const classes = row.role === "teacher"
+        ? (await db.query(
+          `select c.id, c.name, (c.head_teacher_id = $1) as is_head,
+                  (select count(*) from users s where s.class_id = c.id and s.role = 'student') as student_count
+           from classes c
+           where c.head_teacher_id = $1 or exists (select 1 from teacher_classes tc where tc.class_id = c.id and tc.teacher_id = $1)
+           order by c.name`,
+          [user.sub],
+        )).rows.map((item) => ({ id: item.id, name: item.name, role: item.is_head ? "班主任" : "任课", studentCount: Number(item.student_count) }))
+        : [];
+      const logins = await db.query(
+        "select created_at from audit_log where actor_id = $1 and action = 'auth.login' order by created_at desc limit 5",
+        [user.sub],
+      );
+      const passwordChange = await db.query(
+        "select created_at from audit_log where actor_id = $1 and action = 'auth.change_password' order by created_at desc limit 1",
+        [user.sub],
+      );
       return {
         id: row.id,
         username: row.username,
         displayName: row.display_name,
         role: row.role,
         classId: row.class_id,
+        className: row.class_name ?? null,
+        avatarUrl: row.avatar_url ?? null,
         mustChangePassword: row.must_change_password,
+        createdAt: row.created_at,
+        classes,
+        recentLogins: logins.rows.map((item) => item.created_at),
+        passwordChangedAt: passwordChange.rows[0]?.created_at ?? null,
       };
+    },
+  );
+
+  // 上传头像（multipart 单文件，前端已裁成正方形并压缩；这里只校验类型和大小）
+  app.post(
+    "/v1/me/avatar",
+    { preHandler: guard.requireRole() },
+    async (request, reply) => {
+      const file = await request.file();
+      if (!file || !/^image\/(png|jpe?g|webp)$/.test(file.mimetype)) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "请上传 png / jpg / webp 图片。" };
+      }
+      const buffer = await file.toBuffer();
+      if (buffer.length > 2 * 1024 * 1024) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "图片不能超过 2MB。" };
+      }
+      const path = await import("node:path");
+      const { writeFile } = await import("node:fs/promises");
+      const ext = file.mimetype === "image/png" ? "png" : file.mimetype === "image/webp" ? "webp" : "jpg";
+      const fileName = `${request.user!.sub}-${Date.now()}.${ext}`;
+      await writeFile(path.resolve(process.cwd(), "uploads", "avatars", fileName), buffer);
+      const avatarUrl = `/uploads/avatars/${fileName}`;
+      await db.query("update users set avatar_url = $1, updated_at = now() where id = $2", [avatarUrl, request.user!.sub]);
+      await writeAudit(db, request.user!.sub, "user.avatar");
+      return { ok: true, avatarUrl };
+    },
+  );
+
+  app.delete(
+    "/v1/me/avatar",
+    { preHandler: guard.requireRole() },
+    async (request) => {
+      await db.query("update users set avatar_url = null, updated_at = now() where id = $1", [request.user!.sub]);
+      await writeAudit(db, request.user!.sub, "user.avatar_remove");
+      return { ok: true };
+    },
+  );
+
+  // 修改自己的显示名称（个人资料）。账号（学号 / 工号）不能自己改
+  app.patch<{ Body: { displayName?: string } }>(
+    "/v1/me",
+    { preHandler: guard.requireRole() },
+    async (request, reply) => {
+      const displayName = String(request.body?.displayName ?? "").trim();
+      if (!displayName || displayName.length > 30) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "姓名 1–30 个字。" };
+      }
+      await db.query("update users set display_name = $1, updated_at = now() where id = $2", [displayName, request.user!.sub]);
+      await writeAudit(db, request.user!.sub, "user.update_self", undefined, { displayName });
+      return { ok: true, displayName };
     },
   );
 }

@@ -1,11 +1,13 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { BusinessStage, ScenarioScript } from "@cecs/contracts";
+import type { BusinessStage, OrderKind, ScenarioScript } from "@cecs/contracts";
 import {
   buyerHistoryOrderCount,
   composePersonaWithRule,
+  NoMatchingPersonaError,
   ensurePersonaAvatar,
   generateBuyerOrderHistory,
   generateOrderForScenario,
+  productFactSheet,
   storeCoupons,
   toStudentPersonaView,
   type OrderInfo,
@@ -15,6 +17,7 @@ import type { AuthGuard } from "../auth-context";
 import type { CallInfo, LlmGateway } from "../llm/gateway";
 import type { VoiceService } from "../voice/service";
 import { buildBuyerMessages } from "../prompts/buyer";
+import { loadEnabledPersonaTemplates } from "./catalog";
 import { buildTranslationMessages } from "../prompts/assist";
 
 interface ConversationRow {
@@ -216,7 +219,7 @@ async function streamBuyerTurn(options: {
   let conversationClosed = false;
   if (buyerLeft && outcome === "success") {
     const closed = await db.query(
-      "update conversations set status = 'closed' where id = $1 and status = 'active' returning id",
+      "update conversations set status = 'closed', closed_reason = 'buyer_left', closed_at = now() where id = $1 and status = 'active' returning id",
       [conversation.id],
     );
     if (closed.rowCount) {
@@ -305,10 +308,10 @@ export function registerConversationRoutes(
         );
       }
 
-      let scenario: { id: string; name: string; objective: string; stage: BusinessStage } | null = null;
+      let scenario: { id: string; name: string; objective: string; stage: BusinessStage; orderKind: OrderKind | null } | null = null;
       if (resolvedScenarioId) {
         const result = await db.query(
-          "select id, name, objective, stage from scenarios where id = $1 and enabled",
+          "select id, name, objective, stage, order_kind as \"orderKind\" from scenarios where id = $1 and enabled",
           [resolvedScenarioId],
         );
         scenario = result.rows[0] ?? null;
@@ -318,32 +321,41 @@ export function registerConversationRoutes(
         }
       }
 
-      // 服务端生成画像快照：DB 启用模板（教师可维护）打底 + 任务随机规则约束 + 真随机姓名
-      const templatesResult = await db.query(
-        "select id, identity, preference, customer_type, nationality, personality, emotion, language from persona_templates where enabled",
-      );
-      const persona = composePersonaWithRule(
-        templatesResult.rows.map((row) => ({
-          id: row.id,
-          identity: row.identity,
-          preference: row.preference,
-          customerType: row.customer_type,
-          nationality: row.nationality,
-          personality: row.personality,
-          emotion: row.emotion,
-          language: row.language,
-        })),
-        personaRule,
-      );
-      // 售前场景没有订单：给买家一个店铺里真实在售的“感兴趣商品”，否则买家只能泛泛地问“那个新品”
-      if (scenario?.stage === "pre_sale") {
-        const product = await db.query("select name, spec, price from store_products where enabled order by random() limit 1");
-        if (product.rows[0]) {
-          (persona as unknown as Record<string, unknown>).interestedProduct = {
-            name: product.rows[0].name,
-            spec: product.rows[0].spec,
-            price: Number(product.rows[0].price),
-          };
+      // 服务端生成画像快照（D-33）：按任务规则先筛人群范围，再随机沟通方式和姓名；没有符合的画像时拒绝开始
+      let persona: ReturnType<typeof composePersonaWithRule>;
+      try {
+        persona = composePersonaWithRule(await loadEnabledPersonaTemplates(db), personaRule);
+      } catch (error) {
+        if (!(error instanceof NoMatchingPersonaError)) throw error;
+        reply.code(409);
+        return { code: "NO_MATCHING_PERSONA", message: "这个任务的买家范围里没有可用的画像，请联系老师调整。" };
+      }
+      // 先定关联订单（按场景的订单状态），再把对应商品的资料卡交给买家 AI（D-32）
+      const personaBrief = { name: persona.name as string, nationality: persona.nationality as string };
+      const productRows = await db.query("select name, spec, price, image_url, category, details from store_products where enabled");
+      const productPool = productRows.rows.map((row) => ({
+        name: row.name as string,
+        spec: row.spec as string,
+        price: Number(row.price),
+        imageUrl: (row.image_url as string | null) ?? null,
+      }));
+      const factsOf = (name: string) => {
+        const row = productRows.rows.find((item) => item.name === name);
+        return row ? productFactSheet({ name: row.name, spec: row.spec, price: Number(row.price), category: row.category, details: row.details }) : null;
+      };
+      let order: OrderInfo | null = null;
+      if (scenario) {
+        order = generateOrderForScenario(scenario.stage, Math.random, new Date(), productPool, personaBrief, scenario.orderKind);
+      }
+      const personaRecord = persona as unknown as Record<string, unknown>;
+      if (order) {
+        personaRecord.productFacts = factsOf(order.productName);
+      } else if (scenario?.stage === "pre_sale" || scenario?.orderKind === "none") {
+        // 售前没有订单：给买家一个店铺里真实在售的“感兴趣商品”，否则买家只能泛泛地问“那个新品”
+        const product = productPool[Math.floor(Math.random() * productPool.length)];
+        if (product) {
+          personaRecord.interestedProduct = { name: product.name, spec: product.spec, price: product.price };
+          personaRecord.productFacts = factsOf(product.name);
         }
       }
       const created = await db.query<ConversationRow>(
@@ -354,15 +366,6 @@ export function registerConversationRoutes(
       const conversation = created.rows[0]!;
 
       // 当前咨询关联订单（售中/售后/客户维护场景）+ 买家历史订单（老客/粉丝客有过往订单可查可操作）
-      let order: OrderInfo | null = null;
-      const personaBrief = { name: persona.name as string, nationality: persona.nationality as string };
-      const productRows = await db.query("select name, spec, price, image_url from store_products where enabled");
-      const productPool = productRows.rows.map((row) => ({
-        name: row.name,
-        spec: row.spec,
-        price: Number(row.price),
-        imageUrl: (row.image_url as string | null) ?? null,
-      }));
       const insertOrder = (info: OrderInfo, isPrimary: boolean) =>
         db.query(
           `insert into orders (conversation_id, student_id, order_no, status, product_name, total_amount, currency, payload, is_primary)
@@ -379,10 +382,7 @@ export function registerConversationRoutes(
             isPrimary,
           ],
         );
-      if (scenario) {
-        order = generateOrderForScenario(scenario.stage, Math.random, new Date(), productPool, personaBrief);
-        if (order) await insertOrder(order, true);
-      }
+      if (order) await insertOrder(order, true);
       const historyOrders = generateBuyerOrderHistory(
         buyerHistoryOrderCount(persona.customerType as string, Math.random),
         Math.random,
@@ -470,7 +470,7 @@ export function registerConversationRoutes(
           `select count(*) as n from conversations c
            where c.student_id = $1 and c.status = 'active' and (
              select sender from conversation_messages m
-             where m.conversation_id = c.id order by m.created_at desc limit 1
+             where m.conversation_id = c.id and m.sender <> 'teacher' order by m.created_at desc limit 1
            ) = 'buyer'`,
           [user.sub],
         ),
@@ -604,7 +604,7 @@ export function registerConversationRoutes(
     async (request, reply) => {
       const user = request.user!;
       const result = await db.query(
-        `update conversations set status = 'closed'
+        `update conversations set status = 'closed', closed_reason = 'student_ended', closed_at = now()
          where id = $1 and student_id = $2 and status = 'active' returning id`,
         [request.params.conversationId, user.sub],
       );

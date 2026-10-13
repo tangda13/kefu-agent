@@ -6,3 +6,4 @@ export { ASSIST_PROMPT_VERSION } from "./assist";
 export { ASSESSMENT_PROMPT_VERSION } from "./assessment";
 export { BUYER_PROMPT_VERSION } from "./buyer";
 export { DIRECTOR_PROMPT_VERSION } from "./director";
+export { CATALOG_PROMPT_VERSION } from "./catalog";

@@ -10,7 +10,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { generateOrderForScenario, personaTemplates } from "@cecs/domain";
+import { composePersonaWithRule, generateOrderForScenario, personaTemplates } from "@cecs/domain";
 import type { BusinessStage, ScenarioScript } from "@cecs/contracts";
 import { loadEnv } from "../env";
 import { createPool } from "../db";
@@ -114,9 +114,10 @@ async function runCase(
   products: ProductRow[],
 ): Promise<CaseResult> {
   const persona = personaTemplates.find((item) => item.id === testCase.personaId)!;
-  const personaSnapshot = { ...persona } as unknown as Record<string, unknown>;
+  // 模板是一类买家（D-32），和真实会话一样组合出具体买家（随机姓名、性别）
+  const personaSnapshot = composePersonaWithRule([persona]) as unknown as Record<string, unknown>;
   // 与真实实训一致：售中/售后/维护场景生成订单；售前给买家一个在售的感兴趣商品
-  const order = generateOrderForScenario(scenario.stage, Math.random, new Date(), products, { name: persona.name, nationality: persona.nationality });
+  const order = generateOrderForScenario(scenario.stage, Math.random, new Date(), products, { name: String(personaSnapshot.name), nationality: persona.nationality });
   if (scenario.stage === "pre_sale" && products.length) {
     const product = products[Math.floor(Math.random() * products.length)]!;
     personaSnapshot.interestedProduct = { name: product.name, spec: product.spec, price: product.price };

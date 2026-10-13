@@ -158,20 +158,137 @@ describe("阶段1：教师建班、导入学生、下发任务的端到端链路
     studentId = roster.json()[0].id;
   });
 
-  it("目录：8 个场景与 20 个画像已种子化", async () => {
+  it("目录：24 个场景与 40 个画像已种子化", async () => {
     const scenarios = await app.inject({
       method: "GET",
       url: "/v1/catalog/scenarios",
       headers: auth(teacher1),
     });
-    expect(scenarios.json()).toHaveLength(8);
+    expect(scenarios.json()).toHaveLength(24);
+    expect(scenarios.json().find((item: { id: string }) => item.id === "PRE-002").channel).toBe("mail");
 
     const personas = await app.inject({
       method: "GET",
       url: "/v1/catalog/personas",
       headers: auth(teacher1),
     });
-    expect(personas.json().length).toBeGreaterThanOrEqual(20);
+    expect(personas.json().length).toBeGreaterThanOrEqual(40);
+  });
+
+  it("个人中心：/v1/me 返回所带班级与最近登录，能改自己的姓名", async () => {
+    const me = await app.inject({ method: "GET", url: "/v1/me", headers: auth(teacher1) });
+    expect(me.statusCode).toBe(200);
+    expect(Array.isArray(me.json().classes)).toBe(true);
+    expect(Array.isArray(me.json().recentLogins)).toBe(true);
+    const bad = await app.inject({ method: "PATCH", url: "/v1/me", headers: auth(teacher1), payload: { displayName: "  " } });
+    expect(bad.statusCode).toBe(400);
+    const original = me.json().displayName;
+    const renamed = await app.inject({ method: "PATCH", url: "/v1/me", headers: auth(teacher1), payload: { displayName: "改名测试" } });
+    expect(renamed.json()).toMatchObject({ ok: true, displayName: "改名测试" });
+    await app.inject({ method: "PATCH", url: "/v1/me", headers: auth(teacher1), payload: { displayName: original } });
+  });
+
+  it("个人中心：上传、移除头像，登录返回头像", async () => {
+    const png = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c63000100000500010d0a2db40000000049454e44ae426082", "hex");
+    const boundary = "----cecsavatar";
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="a.png"\r\nContent-Type: image/png\r\n\r\n`),
+      png,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const up = await app.inject({ method: "POST", url: "/v1/me/avatar", headers: { ...auth(teacher1), "content-type": `multipart/form-data; boundary=${boundary}` }, payload: body });
+    expect(up.statusCode).toBe(200);
+    expect(up.json().avatarUrl).toMatch(/^\/uploads\/avatars\//);
+    const me = await app.inject({ method: "GET", url: "/v1/me", headers: auth(teacher1) });
+    expect(me.json().avatarUrl).toBe(up.json().avatarUrl);
+    const removed = await app.inject({ method: "DELETE", url: "/v1/me/avatar", headers: auth(teacher1) });
+    expect(removed.statusCode).toBe(200);
+    const after = await app.inject({ method: "GET", url: "/v1/me", headers: auth(teacher1) });
+    expect(after.json().avatarUrl).toBeNull();
+  });
+
+  it("D-32：空白新建场景、修改沟通方式和订单状态", async () => {
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/catalog/scenarios",
+      headers: auth(teacher1),
+      payload: { stage: "after_sale", name: "退款进度查询", objective: "说明退款到账时间", channel: "chat", orderKind: "delivered" },
+    });
+    expect(created.statusCode).toBe(200);
+    const id = created.json().id;
+    const bad = await app.inject({ method: "POST", url: "/v1/catalog/scenarios", headers: auth(teacher1), payload: { stage: "x", name: "a", objective: "b" } });
+    expect(bad.statusCode).toBe(400);
+    const patched = await app.inject({ method: "PATCH", url: `/v1/catalog/scenarios/${id}`, headers: auth(teacher1), payload: { channel: "mail", orderKind: null } });
+    expect(patched.statusCode).toBe(200);
+    const list = await app.inject({ method: "GET", url: "/v1/catalog/scenarios", headers: auth(teacher1) });
+    const row = list.json().find((item: { id: string }) => item.id === id);
+    expect(row).toMatchObject({ channel: "mail", orderKind: null, stage: "after_sale" });
+  });
+
+  it("D-32/D-33：画像试抽返回 3 个随机买家，模板字段作为默认值", async () => {
+    const result = await app.inject({ method: "POST", url: "/v1/catalog/personas/P-002/sample", headers: auth(teacher1), payload: {} });
+    expect(result.statusCode).toBe(200);
+    const samples = result.json().samples;
+    expect(samples).toHaveLength(3);
+    for (const item of samples) {
+      expect(item.nationality).toBe("日本");
+      expect(item.customerType).toBe("潜在意向客");
+      expect(item.templateName).toBe("选择困难型个人消费者");
+      expect(item.name).toBeTruthy();
+    }
+  });
+
+  it("D-33：画像结构化字段、名称自动生成、人群范围预览与下发校验", async () => {
+    const bad = await app.inject({ method: "POST", url: "/v1/catalog/personas", headers: auth(teacher1),
+      payload: { nationality: "美国", language: "en-US", personality: "直接高效", emotion: "期待", customerType: "沉睡客", concerns: ["价格优惠"] } });
+    expect(bad.statusCode).toBe(400);
+    const created = await app.inject({ method: "POST", url: "/v1/catalog/personas", headers: auth(teacher1),
+      payload: { buyerRole: "企业采购", decisionStyle: "冲动下单型", customerType: "沉睡客", concerns: ["发票交期", "不存在"], note: "预算年底才批",
+        nationality: "美国", language: "en-US", personality: "直接高效", emotion: "期待" } });
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({ name: "冲动下单型企业采购", identity: "企业采购", concerns: ["发票交期"] });
+    const preview = await app.inject({ method: "POST", url: "/v1/catalog/personas/preview", headers: auth(teacher1),
+      payload: { rule: { customerTypes: ["沉睡客"], buyerRoles: ["企业采购"], emotionPool: ["不满"] } } });
+    expect(preview.json().matchCount).toBe(1);
+    for (const sample of preview.json().samples) expect(sample).toMatchObject({ templateName: "冲动下单型企业采购", customerType: "沉睡客", emotion: "不满" });
+    const none = await app.inject({ method: "POST", url: "/v1/catalog/personas/preview", headers: auth(teacher1), payload: { rule: { templateIds: ["NOPE"] } } });
+    expect(none.json()).toMatchObject({ matchCount: 0, samples: [] });
+  });
+
+  it("D-32：商品详情入库、规格摘要和总库存按规格计算", async () => {
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/store/products",
+      headers: auth(teacher1),
+      payload: {
+        name: "Linen Shirt",
+        price: 25,
+        category: "男装",
+        details: {
+          options: [{ name: "颜色", values: ["White", "Navy"] }, { name: "尺码", values: ["M", "L"] }],
+          skus: [
+            { values: { 颜色: "White", 尺码: "M" }, price: 25, stock: 10 },
+            { values: { 颜色: "Navy", 尺码: "L", 不存在: "x" }, price: 26, stock: 5 },
+          ],
+          bullets: ["a", "b", "c"],
+          specs: [{ name: "材质", value: "亚麻" }],
+          shipping: { shipsFrom: "中国广州", handlingDays: 2, methods: [{ region: "美国", method: "标准运输", days: "7–12 个工作日", fee: 0 }] },
+          afterSale: { returnPolicy: "30 天无理由退换" },
+        },
+        images: ["https://evil.example/x.png"],
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    const list = await app.inject({ method: "GET", url: "/v1/store/products?all=1", headers: auth(teacher1) });
+    const row = list.json().find((item: { id: string }) => item.id === created.json().id);
+    expect(row.spec).toBe("颜色 2 × 尺码 2");
+    expect(row.stock).toBe(15);
+    expect(row.images).toEqual([]);
+    expect(row.details.skus[1].values).toEqual({ 颜色: "Navy", 尺码: "L" });
+    const library = await app.inject({ method: "GET", url: "/v1/store/library", headers: auth(teacher1) });
+    expect(library.statusCode).toBe(200);
+    const extract = await app.inject({ method: "POST", url: "/v1/store/products/extract", headers: auth(teacher1), payload: { text: "short" } });
+    expect(extract.statusCode).toBe(400);
   });
 
   it("教师新建任务并下发到班级", async () => {
@@ -851,7 +968,7 @@ describe("模型网关管理（G1–G7）+ 验收统计口径（B2）", () => {
 
   it("J5：内置场景已种子化剧本", async () => {
     const result = await db.query("select count(*)::int as n from scenarios where script is not null");
-    expect(result.rows[0].n).toBe(8);
+    expect(result.rows[0].n).toBe(24);
   });
 });
 
@@ -1095,5 +1212,35 @@ describe("P4 教师端：分组与名单统计（D8）、逐维度复核（D9/C7
     const copy = list.find((row) => row.id === copied.json().id)!;
     expect(copy.name).toBe("改过的场景");
     expect(copy.script).not.toBeNull();
+  });
+});
+
+describe("接待生命周期（D-36）", () => {
+  it("2 小时没发言、任务结束、超时自动结束；自由练习不进实训跟踪", async () => {
+    const { sweepConversations } = await import("./lifecycle");
+    const gateway = { isConfigured: () => false } as unknown as import("./llm/gateway").LlmGateway;
+    const student = (await db.query("select id from users where role = 'student' limit 1")).rows[0].id;
+    const adminId = (await db.query("select id from users where username = 'admin'")).rows[0].id;
+    const task = await db.query(
+      `insert into tasks (name, business_stage, scenario_ids, interaction_mode, scoring_weights, status, created_by, time_limit_minutes)
+       values ('生命周期', 'after_sale', '["AFTER-001"]', 'text', '{}', 'published', $1, 30) returning id`,
+      [adminId],
+    );
+    const taskId = task.rows[0].id;
+    const make = async (minutesAgo: number, withTask: boolean) => (await db.query(
+      `insert into conversations (task_id, student_id, scenario_id, status, created_at) values ($1, $2, 'AFTER-001', 'active', now() - make_interval(mins => $3)) returning id`,
+      [withTask ? taskId : null, student, minutesAgo],
+    )).rows[0].id as string;
+    const fresh = await make(5, true);
+    const timedOut = await make(40, true);
+    const practiceIdle = await make(180, false);
+    await sweepConversations(db, gateway);
+    const status = async (id: string) => (await db.query("select status, closed_reason from conversations where id = $1", [id])).rows[0];
+    expect(await status(fresh)).toMatchObject({ status: "active" });
+    expect(await status(timedOut)).toMatchObject({ status: "closed", closed_reason: "timeout" });
+    expect(await status(practiceIdle)).toMatchObject({ status: "closed", closed_reason: "abandoned" });
+    await db.query("update tasks set status = 'closed' where id = $1", [taskId]);
+    await sweepConversations(db, gateway, { taskId });
+    expect(await status(fresh)).toMatchObject({ status: "closed", closed_reason: "task_closed" });
   });
 });

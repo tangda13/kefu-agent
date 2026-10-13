@@ -26,6 +26,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { UserRole } from "@cecs/contracts";
 import { BrandMark, useBrand } from "../brand";
 import { ShellSlotContext } from "../ui";
+import type { Session } from "../api/client";
+import { PasswordDialog, ProfileDialog, ProfileMenuItems, UserAvatar } from "./AccountCenter";
 
 export interface NavItem {
   id: string;
@@ -191,7 +193,7 @@ function TopbarNotice({ items }: { items?: ShellAnnouncement[] }) {
 }
 
 /** banner：顶栏下方的常驻提醒（如管理端额度告警），没有时不占位 */
-export function AppShell({ role, active, onNavigate, children, onSignOut, userName, userMeta, notifications, announcements, banner, badges }: { role: UserRole; active: string; onNavigate: (id: string) => void; children: ReactNode; onSignOut?: () => void; userName?: string; userMeta?: string; notifications?: ShellNotificationCenter; announcements?: ShellAnnouncement[]; banner?: ReactNode; badges?: Record<string, number> }) {
+export function AppShell({ role, active, onNavigate, children, onSignOut, userName, userMeta, notifications, announcements, banner, badges, session, onSessionChange }: { role: UserRole; active: string; onNavigate: (id: string) => void; children: ReactNode; onSignOut?: () => void; userName?: string; userMeta?: string; notifications?: ShellNotificationCenter; announcements?: ShellAnnouncement[]; banner?: ReactNode; badges?: Record<string, number>; /** 个人中心（查看资料、改姓名、改密码）需要当前会话；演示模式不传 */ session?: Session | null; onSessionChange?: (next: Session) => void }) {
   const { brand } = useBrand();
   const fallback = identity[role];
   const name = userName ?? fallback.name;
@@ -230,7 +232,7 @@ export function AppShell({ role, active, onNavigate, children, onSignOut, userNa
           {role === "student" ? <TopbarNotice items={announcements} /> : <span className="shell-top-fill" />}
           <div className="shell-top-actions">
             <NotificationBell center={notifications} />
-            <ProfileMenu name={name} meta={meta} onSignOut={onSignOut} />
+            <ProfileMenu name={name} meta={meta} role={role} onSignOut={onSignOut} session={session ?? null} onSessionChange={onSessionChange} />
           </div>
         </header>
         {banner}
@@ -242,12 +244,19 @@ export function AppShell({ role, active, onNavigate, children, onSignOut, userNa
   );
 }
 
-function ProfileMenu({ name, meta, onSignOut }: { name: string; meta: string; onSignOut?: () => void }) {
+const ROLE_NAMES: Record<UserRole, string> = { student: "学生", teacher: "教师", admin: "管理员" };
+
+function ProfileMenu({ name, meta, role, onSignOut, session, onSessionChange }: {
+  name: string; meta: string; role: UserRole; onSignOut?: () => void; session: Session | null; onSessionChange?: (next: Session) => void;
+}) {
   const [open, setOpen] = useState(false);
+  const [dialog, setDialog] = useState<"profile" | "password" | null>(null);
+  const canEdit = Boolean(session && onSessionChange);
+  const pick = (next: "profile" | "password") => { setOpen(false); setDialog(next); };
   return (
     <div className="shell-profile">
       <button type="button" className="shell-profile-btn" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-        <span className="avatar small">{name.slice(0, 1)}</span>
+        <UserAvatar name={name} url={session?.user.avatarUrl} size={28} />
         <span>{name}</span>
         <ChevronDown size={14} />
       </button>
@@ -255,10 +264,18 @@ function ProfileMenu({ name, meta, onSignOut }: { name: string; meta: string; on
         <>
           <div className="notify-overlay" onClick={() => setOpen(false)} />
           <div className="ui-menu-pop shell-profile-pop" role="menu">
-            <div className="shell-profile-meta"><strong>{name}</strong><small>{meta}</small></div>
-            {onSignOut ? <button type="button" role="menuitem" onClick={onSignOut}><LogOut size={14} />退出登录</button> : null}
+            <ProfileMenuItems name={name} meta={meta} roleLabel={ROLE_NAMES[role]} avatarUrl={session?.user.avatarUrl}
+              onProfile={canEdit ? () => pick("profile") : undefined}
+              onPassword={canEdit ? () => pick("password") : undefined}
+              onSignOut={onSignOut ? () => { setOpen(false); onSignOut(); } : undefined} />
           </div>
         </>
+      ) : null}
+      {dialog === "profile" && session && onSessionChange ? (
+        <ProfileDialog session={session} onClose={() => setDialog(null)} onSessionChange={onSessionChange} onChangePassword={() => setDialog("password")} />
+      ) : null}
+      {dialog === "password" && session && onSessionChange ? (
+        <PasswordDialog session={session} onClose={() => setDialog(null)} onSessionChange={onSessionChange} />
       ) : null}
     </div>
   );

@@ -12,7 +12,7 @@ import {
 
 describe("seed catalogs", () => {
   it("meets every initial content minimum", () => {
-    expect(trainingScenarios).toHaveLength(8);
+    expect(trainingScenarios.length).toBeGreaterThanOrEqual(20);
     expect(new Set(trainingScenarios.map((item) => item.stage))).toHaveLength(4);
     expect(personaTemplates.length).toBeGreaterThanOrEqual(20);
     expect(emailTemplates.length).toBeGreaterThanOrEqual(4);
@@ -47,6 +47,33 @@ describe("seed catalogs", () => {
     const care = generateOrderForScenario("customer_care", () => 0.5);
     expect(care?.status).toBe("completed");
     expect(care?.review?.rating).toBeGreaterThanOrEqual(4);
+  });
+
+  it("按场景指定的订单状态生成（D-32）", async () => {
+    const { generateOrderForScenario, trainingScenarios } = await import("./index");
+    expect(generateOrderForScenario("in_sale", () => 0.9, new Date(), undefined, undefined, "pending_payment")?.status).toBe("pending_payment");
+    expect(generateOrderForScenario("in_sale", () => 0.1, new Date(), undefined, undefined, "paid")?.status).toBe("paid");
+    const failed = generateOrderForScenario("in_sale", () => 0.1, new Date(), undefined, undefined, "delivery_failed");
+    expect(failed?.logistics?.nodes.find((node) => node.current)?.key).toBe("delivery");
+    expect(generateOrderForScenario("after_sale", () => 0.1, new Date(), undefined, undefined, "delivered_positive")?.review?.rating).toBe(5);
+    expect(generateOrderForScenario("customer_care", () => 0.1, new Date(), undefined, undefined, "none")).toBeNull();
+    // 每个内置场景都有剧本，四个环节都有场景
+    const { scenarioScripts } = await import("./scenario-scripts");
+    for (const scenario of trainingScenarios) expect(scenarioScripts[scenario.id]?.buyerGoal).toBeTruthy();
+  });
+});
+
+describe("画像规则两步（D-33）", () => {
+  it("人群范围只筛选不改身份；没有符合的抛错", async () => {
+    const { composePersonaWithRule, filterPersonaTemplates, NoMatchingPersonaError, personaTemplates } = await import("./index");
+    const pool = filterPersonaTemplates(personaTemplates, { customerTypes: ["沉睡客"], buyerRoles: ["个人消费者"] });
+    expect(pool.length).toBeGreaterThan(0);
+    for (let i = 0; i < 20; i += 1) {
+      const persona = composePersonaWithRule(personaTemplates, { customerTypes: ["沉睡客"], emotionPool: ["焦虑"] });
+      expect(persona.customerType).toBe("沉睡客");
+      expect(persona.emotion).toBe("焦虑");
+    }
+    expect(() => composePersonaWithRule(personaTemplates, { templateIds: ["NOPE"] })).toThrow(NoMatchingPersonaError);
   });
 });
 
