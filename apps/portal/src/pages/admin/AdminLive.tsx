@@ -14,6 +14,8 @@ import {
   SearchBox, Select, SettingSection, Sheet, Status, StatusHero, Switch, Tag, Textarea, Toolbar, toast,
 } from "../../ui";
 import { PasswordNotice } from "../../components/AccountDialogs";
+import type { LlmTestResult } from "@cecs/contracts";
+import { openProvidersTab } from "./providersTab";
 
 /* 管理端：系统总览（运行状态）· 账号与权限 · 内容资源库 · 数据与备份。P4 按 DESIGN.md 2.0 重做（E3–E6）。 */
 
@@ -33,6 +35,7 @@ export function AdminSystem({ session, onNavigate }: { session: Session; onNavig
   const [data, setData] = useState<AdminSystemOverview | null>(null);
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
   const [backingUp, setBackingUp] = useState(false);
+  const [retesting, setRetesting] = useState<string | null>(null);
   const load = useCallback(() => {
     fetchAdminSystem(session)
       .then((next) => {
@@ -42,6 +45,21 @@ export function AdminSystem({ session, onNavigate }: { session: Session; onNavig
       .catch((cause) => toast.error(errorText(cause)));
   }, [session]);
   useEffect(() => { load(); }, [load]);
+
+  /** 告警里的“重新测试”：通过后网关解除熔断，提醒随之消失 */
+  async function retest(profileId: string) {
+    setRetesting(profileId);
+    try {
+      const result = await apiPost<LlmTestResult>(`/v1/admin/llm/profiles/${profileId}/test`, session);
+      if (result.ok) toast.ok("测试通过，已切回主模型");
+      else toast.error(`测试没通过：${(result.error ?? "").split("\n")[0]!.slice(0, 120)}`);
+      load();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    } finally {
+      setRetesting(null);
+    }
+  }
 
   async function backupNow() {
     setBackingUp(true);
@@ -93,7 +111,12 @@ export function AdminSystem({ session, onNavigate }: { session: Session; onNavig
                     {onNavigate ? <Button size="sm" variant="ghost" onClick={() => onNavigate("backup")}>查看备份</Button> : null}
                   </>
                 ) : onNavigate && alert.page !== "system" ? (
-                  <Button size="sm" onClick={() => onNavigate(alert.page)}>去处理</Button>
+                  <>
+                    {alert.action?.kind === "test-profile" ? (
+                      <Button size="sm" loading={retesting === alert.action.profileId} onClick={() => void retest(alert.action!.profileId)}>重新测试</Button>
+                    ) : null}
+                    <Button size="sm" variant={alert.action ? "ghost" : undefined} onClick={() => { openProvidersTab(alert.tab); onNavigate(alert.page); }}>去处理</Button>
+                  </>
                 ) : null
               }
             >

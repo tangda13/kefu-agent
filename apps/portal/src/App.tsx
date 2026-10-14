@@ -14,6 +14,7 @@ import { TaskHall } from "./pages/student/TaskHall";
 import { Workbench } from "./pages/student/Workbench";
 import { LiveWorkbench } from "./pages/student/LiveWorkbench";
 import { TeacherPages } from "./pages/teacher/TeacherPages";
+import { openProvidersTab } from "./pages/admin/providersTab";
 import { Button } from "./ui";
 import {
   clearSession,
@@ -209,7 +210,7 @@ export function App() {
       <div className={adminAlerts.some((item) => item.level === "danger") ? "shell-banner is-danger" : "shell-banner"} role="status">
         <strong>{topAlert.title}</strong>
         {adminAlerts.length > 1 ? <span>等 {adminAlerts.length} 项需要处理</span> : <span>{topAlert.detail}</span>}
-        <Button size="sm" onClick={() => setActive(adminAlerts.length > 1 ? "system" : topAlert.page)}>{adminAlerts.length > 1 ? "查看全部" : "去处理"}</Button>
+        <Button size="sm" onClick={() => { if (adminAlerts.length === 1) openProvidersTab(topAlert.tab); setActive(adminAlerts.length > 1 ? "system" : topAlert.page); }}>{adminAlerts.length > 1 ? "查看全部" : "去处理"}</Button>
       </div>
     ) : null;
 

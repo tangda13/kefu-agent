@@ -140,6 +140,8 @@ export function registerAdminLlmRoutes(
       [profile.id, result.ok ? "ok" : "failed", JSON.stringify(result)],
     );
     await writeAudit(db, request.user!.sub, "llm.profile_test", profile.id, { ok: result.ok, ttftMs: result.ttftMs });
+    // 测试通过：解除熔断（否则冷却期内仍走备用），“已切到备用模型”的提醒也随之消失
+    if (result.ok) gateway.markHealthy(profile.id);
     return result;
   });
 

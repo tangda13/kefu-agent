@@ -362,6 +362,11 @@ export class LlmGateway {
     this.health.delete(profileId);
   }
 
+  /** 管理员重新测试通过：清掉这个档案的失败计数和熔断，下一次调用直接回到主档案 */
+  markHealthy(profileId: string): void {
+    this.health.delete(profileId);
+  }
+
   private async markFailure(profile: ResolvedProfile, purpose: LlmPurpose): Promise<void> {
     const state = this.health.get(profile.id) ?? { failures: 0, openUntil: 0 };
     state.failures += 1;

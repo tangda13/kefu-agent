@@ -877,6 +877,39 @@ describe("模型网关管理（G1–G7）+ 验收统计口径（B2）", () => {
     await app.inject({ method: "POST", url: `/v1/admin/llm/profiles/${profileId}/test`, headers: auth(admin) });
   });
 
+  it("告警：主模型切到备用后带“重新测试”；重新测试通过、或之后再次成功回复，提醒自动消失（不等 24 小时）", async () => {
+    type Alert = { title: string; page: string; tab?: string; action?: { kind: string; profileId: string } };
+    const failoverAlert = async () =>
+      ((await app.inject({ method: "GET", url: "/v1/admin/alerts", headers: auth(admin) })).json() as Alert[])
+        .find((item) => item.action?.kind === "test-profile" && item.action.profileId === profileId);
+    const failover = () =>
+      db.query("insert into audit_log (action, target, detail, created_at) values ('llm.failover', $1, '{}', now() + interval '1 second')", [profileId]);
+
+    await failover();
+    const alert = await failoverAlert();
+    expect(alert).toMatchObject({ page: "providers", tab: "models" });
+    expect(alert!.title).toContain("已自动切到备用模型");
+
+    // 重新测试通过：提醒消失（测试时间晚于切换时间）
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const tested = await app.inject({ method: "POST", url: `/v1/admin/llm/profiles/${profileId}/test`, headers: auth(admin) });
+    expect(tested.json().ok).toBe(true);
+    expect(await failoverAlert()).toBeUndefined();
+
+    // 又切了一次，之后这个模型成功回复过：同样消失
+    await failover();
+    expect(await failoverAlert()).toBeDefined();
+    const usage = await db.query(
+      `insert into llm_usage (profile_id, profile_name, model, purpose, outcome, created_at)
+       values ($1, 'x', 'm', 'dialogue', 'success', now() + interval '2 seconds') returning id`,
+      [profileId],
+    );
+    expect(await failoverAlert()).toBeUndefined();
+    // 清掉造的数据，免得影响后面按用途统计用量的用例
+    await db.query("delete from llm_usage where id = $1", [usage.rows[0].id]);
+    await db.query("delete from audit_log where action = 'llm.failover' and target = $1", [profileId]);
+  });
+
   it("G3/G5：测试失败的档案不能分配给用途；用途路由与导演频率可保存", async () => {
     const bad = await app.inject({
       method: "POST",

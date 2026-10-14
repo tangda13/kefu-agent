@@ -42,20 +42,33 @@ export interface AlertItem {
   detail: string;
   /** 告警对应的管理端页面，前端据此跳转 */
   page: "providers" | "backup" | "system";
+  /** “AI 与语音服务”里要打开的页签 */
+  tab?: "models" | "voice" | "usage";
+  /** 告警里能直接做的事：重新测试出错的模型（通过后提醒自动消失） */
+  action?: { kind: "test-profile"; profileId: string };
 }
 
-/** 近 24 小时阿里云出错转豆包的次数；密钥无效 = 有鉴权失败转移且之后没有阿里云成功朗读 */
+/**
+ * 近 24 小时阿里云出错转豆包的次数（语音页展示用）；pending = 最近一次阿里云成功朗读之后还在转豆包的次数（告警用，恢复后归零）；
+ * 密钥无效 = 有鉴权失败转移且之后没有阿里云成功朗读
+ */
 export async function aliyunFallbackStats(db: Db) {
-  const result = await db.query(`select
-    count(*) filter (where fallback) as total,
-    count(*) filter (where fallback and fallback_reason = 'auth') as auth,
-    max(created_at) filter (where fallback and fallback_reason = 'auth') as last_auth,
-    max(created_at) filter (where vendor = 'aliyun' and outcome = 'success' and not fallback) as last_ok
-    from voice_metrics where kind = 'tts' and created_at > now() - interval '24 hours'`);
+  const result = await db.query(`with w as (
+      select * from voice_metrics where kind = 'tts' and created_at > now() - interval '24 hours'
+    ), ok as (
+      select max(created_at) as last_ok from w where vendor = 'aliyun' and outcome = 'success' and not fallback
+    )
+    select
+      count(*) filter (where fallback) as total,
+      count(*) filter (where fallback and created_at > coalesce((select last_ok from ok), '-infinity')) as pending,
+      count(*) filter (where fallback and fallback_reason = 'auth') as auth,
+      max(created_at) filter (where fallback and fallback_reason = 'auth') as last_auth,
+      (select last_ok from ok) as last_ok
+    from w`);
   const row = result.rows[0];
   const lastAuth = row.last_auth ? new Date(row.last_auth).getTime() : 0;
   const lastOk = row.last_ok ? new Date(row.last_ok).getTime() : 0;
-  return { count: Number(row.total), authFailed: Number(row.auth), keyInvalid: lastAuth > 0 && lastAuth > lastOk };
+  return { count: Number(row.total), pending: Number(row.pending), authFailed: Number(row.auth), keyInvalid: lastAuth > 0 && lastAuth > lastOk };
 }
 
 /** 本月用量与额度（金额含语音，或按 tokens），G6 */
@@ -118,7 +131,10 @@ const hoursAgo = (date: Date) => (Date.now() - date.getTime()) / 3_600_000;
 const formatTime = (date: Date) =>
   date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
 
-/** 告警：额度、模型失败与切换、语音失败、备份过期。只列需要管理员处理的事。 */
+/**
+ * 告警：额度、模型失败与切换、语音失败、备份过期。只列需要管理员处理、而且现在还没好的事：
+ * 失败类只数“最近一次成功之后”的失败，恢复（再次成功、或重新测试通过）后自动消失，不等 24 小时过去。
+ */
 export async function collectAlerts(db: Db, voice: VoiceService): Promise<AlertItem[]> {
   const alerts: AlertItem[] = [];
   const { quota } = await computeUsage(db, voice);
@@ -128,44 +144,63 @@ export async function collectAlerts(db: Db, voice: VoiceService): Promise<AlertI
       title: quota.usedPercent >= 100 ? "本月额度已用完" : `本月额度已用 ${quota.usedPercent}%`,
       detail: `达到提醒线 ${quota.warnPercent}%，请在「AI 与语音服务」调整额度或更换模型。`,
       page: "providers",
+      tab: "usage",
     });
   }
+  // 买家对话、语音：只数最近一次成功之后的失败（24 小时内）
   const failures = await db.query(`select
-    (select count(*) from conversation_metrics where outcome != 'success' and received_at > now() - interval '24 hours') as llm_failed,
-    (select count(*) from conversation_metrics where received_at > now() - interval '24 hours') as llm_total,
-    (select count(*) from voice_metrics where outcome != 'success' and created_at > now() - interval '24 hours') as voice_failed,
-    (select count(*) from audit_log where action = 'llm.failover' and created_at > now() - interval '24 hours') as failovers`);
+    (select count(*) from conversation_metrics where outcome != 'success' and received_at > now() - interval '24 hours'
+       and received_at > coalesce((select max(received_at) from conversation_metrics where outcome = 'success'), '-infinity')) as llm_failed,
+    (select count(*) from voice_metrics v where v.kind = 'tts' and v.outcome != 'success' and v.created_at > now() - interval '24 hours'
+       and v.created_at > coalesce((select max(created_at) from voice_metrics s where s.kind = 'tts' and s.outcome = 'success'), '-infinity')) as tts_failed,
+    (select count(*) from voice_metrics v where v.kind = 'asr' and v.outcome != 'success' and v.created_at > now() - interval '24 hours'
+       and v.created_at > coalesce((select max(created_at) from voice_metrics s where s.kind = 'asr' and s.outcome = 'success'), '-infinity')) as asr_failed`);
   const f = failures.rows[0];
   const llmFailed = Number(f.llm_failed);
   if (llmFailed > 0) {
     alerts.push({
       level: llmFailed >= 10 ? "danger" : "warn",
-      title: `近 24 小时买家对话失败 ${llmFailed} 次`,
-      detail: `共 ${Number(f.llm_total)} 次对话请求，失败或超时的学生会看到“买家暂时无法回复”。`,
+      title: `买家回复连续失败 ${llmFailed} 次`,
+      detail: "最近的买家回复都没成功，学生会看到“买家暂时无法回复”。在「AI 与语音服务」测试对话模型；下一次回复成功后这条提示自动消失。",
       page: "providers",
+      tab: "models",
     });
   }
-  if (Number(f.failovers) > 0) {
+  // 主模型切到备用：按档案看，之后它又成功回复过、或重新测试通过就算恢复
+  const failovers = await db.query(`select f.target as profile_id, f.n, f.last_at, p.name
+    from (select target, count(*) as n, max(created_at) as last_at from audit_log
+          where action = 'llm.failover' and created_at > now() - interval '24 hours' group by target) f
+    join llm_profiles p on p.id::text = f.target and p.enabled
+    where not exists (select 1 from llm_usage u where u.profile_id::text = f.target and u.outcome = 'success' and u.created_at > f.last_at)
+      and not (p.test_status = 'ok' and p.tested_at > f.last_at)
+    order by f.last_at desc`);
+  for (const row of failovers.rows) {
     alerts.push({
       level: "warn",
-      title: `主模型连续出错，已自动切到备用模型 ${Number(f.failovers)} 次`,
-      detail: "建议在「AI 与语音服务」测试主模型的连通性。",
+      title: `「${row.name}」连续出错，已自动切到备用模型`,
+      detail: `${formatTime(new Date(row.last_at))} 起改由备用模型回复（24 小时内切换 ${Number(row.n)} 次）。重新测试通过、或它再次正常回复后，这条提示自动消失。`,
       page: "providers",
+      tab: "models",
+      action: { kind: "test-profile", profileId: String(row.profile_id) },
     });
   }
-  if (Number(f.voice_failed) > 0) {
+  const ttsFailed = Number(f.tts_failed);
+  const asrFailed = Number(f.asr_failed);
+  if (ttsFailed > 0 || asrFailed > 0) {
+    const what = [ttsFailed ? `朗读 ${ttsFailed} 次` : "", asrFailed ? `识别 ${asrFailed} 次` : ""].filter(Boolean).join("、");
     alerts.push({
       level: "warn",
-      title: `近 24 小时语音识别或朗读失败 ${Number(f.voice_failed)} 次`,
-      detail: "检查语音服务的密钥和额度。",
+      title: `语音连续失败：${what}`,
+      detail: "检查语音服务的密钥和额度；下一次成功后这条提示自动消失。",
       page: "providers",
+      tab: "voice",
     });
   }
   const fallback = await aliyunFallbackStats(db);
   if (fallback.keyInvalid) {
-    alerts.push({ level: "danger", title: "阿里云密钥无效，朗读已自动改用豆包", detail: "在「AI 与语音服务」检查阿里云百炼 API Key（以及接口地址与 Key 所在地域是否一致）。", page: "providers" });
-  } else if (fallback.count > 0) {
-    alerts.push({ level: "warn", title: `近 24 小时阿里云朗读失败转豆包 ${fallback.count} 次`, detail: "多为限流或网络波动，朗读已自动由豆包备用音色完成；频繁出现请检查阿里云额度。", page: "providers" });
+    alerts.push({ level: "danger", title: "阿里云密钥无效，朗读已自动改用豆包", detail: "在「AI 与语音服务」检查阿里云百炼 API Key（以及接口地址与 Key 所在地域是否一致）。", page: "providers", tab: "voice" });
+  } else if (fallback.pending > 0) {
+    alerts.push({ level: "warn", title: `阿里云朗读出错，已转豆包 ${fallback.pending} 次`, detail: "多为限流或网络波动，朗读已由豆包备用音色完成；阿里云再次成功朗读后这条提示自动消失。频繁出现请检查阿里云额度。", page: "providers", tab: "voice" });
   }
   const schedule = (await getSetting<{ enabled: boolean; hour: number }>(db, "backupSchedule")) ?? { enabled: false, hour: 2 };
   const backup = latestBackup();
