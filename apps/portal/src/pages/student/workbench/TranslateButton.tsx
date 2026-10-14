@@ -46,16 +46,16 @@ export function TranslateButton({ target, onTarget, busy, disabled, onTranslate 
   const label = OUTGOING_LANGUAGES.find((item) => item.id === target)?.label ?? "英";
 
   return (
-    <div className="wbk-tr" ref={ref}>
-      <button type="button" className="wbk-tr-main" disabled={disabled || busy} onClick={onTranslate} title={`把输入框里的内容译成${FULL_NAMES[target] ?? "英语"}`}>
+    <div className="wbk-intr" ref={ref}>
+      <button type="button" className="wbk-intr-main" disabled={disabled || busy} onClick={onTranslate} title={`把输入框里的内容译成${FULL_NAMES[target] ?? "英语"}`}>
         {busy ? <LoaderCircle size={15} className="wbk-spin" /> : <Languages size={15} />}
         翻译 中→{label}
       </button>
-      <button type="button" className="wbk-tr-pick" aria-label="切换目标语言" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <button type="button" className="wbk-intr-pick" aria-label="切换目标语言" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <ChevronDown size={13} />
       </button>
       {open ? (
-        <div className="wbk-pop wbk-tr-pop" role="listbox" aria-label="目标语言">
+        <div className="wbk-pop wbk-intr-pop" role="listbox" aria-label="目标语言">
           {OUTGOING_LANGUAGES.map((item) => (
             <button key={item.id} type="button" role="option" aria-selected={item.id === target} className={item.id === target ? "is-on" : ""} onClick={() => { onTarget(item.id); setOpen(false); }}>
               中→{item.label}<span>{FULL_NAMES[item.id]}</span>

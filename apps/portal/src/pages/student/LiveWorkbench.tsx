@@ -4,6 +4,7 @@ import {
   Film,
   ImagePlus,
   Languages,
+  LoaderCircle,
   Lock,
   Mail,
   MessageSquareText,
@@ -149,6 +150,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const [closedReasonLocal, setClosedReasonLocal] = useState<Record<string, string>>({});
   const [closedAtLocal, setClosedAtLocal] = useState<Record<string, number>>({});
   const [translateFailed, setTranslateFailed] = useState<Set<string>>(new Set());
+  /** 手动点“翻译”后等结果的消息：按钮显示“翻译中…”并禁用，免得以为没反应连点 */
+  const [translatingIds, setTranslatingIds] = useState<Set<string>>(new Set());
   const [tasks, setTasks] = useState<StudentTask[]>([]);
   const [stats, setStats] = useState<WorkbenchStats | null>(null);
   const [tiers, setTiers] = useState<StoreProfile["tiers"] | null>(null);
@@ -686,15 +689,30 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     buyerStreamingRef.current.add(cid);
     let accumulated = "";
     let bubbleSeq = 0;
+    const bubbleIds: string[] = [];
     const pushBubble = () => {
       const text = accumulated.trim();
       accumulated = "";
       if (!text || activeIdRef.current !== cid) return;
       bubbleSeq += 1;
+      const id = `buyer-${Date.now()}-${bubbleSeq}`;
+      bubbleIds.push(id);
       setMessages((current) => [
         ...(current ?? []),
-        { id: `buyer-${Date.now()}-${bubbleSeq}`, sender: "buyer", content: text, createdAt: new Date().toISOString() },
+        { id, sender: "buyer", content: text, createdAt: new Date().toISOString() },
       ]);
+    };
+    // 服务端改写过这轮回复（如去掉漏出的中文）：在原位置换成改好的几条
+    const replaceBubbles = (segments: string[]) => {
+      if (activeIdRef.current !== cid || bubbleIds.length === 0) return;
+      setMessages((current) => {
+        const list = current ?? [];
+        const first = list.findIndex((row) => bubbleIds.includes(row.id));
+        if (first < 0) return list;
+        const rest = list.filter((row) => !bubbleIds.includes(row.id));
+        const fixed = segments.map((content, index) => ({ id: `${bubbleIds[0]}-f${index}`, sender: "buyer" as const, content, createdAt: list[first]!.createdAt }));
+        return [...rest.slice(0, first), ...fixed, ...rest.slice(first)];
+      });
     };
     return {
       onDelta: (delta: string) => {
@@ -706,9 +724,10 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         pushBubble();
         if (activeIdRef.current === cid) setStreamingText("");
       },
-      onDone: (_metrics: unknown, extra?: { closed?: boolean }) => {
+      onDone: (_metrics: unknown, extra?: { closed?: boolean; segments?: string[] }) => {
         buyerStreamingRef.current.delete(cid);
         pushBubble();
+        if (extra?.segments?.length) replaceBubbles(extra.segments);
         if (activeIdRef.current === cid) setStreamingText(null);
         // 买家离开：会话由客户结束（真实客服无权挂断），刷新列表并保留当前对话展示
         if (extra?.closed) {
@@ -867,6 +886,19 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       setMessages((current) => (current ?? []).map((item) => (item.id === message.id ? { ...item, showTranslation: !item.showTranslation } : item)));
       return;
     }
+    if (translatingIds.has(message.id)) return;
+    // 本地气泡换成服务端消息后 id 会变，两个 id 都标上“翻译中”
+    const ids = [message.id];
+    const mark = (list: string[], on: boolean) =>
+      setTranslatingIds((set) => {
+        const next = new Set(set);
+        for (const id of list) {
+          if (on) next.add(id);
+          else next.delete(id);
+        }
+        return next;
+      });
+    mark(ids, true);
     try {
       let targetId = message.id;
       if (message.id.startsWith("buyer-") || message.id.startsWith("local-")) {
@@ -877,12 +909,16 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
           return;
         }
         targetId = target.id;
+        ids.push(targetId);
+        mark([targetId], true);
         setMessages((current) => mergeRows(current, rows));
       }
       const { translation } = await translateMessage(session, activeId, targetId);
       setMessages((current) => (current ?? []).map((item) => (item.id === targetId ? { ...item, translation, showTranslation: true } : item)));
     } catch (cause) {
       setNotice(errorMessage(cause));
+    } finally {
+      mark(ids, false);
     }
   }
 
@@ -1412,9 +1448,15 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
                       </button>
                     ) : null}
                     {!mine && text && !autoTranslate ? (
-                      <button type="button" onClick={() => void toggleTranslation(message)}>
-                        <Languages size={12} />{message.translation ? (message.showTranslation ? "隐藏译文" : "显示译文") : "翻译"}
-                      </button>
+                      translatingIds.has(message.id) ? (
+                        <button type="button" className="is-busy" disabled>
+                          <LoaderCircle size={12} className="wbk-spin" />翻译中…
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => void toggleTranslation(message)}>
+                          <Languages size={12} />{message.translation ? (message.showTranslation ? "隐藏译文" : "显示译文") : "翻译"}
+                        </button>
+                      )
                     ) : null}
                     <time>{timeLabel(message.createdAt)}</time>
                     {mine ? <CheckCheck size={13} className="wbk-tick" /> : null}

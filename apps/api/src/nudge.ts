@@ -2,7 +2,7 @@ import { patienceAction, patienceFactor } from "@cecs/domain";
 import type { ScenarioScript } from "@cecs/contracts";
 import type { Db } from "./db";
 import type { LlmGateway } from "./llm/gateway";
-import { buildBuyerNudgeMessages } from "./prompts/buyer";
+import { buildBuyerNudgeMessages, buildChineseFixMessages, hasChineseLeak } from "./prompts/buyer";
 import { once } from "./inflight";
 import { assessConversation } from "./assessment";
 import { generateBuyerReview } from "./review-gen";
@@ -30,7 +30,7 @@ export async function sweepBuyerPatience(db: Db, gateway: LlmGateway, log: LogLi
   if (!gateway.isConfigured("dialogue")) return 0;
   // 最后一条非教师消息是买家发的、会话进行中；取最后消息 id 与时间
   const result = await db.query(
-    `select c.id, c.persona, c.state, c.scenario_id, last.id as last_id, last.created_at as last_at
+    `select c.id, c.persona, c.state, c.scenario_id, c.created_at, last.id as last_id, last.created_at as last_at
      from conversations c
      join lateral (
        select m.id, m.sender, m.created_at from conversation_messages m
@@ -90,18 +90,26 @@ async function runNudge(
       orderSnapshot: (orderRow.rows[0]?.payload as Record<string, unknown> | undefined) ?? {},
       sessionState: state as never,
       history,
+      startedAt: row.created_at,
     },
     waitedMinutes: step.waitedMinutes,
     nudgeIndex: step.count + 1,
     leaving: step.leaving,
   });
   const { text } = await gateway.complete("dialogue", messages, { conversationId: row.id });
-  const content = text
+  let content = text
     .replace("[END_OF_SERVICE]", "")
     .split("|||")
     .map((part) => part.trim())
     .find(Boolean);
   if (!content) return false;
+  // 漏中文兜底（同实时回复）：改写失败就不催这一次，下一轮再生成
+  const language = (row.persona ?? {}).language as string | undefined;
+  if (hasChineseLeak(content, language)) {
+    const fixed = (await gateway.complete("assist", buildChineseFixMessages(content, language), { conversationId: row.id, temperature: 0.2 })).text.trim();
+    if (!fixed || hasChineseLeak(fixed, language)) return false;
+    content = fixed;
+  }
 
   // 再确认一次：生成期间客服可能已回复或会话已结束
   const latest = await db.query(

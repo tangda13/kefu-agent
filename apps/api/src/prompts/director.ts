@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { EMOTIONS, type ScenarioScript } from "@cecs/contracts";
 import type { ChatMessage } from "../llm/gateway";
+import { directorTimeLine } from "./time";
 
-export const DIRECTOR_PROMPT_VERSION = "director@2026-10-12";
+export const DIRECTOR_PROMPT_VERSION = "director@2026-10-14";
 
 export const STAGES = ["问题陈述", "信息核实", "方案协商", "达成一致", "僵持升级"] as const;
 
@@ -29,6 +30,8 @@ export interface DirectorInput {
   script: ScenarioScript | null;
   previous: { emotion?: string; stage?: string; satisfaction?: number; memory?: string };
   transcript: Array<{ sender: string; content: string }>;
+  /** 当前时间（默认此刻） */
+  now?: Date;
 }
 
 export function buildDirectorMessages(input: DirectorInput): ChatMessage[] {
@@ -42,11 +45,15 @@ export function buildDirectorMessages(input: DirectorInput): ChatMessage[] {
     `"stage":"${STAGES.join("|")}"之一,"directive":"给买家演员的下一轮表演指令，中文≤50字",` +
     `"memory":"合并旧备忘录后的关键事实摘要，中文≤200字：双方承诺/报价折扣/证据/已确认信息","resolved":问题是否已解决 true 或 false}` +
     "。评分依据：合规、语言质量、共情、推进问题解决。买家情绪应对学员表现做出合理演变：安抚有效则缓和，敷衍拖延则恶化。" +
-    "若有场景剧本，买家的让步不得超过剧本底线，隐藏信息只有在学员问到点子上时才让买家透露。";
+    "若有场景剧本，买家的让步不得超过剧本底线，隐藏信息只有在学员问到点子上时才让买家透露。" +
+    "涉及时间时对照所给日历：备忘录里的日期一律写成具体日期（如“10月23日周五前必须收到”“客服承诺10月16日前送达”），" +
+    "不要写“下周五”“三天后”这类相对说法；学员给的时效是否赶得上买家的期限，要按日历比较完整日期再定情绪和指令（10月17日周六早于10月23日周五，不能只比星期几）。" +
+    "买家前面把日期算错了（对话里说过“周六就来不及了”之类与日历不符的话），备忘录按日历写正确结论，指令让买家自然承认算错、转向仍然担心的点。";
   const script = input.script
     ? `场景剧本：目标=${input.script.buyerGoal}；隐藏信息=${input.script.hiddenInfo}；情绪触发=${input.script.emotionTriggers}；底线=${input.script.bottomLine}；结束条件=${input.script.endConditions}\n`
     : "";
   const user =
+    `${directorTimeLine(input.now ?? new Date())}\n` +
     `买家画像：${JSON.stringify({ name: input.persona.name, personality: input.persona.personality, emotion: input.persona.emotion, customerType: input.persona.customerType })}\n` +
     `场景：${input.scenarioName ?? "通用客服"}（目标：${input.objective ?? "-"}）\n` +
     script +

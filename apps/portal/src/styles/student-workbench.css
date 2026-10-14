@@ -165,6 +165,7 @@
 .wbk-mt button { display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0; border: 0; background: none; color: var(--c-ink-3); font-size: 11px; cursor: pointer; }
 .wbk-mt button:hover { color: var(--c-brand-ink); }
 .wbk-mt button.is-playing { color: var(--c-brand-ink); font-weight: 600; }
+.wbk-mt button.is-busy { color: var(--c-brand-ink); cursor: default; }
 .wbk-mt svg { width: 12px; height: 12px; }
 .wbk-mt .is-typing { color: var(--c-brand-ink); }
 .wbk-m.is-me .wbk-mt { justify-content: flex-end; }
@@ -470,15 +471,15 @@
 .wbk-agent-seg button.is-on { background: var(--c-surface); color: var(--c-ink); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.08); }
 
 /* 输入框翻译按钮（替换原自动翻译 / 自动播报开关） */
-.wbk-tr { position: relative; margin-left: auto; display: inline-flex; align-items: center; height: 28px; border: 1px solid var(--c-line-strong); border-radius: 6px; background: var(--c-surface); }
-.wbk-tr button { display: inline-flex; align-items: center; gap: 4px; height: 100%; padding: 0 8px; border: 0; background: none; color: var(--c-ink-2); font-size: 13px; cursor: pointer; white-space: nowrap; }
-.wbk-tr button:hover:not(:disabled) { color: var(--c-brand-ink); background: var(--c-surface-hover); }
-.wbk-tr button:disabled { color: var(--c-ink-4, #9aa3b0); cursor: default; }
-.wbk-tr-pick { border-left: 1px solid var(--c-line) !important; padding: 0 6px !important; }
-.wbk-tr-pop { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 40; width: 180px; padding: 6px; display: grid; gap: 2px; }
-.wbk-tr-pop button { justify-content: space-between; height: 30px; border-radius: 4px; }
-.wbk-tr-pop button span { color: var(--c-ink-3); font-size: 12px; }
-.wbk-tr-pop button.is-on { background: var(--c-brand-soft); color: var(--c-brand-ink); font-weight: 600; }
+.wbk-intr { position: relative; margin-left: auto; display: inline-flex; align-items: center; height: 28px; border: 1px solid var(--c-line-strong); border-radius: 6px; background: var(--c-surface); }
+.wbk-intr button { display: inline-flex; align-items: center; gap: 4px; height: 100%; padding: 0 8px; border: 0; background: none; color: var(--c-ink-2); font-size: 13px; cursor: pointer; white-space: nowrap; }
+.wbk-intr button:hover:not(:disabled) { color: var(--c-brand-ink); background: var(--c-surface-hover); }
+.wbk-intr button:disabled { color: var(--c-ink-4, #9aa3b0); cursor: default; }
+.wbk-intr-pick { border-left: 1px solid var(--c-line) !important; padding: 0 6px !important; }
+.wbk-intr-pop { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 40; width: 180px; padding: 6px; display: grid; gap: 2px; }
+.wbk-intr-pop button { justify-content: space-between; height: 30px; border-radius: 4px; }
+.wbk-intr-pop button span { color: var(--c-ink-3); font-size: 12px; }
+.wbk-intr-pop button.is-on { background: var(--c-brand-soft); color: var(--c-brand-ink); font-weight: 600; }
 .wbk-spin { animation: wbk-spin 1s linear infinite; }
 @keyframes wbk-spin { to { transform: rotate(360deg); } }
 .shell-store-mark { background: var(--c-ink); color: #fff; }

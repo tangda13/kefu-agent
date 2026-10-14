@@ -21,7 +21,7 @@ import type { AuthGuard } from "../auth-context";
 import type { CallInfo, LlmGateway } from "../llm/gateway";
 import type { VoiceService } from "../voice/service";
 import { resolveBuyerLanguage } from "../voice/buyer-language";
-import { buildBuyerMessages } from "../prompts/buyer";
+import { buildBuyerMessages, buildChineseFixMessages, hasChineseLeak } from "../prompts/buyer";
 import { loadEnabledPersonaTemplates } from "./catalog";
 import { loadStoreProfile } from "./store";
 import { once } from "../inflight";
@@ -150,6 +150,7 @@ async function streamBuyerTurn(options: {
     orderSnapshot: order ? (order as unknown as Record<string, unknown>) : {},
     sessionState: (conversation.state ?? {}) as never,
     history,
+    startedAt: conversation.created_at,
   });
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
@@ -185,6 +186,28 @@ async function streamBuyerTurn(options: {
     buyerReply = (buyerReply.slice(0, markIdx) + buyerReply.slice(markIdx + END_MARK.length)).trimEnd();
   }
   emitSafeDelta(true);
+  const completedAt = new Date();
+
+  // 漏中文兜底：改写后再落库，done 事件带上改好的内容，前端替换刚流出来的气泡
+  const buyerLanguage = conversation.persona.language as string | undefined;
+  let corrected = false;
+  if (outcome === "success" && hasChineseLeak(buyerReply, buyerLanguage)) {
+    try {
+      const { text } = await gateway.complete("assist", buildChineseFixMessages(buyerReply, buyerLanguage), {
+        conversationId: conversation.id,
+        temperature: 0.2,
+      });
+      const fixed = text.replace(END_MARK, "").trim();
+      if (fixed && !hasChineseLeak(fixed, buyerLanguage)) {
+        buyerReply = fixed;
+        corrected = true;
+      } else {
+        request.log.warn({ conversationId: conversation.id }, "buyer reply still has chinese after fix");
+      }
+    } catch (error) {
+      request.log.error({ err: error, conversationId: conversation.id }, "buyer chinese fix failed");
+    }
+  }
 
   // 按 ||| 拆成多条短消息分行落库（拟真买家连发；回放/教师端同样逐条展示）
   const segments = buyerReply
@@ -193,7 +216,6 @@ async function streamBuyerTurn(options: {
     .filter(Boolean);
   const totalChars = segments.reduce((sum, part) => sum + part.length, 0);
 
-  const completedAt = new Date();
   let buyerMessageId: string | null = null;
   for (const segment of segments) {
     const saved = await db.query(
@@ -257,6 +279,7 @@ async function streamBuyerTurn(options: {
     type: outcome === "success" ? "done" : "error",
     messageId: buyerMessageId,
     closed: conversationClosed,
+    ...(corrected ? { segments } : {}),
     metrics: {
       ttftMs: firstCharAt ? firstCharAt.getTime() - receivedAt.getTime() : null,
       validChars: totalChars,

@@ -831,8 +831,8 @@ export interface StreamHandlers {
   onDelta: (text: string) => void;
   /** 买家连发：当前气泡结束，后续 delta 属于下一条消息 */
   onSplit?: () => void;
-  /** extra.closed=true 表示买家已结束会话（问题解决或失去耐心离开） */
-  onDone: (metrics: StreamMetrics, extra?: { closed?: boolean }) => void;
+  /** extra.closed=true 表示买家已结束会话（问题解决或失去耐心离开）；extra.segments：服务端改写过（如去掉漏出的中文），以它为准替换刚流出的气泡 */
+  onDone: (metrics: StreamMetrics, extra?: { closed?: boolean; segments?: string[] }) => void;
   /** code：服务端错误码（如 NO_PENDING_MESSAGE），网络错误时为空 */
   onError: (message: string, code?: string) => void;
 }
@@ -926,7 +926,7 @@ async function readSseResponse(
     for (const rawLine of lines) {
       const line = rawLine.trim();
       if (!line.startsWith("data:")) continue;
-      let event: { type: string; text?: string; metrics?: StreamMetrics; closed?: boolean };
+      let event: { type: string; text?: string; metrics?: StreamMetrics; closed?: boolean; segments?: string[] };
       try {
         event = JSON.parse(line.slice(5).trim());
       } catch {
@@ -935,7 +935,7 @@ async function readSseResponse(
       if (event.type === "delta" && event.text) handlers.onDelta(event.text);
       else if (event.type === "split") handlers.onSplit?.();
       else if (event.type === "done" && event.metrics)
-        handlers.onDone(event.metrics, { closed: event.closed === true });
+        handlers.onDone(event.metrics, { closed: event.closed === true, segments: event.segments });
       else if (event.type === "error") {
         handlers.onError("AI 回复失败，请重试或联系教师。");
         return;

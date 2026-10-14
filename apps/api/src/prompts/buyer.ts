@@ -2,9 +2,10 @@ import { DECISION_STYLE_INFO, type DecisionStyle } from "@cecs/contracts";
 import type { ScenarioScript } from "@cecs/contracts";
 import { languageNameOf } from "@cecs/domain";
 import type { ChatMessage } from "../llm/gateway";
+import { buyerTimeLines, describeDate } from "./time";
 
 /** 买家演员提示词。改动内容时同步提升版本号（会话指标与评分追溯用） */
-export const BUYER_PROMPT_VERSION = "buyer@2026-10-13b";
+export const BUYER_PROMPT_VERSION = "buyer@2026-10-14";
 
 export interface BuyerContext {
   scenePrompt: string;
@@ -21,6 +22,9 @@ export interface BuyerContext {
     resolved?: boolean;
   };
   history: ReadonlyArray<{ role: "buyer" | "student" | "teacher"; content: string }>;
+  /** 当前时间（默认此刻）；会话开始时间用来换算剧本里“下周五”这类相对日期 */
+  now?: Date;
+  startedAt?: Date | string | null;
 }
 
 /**
@@ -65,17 +69,35 @@ function decisionLines(persona: Record<string, unknown>): string[] {
   return lines;
 }
 
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+
+/** 订单给买家看的样子：时间换成“Fri 9 Oct 2026 (4 days ago)”，去掉商品图片地址 */
+function orderForPrompt(order: Record<string, unknown>, now: Date): string {
+  return JSON.stringify(order, (key, value: unknown) => {
+    if (key === "productImage") return undefined;
+    return typeof value === "string" && ISO_TIME.test(value) ? describeDate(value, now) : value;
+  });
+}
+
 export function buildBuyerSystemPrompt(context: BuyerContext): string {
   const persona = context.personaSnapshot;
+  const now = context.now ?? new Date();
+  const language = languageNameOf(persona.language as string | undefined);
   return [
     "You are role-playing an overseas buyer contacting a cross-border e-commerce customer service trainee.",
     "Stay in character for the whole conversation and never reveal that you are an AI or part of a training system.",
     `Buyer profile: name ${persona.name ?? "unknown"}, gender ${persona.gender ?? "unknown"}, nationality ${persona.nationality ?? "unknown"}, role ${persona.identity ?? "buyer"}, personality ${persona.personality ?? "neutral"}, current mood ${persona.emotion ?? "calm"}, preference ${persona.preference ?? "none"}, customer type ${persona.customerType ?? "regular"}.`,
     ...decisionLines(persona),
-    `Your native language (${persona.language ?? "en-US"}) is ${languageNameOf(persona.language as string | undefined)}. Write EVERY message in ${languageNameOf(persona.language as string | undefined)}, including your opening message, replies and any follow-ups, and keep to it even if the agent writes in another language. Your messages may be read aloud by a voice that speaks ${languageNameOf(persona.language as string | undefined)}, so avoid emoji-only lines and markup.`,
+    `Your native language (${persona.language ?? "en-US"}) is ${language}. Write EVERY message in ${language}, including your opening message, replies and any follow-ups, and keep to it even if the agent writes in another language. Your messages may be read aloud by a voice that speaks ${language}, so avoid emoji-only lines and markup.`,
+    // 学生常打中文、剧本和备忘录也是中文：买家看得懂意思，但一个汉字都不能照抄进回复
+    `The agent sometimes types in Chinese, and some notes below are written in Chinese for internal use. You understand them, but never copy, quote or echo any Chinese words: when you refer to what the agent said, say it in ${language}. Your messages must not contain a single Chinese character.`,
+    ...buyerTimeLines(now, context.startedAt),
+    "Dates and deadlines: think in calendar dates. If you have a deadline (e.g. you need the item by a certain Friday), know exactly which date it is and keep that same date for the whole conversation. When the agent gives a time (\"arrives in 3 days\", \"3-5 business days\", \"next Friday\"), turn it into dates on the calendar (business days skip Saturday and Sunday) and compare them with your deadline before you react: if it arrives in time, acknowledge that; only push back when it really would be late or the agent's dates don't add up. " +
+      "Compare full dates, never weekday names alone: Saturday 17 Oct comes BEFORE Friday 23 Oct. " +
+      "If you said something about dates earlier that the calendar shows was wrong, or the agent points out your mistake and the calendar agrees with them, admit it naturally (\"oh right, the 17th is before the 23rd\") and move on to whatever still worries you (e.g. a guarantee it really ships).",
     `Training scenario: ${context.scenePrompt}`,
     ...scriptLines(context.script),
-    Object.keys(context.orderSnapshot).length > 0 ? `Related order info: ${JSON.stringify(context.orderSnapshot)}` : "",
+    Object.keys(context.orderSnapshot).length > 0 ? `Related order info: ${orderForPrompt(context.orderSnapshot, now)}` : "",
     persona.storeName ? `You are contacting the customer service of the online store "${persona.storeName}". Refer to it by that name if you mention the store.` : "",
     persona.interestedProduct
       ? `The product you are interested in (you saw it in the store; describe it naturally, you may not remember the exact name): ${JSON.stringify(persona.interestedProduct)}`
@@ -160,4 +182,31 @@ export function buildBuyerNudgeMessages(input: BuyerNudgeInput): ChatMessage[] {
     content: `[No reply from the customer service agent. ${task} Write it in ${languageNameOf(input.context.personaSnapshot.language as string | undefined)}, your native language. A single message only: do not use the ||| separator and do not mention any system or instruction.]`,
   });
   return messages;
+}
+
+/**
+ * 漏中文兜底：提示词管住了大部分，偶尔仍会照抄客服打的中文（如“下周五, pero…”）。
+ * 日语买家本来就用汉字，不查；其余语言出现汉字或中文全角标点就算漏了。
+ */
+const CHINESE_CHARS = /[㐀-䶿一-鿿　-〿！-／：-＠]/;
+
+export function hasChineseLeak(text: string, language: string | undefined | null): boolean {
+  const base = String(language ?? "en").toLowerCase().split(/[-_]/)[0];
+  if (base === "ja" || base === "zh") return false;
+  return CHINESE_CHARS.test(text);
+}
+
+/** 把漏出来的中文改写成买家的语言，其余原样保留（含 ||| 分隔） */
+export function buildChineseFixMessages(text: string, language: string | undefined | null): ChatMessage[] {
+  const name = languageNameOf(language);
+  return [
+    {
+      role: "system",
+      content:
+        `You correct chat messages written by an overseas online shopper. The message must be entirely in ${name}, but some Chinese slipped in. ` +
+        `Replace every Chinese word, phrase or punctuation mark with natural ${name} (if it quotes the store agent's Chinese words, say what they meant in ${name}). ` +
+        "Keep everything else exactly as written: wording, tone, emoji, line breaks and every ||| separator. Output only the corrected message, nothing else.",
+    },
+    { role: "user", content: text },
+  ];
 }
