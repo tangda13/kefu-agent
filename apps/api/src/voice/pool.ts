@@ -1,4 +1,5 @@
-import { stableHash } from "@cecs/domain";
+import { NATIONALITIES } from "@cecs/contracts";
+import { nativeLanguageOf, stableHash } from "@cecs/domain";
 
 /**
  * 买家语音音色池（D-42）：每个语种 × 性别配置一组音色，每位买家按画像种子固定分到其中一个。
@@ -39,36 +40,51 @@ export const VENDOR_PRIORITY = ["aliyun", "doubao"] as const;
 export const BACKUP_VENDOR = "doubao";
 
 /**
- * 默认音色池（阿里云主用、豆包备用，各语种阿里云音色排前面）。
- * 阿里云千问3-TTS-Flash 覆盖英、西、法、德、意、葡、俄、日、韩；豆包 2.0（seed-tts-2.0）只有英语
- * （美式 3 个、英式 1 个女声）和 Vivi 多语种女声（中、英、日、西、印尼），作为备用。
- * 英式口音只有豆包 Tina，保留给英国买家；阿拉伯语国内厂商暂无系统音色，留空，运行时退回英语。
+ * 推荐音色池（D-48，也是默认池）：按买家国籍配，海外人设音色放第一位（卡片上显示它）。
+ * 阿里云千问3-TTS-Flash 每个音色都能说中英法德俄意西葡日韩；豆包 2.0 只有英语（美式 3 个、英式 Tina）
+ * 和多语种 Vivi（英、日、西），作为备用。英式口音只有豆包 Tina；澳式、阿拉伯语两家都没有，留空，运行时退回英语。
  */
-const ALIYUN_FEMALE = ["Cherry", "Jennifer", "Katerina", "Elias"];
-const ALIYUN_MALE = ["Ethan", "Nofish", "Ryan"];
 const aliyun = (ids: string[]): PoolVoice[] => ids.map((id) => ({ vendor: "aliyun", id }));
 const doubao = (ids: string[]): PoolVoice[] => ids.map((id) => ({ vendor: "doubao", id }));
 
-export function defaultVoicePool(): VoicePool {
+export function recommendedVoicePool(): VoicePool {
   const vivi = doubao(["zh_female_vv_uranus_bigtts"]);
   return {
     en: {
-      female: [...aliyun(ALIYUN_FEMALE), ...doubao(["en_female_dacey_uranus_bigtts", "en_female_stokie_uranus_bigtts"]), ...vivi],
-      male: [...aliyun(ALIYUN_MALE), ...doubao(["en_male_tim_uranus_bigtts"])],
+      female: [...aliyun(["Jennifer", "Cherry", "Serena", "Maia"]), ...doubao(["en_female_dacey_uranus_bigtts", "en_female_stokie_uranus_bigtts"])],
+      male: [...aliyun(["Aiden", "Ethan", "Ryan", "Andre"]), ...doubao(["en_male_tim_uranus_bigtts"])],
     },
     "en-GB": { female: doubao(["zh_female_yingyujiaoxue_uranus_bigtts"]), male: [] },
     "en-AU": { female: [], male: [] },
-    es: { female: [...aliyun(ALIYUN_FEMALE), ...vivi], male: aliyun(ALIYUN_MALE) },
-    fr: { female: aliyun(ALIYUN_FEMALE), male: aliyun(ALIYUN_MALE) },
-    de: { female: aliyun(ALIYUN_FEMALE), male: aliyun(ALIYUN_MALE) },
-    it: { female: aliyun(ALIYUN_FEMALE), male: aliyun(ALIYUN_MALE) },
-    pt: { female: aliyun(ALIYUN_FEMALE), male: aliyun(ALIYUN_MALE) },
-    ru: { female: aliyun(ALIYUN_FEMALE), male: aliyun(ALIYUN_MALE) },
-    ja: { female: [...aliyun(ALIYUN_FEMALE), ...vivi], male: aliyun(ALIYUN_MALE) },
-    ko: { female: aliyun(ALIYUN_FEMALE), male: aliyun(ALIYUN_MALE) },
+    de: { female: aliyun(["Katerina", "Maia", "Cherry"]), male: aliyun(["Lenn", "Ethan", "Andre"]) },
+    fr: { female: aliyun(["Serena", "Cherry", "Jennifer"]), male: aliyun(["Emilien", "Andre", "Ethan"]) },
+    es: { female: [...aliyun(["Sonrisa", "Cherry", "Serena"]), ...vivi], male: aliyun(["Bodega", "Ethan", "Ryan"]) },
+    it: { female: aliyun(["Cherry", "Maia"]), male: aliyun(["Dolce", "Ethan"]) },
+    pt: { female: aliyun(["Cherry", "Serena"]), male: aliyun(["Andre", "Ethan"]) },
+    ru: { female: aliyun(["Katerina", "Cherry"]), male: aliyun(["Alek", "Ethan"]) },
+    ja: { female: [...aliyun(["Ono Anna", "Cherry"]), ...vivi], male: aliyun(["Kai", "Ethan"]) },
+    ko: { female: aliyun(["Sohee", "Cherry"]), male: aliyun(["Ethan", "Kai"]) },
     ar: { female: [], male: [] },
   };
 }
+
+export const defaultVoicePool = recommendedVoicePool;
+
+/**
+ * 每个音色池语种对应哪些国家的买家（按随机买家的国籍算：国籍 → 母语 → 音色池语种）。
+ * 没有国家的语种（俄、韩、阿拉伯）不会有买家，管理端收起、缺口不报。
+ */
+export function buyerCountriesByPool(): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const nationality of NATIONALITIES) {
+    const key = resolveVoiceLanguage({ language: nativeLanguageOf(nationality), nationality });
+    (out[key] ??= []).push(nationality);
+  }
+  return out;
+}
+
+/** 音色 ID：字母数字和 _ . - ，中间可以有空格（阿里云有 Ono Anna、Radio Gol 这类） */
+export const VOICE_ID_PATTERN = /^[A-Za-z0-9_.-](?:[A-Za-z0-9_. -]{0,78}[A-Za-z0-9_.-])?$/;
 
 /** 校验并规整管理端提交的音色池；非法项丢弃，返回规整后的池 */
 export function normalizeVoicePool(input: unknown, knownVendors: string[]): VoicePool {
@@ -83,7 +99,7 @@ export function normalizeVoicePool(input: unknown, knownVendors: string[]): Voic
       for (const item of list) {
         const vendor = String((item as PoolVoice)?.vendor ?? "");
         const id = String((item as PoolVoice)?.id ?? "").trim();
-        if (!knownVendors.includes(vendor) || !/^[A-Za-z0-9_.-]{2,80}$/.test(id)) continue;
+        if (!knownVendors.includes(vendor) || id.length < 2 || !VOICE_ID_PATTERN.test(id)) continue;
         const dedupe = `${vendor}:${id}`;
         if (seen.has(dedupe)) continue;
         seen.add(dedupe);
@@ -215,11 +231,12 @@ export interface MissingVoice {
   message: string;
 }
 
-/** 管理端提示：哪些语种缺音色（只看核心语种，口音缺了会自然退回英语） */
+/** 管理端提示：哪些语种缺音色（只看会有买家的核心语种；口音缺了会自然退回英语） */
 export function findMissingVoices(pool: VoicePool, available: Set<string>): MissingVoice[] {
   const out: MissingVoice[] = [];
+  const buyers = buyerCountriesByPool();
   for (const item of POOL_LANGUAGES) {
-    if (!item.core) continue;
+    if (!item.core || !buyers[item.key]) continue;
     const female = usableVoices(pool, item.key, "female", available).length > 0;
     const male = usableVoices(pool, item.key, "male", available).length > 0;
     if (female && male) continue;

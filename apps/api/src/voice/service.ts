@@ -94,43 +94,81 @@ const aliyunProvider: VoiceProvider = {
 /** 可选音色。表外的音色可在管理端手动填 ID */
 export interface VoiceSpeaker {
   id: string;
+  /** 显示名（中文名或英文名），管理端卡片上用 */
+  name: string;
+  /** 下拉、日志里用的完整名：显示名 + ID */
   label: string;
+  /** 一句特点（卡片上跟在名字后面，≤6 字） */
+  tag: string;
+  /** 官方描述（编辑抽屉里显示） */
+  desc: string;
   gender: VoiceGender;
   /** 适用语言说明 */
   lang: string;
   /** 能胜任的音色池语种键 */
   langs: string[];
+  /** 海外人设：为哪个音色池语种设计（如德国青年 → de），推荐时排第一 */
+  persona?: string;
 }
+
+type SpeakerSeed = Omit<VoiceSpeaker, "label" | "lang" | "langs"> & { lang?: string; langs?: string[] };
+const speaker = (seed: SpeakerSeed, lang: string, langs: string[]): VoiceSpeaker => ({
+  lang,
+  langs,
+  ...seed,
+  label: seed.name === seed.id ? seed.id : `${seed.name} ${seed.id}`,
+});
 
 /** 豆包语音合成 2.0（seed-tts-2.0）。英语 4 个来自官方音色表；Vivi 官方标注中、日、西、印尼并支持英语 */
 const DOUBAO_SPEAKERS: VoiceSpeaker[] = [
-  { id: "en_female_dacey_uranus_bigtts", label: "Dacey", gender: "female", lang: "英语（美式）", langs: ["en"] },
-  { id: "en_female_stokie_uranus_bigtts", label: "Stokie", gender: "female", lang: "英语（美式）", langs: ["en"] },
-  { id: "zh_female_vv_uranus_bigtts", label: "Vivi", gender: "female", lang: "多语种（中、英、日、西班牙、印尼）", langs: ["en", "es", "ja"] },
-  { id: "zh_female_yingyujiaoxue_uranus_bigtts", label: "Tina", gender: "female", lang: "中文、英式英语", langs: ["en-GB", "en"] },
-  { id: "zh_female_xiaohe_uranus_bigtts", label: "小何", gender: "female", lang: "中文", langs: [] },
-  { id: "zh_female_qingxinnvsheng_uranus_bigtts", label: "清新女声", gender: "female", lang: "中文", langs: [] },
-  { id: "zh_female_cancan_uranus_bigtts", label: "知性灿灿", gender: "female", lang: "中文", langs: [] },
-  { id: "zh_female_kefunvsheng_uranus_bigtts", label: "暖阳女声", gender: "female", lang: "中文", langs: [] },
-  { id: "en_male_tim_uranus_bigtts", label: "Tim", gender: "male", lang: "英语（美式）", langs: ["en"] },
-  { id: "zh_male_dayi_uranus_bigtts", label: "大壹", gender: "male", lang: "中文", langs: [] },
-  { id: "zh_male_m191_uranus_bigtts", label: "云舟", gender: "male", lang: "中文", langs: [] },
-  { id: "zh_male_taocheng_uranus_bigtts", label: "小天", gender: "male", lang: "中文", langs: [] },
-  { id: "zh_male_ruyayichen_uranus_bigtts", label: "儒雅逸辰", gender: "male", lang: "中文", langs: [] },
-  { id: "zh_male_shaonianzixin_uranus_bigtts", label: "少年梓辛", gender: "male", lang: "中文", langs: [] },
+  speaker({ id: "en_female_dacey_uranus_bigtts", name: "Dacey", tag: "美式女声", desc: "美式英语女声", gender: "female" }, "英语（美式）", ["en"]),
+  speaker({ id: "en_female_stokie_uranus_bigtts", name: "Stokie", tag: "美式女声", desc: "美式英语女声", gender: "female" }, "英语（美式）", ["en"]),
+  speaker({ id: "zh_female_vv_uranus_bigtts", name: "Vivi", tag: "多语种女声", desc: "会说中、英、日、西班牙、印尼语", gender: "female" }, "多语种（中、英、日、西班牙、印尼）", ["en", "es", "ja"]),
+  speaker({ id: "zh_female_yingyujiaoxue_uranus_bigtts", name: "Tina", tag: "英式女声", desc: "英式英语女声", gender: "female", persona: "en-GB" }, "中文、英式英语", ["en-GB", "en"]),
+  speaker({ id: "zh_female_xiaohe_uranus_bigtts", name: "小何", tag: "中文女声", desc: "中文女声", gender: "female" }, "中文", []),
+  speaker({ id: "zh_female_qingxinnvsheng_uranus_bigtts", name: "清新女声", tag: "中文女声", desc: "中文女声", gender: "female" }, "中文", []),
+  speaker({ id: "zh_female_cancan_uranus_bigtts", name: "知性灿灿", tag: "中文女声", desc: "中文女声", gender: "female" }, "中文", []),
+  speaker({ id: "zh_female_kefunvsheng_uranus_bigtts", name: "暖阳女声", tag: "中文女声", desc: "中文女声", gender: "female" }, "中文", []),
+  speaker({ id: "en_male_tim_uranus_bigtts", name: "Tim", tag: "美式男声", desc: "美式英语男声", gender: "male" }, "英语（美式）", ["en"]),
+  speaker({ id: "zh_male_dayi_uranus_bigtts", name: "大壹", tag: "中文男声", desc: "中文男声", gender: "male" }, "中文", []),
+  speaker({ id: "zh_male_m191_uranus_bigtts", name: "云舟", tag: "中文男声", desc: "中文男声", gender: "male" }, "中文", []),
+  speaker({ id: "zh_male_taocheng_uranus_bigtts", name: "小天", tag: "中文男声", desc: "中文男声", gender: "male" }, "中文", []),
+  speaker({ id: "zh_male_ruyayichen_uranus_bigtts", name: "儒雅逸辰", tag: "中文男声", desc: "中文男声", gender: "male" }, "中文", []),
+  speaker({ id: "zh_male_shaonianzixin_uranus_bigtts", name: "少年梓辛", tag: "中文男声", desc: "中文男声", gender: "male" }, "中文", []),
 ];
 
-/** 阿里云千问3-TTS-Flash 多语种系统音色（官方音色表：除方言音色外均支持中英法德俄意西葡日韩） */
+/**
+ * 阿里云千问3-TTS-Flash 系统音色（百炼《Qwen-TTS 音色列表》非实时部分，2026-10-14 核对）：
+ * 每个音色都能说中英法德俄意西葡日韩。只收适合成年买家的 24 个；儿童、萝莉、二次元、方言、助眠、戏曲腔不收，需要时手动填 ID。
+ */
 const ALIYUN_LANGS = ["en", "es", "fr", "de", "it", "pt", "ru", "ja", "ko"];
 const ALIYUN_LANG_TEXT = "多语种（中、英、法、德、俄、意、西、葡、日、韩）";
+const ali = (seed: SpeakerSeed) => speaker(seed, ALIYUN_LANG_TEXT, ALIYUN_LANGS);
 const ALIYUN_SPEAKERS: VoiceSpeaker[] = [
-  { id: "Cherry", label: "芊悦 Cherry", gender: "female", lang: ALIYUN_LANG_TEXT, langs: ALIYUN_LANGS },
-  { id: "Jennifer", label: "詹妮弗 Jennifer", gender: "female", lang: ALIYUN_LANG_TEXT, langs: ALIYUN_LANGS },
-  { id: "Katerina", label: "卡捷琳娜 Katerina", gender: "female", lang: ALIYUN_LANG_TEXT, langs: ALIYUN_LANGS },
-  { id: "Elias", label: "墨讲师 Elias", gender: "female", lang: ALIYUN_LANG_TEXT, langs: ALIYUN_LANGS },
-  { id: "Ethan", label: "晨煦 Ethan", gender: "male", lang: ALIYUN_LANG_TEXT, langs: ALIYUN_LANGS },
-  { id: "Nofish", label: "不吃鱼 Nofish", gender: "male", lang: ALIYUN_LANG_TEXT, langs: ALIYUN_LANGS },
-  { id: "Ryan", label: "甜茶 Ryan", gender: "male", lang: ALIYUN_LANG_TEXT, langs: ALIYUN_LANGS },
+  ali({ id: "Cherry", name: "芊悦", tag: "亲切自然", desc: "阳光积极、亲切自然的小姐姐", gender: "female" }),
+  ali({ id: "Serena", name: "苏瑶", tag: "温柔", desc: "温柔小姐姐", gender: "female" }),
+  ali({ id: "Maia", name: "四月", tag: "知性温柔", desc: "知性与温柔的碰撞", gender: "female" }),
+  ali({ id: "Jennifer", name: "詹妮弗", tag: "美语女声", desc: "品牌级、电影质感般的美语女声", gender: "female" }),
+  ali({ id: "Katerina", name: "卡捷琳娜", tag: "御姐音", desc: "御姐音色，韵律回味十足", gender: "female" }),
+  ali({ id: "Elias", name: "墨讲师", tag: "讲师腔", desc: "严谨又会讲故事的讲师", gender: "female" }),
+  ali({ id: "Mia", name: "乖小妹", tag: "乖巧温顺", desc: "温顺如春水，乖巧如初雪", gender: "female" }),
+  ali({ id: "Sonrisa", name: "索尼莎", tag: "拉美大姐", desc: "热情开朗的拉美大姐", gender: "female", persona: "es" }),
+  ali({ id: "Sohee", name: "素熙", tag: "韩国欧尼", desc: "温柔开朗、情绪丰富的韩国欧尼", gender: "female", persona: "ko" }),
+  ali({ id: "Ono Anna", name: "小野杏", tag: "日本少女", desc: "鬼灵精怪的青梅竹马", gender: "female", persona: "ja" }),
+  ali({ id: "Ethan", name: "晨煦", tag: "阳光温暖", desc: "阳光、温暖、活力、朝气", gender: "male" }),
+  ali({ id: "Nofish", name: "不吃鱼", tag: "设计师", desc: "不会翘舌音的设计师", gender: "male" }),
+  ali({ id: "Ryan", name: "甜茶", tag: "戏感强", desc: "节奏拉满，戏感炸裂", gender: "male" }),
+  ali({ id: "Aiden", name: "艾登", tag: "美语大男孩", desc: "精通厨艺的美语大男孩", gender: "male" }),
+  ali({ id: "Kai", name: "凯", tag: "低沉舒缓", desc: "低沉舒缓，耳朵的一场 SPA", gender: "male" }),
+  ali({ id: "Moon", name: "月白", tag: "率性帅气", desc: "率性帅气", gender: "male" }),
+  ali({ id: "Neil", name: "阿闻", tag: "新闻主播腔", desc: "平直的语调、字正腔圆，新闻主持人", gender: "male" }),
+  ali({ id: "Andre", name: "安德雷", tag: "沉稳磁性", desc: "声音磁性，自然舒服、沉稳", gender: "male" }),
+  ali({ id: "Bodega", name: "博德加", tag: "西班牙大叔", desc: "热情的西班牙大叔", gender: "male", persona: "es" }),
+  ali({ id: "Alek", name: "阿列克", tag: "俄罗斯男声", desc: "战斗民族的冷，也是毛呢大衣下的暖", gender: "male", persona: "ru" }),
+  ali({ id: "Dolce", name: "多尔切", tag: "意大利大叔", desc: "慵懒的意大利大叔", gender: "male", persona: "it" }),
+  ali({ id: "Lenn", name: "莱恩", tag: "德国青年", desc: "理性是底色，叛逆藏在细节里——穿西装也听后朋克的德国青年", gender: "male", persona: "de" }),
+  ali({ id: "Emilien", name: "埃米尔安", tag: "法国大哥哥", desc: "浪漫的法国大哥哥", gender: "male", persona: "fr" }),
+  ali({ id: "Radio Gol", name: "拉迪奥·戈尔", tag: "巴西解说", desc: "足球诗人，解说腔，很夸张", gender: "male", persona: "pt" }),
 ];
 
 export interface VoiceVendorInfo {

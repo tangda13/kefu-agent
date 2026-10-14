@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>买家音色池</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+* { box-sizing: border-box; } html, body { margin: 0; }
+body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 24px; } .doc h2 { margin: 48px 0 8px; font-size: 20px; } .doc h2 small { font-size: 13px; font-weight: 400; color: #465163; margin-left: 8px; }
+.lede { margin: 0 0 16px; color: #465163; max-width: 1120px; }
+.note { font-size: 12px; color: #465163; margin-top: 8px; max-width: 1120px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } figure { margin: 0; } figcaption { font-size: 12px; color: #465163; margin-top: 6px; }
+.before { width: 100%; display: block; border-radius: 10px; border: 1px solid #d6dce5; }
+.frame { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid #d6dce5; box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); background: #fff; }
+.screen { position: absolute; top: 0; left: 0; width: 1440px; transform-origin: 0 0; overflow: hidden; }
+.t { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d6dce5; border-radius: 10px; overflow: hidden; font-size: 13px; }
+.t th, .t td { text-align: left; padding: 9px 14px; border-bottom: 1px solid #edf0f4; vertical-align: top; } .t th { background: #f6f8fb; color: #465163; font-size: 12px; white-space: nowrap; } .t td:first-child { white-space: nowrap; font-weight: 600; }
+.t td i { font-style: normal; margin-left: 4px; padding: 0 6px; border-radius: 4px; background: #e8effc; color: #174aa8; font-size: 11px; font-weight: 600; }
+.t td u { text-decoration: none; padding: 0 6px; border-radius: 4px; background: #fdf0dc; color: #9a5200; font-size: 11px; font-weight: 600; }
+.t .star { color: #9a5200; }
+.keep { color: #1a7445; } .chg { color: #174aa8; }
+
+/* 织 UI 令牌 */
+.s { --line:#e3e7ee; --line-2:#edf0f4; --hover:#f6f8fb; --ink:#161c26; --ink-2:#465163; --ink-3:#5e6a7b; --ink-4:#9aa3b0; --brand:#1d5fd1; --brand-soft:#e8effc; --brand-ink:#174aa8;
+  --ok:#1a7445; --warn:#9a5200; --warn-wash:#fdf0dc; --bad:#b8302a; --ali:#6c4fc9; --dou:#566572;
+  background: #fff; color: var(--ink); font: 400 14px/22px Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.s svg.ic { width: 18px; height: 18px; stroke-width: 1.75; flex: none; }
+.app { display: grid; grid-template-columns: 232px 1fr; height: 100%; }
+.side { background: #fff; border-right: 1px solid var(--line); padding: 14px 12px; display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 18px; font-weight: 700; font-size: 14px; }
+.mark { display: inline-flex; width: 26px; height: 26px; border-radius: 6px; background: var(--brand); color: #fff; align-items: center; justify-content: center; } .mark svg { width: 16px; height: 16px; }
+.nav { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 6px; color: var(--ink-2); } .nav svg { color: var(--ink-3); } .nav.on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; } .nav.on svg { color: var(--brand-ink); }
+.side .foot { margin-top: auto; border-top: 1px solid var(--line); padding-top: 8px; }
+.main { display: flex; flex-direction: column; min-width: 0; position: relative; }
+.head { display: flex; align-items: center; gap: 28px; height: 56px; padding: 0 40px; background: #fff; border-bottom: 1px solid var(--line); } .head h1 { margin: 0; font-size: 20px; }
+.tabs { display: flex; gap: 24px; height: 100%; } .tabs span { display: flex; align-items: center; color: var(--ink-2); font-size: 15px; border-bottom: 2px solid transparent; } .tabs .on { color: var(--ink); font-weight: 700; border-bottom-color: var(--brand); } .tabs em { font-style: normal; color: var(--ink-4); margin-left: 4px; }
+.head .right { margin-left: auto; display: flex; gap: 12px; align-items: center; color: var(--ink-2); }
+.av { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: #eef2f7; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--brand-ink); }
+.body { padding: 0 40px; max-width: 1208px; }
+
+/* 一张纸：左栏说明、右栏内容 */
+.sec { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 48px; padding: 28px 0; border-top: 1px solid var(--line); }
+.sec.first { border-top: 0; }
+.sec h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 16px; } .sec p.d { margin: 0 0 16px; color: var(--ink-2); font-size: 14px; line-height: 24px; }
+.help { display: inline-flex; color: var(--ink-4); } .help svg { width: 15px !important; height: 15px !important; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 16px; border-radius: 6px; border: 1px solid #c8cfda; background: #fff; font-size: 14px; color: var(--ink); }
+.btn.pri { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.btn.txt { border: 0; padding: 0; height: auto; color: var(--brand-ink); } .btn svg { width: 15px; height: 15px; }
+.acts { display: flex; align-items: center; gap: 16px; }
+.sliver { padding: 20px 0 0; color: var(--ink-4); font-size: 13px; }
+
+/* 状态条：一行说根因 + 去处 */
+.bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 14px; border-radius: 8px; background: var(--warn-wash); color: var(--warn); font-size: 13px; }
+.bar b { font-weight: 700; } .bar a { margin-left: auto; color: var(--brand-ink); font-weight: 600; white-space: nowrap; text-decoration: none; }
+.sum { display: flex; align-items: center; gap: 18px; margin-bottom: 10px; font-size: 13px; color: var(--ink-3); }
+.sum .lg { margin-left: auto; display: flex; gap: 14px; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; } .dot.ali { background: var(--ali); } .dot.dou { background: var(--dou); } .dot.ok { background: var(--ok); } .dot.warn { background: #d98a1c; } .dot.off { background: #c3cad5; }
+.star { color: #c07a12; font-size: 11px; margin-left: 2px; }
+
+/* 音色池：一语种一行，女声 / 男声各一格 */
+.vp { border-top: 1px solid var(--line); }
+.vh, .vr { display: grid; grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr) 150px 20px; gap: 16px; align-items: center; padding: 0 12px; }
+.vh { height: 36px; font-size: 12px; color: var(--ink-3); border-bottom: 1px solid var(--line); }
+.vr { min-height: 58px; padding-top: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line-2); }
+.vr.hov { background: var(--hover); }
+.lang b { display: block; font-size: 14px; font-weight: 600; } .lang small { display: block; font-size: 12px; color: var(--ink-3); line-height: 18px; }
+.vr.sub { min-height: 46px; } .vr.sub .lang { padding-left: 14px; position: relative; } .vr.sub .lang::before { content: ""; position: absolute; left: 2px; top: 2px; width: 7px; height: 10px; border-left: 1px solid #c8cfda; border-bottom: 1px solid #c8cfda; }
+.vr.sub .lang b { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.voices { display: flex; align-items: center; gap: 14px; white-space: nowrap; overflow: hidden; font-size: 14px; }
+.voices span { display: inline-flex; align-items: center; } .voices .off { color: var(--ink-4); } .voices .off .dot { background: #d3d8e0; }
+.voices .more { color: var(--ink-3); font-size: 12px; } .voices .none { color: var(--ink-4); font-size: 13px; }
+.st { font-size: 13px; color: var(--ink-2); white-space: nowrap; } .st.warn { color: var(--warn); font-weight: 600; } .st.mute { color: var(--ink-4); }
+.chev { color: var(--ink-4); } .chev svg { width: 16px; height: 16px; }
+.fold { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; font-size: 13px; color: var(--ink-3); border-bottom: 1px solid var(--line-2); } .fold svg { width: 15px; height: 15px; }
+
+/* 抽屉 */
+.mask { position: absolute; inset: 0; background: rgba(16,24,40,.32); }
+.drawer { position: absolute; top: 0; right: 0; bottom: 0; width: 600px; background: #fff; box-shadow: -12px 0 32px rgba(16,24,40,.16); display: flex; flex-direction: column; }
+.dh { display: flex; align-items: center; height: 60px; padding: 0 24px; border-bottom: 1px solid var(--line); } .dh h4 { margin: 0; font-size: 18px; } .dh small { margin-left: 10px; color: var(--ink-3); font-size: 13px; } .dh .x { margin-left: auto; color: var(--ink-3); }
+.db { flex: 1; overflow: hidden; padding: 16px 24px; }
+.drow { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.seg { display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: #f6f8fb; } .seg span { padding: 3px 14px; border-radius: 4px; font-size: 13px; color: var(--ink-2); } .seg .on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); } .seg em { font-style: normal; color: var(--ink-4); margin-left: 4px; font-size: 12px; }
+.search { flex: 1; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid #c8cfda; border-radius: 6px; color: var(--ink-4); font-size: 13px; } .search svg { width: 15px; height: 15px; }
+.grp { margin: 14px 0 4px; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.it { display: grid; grid-template-columns: 18px 1fr auto 28px; gap: 12px; align-items: center; padding: 8px 8px; border-radius: 6px; }
+.it + .it { border-top: 1px solid var(--line-2); }
+.cb { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid #b4bcc8; display: grid; place-items: center; } .cb.on { background: var(--brand); border-color: var(--brand); color: #fff; } .cb svg { width: 12px !important; height: 12px !important; stroke-width: 3 !important; }
+.it .n { font-size: 14px; font-weight: 600; } .it .n code { font-family: inherit; font-weight: 400; color: var(--ink-3); font-size: 12px; margin-left: 6px; } .it .ds { font-size: 12px; color: var(--ink-3); line-height: 18px; }
+.tag { font-size: 11px; padding: 0 6px; border-radius: 4px; line-height: 18px; white-space: nowrap; } .tag.rec { background: #fbefdc; color: #8c5b0f; font-weight: 600; } .tag.v { color: var(--ink-3); border: 1px solid var(--line); }
+.play { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-2); } .play svg { width: 14px !important; height: 14px !important; } .play.on { border-color: var(--brand); color: var(--brand); }
+.emp { padding: 8px 8px 4px; font-size: 13px; color: var(--ink-3); }
+.df { display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 24px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-3); } .df .btn { margin-left: auto; }
+.tip { position: absolute; width: 300px; padding: 10px 12px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(16,24,40,.14); font-size: 12px; line-height: 19px; color: var(--ink-2); z-index: 3; }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>语音服务 · 买家音色池</h1>
+  <p class="lede">只改“买家音色池”这一块：现在每个音色占一行、竖着往下排，一个语种就有半屏高。改成一个语种一行，女声、男声各一格横排，点这一行在右侧抽屉里勾选音色。阿里云、豆包、计费三块不动。顺带把“配置得对不对”露出来：每行写清这个语种的买家现在实际听到什么，并给出一套按买家国籍推荐的配置。</p>
+
+  <h2>一、依据：现在有哪些音色、买家来自哪里</h2>
+  <p class="lede">先把底数理清，推荐配置按这个来。</p>
+  <table class="t">
+    <tr><th>事实</th><th>内容</th><th>来源</th></tr>
+    <tr><td>阿里云千问3-TTS-Flash</td><td>共 49 个音色，<b>每个音色都能说中、英、法、德、俄、意、西、葡、日、韩 10 种语言</b>（同一音色多语言输出），没有阿拉伯语。其中 9 个是海外人设：西班牙大叔 Bodega、拉美大姐 Sonrisa、法国大哥哥 Emilien、德国青年 Lenn、意大利大叔 Dolce、巴西足球解说 Radio Gol、日本青梅竹马 Ono Anna、韩国欧尼 Sohee、俄罗斯 Alek。我们的目录里只登记了 7 个。</td><td>百炼文档《Qwen-TTS 音色列表》非实时语音合成部分；单价 0.8 元 / 万字</td></tr>
+    <tr><td>豆包 seed-tts-2.0</td><td>当前密钥能用：美式英语 Dacey、Stokie、Tim，英式 Tina，多语种 Vivi（英、日、西）。<b>没有德、法、意、葡</b>，也没有西语、日语男声。</td><td>2026-10-13 实测（kefu-weihu llm-gateway.md 第 7 节）</td></tr>
+    <tr><td>买家来自哪里</td><td>随机抽到的买家国籍只有 10 个：美国、加拿大、英国、澳大利亚、德国、法国、西班牙、意大利、日本、巴西。老师在场景里能指定的语言只有英、西、法。<b>俄语、韩语、阿拉伯语的买家不会出现。</b></td><td><code>NATIONALITIES</code>、<code>SUPPORTED_LANGUAGES</code></td></tr>
+    <tr><td>买家说什么语言</td><td>能用母语朗读的买家才用母语打字（D-43）。现在阿里云没填密钥，<b>德国、法国、意大利、巴西买家，以及西班牙、日本男买家都退成了英语</b>；配好后新会话起改用母语。</td><td>D-43，<code>resolveBuyerLanguage</code></td></tr>
+    <tr><td>真实产品怎么摆</td><td>阿里云百炼、火山引擎的音色列表都是“一行一个音色 + 一句描述 + 试听”；呼叫中心（Amazon Connect、Genesys）按语种配置播报声音时，是一张“语种 → 声音”的表。我们两样都要：总览用语种表，挑选用带描述和试听的列表。</td><td>各家控制台</td></tr>
+  </table>
+
+  <h3 style="margin:24px 0 8px;font-size:15px">推荐配置（“填入推荐音色”一键填好，可再改）</h3>
+  <table class="t">
+    <tr><th>语种</th><th>买家来自</th><th>女声</th><th>男声</th><th>豆包备用</th></tr>
+    <tr><td>英语（美式）</td><td>美国、加拿大</td><td>詹妮弗 Jennifer、芊悦 Cherry、苏瑶 Serena、四月 Maia；豆包 Dacey、Stokie</td><td>艾登 Aiden、晨煦 Ethan、甜茶 Ryan、安德雷 Andre；豆包 Tim</td><td>有</td></tr>
+    <tr><td>　英式口音</td><td>英国</td><td>豆包 Tina</td><td>没有英式男声，用美式</td><td>—</td></tr>
+    <tr><td>　澳式口音</td><td>澳大利亚</td><td colspan="2">两家都没有澳式口音，用美式</td><td>—</td></tr>
+    <tr><td>德语</td><td>德国</td><td>卡捷琳娜 Katerina、四月 Maia、芊悦 Cherry</td><td><span class="star">★</span>莱恩 Lenn、晨煦 Ethan、安德雷 Andre</td><td>没有，阿里云出错时这一次用豆包英语</td></tr>
+    <tr><td>法语</td><td>法国</td><td>苏瑶 Serena、芊悦 Cherry、詹妮弗 Jennifer</td><td><span class="star">★</span>埃米尔安 Emilien、安德雷 Andre、晨煦 Ethan</td><td>没有</td></tr>
+    <tr><td>西班牙语</td><td>西班牙</td><td><span class="star">★</span>索尼莎 Sonrisa、芊悦 Cherry、苏瑶 Serena；豆包 Vivi</td><td><span class="star">★</span>博德加 Bodega、晨煦 Ethan、甜茶 Ryan</td><td>女声有（Vivi）</td></tr>
+    <tr><td>意大利语</td><td>意大利</td><td>芊悦 Cherry、四月 Maia</td><td><span class="star">★</span>多尔切 Dolce、晨煦 Ethan</td><td>没有</td></tr>
+    <tr><td>日语</td><td>日本</td><td><span class="star">★</span>小野杏 Ono Anna、芊悦 Cherry；豆包 Vivi</td><td>凯 Kai、晨煦 Ethan</td><td>女声有（Vivi）</td></tr>
+    <tr><td>葡萄牙语</td><td>巴西</td><td>芊悦 Cherry、苏瑶 Serena</td><td>安德雷 Andre、晨煦 Ethan（巴西解说 Radio Gol 腔调太夸张，不默认放）</td><td>没有</td></tr>
+    <tr><td>俄语 / 韩语</td><td>暂无</td><td>卡捷琳娜 Katerina / <span class="star">★</span>素熙 Sohee</td><td><span class="star">★</span>阿列克 Alek / 晨煦 Ethan</td><td>—</td></tr>
+    <tr><td>阿拉伯语</td><td>暂无</td><td colspan="2">两家都没有，留空</td><td>—</td></tr>
+  </table>
+  <p class="note"><span class="star">★</span> = 海外人设音色，放在第一位。目录只收适合成年买家的 24 个阿里云音色（每个带一句描述），儿童、萝莉、二次元、方言和助眠类不收；需要时仍可手动填音色 ID。非人设音色说外语的口音没有逐个听过，填好后用“试听”确认，不好就去掉。</p>
+
+  <h2>二、现在的问题</h2>
+  <table class="t">
+    <tr><th>现在</th><th>问题</th><th>改法</th></tr>
+    <tr><td>音色一个一行</td><td>英语女声 7 个音色就是 7 行加一个下拉，一个语种半屏高；12 个语种一屏只看得到 2 个，整块很长。</td><td>一个语种一行，女声、男声各一格，音色名横排成一行（放不下显示“+2”）。整块 9 行，一屏看完。</td></tr>
+    <tr><td>每格一个整宽“添加音色…”下拉</td><td>下拉里只有名字，看不出声音什么样、适不适合这个国家的买家；24 个下拉铺满页面。</td><td>点一行打开右侧抽屉：女声 / 男声切换，带描述、厂商和试听的勾选列表，海外人设音色标“推荐”放最前。</td></tr>
+    <tr><td>阿里云没填密钥，池里照样显示阿里云音色；顶部黄条把 9 个缺口连成一长串</td><td>看不出“为什么缺、缺了会怎样、去哪补”。实际上 9 个缺口是同一个原因：阿里云密钥没填。</td><td>黄条只说根因和影响，附“去填写”；没启用的厂商的音色变灰；每行最右写这个语种的买家现在实际听到什么（“德语朗读” / “改用英语”）。</td></tr>
+    <tr><td>12 个语种一样排</td><td>俄语、韩语、阿拉伯语买家不会出现；英式、澳式只是口音，缺了自动用美式，却和德语、法语占一样的位置、一样报缺。</td><td>每行写“买家来自哪里”；英式、澳式缩进挂在英语下；俄、韩、阿收进底部一行“当前买家国籍用不到”，可展开。缺口只算会出现的语种。</td></tr>
+    <tr><td>每个音色后面都写“阿里云百炼”“豆包语音”</td><td>重复的字比音色名还多。</td><td>名字前一个小色点区分厂商，图例放在表头右上。</td></tr>
+    <tr><td>音色目录只有 7 个阿里云音色；带空格的 ID（Ono Anna、Radio Gol）保存时会被丢掉</td><td>挑不到德国、法国这类人设音色；手填也存不进去。</td><td>补目录（带描述和人设语种），校验放开空格；左栏加“填入推荐音色”。</td></tr>
+  </table>
+
+  <h2>三、现在</h2>
+  <div class="pair">
+    <figure><img class="before" src="assets/before-providers.png" alt=""><figcaption>阿里云、豆包两块（这次不动），音色池顶部的黄条</figcaption></figure>
+    <figure><img class="before" src="assets/before-pool.png" alt=""><figcaption>音色池：英语女声 7 个音色竖排，每格一个整宽下拉</figcaption></figure>
+  </div>
+
+  <h2>四、改后 · 配好以后 <small>填了阿里云密钥、点过“填入推荐音色”</small></h2>
+  <p class="lede">一行一个语种：左边语种和买家来自哪里，中间女声、男声各一行音色名（紫点阿里云、灰点豆包，<span class="star">★</span>人设音色），最右是这个语种买家实际听到的。都正常时上方只有一行摘要，没有黄条。鼠标停在一行上出现浅底和箭头，整行可点。左栏说明缩成一句，规则收进问号（下图展开了问号）。</p>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="ok"></div></div>
+
+  <h2>五、改后 · 编辑一个语种 <small>点“德语”这一行</small></h2>
+  <p class="lede">抽屉里先选女声 / 男声，再勾音色。分三组：推荐（人设音色）、阿里云通用音色、豆包备用；豆包没有这个语种时，直接说清出错时会怎样。每行一个试听按钮，读一句德语买家原话。底部写已选几个、会怎么分配。勾完点“完成”回到页面，再点左栏“保存”生效（和现在一样）。</p>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="drawer"></div></div>
+
+  <h2>六、阿里云没填密钥时 <small>就是开发库现在的样子</small></h2>
+  <p class="lede">黄条只写一件事：阿里云密钥没填，影响是哪些买家改用英语，去哪填。池里的阿里云音色变灰但保留，填好密钥立刻生效。最右一列标出受影响的语种。</p>
+  <div class="frame" data-h="860"><div class="screen s" data-tpl="nokey"></div></div>
+
+  <h2>七、语音服务都没配时</h2>
+  <p class="lede">表格照常画，音色全灰，最右一列全是“—”；黄条说清现在的后果（不能朗读、买家都用英语）和去处。</p>
+  <div class="frame" data-h="830"><div class="screen s" data-tpl="empty"></div></div>
+
+  <h2>八、改动范围</h2>
+  <table class="t">
+    <tr><th>部分</th><th>这次</th></tr>
+    <tr><td>买家音色池</td><td class="chg">版式按上图重做；英式、澳式挂在英语下；俄、韩、阿收进底部一行；“填入推荐音色”（会替换现在的池，先确认）；抽屉里勾选、试听</td></tr>
+    <tr><td>音色目录（后端）</td><td class="chg">阿里云目录补到 24 个成年音色，每个带中文名、一句描述、人设语种；校验允许音色 ID 里有空格</td></tr>
+    <tr><td>每行“实际听到什么”</td><td class="chg"><u>要补接口</u> 语音设置接口多返回每个语种 × 性别的实际情况（用哪家朗读、有没有同语种备用、是否改用英语），用现有 <code>selectVoice</code> 算，小改；顶部缺口提示只算买家会出现的语种</td></tr>
+    <tr><td>阿里云、豆包、计费三块</td><td class="keep">不动</td></tr>
+    <tr><td>买家与学生端</td><td class="keep">代码不动。阿里云配好后，德、法、意、巴西买家和西、日男买家新会话起用母语打字和朗读（D-43 已有的规则）</td></tr>
+  </table>
+  <p class="note">要你做的一件事：在“阿里云百炼 · 主用”里填百炼 API Key 并保存（页面上填，不用发给我）。填好后我用试听逐个确认推荐音色能出声。</p>
+</div>
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const I = (n) => `<i data-lucide="${n}" class="ic"></i>`;
+const H = `<span class="help">${I("circle-help")}</span>`;
+
+/* 音色：中文名、厂商（a 阿里云 / d 豆包）、描述、人设语种 */
+const V = {
+  Jennifer: ["詹妮弗", "a"], Cherry: ["芊悦", "a"], Serena: ["苏瑶", "a"], Maia: ["四月", "a"], Katerina: ["卡捷琳娜", "a"],
+  Aiden: ["艾登", "a"], Ethan: ["晨煦", "a"], Ryan: ["甜茶", "a"], Andre: ["安德雷", "a"], Kai: ["凯", "a"],
+  Lenn: ["莱恩", "a", 1], Emilien: ["埃米尔安", "a", 1], Sonrisa: ["索尼莎", "a", 1], Bodega: ["博德加", "a", 1], Dolce: ["多尔切", "a", 1], "Ono Anna": ["小野杏", "a", 1], Sohee: ["素熙", "a", 1], Alek: ["阿列克", "a", 1],
+  Dacey: ["Dacey", "d"], Stokie: ["Stokie", "d"], Tim: ["Tim", "d"], Tina: ["Tina", "d"], Vivi: ["Vivi", "d"],
+};
+const LANGS = [
+  { name: "英语（美式）", from: "美国、加拿大", f: ["Jennifer", "Cherry", "Serena", "Maia", "Dacey", "Stokie"], m: ["Aiden", "Ethan", "Ryan", "Andre", "Tim"] },
+  { name: "英式口音", from: "英国", sub: 1, f: ["Tina"], m: [], mNote: "没有，用美式" },
+  { name: "澳式口音", from: "澳大利亚", sub: 1, f: [], m: [], fNote: "没有，用美式", mNote: "没有，用美式" },
+  { name: "德语", from: "德国", f: ["Katerina", "Maia", "Cherry"], m: ["Lenn", "Ethan", "Andre"] },
+  { name: "法语", from: "法国", f: ["Serena", "Cherry", "Jennifer"], m: ["Emilien", "Andre", "Ethan"] },
+  { name: "西班牙语", from: "西班牙", f: ["Sonrisa", "Cherry", "Serena", "Vivi"], m: ["Bodega", "Ethan", "Ryan"] },
+  { name: "意大利语", from: "意大利", f: ["Cherry", "Maia"], m: ["Dolce", "Ethan"] },
+  { name: "日语", from: "日本", f: ["Ono Anna", "Cherry", "Vivi"], m: ["Kai", "Ethan"] },
+  { name: "葡萄牙语", from: "巴西", f: ["Cherry", "Serena"], m: ["Andre", "Ethan"] },
+];
+/* 一格一行名字，能用的音色排前面；放不下的在排版后收成 +N（见 clip） */
+function cell(source, note, live) {
+  if (!source.length) return `<div class="voices"><span class="none">${note ?? "未配置"}</span></div>`;
+  const list = [...source].sort((a, b) => Number(live(V[b][1])) - Number(live(V[a][1])));
+  const items = list.map((id) => {
+    const [cn, vendor, persona] = V[id];
+    const off = !live(vendor);
+    return `<span class="${off ? "off" : ""}"><i class="dot ${vendor === "a" ? "ali" : "dou"}"></i>${cn}${persona ? `<b class="star">★</b>` : ""}</span>`;
+  }).join("");
+  return `<div class="voices">${items}</div>`;
+}
+
+/* 这一格实际能不能用母语读 */
+function speaks(list, live) { return list.some((id) => live(V[id][1])); }
+function status(l, live, mode) {
+  if (mode === "empty") return `<span class="st mute">—</span>`;
+  if (l.sub) {
+    const f = speaks(l.f, live);
+    return `<span class="st mute">${l.f.length && f ? "女声豆包，男声用美式" : "用美式音色"}</span>`;
+  }
+  const f = speaks(l.f, live), m = speaks(l.m, live);
+  const lang = l.name.replace(/（.*）/, "");
+  if (f && m) return `<span class="st"><i class="dot ok"></i>${lang}朗读</span>`;
+  if (!f && !m) return `<span class="st warn"><i class="dot warn"></i>改用英语</span>`;
+  return `<span class="st warn"><i class="dot warn"></i>${f ? "男声" : "女声"}改用英语</span>`;
+}
+
+function pool({ mode = "ok", hover = -1 } = {}) {
+  const live = mode === "ok" ? () => true : mode === "nokey" ? (v) => v === "d" : () => false;
+  const rows = LANGS.map((l, i) => `<div class="vr ${l.sub ? "sub" : ""} ${i === hover ? "hov" : ""}">
+    <div class="lang"><b>${l.name}</b><small>${l.from}</small></div>
+    ${cell(l.f, l.fNote, live)}${cell(l.m, l.mNote, live)}
+    ${status(l, live, mode)}<span class="chev">${i === hover ? I("chevron-right") : ""}</span></div>`).join("");
+  return `<div class="vp"><div class="vh"><span>语种 · 买家来自</span><span>女声</span><span>男声</span><span>买家听到</span><span></span></div>${rows}
+    <div class="fold">${I("chevron-down")}当前买家国籍用不到：俄语、韩语、阿拉伯语</div></div>`;
+}
+
+const legend = `<span class="lg"><span><i class="dot ali"></i>阿里云</span><span><i class="dot dou"></i>豆包</span><span><b class="star" style="margin:0 4px 0 0">★</b>海外人设</span></span>`;
+
+const left = `<div><h3>买家音色池 ${H}</h3><p class="d">每位买家固定用池里的一个声音；阿里云优先，豆包备用。</p>
+  <div class="acts"><span class="btn pri">保存</span><span class="btn txt">${I("wand-sparkles")}填入推荐音色</span></div></div>`;
+
+const shell = (body, overlay = "") => `<div class="app"><nav class="side"><div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>
+  <div class="nav">${I("layout-grid")}系统总览</div><div class="nav on">${I("sliders-horizontal")}AI 与语音服务</div><div class="nav">${I("user-cog")}账号与权限</div><div class="nav">${I("library")}内容资源库</div><div class="nav">${I("shield-check")}数据与备份</div>
+  <div class="foot"><div class="nav">${I("book-open")}使用帮助</div><div class="nav">${I("panel-left-close")}收起侧栏</div></div></nav>
+  <div class="main"><header class="head"><h1>AI 与语音服务</h1><div class="tabs"><span>模型<em>4</em></span><span class="on">语音服务</span><span>用量与额度</span></div><div class="right">${I("bell")}<span class="av">系</span>系统管理员 ${I("chevron-down")}</div></header>
+  <div class="body">${body}</div>${overlay}</div></div>`;
+
+const sliver = `<div class="sliver">↑ 阿里云百炼 · 主用、豆包语音 · 备用（不动）</div>`;
+const billing = `<section class="sec"><div><h3>计费</h3><p class="d">用于统计费用。本月朗读 2,410 字、识别 0 分钟，合计 ¥0.19。</p></div><div class="sliver" style="padding:0">（不动）</div></section>`;
+
+const ok = () => shell(`${sliver}<section class="sec">${left}<div>
+    <div class="sum"><span><i class="dot ok"></i>9 个语种都能用母语朗读</span><span>近 24 小时阿里云出错改用豆包 0 次</span>${legend}</div>
+    ${pool({ mode: "ok", hover: 3 })}</div></section>${billing}`,
+  `<div class="tip" style="left:40px;top:272px">每位买家按画像固定分到池里的一个音色，同一买家始终同一个声音。英国、澳大利亚买家优先用对应口音，没有就用美式。阿里云没有这个语种或性别的音色时用豆包；阿里云这一次出错，改用同语种的豆包音色，豆包也没有就用豆包英语。</div>`);
+
+const nokey = () => shell(`${sliver}<section class="sec">${left}<div>
+    <div class="bar">${I("triangle-alert")}<span><b>阿里云密钥未设置</b>，池里的阿里云音色暂不可用：德国、法国、意大利、巴西买家，以及西班牙、日本男买家，现在改用英语打字和朗读。</span><a>去填写密钥 ↑</a></div>
+    <div class="sum">${legend}</div>
+    ${pool({ mode: "nokey" })}</div></section>`);
+
+const empty = () => shell(`${sliver}<section class="sec">${left}<div>
+    <div class="bar">${I("triangle-alert")}<span><b>还没配置语音服务</b>：学生端的买家消息不能朗读，所有买家都用英语沟通。</span><a>去填写密钥 ↑</a></div>
+    <div class="sum">${legend}</div>
+    ${pool({ mode: "empty" })}</div></section>`);
+
+/* 抽屉：德语 · 男声 */
+const item = (on, id, cn, desc, vendor, rec, playing) => `<div class="it"><span class="cb ${on ? "on" : ""}">${on ? I("check") : ""}</span>
+  <div><div class="n">${cn}<code>${id}</code></div><div class="ds">${desc}</div></div>
+  <span style="display:flex;gap:6px">${rec ? `<span class="tag rec">推荐</span>` : ""}<span class="tag v"><i class="dot ${vendor === "a" ? "ali" : "dou"}" style="margin-right:4px"></i>${vendor === "a" ? "阿里云" : "豆包"}</span></span>
+  <span class="play ${playing ? "on" : ""}">${I(playing ? "square" : "volume-2")}</span></div>`;
+const drawerBox = `<div class="mask"></div><div class="drawer">
+  <div class="dh"><h4>德语音色</h4><small>德国买家</small><span class="x">${I("x")}</span></div>
+  <div class="db">
+    <div class="drow"><span class="seg"><span>女声<em>3</em></span><span class="on">男声<em>3</em></span></span><span class="search">${I("search")}搜索音色</span></div>
+    <div class="grp">推荐 · 德语人设</div>
+    ${item(1, "Lenn", "莱恩", "理性是底色，叛逆藏在细节里——穿西装也听后朋克的德国青年", "a", 1, 1)}
+    <div class="grp">阿里云 · 通用音色（会说德语）</div>
+    ${item(1, "Ethan", "晨煦", "阳光、温暖、活力、朝气", "a")}
+    ${item(1, "Andre", "安德雷", "声音磁性，自然舒服、沉稳", "a")}
+    ${item(0, "Aiden", "艾登", "精通厨艺的美语大男孩", "a")}
+    ${item(0, "Ryan", "甜茶", "节奏拉满，戏感炸裂", "a")}
+    ${item(0, "Kai", "凯", "耳朵的一场 SPA，低沉舒缓", "a")}
+    ${item(0, "Neil", "阿闻", "字正腔圆，新闻主持人腔", "a")}
+    <div class="grp">豆包 · 备用</div>
+    <div class="emp">豆包没有德语男声。阿里云这一次出错时，用豆包英语音色朗读。</div>
+  </div>
+  <div class="df">已选 3 个 · 每位德国男买家固定分到其中一个<span class="btn pri">完成</span></div></div>`;
+const drawer = () => shell(`${sliver}<section class="sec">${left}<div>
+    <div class="sum"><span><i class="dot ok"></i>9 个语种都能用母语朗读</span>${legend}</div>
+    ${pool({ mode: "ok", hover: 3 })}</div></section>`, drawerBox);
+
+const T = { ok, drawer, nokey, empty };
+document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
+if (window.lucide) lucide.createIcons();
+/* 排版后按实际宽度收：放不下的名字藏起来，末尾写 +N（不留半个名字） */
+function clip() {
+  document.querySelectorAll(".voices").forEach((box) => {
+    const items = [...box.querySelectorAll(":scope > span:not(.none)")];
+    if (!items.length) return;
+    const limit = box.clientWidth - 30;
+    let hidden = 0;
+    for (const item of items) {
+      if (hidden || item.offsetLeft - box.offsetLeft + item.offsetWidth > limit) { item.style.display = "none"; hidden += 1; }
+    }
+    if (hidden) box.insertAdjacentHTML("beforeend", `<span class="more">+${hidden}</span>`);
+  });
+}
+document.fonts.ready.then(clip);
+function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const h = +(f.dataset.h || 900); s.style.height = `${h}px`; const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${h * k}px`; }); }
+fit(); addEventListener("resize", fit);
+</script></body></html>

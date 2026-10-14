@@ -11,7 +11,7 @@ import { getSetting, setSetting, type QuotaSettings } from "../settings";
 import type { LlmGateway } from "../llm/gateway";
 import { maskSecret } from "../llm/secret";
 import { VOICE_VENDORS, type VoiceProfile, type VoiceService } from "../voice/service";
-import { POOL_LANGUAGES } from "../voice/pool";
+import { POOL_LANGUAGES, VOICE_ID_PATTERN, buyerCountriesByPool, recommendedVoicePool } from "../voice/pool";
 import { loadEnv } from "../env";
 import { generateTemporaryPassword, hashPassword } from "../security";
 import { clearLoginFailures } from "../login-throttle";
@@ -102,6 +102,10 @@ export function registerAdminRoutes(
         voicePool: profile.voicePool,
         poolLanguages: POOL_LANGUAGES,
         missingVoices: await voice.missingVoices(),
+        // D-48 买家卡片：哪些厂商已配置（决定音色能不能用）、推荐池、每个语种对应哪些国家的买家
+        availableVendors: [...(await voice.availableVendors())],
+        recommendedPool: recommendedVoicePool(),
+        buyerCountries: buyerCountriesByPool(),
         aliyunFallback: await aliyunFallbackStats(db),
         asrPricePerHour: profile.asrPricePerHour,
       },
@@ -318,7 +322,7 @@ export function registerAdminRoutes(
     const speaker = String(request.body?.speaker ?? "").trim();
     const vendor = String(request.body?.vendor ?? "doubao");
     const language = POOL_LANGUAGES.some((item) => item.key === request.body?.language) ? String(request.body?.language) : "en";
-    if (!/^[A-Za-z0-9_.-]{3,80}$/.test(speaker) || !VOICE_VENDORS[vendor]) {
+    if (speaker.length < 2 || !VOICE_ID_PATTERN.test(speaker) || !VOICE_VENDORS[vendor]) {
       reply.code(400);
       return { code: "INVALID_SPEAKER", message: "音色 ID 格式不对。" };
     }

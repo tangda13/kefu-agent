@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildAliyunTtsRequest, parseAliyunTtsResponse, aliyunLanguageType } from "./aliyun";
-import { defaultVoicePool, findMissingVoices, normalizeVoicePool, resolveVoiceLanguage, selectVoice } from "./pool";
+import { buyerCountriesByPool, defaultVoicePool, findMissingVoices, normalizeVoicePool, recommendedVoicePool, resolveVoiceLanguage, selectVoice } from "./pool";
 
 const both = new Set(["doubao", "aliyun"]);
 const doubaoOnly = new Set(["doubao"]);
@@ -66,7 +66,7 @@ describe("音色池：语种 → 厂商 → 音色", () => {
     const pick = (name: string) => selectVoice({ pool, persona: buyer("fr-FR", name), gender: "female", available: both })!.voice.id;
     expect(pick("Claire")).toBe(pick("Claire"));
     const used = new Set(Array.from({ length: 40 }, (_, index) => pick(`Buyer ${index}`)));
-    expect(used.size).toBe(4);
+    expect(used.size).toBe(3);
   });
 
   it("备用音色：同语种同性别的豆包音色，同一买家固定；豆包没有该语种时用英语音色", () => {
@@ -78,7 +78,7 @@ describe("音色池：语种 → 厂商 → 音色", () => {
     // 豆包英语女声有两个以上：同一买家每次都是同一个备用音色，不同买家分散
     const backup = (name: string) => selectVoice({ pool, persona: buyer("en-US", name), gender: "female", available: both })!.fallback!.voice.id;
     expect(backup("Claire")).toBe(backup("Claire"));
-    expect(new Set(Array.from({ length: 40 }, (_, index) => backup(`Buyer ${index}`))).size).toBe(3);
+    expect(new Set(Array.from({ length: 40 }, (_, index) => backup(`Buyer ${index}`))).size).toBe(2);
     // 备用音色与主音色用同一个种子，重复选择结果完全一致
     expect(selectVoice({ pool, persona: buyer("de-DE", "Hans"), gender: "male", available: both })).toEqual(de);
   });
@@ -88,19 +88,45 @@ describe("音色池：语种 → 厂商 → 音色", () => {
     expect(selectVoice({ pool, persona: buyer("en-US", "Emma", "英国"), gender: "female", available: both })!.fallback).toBeNull();
   });
 
-  it("缺口提示：阿里云未配置时德语缺；配置后只剩阿拉伯语", () => {
+  it("缺口提示：阿里云未配置时德语缺；配置后没有缺口（俄、韩、阿没有买家，不报）", () => {
     const missingNoAliyun = findMissingVoices(pool, doubaoOnly);
     expect(missingNoAliyun.some((item) => item.language === "de" && item.gender === "both")).toBe(true);
     expect(missingNoAliyun.some((item) => item.language === "es" && item.gender === "male")).toBe(true);
-    expect(findMissingVoices(pool, both).map((item) => item.language)).toEqual(["ar"]);
+    expect(missingNoAliyun.some((item) => ["ru", "ko", "ar"].includes(item.language))).toBe(false);
+    expect(findMissingVoices(pool, both)).toEqual([]);
   });
 
-  it("音色池校验丢弃非法厂商和 ID，去重", () => {
+  it("每个语种对应哪些国家的买家：按国籍 → 母语算", () => {
+    const countries = buyerCountriesByPool();
+    expect(countries.en).toEqual(["美国", "加拿大"]);
+    expect(countries["en-GB"]).toEqual(["英国"]);
+    expect(countries.de).toEqual(["德国"]);
+    expect(countries.pt).toEqual(["巴西"]);
+    expect(countries.ru).toBeUndefined();
+    expect(countries.ar).toBeUndefined();
+  });
+
+  it("推荐池：海外人设音色排第一位", () => {
+    const recommended = recommendedVoicePool();
+    expect(recommended.de!.male[0]).toEqual({ vendor: "aliyun", id: "Lenn" });
+    expect(recommended.es!.female[0]).toEqual({ vendor: "aliyun", id: "Sonrisa" });
+    expect(recommended.ja!.female[0]).toEqual({ vendor: "aliyun", id: "Ono Anna" });
+  });
+
+  it("音色池校验丢弃非法厂商和 ID，去重；ID 中间允许空格（Ono Anna）", () => {
     const cleaned = normalizeVoicePool(
-      { de: { female: [{ vendor: "aliyun", id: "Cherry" }, { vendor: "aliyun", id: "Cherry" }, { vendor: "nope", id: "x1" }, { vendor: "aliyun", id: "bad id" }], male: "x" } },
+      {
+        de: {
+          female: [
+            { vendor: "aliyun", id: "Cherry" }, { vendor: "aliyun", id: "Cherry" }, { vendor: "nope", id: "x1" },
+            { vendor: "aliyun", id: "bad/id" }, { vendor: "aliyun", id: "Ono Anna" }, { vendor: "aliyun", id: " x" },
+          ],
+          male: "x",
+        },
+      },
       ["doubao", "aliyun"],
     );
-    expect(cleaned.de).toEqual({ female: [{ vendor: "aliyun", id: "Cherry" }], male: [] });
+    expect(cleaned.de).toEqual({ female: [{ vendor: "aliyun", id: "Cherry" }, { vendor: "aliyun", id: "Ono Anna" }], male: [] });
     expect(cleaned.en).toEqual({ female: [], male: [] });
   });
 });

@@ -1142,7 +1142,8 @@ describe("管理端系统总览与内容库（E4–E6）", () => {
     const speakers = providers.voice.vendors[0].speakers as Array<{ id: string; gender: string }>;
     expect(speakers.some((item) => item.gender === "female")).toBe(true);
     expect(speakers.some((item) => item.gender === "male")).toBe(true);
-    const bad = await app.inject({ method: "POST", url: "/v1/admin/voice/preview", headers: auth(admin), payload: { speaker: "x y" } });
+    // 音色 ID 中间允许空格（阿里云 Ono Anna），但不能有斜杠等字符
+    const bad = await app.inject({ method: "POST", url: "/v1/admin/voice/preview", headers: auth(admin), payload: { speaker: "x/y" } });
     expect(bad.statusCode).toBe(400);
   });
 });
