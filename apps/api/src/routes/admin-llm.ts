@@ -22,7 +22,7 @@ function parseProfileInput(body: unknown): { input?: ProfileInput; error?: strin
     const issue = parsed.error.issues[0];
     return { error: issue ? `${issue.path.join(".") || "输入"}：${issue.message}` : "输入不合法" };
   }
-  const extraError = validateExtraBody(parsed.data.extraBody);
+  const extraError = validateExtraBody(parsed.data.extraBody, parsed.data.thinking);
   return extraError ? { error: extraError } : { input: parsed.data };
 }
 
@@ -162,6 +162,7 @@ export function registerAdminLlmRoutes(
       model: input.model,
       extraHeaders: input.extraHeaders,
       extraBody: input.extraBody,
+      thinking: input.thinking,
       maxTokensField: input.maxTokensField,
       jsonMode: input.jsonMode,
       timeoutMs: input.timeoutMs,

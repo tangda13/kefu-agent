@@ -4,14 +4,18 @@ import {
   LLM_PRESETS,
   LLM_PURPOSES,
   LLM_PURPOSE_LABELS,
+  THINKING_LEVELS,
+  THINKING_LEVEL_LABELS,
   type LlmProfileView,
+  type LlmThinking,
   type LlmPurpose,
   type LlmRoutingSettings,
   type LlmTestResult,
+  type ThinkingLevel,
 } from "@cecs/contracts";
 import { ApiError, apiGet, apiPost, apiRequestDelete, apiRequestPut, previewVoice, type Session } from "../../api/client";
 import {
-  Button, Callout, Confirm, DataTable, Drawer, Empty, Field, HeaderTabs, Input, ListRow, Monogram, MoreMenu, Select, SettingSection, Sheet,
+  Button, Callout, Confirm, DataTable, Drawer, Empty, Field, HeaderTabs, HelpTip, Input, ListRow, Monogram, MoreMenu, SecretInput, Segmented, Select, SettingSection, Sheet,
   Status, Switch, Tag, Textarea, toast,
 } from "../../ui";
 
@@ -176,7 +180,7 @@ function ProfilesSection({ session, llm, reload }: { session: Session; llm: LlmS
           }
         />
       ))}
-      {editing ? <ProfileDrawer session={session} profile={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} /> : null}
+      {editing ? <ProfileDrawer session={session} profile={editing === "new" ? null : editing} onClose={() => { setEditing(null); reload(); }} onSaved={() => { setEditing(null); reload(); }} /> : null}
       {removing ? (
         <Confirm title="删除模型" danger confirmText="删除" onConfirm={() => void remove()} onClose={() => setRemoving(null)}>
           删除「{removing.name}」后，分配给它的用途会改用默认模型。
@@ -202,8 +206,12 @@ function ProfileDrawer({ session, profile, onClose, onSaved }: { session: Sessio
     priceOutput: String(profile?.priceOutput ?? 0),
     enabled: profile?.enabled ?? true,
   }));
+  /** 深度思考：开关 + 档位；参数写法随厂商模板带出（新档案默认关闭） */
+  const [thinking, setThinking] = useState<LlmThinking>(() => profile?.thinking ?? { enabled: false, level: "default", params: LLM_PRESETS[0]!.thinking });
   const [result, setResult] = useState<LlmTestResult | null>(profile?.testResult ?? null);
   const [busy, setBusy] = useState<"" | "test" | "save" | "saveTest">("");
+  /** 新增时第一次保存后记下 id：测试没过留在抽屉里改，再点保存是更新这一条，不是再建一条 */
+  const [savedId, setSavedId] = useState(profile?.id ?? null);
   const [error, setError] = useState("");
   const preset = useMemo(() => LLM_PRESETS.find((item) => item.key === form.presetKey), [form.presetKey]);
 
@@ -219,7 +227,18 @@ function ProfileDrawer({ session, profile, onClose, onSaved }: { session: Sessio
       extraBody: JSON.stringify(next.extraBody, null, 2),
       jsonMode: next.jsonMode,
     }));
+    // 换厂商：思考参数写法换成新厂商的，原档位不一定还能用，回到关闭
+    setThinking({ enabled: false, level: "default", params: next.thinking });
   }
+
+  /** 这个厂商能选的档位；只有“模型默认”时不显示档位选择 */
+  const levelItems = useMemo(
+    () => [
+      { id: "default" as const, label: THINKING_LEVEL_LABELS.default },
+      ...THINKING_LEVELS.filter((level) => thinking.params?.levels[level]).map((level) => ({ id: level, label: THINKING_LEVEL_LABELS[level] })),
+    ],
+    [thinking.params],
+  );
 
   function payload() {
     let extraBody: unknown;
@@ -238,6 +257,7 @@ function ProfileDrawer({ session, profile, onClose, onSaved }: { session: Sessio
       model: form.model,
       extraBody,
       extraHeaders,
+      thinking,
       maxTokensField: form.maxTokensField,
       jsonMode: form.jsonMode,
       timeoutMs: (Number(form.timeoutSeconds) || 60) * 1000,
@@ -251,7 +271,7 @@ function ProfileDrawer({ session, profile, onClose, onSaved }: { session: Sessio
     setBusy("test");
     setError("");
     try {
-      setResult(await apiPost<LlmTestResult>("/v1/admin/llm/test", session, { ...payload(), ...(profile ? { id: profile.id } : {}) }));
+      setResult(await apiPost<LlmTestResult>("/v1/admin/llm/test", session, { ...payload(), ...(savedId ? { id: savedId } : {}) }));
     } catch (cause) {
       setError(errorText(cause));
     } finally {
@@ -264,9 +284,12 @@ function ProfileDrawer({ session, profile, onClose, onSaved }: { session: Sessio
     setError("");
     try {
       const body = payload();
-      let id = profile?.id;
+      let id = savedId;
       if (id) await apiRequestPut(`/v1/admin/llm/profiles/${id}`, session, body);
-      else id = (await apiPost<{ id: string }>("/v1/admin/llm/profiles", session, body)).id;
+      else {
+        id = (await apiPost<{ id: string }>("/v1/admin/llm/profiles", session, body)).id;
+        setSavedId(id);
+      }
       if (thenTest) {
         const tested = await apiPost<LlmTestResult>(`/v1/admin/llm/profiles/${id}/test`, session);
         if (!tested.ok) {
@@ -311,8 +334,14 @@ function ProfileDrawer({ session, profile, onClose, onSaved }: { session: Sessio
         </Field>
         <Field label="名称" hint="在本系统里显示的名字"><Input value={form.name} onChange={set("name")} /></Field>
         <Field label="服务地址" hint="填到 /v1 这一级"><Input value={form.baseUrl} onChange={set("baseUrl")} placeholder="https://api.example.com/v1" /></Field>
-        <Field label="密钥" hint={profile ? `当前 ${profile.apiKeyMasked || "未设置"}，不改就留空` : "厂商控制台里创建的 API Key"}>
-          <Input type="password" value={form.apiKey} onChange={set("apiKey")} placeholder="sk-..." autoComplete="off" />
+        <Field label="密钥" hint="厂商控制台里创建的 API Key">
+          {/* 解不开的旧密钥（加密密钥换过）服务端返回说明文字，按“没设置”处理，让人重新填 */}
+          <SecretInput
+            masked={profile?.apiKeyMasked && !profile.apiKeyMasked.startsWith("（") ? profile.apiKeyMasked : undefined}
+            value={form.apiKey}
+            onChange={(apiKey) => setForm({ ...form, apiKey })}
+            placeholder={profile?.apiKeyMasked?.startsWith("（") ? "原密钥无法解密，请重新填写" : "sk-..."}
+          />
         </Field>
         <Field label="模型名">
           <Input value={form.model} onChange={set("model")} list="llm-model-options" />
@@ -321,6 +350,35 @@ function ProfileDrawer({ session, profile, onClose, onSaved }: { session: Sessio
         <Field label="启用">
           <span className="switch-line"><Switch checked={form.enabled} label="启用" onChange={(enabled) => setForm({ ...form, enabled })} />{form.enabled ? "启用中" : "已停用，不会被调用"}</span>
         </Field>
+        <div className="ui-field">
+          <span className="ui-field-label">
+            深度思考
+            <HelpTip label="深度思考说明">
+                关闭回复更快，买家对话要求首字 3 秒内，建议关闭；开启后推理更好，但更慢、更费 tokens，系统会自动给思考多留回复长度。各模型能用的设置不同（例如 GLM 经总网关不能关闭，只能选 低 / 高 / 最高），测试不通过就换一下再测。
+            </HelpTip>
+          </span>
+          {thinking.params ? (
+            <span className="switch-line">
+              <Switch checked={thinking.enabled} label="深度思考" onChange={(enabled) => setThinking({ ...thinking, enabled })} />
+              {thinking.enabled ? "已开启" : "已关闭"}
+            </span>
+          ) : (
+            <span className="switch-line">这个厂商没有思考开关，按模型默认</span>
+          )}
+        </div>
+        <div className="ui-field">
+          <span className="ui-field-label">思考档位</span>
+          {levelItems.length > 1 ? (
+            <Segmented<ThinkingLevel | "default">
+              items={levelItems}
+              value={thinking.level}
+              disabled={!thinking.enabled || !thinking.params}
+              onChange={(level) => setThinking({ ...thinking, level })}
+            />
+          ) : (
+            <span className="switch-line">{thinking.params ? "这个厂商不分档位，开启即按模型默认" : "—"}</span>
+          )}
+        </div>
         <Field label="输入单价" hint="元 / 百万 tokens，用于统计费用"><Input type="number" step="0.01" value={form.priceInput} onChange={set("priceInput")} /></Field>
         <Field label="输出单价" hint="元 / 百万 tokens"><Input type="number" step="0.01" value={form.priceOutput} onChange={set("priceOutput")} /></Field>
       </div>
@@ -339,7 +397,7 @@ function ProfileDrawer({ session, profile, onClose, onSaved }: { session: Sessio
             <span className="switch-line"><Switch checked={form.jsonMode} label="支持 JSON 模式" onChange={(jsonMode) => setForm({ ...form, jsonMode })} />支持 JSON 模式（评分、情绪推进会用到）</span>
           </Field>
           <span />
-          <Field label="附加请求参数" hint="JSON，合并进每次请求，例如关闭深度思考">
+          <Field label="附加请求参数" hint="JSON，合并进每次请求；深度思考用上面的开关">
             <Textarea rows={5} className="mono" value={form.extraBody} onChange={set("extraBody")} spellCheck={false} />
           </Field>
           <Field label="附加请求头" hint="JSON">
@@ -356,6 +414,7 @@ function ProfileDrawer({ session, profile, onClose, onSaved }: { session: Sessio
               <strong>连接正常</strong>
               <span>首字 {seconds(result.ttftMs)} · 输出 {result.charsPerSecond} 字/秒 · 用了 {result.inputTokens + result.outputTokens} tokens</span>
               {result.sample ? <q>{result.sample}</q> : null}
+              {result.note ? <span>{result.note}</span> : null}
             </>
           ) : (
             <>
@@ -528,7 +587,7 @@ function VoiceSection({ session, data, reload }: { session: Session; data: Provi
     <>
       <SettingSection
         title="阿里云百炼 · 主用"
-        desc={`买家朗读优先用千问3-TTS（只做朗读，不做识别）。当前密钥 ${data.voice.aliyunApiKeyMasked || "未设置"}。出错时这一次自动改用豆包，不配置时全部由豆包朗读。`}
+        desc="买家朗读优先用千问3-TTS（只做朗读，不做识别）。出错时这一次自动改用豆包，不配置时全部由豆包朗读。"
         actions={saveButton}
       >
         {fallback.keyInvalid ? (
@@ -539,7 +598,7 @@ function VoiceSection({ session, data, reload }: { session: Session; data: Provi
           </div>
         ) : null}
         <div className="form-grid-2 form-max">
-          <Field label="百炼 API Key" hint="不改就留空；在阿里云百炼控制台“API-KEY”页创建"><Input type="password" value={voice.aliyunApiKey} onChange={set("aliyunApiKey")} autoComplete="off" /></Field>
+          <Field label="百炼 API Key" hint="在阿里云百炼控制台“API-KEY”页创建"><SecretInput masked={data.voice.aliyunApiKeyMasked} value={voice.aliyunApiKey} onChange={(aliyunApiKey) => setVoice({ ...voice, aliyunApiKey })} placeholder="sk-..." /></Field>
           <Field label="模型"><Input value={voice.aliyunModel} onChange={set("aliyunModel")} /></Field>
           <Field label="接口地址" hint="北京地域；新加坡地域需换成国际站地址和对应 Key"><Input value={voice.aliyunBaseUrl} onChange={set("aliyunBaseUrl")} /></Field>
         </div>
@@ -547,11 +606,11 @@ function VoiceSection({ session, data, reload }: { session: Session; data: Provi
       </SettingSection>
       <SettingSection
         title="豆包语音（火山引擎）· 备用"
-        desc={`语音识别固定走豆包；朗读作为阿里云的备用，阿里云没有对应语种或音色、或这一次请求出错时由豆包朗读。当前密钥 ${data.voice.apiKeyMasked || "未设置"}。`}
+        desc="语音识别固定走豆包；朗读作为阿里云的备用，阿里云没有对应语种或音色、或这一次请求出错时由豆包朗读。"
         actions={saveButton}
       >
         <div className="form-grid-2 form-max">
-          <Field label="密钥" hint="不改就留空"><Input type="password" value={voice.apiKey} onChange={set("apiKey")} autoComplete="off" /></Field>
+          <Field label="密钥" hint="火山引擎豆包语音控制台里的 API Key"><SecretInput masked={data.voice.apiKeyMasked} value={voice.apiKey} onChange={(apiKey) => setVoice({ ...voice, apiKey })} /></Field>
           <span />
           <Field label="朗读资源 ID"><Input value={voice.ttsResourceId} onChange={set("ttsResourceId")} /></Field>
           <Field label="识别资源 ID"><Input value={voice.asrResourceId} onChange={set("asrResourceId")} /></Field>

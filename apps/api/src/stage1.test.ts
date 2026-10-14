@@ -831,7 +831,7 @@ describe("模型网关管理（G1–G7）+ 验收统计口径（B2）", () => {
     profileId = created.json().id;
     const list = await app.inject({ method: "GET", url: "/v1/admin/llm", headers: auth(admin) });
     const view = list.json().profiles[0];
-    expect(view).toMatchObject({ apiKeyMasked: "sk-a****5678", baseUrl: `${upstreamBase}/ok/v1`, testStatus: "untested", isDefault: false });
+    expect(view).toMatchObject({ apiKeyMasked: "sk****78", baseUrl: `${upstreamBase}/ok/v1`, testStatus: "untested", isDefault: false });
     const stored = await db.query("select api_key_enc from llm_profiles where id = $1", [profileId]);
     expect(stored.rows[0].api_key_enc).not.toContain("abcd1234");
   });
@@ -864,7 +864,7 @@ describe("模型网关管理（G1–G7）+ 验收统计口径（B2）", () => {
     });
     expect(updated.statusCode).toBe(200);
     const list = await app.inject({ method: "GET", url: "/v1/admin/llm", headers: auth(admin) });
-    expect(list.json().profiles[0]).toMatchObject({ model: "deepseek-v4-pro", testStatus: "untested", apiKeyMasked: "sk-a****5678" });
+    expect(list.json().profiles[0]).toMatchObject({ model: "deepseek-v4-pro", testStatus: "untested", apiKeyMasked: "sk****78" });
 
     const draft = await app.inject({
       method: "POST",
@@ -961,7 +961,7 @@ describe("模型网关管理（G1–G7）+ 验收统计口径（B2）", () => {
     const stored = await db.query("select value from app_settings where key = 'voice'");
     expect(JSON.stringify(stored.rows[0].value)).not.toContain("volc-key");
     const view = await app.inject({ method: "GET", url: "/v1/admin/providers", headers: auth(admin) });
-    expect(view.json().voice).toMatchObject({ vendor: "doubao", apiKeyMasked: "volc****3456", ttsPricePer10kChars: 3 });
+    expect(view.json().voice).toMatchObject({ vendor: "doubao", apiKeyMasked: "vo****56", ttsPricePer10kChars: 3 });
     expect(view.json().quota).toMatchObject({ monthlyBudgetYuan: 100, alert: false });
     expect(view.json().usage.llmCost).toBeGreaterThan(0);
   });

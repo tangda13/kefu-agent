@@ -18,6 +18,58 @@ export const LLM_PURPOSE_LABELS: Record<LlmPurpose, { label: string; hint: strin
 export const LLM_PROTOCOLS = ["openai-completions"] as const;
 export type LlmProtocol = (typeof LLM_PROTOCOLS)[number];
 
+/** 思考档位（不含“模型默认”）：低 / 中 / 高 / 最高 */
+export const THINKING_LEVELS = ["low", "medium", "high", "max"] as const;
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+export const THINKING_LEVEL_LABELS: Record<ThinkingLevel | "default", string> = {
+  default: "模型默认",
+  low: "低",
+  medium: "中",
+  high: "高",
+  max: "最高",
+};
+
+/**
+ * 厂商的思考参数写法：关闭、开启、各档位分别往请求体里合并什么。
+ * 没列出的档位就是这个厂商表达不了，界面不给选（不悄悄降档）。保存档案时随档案存库，后端只按存的写法合并。
+ */
+export interface LlmThinkingParams {
+  off: Record<string, unknown>;
+  on: Record<string, unknown>;
+  levels: Partial<Record<ThinkingLevel, Record<string, unknown>>>;
+}
+
+/** 档案的深度思考设置；params 为 null 表示这个厂商没有思考开关，什么都不发 */
+export interface LlmThinking {
+  enabled: boolean;
+  level: ThinkingLevel | "default";
+  params: LlmThinkingParams | null;
+}
+
+/** 按开关和档位算出要合并进请求体的思考参数（前后端共用） */
+export function thinkingBody(thinking: LlmThinking | null | undefined): Record<string, unknown> {
+  if (!thinking?.params) return {};
+  if (!thinking.enabled) return { ...thinking.params.off };
+  const level = thinking.level === "default" ? {} : (thinking.params.levels[thinking.level] ?? {});
+  return { ...thinking.params.on, ...level };
+}
+
+/** 思考参数会用到的请求体字段（附加请求参数里不能再写这些，免得和开关打架） */
+export function thinkingKeys(params: LlmThinkingParams | null | undefined): string[] {
+  if (!params) return [];
+  const keys = new Set([...Object.keys(params.off), ...Object.keys(params.on)]);
+  for (const body of Object.values(params.levels)) for (const key of Object.keys(body ?? {})) keys.add(key);
+  return [...keys];
+}
+
+/** OpenAI 标准写法 reasoning_effort（2026-10-14 经 NewAPI 总网关实测：DeepSeek、Claude 认 none 关闭和 low～max 档位） */
+const EFFORT_LEVELS: LlmThinkingParams["levels"] = {
+  low: { reasoning_effort: "low" },
+  medium: { reasoning_effort: "medium" },
+  high: { reasoning_effort: "high" },
+  max: { reasoning_effort: "max" },
+};
+
 export interface LlmPreset {
   key: string;
   label: string;
@@ -26,6 +78,8 @@ export interface LlmPreset {
   models: string[];
   extraBody: Record<string, unknown>;
   jsonMode: boolean;
+  /** 思考参数写法；null = 没有思考开关 */
+  thinking: LlmThinkingParams | null;
   note: string;
 }
 
@@ -35,35 +89,39 @@ export const LLM_PRESETS: LlmPreset[] = [
     label: "DeepSeek 官方",
     baseUrl: "https://api.deepseek.com",
     models: ["deepseek-flash", "deepseek-v4-pro"],
-    extraBody: { thinking: { type: "disabled" } },
+    extraBody: {},
     jsonMode: true,
-    note: "默认推荐。必须关闭思考，否则首字 1.6 秒以上甚至正文为空；关闭后首字约 0.5 秒",
+    thinking: { off: { thinking: { type: "disabled" } }, on: { thinking: { type: "enabled" } }, levels: {} },
+    note: "默认推荐。买家对话务必关闭深度思考，否则首字 1.6 秒以上甚至正文为空；关闭后首字约 0.5 秒",
   },
   {
     key: "qwen",
     label: "通义千问（阿里云百炼）",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     models: ["qwen-flash", "qwen-plus"],
-    extraBody: { enable_thinking: false },
+    extraBody: {},
     jsonMode: true,
-    note: "混合思考模型需 enable_thinking=false",
+    thinking: { off: { enable_thinking: false }, on: { enable_thinking: true }, levels: {} },
+    note: "混合思考模型用 enable_thinking 开关思考",
   },
   {
     key: "zhipu",
     label: "智谱 GLM",
     baseUrl: "https://open.bigmodel.cn/api/paas/v4",
     models: ["glm-4.5-air", "glm-4-flash"],
-    extraBody: { thinking: { type: "disabled" } },
+    extraBody: {},
     jsonMode: true,
-    note: "GLM-4.5 系列默认开思考，需关闭",
+    thinking: { off: { thinking: { type: "disabled" } }, on: { thinking: { type: "enabled" } }, levels: {} },
+    note: "GLM-4.5 系列默认开思考",
   },
   {
     key: "ark",
     label: "豆包（火山方舟）",
     baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
     models: ["doubao-seed-1-6-flash-250828"],
-    extraBody: { thinking: { type: "disabled" } },
+    extraBody: {},
     jsonMode: true,
+    thinking: { off: { thinking: { type: "disabled" } }, on: { thinking: { type: "enabled" } }, levels: {} },
     note: "模型名填方舟控制台的模型 ID 或推理接入点 ID",
   },
   {
@@ -73,6 +131,7 @@ export const LLM_PRESETS: LlmPreset[] = [
     models: ["kimi-k2-turbo-preview", "moonshot-v1-8k"],
     extraBody: {},
     jsonMode: true,
+    thinking: null,
     note: "",
   },
   {
@@ -80,9 +139,10 @@ export const LLM_PRESETS: LlmPreset[] = [
     label: "硅基流动",
     baseUrl: "https://api.siliconflow.cn/v1",
     models: ["deepseek-ai/DeepSeek-V3", "Qwen/Qwen3-8B"],
-    extraBody: { enable_thinking: false },
+    extraBody: {},
     jsonMode: true,
-    note: "Qwen3 等混合思考模型需 enable_thinking=false",
+    thinking: { off: { enable_thinking: false }, on: { enable_thinking: true }, levels: {} },
+    note: "Qwen3 等混合思考模型用 enable_thinking 开关思考",
   },
   {
     key: "newapi",
@@ -91,6 +151,8 @@ export const LLM_PRESETS: LlmPreset[] = [
     models: [],
     extraBody: {},
     jsonMode: true,
+    // 关闭时两个都带：总网关多渠道随机分配，DeepSeek 部分渠道只认 thinking.type
+    thinking: { off: { thinking: { type: "disabled" }, reasoning_effort: "none" }, on: {}, levels: EFFORT_LEVELS },
     note: "地址填到 /v1，例如 https://网关域名/v1；厂商专有参数按上游模型填写",
   },
   {
@@ -100,6 +162,11 @@ export const LLM_PRESETS: LlmPreset[] = [
     models: [],
     extraBody: {},
     jsonMode: false,
+    thinking: {
+      off: { reasoning_effort: "none" },
+      on: {},
+      levels: { low: { reasoning_effort: "low" }, medium: { reasoning_effort: "medium" }, high: { reasoning_effort: "high" } },
+    },
     note: "任意兼容 /chat/completions 的服务",
   },
 ];
@@ -115,6 +182,7 @@ export interface LlmProfileView {
   model: string;
   extraHeaders: Record<string, string>;
   extraBody: Record<string, unknown>;
+  thinking: LlmThinking;
   maxTokensField: "max_tokens" | "max_completion_tokens";
   jsonMode: boolean;
   timeoutMs: number;
@@ -138,6 +206,8 @@ export interface LlmTestResult {
   sample: string;
   /** 上游报错原文（≤2000 字） */
   error: string | null;
+  /** 测试通过但有需要知道的情况（如模型只接受默认 temperature） */
+  note?: string | null;
 }
 
 export interface LlmRoute {

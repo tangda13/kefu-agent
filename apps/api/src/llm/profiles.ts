@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { LlmProfileView, LlmTestResult } from "@cecs/contracts";
+import { THINKING_LEVELS, thinkingKeys, type LlmProfileView, type LlmTestResult, type LlmThinking } from "@cecs/contracts";
 import type { Db } from "../db";
 import { getSetting } from "../settings";
 import { maskSecret, type SecretSealer } from "./secret";
@@ -7,6 +7,19 @@ import { profileFromRow } from "./gateway";
 import type { ResolvedProfile } from "./pi-adapter";
 
 const jsonObject = z.record(z.string(), z.unknown());
+
+/** 深度思考：开关 + 档位 + 该厂商的参数写法（选厂商时由模板带出，随档案存库） */
+const thinkingSchema = z
+  .object({
+    enabled: z.boolean(),
+    level: z.enum(["default", ...THINKING_LEVELS]),
+    params: z
+      .object({ off: jsonObject, on: jsonObject, levels: z.partialRecord(z.enum(THINKING_LEVELS), jsonObject) })
+      .nullable(),
+  })
+  .refine((value) => value.level === "default" || Boolean(value.params?.levels[value.level]), { message: "这个厂商不支持所选的思考档位" });
+
+const THINKING_OFF: LlmThinking = { enabled: false, level: "default", params: null };
 
 /** 管理端提交的档案（apiKey 留空 = 保持原值） */
 export const profileInputSchema = z.object({
@@ -21,6 +34,7 @@ export const profileInputSchema = z.object({
   model: z.string().trim().min(1, "模型名不能为空").max(120),
   extraHeaders: z.record(z.string(), z.string()).default({}),
   extraBody: jsonObject.default({}),
+  thinking: thinkingSchema.default(THINKING_OFF),
   maxTokensField: z.enum(["max_tokens", "max_completion_tokens"]).default("max_tokens"),
   jsonMode: z.boolean().default(false),
   timeoutMs: z.number().int().min(5_000).max(300_000).default(60_000),
@@ -30,15 +44,26 @@ export const profileInputSchema = z.object({
 });
 export type ProfileInput = z.infer<typeof profileInputSchema>;
 
+/** 键排序后的 JSON：jsonb 存库会重排键的顺序，直接 JSON.stringify 比较会把没改的当成改了 */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
 /** 请求体里不允许被 extraBody 覆盖的字段（由服务端控制） */
 const RESERVED_BODY_KEYS = ["model", "stream", "messages"];
 
-export function validateExtraBody(body: Record<string, unknown>): string | null {
+export function validateExtraBody(body: Record<string, unknown>, thinking?: LlmThinking): string | null {
   const hit = RESERVED_BODY_KEYS.find((key) => key in body);
-  return hit ? `额外请求体不能包含 ${hit}（由系统控制）` : null;
+  if (hit) return `额外请求体不能包含 ${hit}（由系统控制）`;
+  const thinkingHit = thinkingKeys(thinking?.params).find((key) => key in body);
+  return thinkingHit ? `附加请求参数里不要写 ${thinkingHit}，思考请用「深度思考」开关设置` : null;
 }
 
-const SELECT_COLUMNS = `id, name, preset_key, protocol, base_url, api_key_enc, model, extra_headers, extra_body,
+const SELECT_COLUMNS = `id, name, preset_key, protocol, base_url, api_key_enc, model, extra_headers, extra_body, thinking,
   max_tokens_field, json_mode, timeout_ms, price_input, price_output, enabled, is_default,
   test_status, test_result, tested_at, updated_at`;
 
@@ -61,6 +86,7 @@ export async function listProfiles(db: Db, sealer: SecretSealer): Promise<LlmPro
       model: row.model,
       extraHeaders: row.extra_headers ?? {},
       extraBody: row.extra_body ?? {},
+      thinking: (row.thinking as LlmThinking | null) ?? THINKING_OFF,
       maxTokensField: row.max_tokens_field,
       jsonMode: row.json_mode,
       timeoutMs: row.timeout_ms,
@@ -86,8 +112,8 @@ export async function loadResolvedProfile(db: Db, sealer: SecretSealer, id: stri
 export async function createProfile(db: Db, sealer: SecretSealer, input: ProfileInput): Promise<string> {
   const result = await db.query(
     `insert into llm_profiles (name, preset_key, base_url, api_key_enc, model, extra_headers, extra_body,
-       max_tokens_field, json_mode, timeout_ms, price_input, price_output, enabled)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
+       max_tokens_field, json_mode, timeout_ms, price_input, price_output, enabled, thinking)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning id`,
     [
       input.name,
       input.presetKey,
@@ -102,18 +128,19 @@ export async function createProfile(db: Db, sealer: SecretSealer, input: Profile
       input.priceInput,
       input.priceOutput,
       input.enabled,
+      JSON.stringify(input.thinking),
     ],
   );
   return result.rows[0].id as string;
 }
 
 /**
- * 更新档案。地址、Key、模型、请求头、请求体、令牌字段、JSON 模式任一变化都会把测试状态重置为未测试：
+ * 更新档案。地址、Key、模型、请求头、请求体、深度思考、令牌字段、JSON 模式任一变化都会把测试状态重置为未测试：
  * 配置变了，之前的测试结论不再成立（G4：未通过测试的档案不能被指定为生效档案）。
  */
 export async function updateProfile(db: Db, sealer: SecretSealer, id: string, input: ProfileInput): Promise<boolean> {
   const current = await db.query(
-    "select base_url, api_key_enc, model, extra_headers, extra_body, max_tokens_field, json_mode from llm_profiles where id = $1",
+    "select base_url, api_key_enc, model, extra_headers, extra_body, thinking, max_tokens_field, json_mode from llm_profiles where id = $1",
     [id],
   );
   const row = current.rows[0];
@@ -123,14 +150,15 @@ export async function updateProfile(db: Db, sealer: SecretSealer, id: string, in
     row.base_url !== input.baseUrl ||
     Boolean(input.apiKey) ||
     row.model !== input.model ||
-    JSON.stringify(row.extra_headers ?? {}) !== JSON.stringify(input.extraHeaders) ||
-    JSON.stringify(row.extra_body ?? {}) !== JSON.stringify(input.extraBody) ||
+    canonical(row.extra_headers ?? {}) !== canonical(input.extraHeaders) ||
+    canonical(row.extra_body ?? {}) !== canonical(input.extraBody) ||
+    canonical(row.thinking ?? null) !== canonical(input.thinking) ||
     row.max_tokens_field !== input.maxTokensField ||
     row.json_mode !== input.jsonMode;
   await db.query(
     `update llm_profiles set name = $2, preset_key = $3, base_url = $4, api_key_enc = $5, model = $6,
        extra_headers = $7, extra_body = $8, max_tokens_field = $9, json_mode = $10, timeout_ms = $11,
-       price_input = $12, price_output = $13, enabled = $14, updated_at = now(),
+       price_input = $12, price_output = $13, enabled = $14, thinking = $16, updated_at = now(),
        test_status = case when $15 then 'untested' else test_status end,
        test_result = case when $15 then null else test_result end
      where id = $1`,
@@ -150,6 +178,7 @@ export async function updateProfile(db: Db, sealer: SecretSealer, id: string, in
       input.priceOutput,
       input.enabled,
       configChanged,
+      JSON.stringify(input.thinking),
     ],
   );
   return true;

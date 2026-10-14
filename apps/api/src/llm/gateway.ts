@@ -6,14 +6,45 @@ import {
   type LlmRoute,
   type LlmRoutingSettings,
   type LlmTestResult,
+  type LlmThinking,
 } from "@cecs/contracts";
 import type { Db } from "../db";
 import { getSetting } from "../settings";
 import { writeAudit } from "../auth-context";
 import type { SecretSealer } from "./secret";
-import { LlmCallError, streamChat, type ChatMessage, type ChatRequest, type ResolvedProfile } from "./pi-adapter";
+import { LlmCallError, streamChat, type ChatEvent, type ChatMessage, type ChatRequest, type ResolvedProfile } from "./pi-adapter";
 
 export type { ChatMessage } from "./pi-adapter";
+
+/**
+ * 有的模型只接受默认的 temperature，传别的值直接 400（2026-10-14 探针：claude-haiku-5-5、claude-sonnet-5-5 拒绝，
+ * 同家的 claude-opus-5-5、claude-haiku-4-5 接受；OpenAI 推理类模型也有同样限制）。型号之间没有规律，
+ * 不维护名单：被拒一次就去掉 temperature 重发，并记住这个档案。
+ */
+export function rejectsTemperature(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /temperature/i.test(message) && /not support|unsupported|only the default|only supports/i.test(message);
+}
+
+/** 带 temperature 先试；被拒且还没出字时，去掉 temperature 再发一次。返回值告诉调用方是否去掉过 */
+async function* streamWithTemperatureFallback(
+  profile: ResolvedProfile,
+  request: ChatRequest,
+  signal: AbortSignal,
+  onRejected: () => void,
+): AsyncGenerator<ChatEvent> {
+  let emitted = false;
+  try {
+    for await (const event of streamChat(profile, request, signal)) {
+      if (event.type === "text") emitted = true;
+      yield event;
+    }
+  } catch (error) {
+    if (emitted || request.temperature === undefined || !rejectsTemperature(error)) throw error;
+    onRejected();
+    yield* streamChat(profile, { ...request, temperature: undefined }, signal);
+  }
+}
 
 /** 主档案连续失败多少次后熔断、熔断多久（期间直接走备用档案） */
 const FAILOVER_THRESHOLD = 3;
@@ -54,6 +85,7 @@ interface ProfileRow {
   model: string;
   extra_headers: Record<string, string> | null;
   extra_body: Record<string, unknown> | null;
+  thinking: LlmThinking | null;
   max_tokens_field: "max_tokens" | "max_completion_tokens";
   json_mode: boolean;
   timeout_ms: number;
@@ -114,6 +146,8 @@ export class LlmGateway {
   private defaultId: string | null = null;
   private routing: LlmRoutingSettings = defaultRouting();
   private health = new Map<string, { failures: number; openUntil: number }>();
+  /** 只接受默认 temperature 的档案（键：档案 id + 模型名，换了模型重新判断） */
+  private defaultTemperatureOnly = new Set<string>();
 
   constructor(
     private readonly db: Db,
@@ -123,7 +157,7 @@ export class LlmGateway {
 
   async reload(): Promise<void> {
     const result = await this.db.query<ProfileRow>(
-      `select id, name, base_url, api_key_enc, model, extra_headers, extra_body, max_tokens_field,
+      `select id, name, base_url, api_key_enc, model, extra_headers, extra_body, thinking, max_tokens_field,
               json_mode, timeout_ms, price_input, price_output, is_default
        from llm_profiles where enabled`,
     );
@@ -171,6 +205,16 @@ export class LlmGateway {
     return list;
   }
 
+  /** 对某个档案发起流式调用：已知只接受默认 temperature 的直接不传，否则被拒时自动去掉重发并记住 */
+  private streamProfile(profile: ResolvedProfile, request: ChatRequest, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+    const key = `${profile.id}:${profile.model}`;
+    if (this.defaultTemperatureOnly.has(key)) return streamChat(profile, { ...request, temperature: undefined }, signal);
+    return streamWithTemperatureFallback(profile, request, signal, () => {
+      this.defaultTemperatureOnly.add(key);
+      this.log.warn({ profile: profile.name, model: profile.model }, "model only accepts default temperature, omitting it");
+    });
+  }
+
   private request(purpose: LlmPurpose, messages: ChatMessage[], options: CallOptions, json: boolean): ChatRequest {
     const route = this.routing.routes[purpose];
     return {
@@ -201,7 +245,7 @@ export class LlmGateway {
       const signal = options.signal ?? AbortSignal.timeout(profile.timeoutMs);
       try {
         let usage = { input: 0, output: 0 };
-        for await (const event of streamChat(profile, request, signal)) {
+        for await (const event of this.streamProfile(profile, request, signal)) {
           if (event.type === "text" && event.text) {
             if (ttft === null) ttft = Date.now() - startedAt;
             emitted = true;
@@ -247,7 +291,7 @@ export class LlmGateway {
       try {
         let text = "";
         let usage = { input: 0, output: 0 };
-        for await (const event of streamChat(profile, request, signal)) {
+        for await (const event of this.streamProfile(profile, request, signal)) {
           if (event.type === "text" && event.text) {
             if (ttft === null) ttft = Date.now() - startedAt;
             text += event.text;
@@ -372,7 +416,8 @@ export class LlmGateway {
 
   /** 连通性测试（G4）：发一条极短请求，返回首字、输出速度与上游报错原文 */
   static async test(profile: ResolvedProfile): Promise<LlmTestResult> {
-    const startedAt = Date.now();
+    let startedAt = Date.now();
+    let note: string | null = null;
     let ttft: number | null = null;
     let text = "";
     let usage = { input: 0, output: 0 };
@@ -385,7 +430,13 @@ export class LlmGateway {
         temperature: 0.7,
         maxTokens: 80,
       };
-      for await (const event of streamChat(profile, request, AbortSignal.timeout(Math.min(profile.timeoutMs, 30_000)))) {
+      const signal = AbortSignal.timeout(Math.min(profile.timeoutMs, 30_000));
+      const events = streamWithTemperatureFallback(profile, request, signal, () => {
+        // 首字从去掉 temperature 重发那一刻算
+        startedAt = Date.now();
+        note = "这个模型只接受默认的随机性（temperature），系统会自动不传；用途分配里给它设的随机性不生效。";
+      });
+      for await (const event of events) {
         if (event.type === "text" && event.text) {
           if (ttft === null) ttft = Date.now() - startedAt;
           text += event.text;
@@ -395,7 +446,7 @@ export class LlmGateway {
       }
       const totalMs = Date.now() - startedAt;
       if (!text.trim()) {
-        return { ok: false, ttftMs: null, charsPerSecond: null, totalMs, inputTokens: usage.input, outputTokens: usage.output, sample: "", error: "上游返回成功但正文为空（常见原因：模型开启了思考，max_tokens 被思考耗尽；请在额外请求体中关闭思考）" };
+        return { ok: false, ttftMs: null, charsPerSecond: null, totalMs, inputTokens: usage.input, outputTokens: usage.output, sample: "", error: "上游返回成功但正文为空（常见原因：模型在思考，回复长度被思考用完了；把「深度思考」关掉或调低档位再测）" };
       }
       const genSeconds = Math.max((totalMs - (ttft ?? totalMs)) / 1000, 0.001);
       return {
@@ -407,6 +458,7 @@ export class LlmGateway {
         outputTokens: usage.output,
         sample: text.trim().slice(0, 200),
         error: null,
+        note,
       };
     } catch (error) {
       return {
@@ -417,10 +469,17 @@ export class LlmGateway {
         inputTokens: 0,
         outputTokens: 0,
         sample: text.slice(0, 200),
-        error: String((error as Error).message ?? error).slice(0, 2000),
+        error: String((error as Error).message ?? error).slice(0, 2000) + thinkingHint(profile),
       };
     }
   }
+}
+
+/** 测试失败时，档案在发思考参数就补一句：不同模型能用的思考设置不一样 */
+function thinkingHint(profile: ResolvedProfile): string {
+  if (!profile.thinking.params) return "";
+  const sending = !profile.thinking.enabled || profile.thinking.level !== "default";
+  return sending ? "\n\n如果是思考参数不被接受：有的模型不能关闭思考、或只支持部分档位（例如 GLM 经总网关只能选 低 / 高 / 最高），换一下「深度思考」再测。" : "";
 }
 
 function infoOf(profile: ResolvedProfile & { isFallback?: boolean }): CallInfo {
@@ -436,6 +495,7 @@ export function profileFromRow(row: ProfileRow, apiKey: string): ResolvedProfile
     model: row.model,
     extraHeaders: row.extra_headers ?? {},
     extraBody: row.extra_body ?? {},
+    thinking: row.thinking ?? { enabled: false, level: "default", params: null },
     maxTokensField: row.max_tokens_field,
     jsonMode: row.json_mode,
     timeoutMs: row.timeout_ms,

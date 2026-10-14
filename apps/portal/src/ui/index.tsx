@@ -1,4 +1,4 @@
-import { Check, CircleHelp, Ellipsis, LoaderCircle, Search, X, type LucideIcon } from "lucide-react";
+import { Check, CircleHelp, Ellipsis, KeyRound, LoaderCircle, Search, X, type LucideIcon } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -71,6 +71,41 @@ export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputEleme
   return <input className={cx("ui-input", className)} {...rest} />;
 }
 
+/**
+ * 密钥输入：已保存时只显示服务端给的打码值（如 sk-w****z7gW），点“更换”才出现空输入框；
+ * 明文从不回传前端，打码值也不放进输入框（免得被当成新密钥提交）。value 为空表示不改。
+ */
+export function SecretInput({ masked, value, onChange, placeholder = "粘贴密钥" }: { masked?: string; value: string; onChange: (next: string) => void; placeholder?: string }) {
+  const [editing, setEditing] = useState(false);
+  // 保存后服务端打码值变了：回到“已设置”显示
+  useEffect(() => setEditing(false), [masked]);
+  if (masked && !editing && !value) {
+    return (
+      <div className="ui-secret">
+        <KeyRound size={15} aria-hidden="true" />
+        <span className="ui-secret-value">{masked}</span>
+        <span className="ui-secret-state">已设置</span>
+        <button type="button" onClick={() => setEditing(true)}>更换</button>
+      </div>
+    );
+  }
+  return (
+    <div className="ui-secret-edit">
+      <input
+        className="ui-input"
+        type="password"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={masked ? "粘贴新的密钥" : placeholder}
+        autoComplete="new-password"
+        spellCheck={false}
+        autoFocus={editing}
+      />
+      {masked ? <button type="button" onClick={() => { onChange(""); setEditing(false); }}>取消</button> : null}
+    </div>
+  );
+}
+
 export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select className={cx("ui-select", className)} {...rest}>
@@ -119,11 +154,11 @@ export function Tabs<T extends string>({ items, value, onChange, className }: { 
   );
 }
 
-export function Segmented<T extends string>({ items, value, onChange, className }: { items: TabItem<T>[]; value: T; onChange: (id: T) => void; className?: string }) {
+export function Segmented<T extends string>({ items, value, onChange, className, disabled }: { items: TabItem<T>[]; value: T; onChange: (id: T) => void; className?: string; disabled?: boolean }) {
   return (
-    <div className={cx("ui-seg", className)} role="radiogroup">
+    <div className={cx("ui-seg", disabled && "is-disabled", className)} role="radiogroup" aria-disabled={disabled || undefined}>
       {items.map((item) => (
-        <button key={item.id} type="button" role="radio" aria-checked={item.id === value} className={cx(item.id === value && "is-active")} onClick={() => onChange(item.id)}>
+        <button key={item.id} type="button" role="radio" aria-checked={item.id === value} disabled={disabled} className={cx(item.id === value && "is-active")} onClick={() => onChange(item.id)}>
           {item.label}
           {item.count !== undefined ? <span className="ui-count">{item.count}</span> : null}
         </button>

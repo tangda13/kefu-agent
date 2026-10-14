@@ -3,10 +3,11 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { Db } from "./db";
-import { LlmGateway } from "./llm/gateway";
-import { streamChat, type ResolvedProfile } from "./llm/pi-adapter";
-import { createSecretSealer } from "./llm/secret";
-import { legacyBaseUrl } from "./llm/profiles";
+import { LlmGateway, rejectsTemperature } from "./llm/gateway";
+import { streamChat, THINKING_HEADROOM_TOKENS, type ResolvedProfile } from "./llm/pi-adapter";
+import { createSecretSealer, maskSecret } from "./llm/secret";
+import { legacyBaseUrl, profileInputSchema, validateExtraBody } from "./llm/profiles";
+import { LLM_PRESETS, thinkingBody } from "@cecs/contracts";
 
 /**
  * 模型网关测试：用本地假上游接住 pi 真实发出的 HTTP 请求，断言请求体（D-18：思考与 extraBody
@@ -77,6 +78,8 @@ function profile(overrides: Partial<ResolvedProfile> = {}): ResolvedProfile {
     model: "deepseek-flash",
     extraHeaders: {},
     extraBody: {},
+    // 默认按“明确关闭、且该厂商关闭时不用发参数”：请求体与 max_tokens 不受思考影响
+    thinking: { enabled: false, level: "default", params: { off: {}, on: {}, levels: {} } },
     maxTokensField: "max_tokens",
     jsonMode: false,
     timeoutMs: 10_000,
@@ -131,6 +134,31 @@ describe("pi 适配层：请求体序列化（D-17/D-18）", () => {
     for (const key of ["max_completion_tokens", "reasoning_effort", "store", "response_format"]) {
       expect(request.body).not.toHaveProperty(key);
     }
+  });
+
+  it("深度思考：按档案存的写法合并——关闭发关闭参数、开启发档位参数；会思考时 max_tokens 多留余量", async () => {
+    const params = LLM_PRESETS.find((item) => item.key === "newapi")!.thinking!;
+    behaviors.set("/a", [{ kind: "sse", chunks: ["x"] }]);
+    const ask = { messages: [{ role: "user" as const, content: "hi" }], maxTokens: 400 };
+    await collect(streamChat(profile({ thinking: { enabled: false, level: "default", params } }), ask, AbortSignal.timeout(5000)));
+    expect(captured[0]!.body).toMatchObject({ thinking: { type: "disabled" }, reasoning_effort: "none", max_tokens: 400 });
+    await collect(streamChat(profile({ thinking: { enabled: true, level: "high", params } }), ask, AbortSignal.timeout(5000)));
+    expect(captured[1]!.body).toMatchObject({ reasoning_effort: "high", max_tokens: 400 + THINKING_HEADROOM_TOKENS });
+    expect(captured[1]!.body).not.toHaveProperty("thinking");
+    // 开启 + 模型默认：什么思考参数都不发
+    await collect(streamChat(profile({ thinking: { enabled: true, level: "default", params } }), ask, AbortSignal.timeout(5000)));
+    expect(captured[2]!.body).not.toHaveProperty("reasoning_effort");
+    expect(captured[2]!.body).not.toHaveProperty("thinking");
+  });
+
+  it("thinkingBody 与附加参数校验：附加参数里写思考字段会被拦下", () => {
+    const params = LLM_PRESETS.find((item) => item.key === "deepseek")!.thinking!;
+    expect(thinkingBody({ enabled: false, level: "default", params })).toEqual({ thinking: { type: "disabled" } });
+    expect(thinkingBody({ enabled: true, level: "default", params })).toEqual({ thinking: { type: "enabled" } });
+    expect(thinkingBody({ enabled: true, level: "default", params: null })).toEqual({});
+    expect(validateExtraBody({ thinking: { type: "disabled" } }, { enabled: false, level: "default", params })).toContain("深度思考");
+    expect(validateExtraBody({ top_k: 20 }, { enabled: false, level: "default", params })).toBeNull();
+    expect(profileInputSchema.safeParse({ name: "x", baseUrl: "https://a.com/v1", model: "m", thinking: { enabled: true, level: "high", params } }).success).toBe(false);
   });
 
   it("地址里带厂商域名也不会触发 pi 的内置厂商参数（行为只由配置决定）", async () => {
@@ -188,6 +216,7 @@ function profileRow(id: string, route: string, extra: Record<string, unknown> = 
     model: `model-${id}`,
     extra_headers: {},
     extra_body: {},
+    thinking: { enabled: false, level: "default", params: { off: {}, on: {}, levels: {} } },
     max_tokens_field: "max_tokens",
     json_mode: true,
     timeout_ms: 10_000,
@@ -206,6 +235,13 @@ describe("模型网关：路由、备用切换、计量、结构化输出", () =
     expect(sealed).not.toContain("sk-secret");
     expect(sealer.open(sealed)).toBe("sk-secret-123");
     expect(() => createSecretSealer("other").open(sealed)).toThrow();
+  });
+
+  it("打码：长密钥露前后各 4 位、短的露 2 位、8 位以内全遮，中间固定 4 个星号", () => {
+    expect(maskSecret("sk-abcdefghijklmnopqrstuvwxyz1234")).toBe("sk-a****1234");
+    expect(maskSecret("abcdefghijkl")).toBe("ab****kl");
+    expect(maskSecret("12345678")).toBe("****");
+    expect(maskSecret("")).toBe("");
   });
 
   it("用途未单独指定时走默认档案；按单价折算费用", async () => {
@@ -288,10 +324,47 @@ describe("模型网关：路由、备用切换、计量、结构化输出", () =
     await expect(gateway.complete("assist", [{ role: "user", content: "x" }])).rejects.toThrow("AI_PROVIDER_NOT_CONFIGURED");
   });
 
-  it("连通性测试：正文为空时给出关闭思考的提示", async () => {
+  it("模型只接受默认 temperature：被拒后去掉重发并记住，不算失败、不切备用", async () => {
+    const rejected = '{"error":{"message":"claude-haiku-5-5 does not support non-default temperature","type":"invalid_request_error"}}';
+    behaviors.set("/a", [{ kind: "status", code: 400, body: rejected }, { kind: "sse", chunks: ["hi"] }]);
+    behaviors.set("/b", [{ kind: "sse", chunks: ["fallback"] }]);
+    const routing = { routes: { dialogue: { profileId: "1", fallbackProfileId: "2", temperature: 0.8, maxTokens: 400 } } };
+    const { db, usage } = fakeDb([profileRow("1", "/a", { is_default: true }), profileRow("2", "/b")], routing);
+    const gateway = new LlmGateway(db, sealer, log);
+    await gateway.reload();
+    let text = "";
+    for await (const part of gateway.stream("dialogue", [{ role: "user", content: "hi" }])) text += part;
+    expect(text).toBe("hi");
+    expect(captured.map((item) => [item.route, item.body.temperature])).toEqual([["/a", 0.8], ["/a", undefined]]);
+    // 记住了：下一次直接不传，不再先挨一次 400
+    await gateway.complete("dialogue", [{ role: "user", content: "again" }]);
+    expect(captured).toHaveLength(3);
+    expect(captured[2]!.body).not.toHaveProperty("temperature");
+    expect(usage.every((row) => row[4] === "success")).toBe(true);
+  });
+
+  it("识别“只接受默认 temperature”的报错，别的 400 不算", () => {
+    expect(rejectsTemperature(new Error('400: {"message":"claude-sonnet-5-5 does not support non-default temperature"}'))).toBe(true);
+    expect(rejectsTemperature(new Error("400: Unsupported value: 'temperature' does not support 0.7 with this model. Only the default (1) value is supported."))).toBe(true);
+    expect(rejectsTemperature(new Error('400: {"message":"模型 x 的价格尚未由管理员配置","code":"model_price_error"}'))).toBe(false);
+  });
+
+  it("连通性测试：模型拒绝 temperature 时自动去掉重测，通过并提示随机性设置不生效", async () => {
+    behaviors.set("/a", [
+      { kind: "status", code: 400, body: '{"error":{"message":"claude-haiku-5-5 does not support non-default temperature"}}' },
+      { kind: "sse", chunks: ["Hey there"] },
+    ]);
+    const result = await LlmGateway.test(profile({ model: "claude-haiku-5-5" }));
+    expect(result.ok).toBe(true);
+    expect(result.sample).toBe("Hey there");
+    expect(result.note).toContain("temperature");
+    expect(captured[1]!.body).not.toHaveProperty("temperature");
+  });
+
+  it("连通性测试：正文为空时提示调整深度思考", async () => {
     behaviors.set("/a", [{ kind: "sse", chunks: [] }]);
     const result = await LlmGateway.test(profile());
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("关闭思考");
+    expect(result.error).toContain("深度思考");
   });
 });

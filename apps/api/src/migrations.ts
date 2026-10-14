@@ -594,4 +594,36 @@ alter table voice_metrics add column if not exists fallback boolean not null def
 alter table voice_metrics add column if not exists fallback_reason text;
 `,
   },
+  {
+    /* 深度思考开关（2026-10-14）：思考参数从“附加请求参数”挪到档案的 thinking 字段（开关 + 档位 + 该厂商的参数写法）。
+       老档案：附加参数里写了关闭的记为关闭，写了档位的记为该档位，没写的记为“开启 + 模型默认”（什么都不发，和原来一样）；
+       写法按当时的厂商模板补上（与 contracts 的 LLM_PRESETS 一致），然后从附加参数里去掉这几个字段 */
+    id: "037_llm_profile_thinking",
+    sql: `
+alter table llm_profiles add column if not exists thinking jsonb;
+update llm_profiles set
+  thinking = jsonb_build_object(
+    'enabled', not (
+      coalesce(extra_body->>'reasoning_effort', '') = 'none'
+      or coalesce(extra_body->'thinking'->>'type', '') = 'disabled'
+      or coalesce(extra_body->>'enable_thinking', '') = 'false'
+    ),
+    'level', case when extra_body->>'reasoning_effort' in ('low', 'medium', 'high', 'max') then extra_body->>'reasoning_effort' else 'default' end,
+    'params', case preset_key
+      when 'deepseek' then '{"off":{"thinking":{"type":"disabled"}},"on":{"thinking":{"type":"enabled"}},"levels":{}}'::jsonb
+      when 'zhipu' then '{"off":{"thinking":{"type":"disabled"}},"on":{"thinking":{"type":"enabled"}},"levels":{}}'::jsonb
+      when 'ark' then '{"off":{"thinking":{"type":"disabled"}},"on":{"thinking":{"type":"enabled"}},"levels":{}}'::jsonb
+      when 'qwen' then '{"off":{"enable_thinking":false},"on":{"enable_thinking":true},"levels":{}}'::jsonb
+      when 'siliconflow' then '{"off":{"enable_thinking":false},"on":{"enable_thinking":true},"levels":{}}'::jsonb
+      when 'kimi' then 'null'::jsonb
+      when 'newapi' then '{"off":{"thinking":{"type":"disabled"},"reasoning_effort":"none"},"on":{},"levels":{"low":{"reasoning_effort":"low"},"medium":{"reasoning_effort":"medium"},"high":{"reasoning_effort":"high"},"max":{"reasoning_effort":"max"}}}'::jsonb
+      else '{"off":{"reasoning_effort":"none"},"on":{},"levels":{"low":{"reasoning_effort":"low"},"medium":{"reasoning_effort":"medium"},"high":{"reasoning_effort":"high"}}}'::jsonb
+    end
+  ),
+  extra_body = coalesce(extra_body, '{}'::jsonb) - 'thinking' - 'reasoning_effort' - 'enable_thinking'
+where thinking is null;
+alter table llm_profiles alter column thinking set default '{"enabled":false,"level":"default","params":null}'::jsonb;
+alter table llm_profiles alter column thinking set not null;
+`,
+  },
 ];

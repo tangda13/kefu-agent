@@ -32,7 +32,13 @@ export function createSecretSealer(rawKey: string): SecretSealer {
   };
 }
 
+/**
+ * 管理端显示用的打码值：长密钥露前后各 4 位，短一些的露 2 位，8 位以内全遮；中间固定 4 个星号，不暴露长度。
+ * 明文从不回传前端，管理端只拿这个值显示“已设置”。
+ */
 export function maskSecret(key: string | undefined): string {
   if (!key) return "";
-  return key.length <= 8 ? "****" : `${key.slice(0, 4)}****${key.slice(-4)}`;
+  if (key.length <= 8) return "****";
+  const keep = key.length < 20 ? 2 : 4;
+  return `${key.slice(0, keep)}****${key.slice(-keep)}`;
 }
