@@ -179,7 +179,7 @@ export function LiveOverview({ session, onNavigate }: { session: Session; onNavi
               emptyNote={<ChartEmptyNote desc="学生完成接待后出现" action={<BoardLink onClick={() => go("assignments")}>去看任务</BoardLink>} />}
             />
           </Board>
-          <Board title={<>六项能力<HelpTip>全班每一项的平均分，红色是最弱的两项</HelpTip></>} extra={<BoardLink onClick={() => go("reports")}>看报表</BoardLink>}>
+          <Board title={<>各项能力<HelpTip>全班每一项的平均分，红色是最弱的两项</HelpTip></>} extra={<BoardLink onClick={() => go("reports")}>看报表</BoardLink>}>
             <DimensionBars
               dims={data?.radar?.length ? data.radar : ASSESSMENT_DIMENSIONS.map((dim) => ({ id: dim.id, label: dim.label, value: null }))}
               weak={hasScores ? new Set(data!.weakDimensions.slice(0, 2).map((dim) => dim.id)) : undefined}

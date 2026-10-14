@@ -223,7 +223,7 @@ export function LiveReports({ session, onNavigate }: { session: Session; onNavig
         <Board title={<>成绩分布<HelpTip>每个学生一个综合成绩，按分数段统计人数</HelpTip></>} count={hasData ? `${data!.studentCount} 人` : undefined}>
           <ScoreDistribution distribution={data?.distribution ?? [0, 0, 0, 0, 0]} emptyNote={<ChartEmptyNote desc="学生完成接待后出现" />} />
         </Board>
-        <Board title={<>六项能力<HelpTip>{data?.baselineCount ? "全班每一项的平均分，红色是最弱的两项；竖线是训前测评" : "全班每一项的平均分，红色是最弱的两项"}</HelpTip></>}>
+        <Board title={<>各项能力<HelpTip>{data?.baselineCount ? "全班每一项的平均分，红色是最弱的两项；竖线是训前测评" : "全班每一项的平均分，红色是最弱的两项"}</HelpTip></>}>
           <DimensionBars
             dims={data?.radar?.length ? data.radar : ASSESSMENT_DIMENSIONS.map((dim) => ({ id: dim.id, label: dim.label, value: null }))}
             weak={hasData ? weak : undefined}
@@ -232,7 +232,7 @@ export function LiveReports({ session, onNavigate }: { session: Session; onNavig
           />
         </Board>
       </div>
-      <Board title={<>成绩排名<HelpTip>{taskId ? "按这个任务的成绩排" : "按综合成绩排"}；完整的六项分数在“导出 Excel”里</HelpTip></>}>
+      <Board title={<>成绩排名<HelpTip>{taskId ? "按这个任务的成绩排" : "按综合成绩排"}；完整的各项分数在“导出 Excel”里</HelpTip></>}>
         {hasData ? (
           <DataTable
             rows={data!.ranking}

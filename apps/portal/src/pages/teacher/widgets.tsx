@@ -2,7 +2,7 @@ import { BarChart3, X } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { HelpTip } from "../../ui";
 
-/* 教师端共享 UI：统一弹窗 / 成绩直方图 / 六维雷达 / 分数档位 */
+/* 教师端共享 UI：统一弹窗 / 成绩直方图 / 能力雷达 / 分数档位 */
 
 export function TeacherDialog({
   title,
@@ -109,7 +109,7 @@ export function RadarChart({ dims }: { dims: RadarDim[] }) {
     .map((dim, index) => point(index, Math.max(0.04, (dim.value ?? 0) / 100)).join(","))
     .join(" ");
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className="tt-radar" role="img" aria-label="六维能力雷达图">
+    <svg viewBox={`0 0 ${size} ${size}`} className="tt-radar" role="img" aria-label="能力雷达图">
       {[0.25, 0.5, 0.75].map((ratio) => (
         <polygon key={ratio} className="rec-radar-ring" points={ring(ratio)} />
       ))}
@@ -237,7 +237,7 @@ export function ScoreDistribution({ distribution, emptyNote }: { distribution: n
   );
 }
 
-/** 六项能力横条：偏弱项标出来。没有数据时进度条用虚线占位，配一张提示卡 */
+/** 各项能力横条：偏弱项标出来。没有数据时进度条用虚线占位，配一张提示卡 */
 export function DimensionBars({ dims, weak, baseline, emptyNote }: { dims: RadarDim[]; weak?: Set<string>; baseline?: Record<string, number | null>; emptyNote?: ReactNode }) {
   const empty = dims.every((dim) => dim.value == null);
   return (

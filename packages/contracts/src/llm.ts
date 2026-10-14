@@ -10,7 +10,7 @@ export type LlmPurpose = (typeof LLM_PURPOSES)[number];
 export const LLM_PURPOSE_LABELS: Record<LlmPurpose, { label: string; hint: string; temperature: number; maxTokens: number }> = {
   dialogue: { label: "买家对话", hint: "学生实时对话，最看重回复速度，建议关闭深度思考", temperature: 0.8, maxTokens: 400 },
   director: { label: "情绪与剧情推进", hint: "在后台推演买家情绪和剧情走向，可用便宜、快速的模型", temperature: 0.3, maxTokens: 600 },
-  assessment: { label: "六维评分", hint: "会话结束后评分，看重稳定和准确", temperature: 0.2, maxTokens: 1200 },
+  assessment: { label: "能力评分", hint: "会话结束后评分，看重稳定和准确", temperature: 0.2, maxTokens: 1200 },
   assist: { label: "辅助生成", hint: "回复建议、邮件草稿、翻译、买家评价等", temperature: 0.5, maxTokens: 1200 },
 };
 

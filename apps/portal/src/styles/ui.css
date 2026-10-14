@@ -257,9 +257,9 @@
 .score-dist-count { margin-bottom: 6px; font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--c-ink-2); }
 .score-dist-label { position: absolute; bottom: -22px; font-size: var(--fs-caption); color: var(--c-ink-3); font-variant-numeric: tabular-nums; }
 .score-dist-note { position: absolute; inset: 0 0 22px; display: grid; place-items: center; margin: 0; font-size: var(--fs-caption); color: var(--c-ink-3); }
-.dim-bars { display: grid; gap: 14px; }
-.dim-bar { display: grid; grid-template-columns: 84px minmax(0, 1fr) 36px 32px; align-items: center; gap: 12px; font-size: 13px; }
-.dim-bar-label { color: var(--c-ink-2); }
+.dim-bars { display: grid; gap: 10px; }
+.dim-bar { display: grid; grid-template-columns: 7.5em minmax(0, 1fr) 36px 32px; align-items: center; gap: 12px; font-size: 13px; }
+.dim-bar-label { color: var(--c-ink-2); white-space: nowrap; }
 .dim-bar-track { position: relative; height: 6px; border-radius: 3px; background: var(--c-surface-hover); }
 .dim-bar-track i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--c-brand); }
 .dim-bar-track b { position: absolute; top: -4px; width: 2px; height: 14px; margin-left: -1px; background: var(--c-ink-3); }
@@ -761,9 +761,10 @@
 .rv-who { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rv-who > span:last-child { overflow: hidden; font-size: var(--fs-small); color: var(--c-ink-3); white-space: nowrap; text-overflow: ellipsis; }
 .rv-comment { overflow: hidden; font-size: var(--fs-small); color: var(--c-ink-2); white-space: nowrap; text-overflow: ellipsis; }
-.rv-dims { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; align-items: end; height: 30px; }
+.rv-dims { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; align-items: end; height: 30px; }
 .rv-dims i { display: block; border-radius: 2px 2px 0 0; background: var(--c-brand); opacity: .85; }
 .rv-dims i.is-low { background: var(--c-danger); }
+.rv-dims i.is-none { height: 2px; background: var(--c-line); opacity: 1; }
 .rv-time { font-size: var(--fs-small); color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
 .rv-op { text-align: right; }
 
@@ -848,6 +849,9 @@
 .mon-ended { display: flex; align-items: center; justify-content: space-between; margin: 0 20px 16px; padding: 12px 16px; border: 1px dashed var(--c-line-strong); border-radius: 12px; font-size: var(--fs-small); color: var(--c-ink-3); }
 .mon-box-bar .ui-btn-primary:disabled { border-color: transparent; background: var(--c-surface-hover); color: var(--c-ink-disabled); }
 .duo { align-items: stretch; }
+/* 两块等高时，成绩分布的柱状区跟着卡片伸展，不在底部留白（D-46 后各项能力变成八行） */
+.duo > .board { display: flex; flex-direction: column; }
+.duo > .board > .score-dist { flex: 1; height: auto; min-height: 150px; }
 .classbar .k b.is-dash { color: #c3cad5; }
 .todo b .ui-help, .at-cell b .ui-help, .kpis small .ui-help { margin-left: 4px; }
 

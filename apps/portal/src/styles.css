@@ -1466,9 +1466,9 @@ td small { display: block; }
 .rec-radar { padding: 6px 18px 16px; display: grid; gap: 4px; }
 .rec-radar svg { width: 100%; height: auto; display: block; }
 .rec-radar.compact { padding: 0 0 6px; }
-.rec-radar.compact svg { max-width: 400px; margin: 0 auto; }
+.rec-radar.compact svg { max-width: 460px; margin: 0 auto; }
 .rec-radar.compact .rec-radar-value { display: none; }
-.rec-radar.compact .rec-radar-label { font-size: 15px; }
+.rec-radar.compact .rec-radar-label { font-size: 16px; }
 .rec-radar-ring { fill: none; stroke: #f0f0f2; stroke-width: 1; }
 .rec-radar-ring.outer { stroke: #e4e4e8; }
 .rec-radar-axis { stroke: #f0f0f2; stroke-width: 1; }

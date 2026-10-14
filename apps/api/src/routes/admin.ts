@@ -467,7 +467,7 @@ export function registerAdminRoutes(
           `select a.id, u.username, u.display_name, a.total, a.scores, a.comment, a.created_at
            from assessments a join users u on u.id = a.student_id order by a.created_at`,
         );
-        csv = "评分ID,账号,姓名,总分,六维明细,评语,时间\n" + rows.rows
+        csv = "评分ID,账号,姓名,总分,各项明细,评语,时间\n" + rows.rows
           .map((r) => [r.id, r.username, r.display_name, r.total, JSON.stringify(r.scores), r.comment, r.created_at].map(esc).join(","))
           .join("\n");
       } else {

@@ -58,14 +58,74 @@ export const NATIONALITIES = [
   "巴西",
 ] as const;
 
+/**
+ * 评分维度（D-46）：参数点名的六项 + 商品信息准确性、消息响应时效。数组顺序就是雷达图上的顺序。
+ * - paramLabel：参数文件里的原名（验收对照用），新增两项没有
+ * - hint：评分口径，学生端悬停、评分提示词共用
+ * - scoredBy：ai = 评分模型打分；system = 系统按消息时间计算，不交给模型
+ * id 不变，历史成绩照常对得上；老记录没有新增两项的分，显示“—”。
+ */
 export const ASSESSMENT_DIMENSIONS = [
-  { id: "compliance", label: "违规用语合规" },
-  { id: "grammar", label: "语法准确性" },
-  { id: "professionalism", label: "话术规范" },
-  { id: "effectiveness", label: "沟通有效性" },
-  { id: "empathy", label: "客户情绪安抚" },
-  { id: "resolution", label: "问题解决" },
+  {
+    id: "professionalism",
+    label: "服务话术规范",
+    paramLabel: "话术规范",
+    hint: "开场、确认、收尾话术是否到位，称呼和语气是否专业，称呼和礼仪是否符合买家所在国的习惯",
+    scoredBy: "ai",
+  },
+  {
+    id: "effectiveness",
+    label: "客户沟通有效性",
+    paramLabel: "沟通有效性",
+    hint: "先回应买家最关心的问题、一次说清；需要订单号、用途、预算等信息时先问清再答",
+    scoredBy: "ai",
+  },
+  {
+    id: "empathy",
+    label: "客户情绪安抚",
+    paramLabel: "客户情绪安抚",
+    hint: "识别买家不满，先共情再给方案，买家情绪是否好转",
+    scoredBy: "ai",
+  },
+  {
+    id: "resolution",
+    label: "订单问题解决",
+    paramLabel: "问题解决",
+    hint: "方案可执行、写清时限和步骤、问题闭环；售前看是否推进到下单，售中售后看是否挽回取消、纠纷和差评",
+    scoredBy: "ai",
+  },
+  {
+    id: "knowledge",
+    label: "商品信息准确性",
+    hint: "规格参数、物流时效、退换和运费政策是否和店铺资料一致，有没有乱承诺",
+    scoredBy: "ai",
+  },
+  {
+    id: "responsiveness",
+    label: "消息响应时效",
+    hint: "首次响应和平均响应快不快，有没有让买家催促或等到离开；由系统按消息时间计算",
+    scoredBy: "system",
+  },
+  {
+    id: "grammar",
+    label: "语法准确性",
+    paramLabel: "语法准确性",
+    hint: "外语拼写、语法、用词是否准确",
+    scoredBy: "ai",
+  },
+  {
+    id: "compliance",
+    label: "沟通用语合规",
+    paramLabel: "违规用语合规",
+    hint: "有无绝对化宣传、违规承诺、泄露隐私；命中违规词库会明显扣分",
+    scoredBy: "ai",
+  },
 ] as const;
+
+export type AssessmentDimensionId = (typeof ASSESSMENT_DIMENSIONS)[number]["id"];
+
+/** 由评分模型打分的维度（响应时效由系统计算） */
+export const AI_ASSESSMENT_DIMENSIONS = ASSESSMENT_DIMENSIONS.filter((dim) => dim.scoredBy === "ai");
 
 export const ACCEPTANCE_THRESHOLDS = {
   minConversationTurns: 20,

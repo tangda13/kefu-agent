@@ -422,7 +422,7 @@ describe("阶段1：教师建班、导入学生、下发任务的端到端链路
     expect(relogin.user.mustChangePassword).toBe(true);
   });
 
-  it("任务校验：评分权重必须覆盖 6 维且合计 100", async () => {
+  it("任务校验：评分权重必须覆盖全部维度且合计 100", async () => {
     const response = await app.inject({
       method: "POST",
       url: "/v1/tasks",

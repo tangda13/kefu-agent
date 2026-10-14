@@ -222,7 +222,7 @@ async function streamBuyerTurn(options: {
     ],
   );
 
-  // 买家离开：自动结束会话并触发六维评分（真实规则：只有客户会主动断开）
+  // 买家离开：自动结束会话并触发评分（真实规则：只有客户会主动断开）
   let conversationClosed = false;
   if (buyerLeft && outcome === "success") {
     const closed = await db.query(
@@ -772,7 +772,7 @@ export function registerConversationRoutes(
         reply.code(404);
         return { code: "NOT_FOUND", message: "会话不存在或已关闭。" };
       }
-      // 后台异步六维评分，不阻塞关闭
+      // 后台异步评分，不阻塞关闭
       const { assessConversation } = await import("../assessment");
       void assessConversation(db, gateway, request.params.conversationId).catch((error) =>
         request.log.error(error, "assessment failed"),

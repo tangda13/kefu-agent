@@ -1,5 +1,5 @@
-import { ASSESSMENT_DIMENSIONS } from "@cecs/contracts";
-import { forbiddenTerms as builtinForbiddenTerms } from "@cecs/domain";
+import { AI_ASSESSMENT_DIMENSIONS, ASSESSMENT_DIMENSIONS, type BusinessStage, type ScenarioScript } from "@cecs/contracts";
+import { computeResponsiveness, forbiddenTerms as builtinForbiddenTerms } from "@cecs/domain";
 import type { Db } from "./db";
 import type { LlmGateway } from "./llm/gateway";
 import type { SessionState } from "./director";
@@ -53,7 +53,7 @@ async function condenseTranscript(gateway: LlmGateway, transcript: string, conve
   return { text: `${summaries.join("\n")}\n【最后一段原文】\n${tail}`, summarized: true };
 }
 
-/** 会话关闭后异步执行六维自动评分（失败不影响关闭流程） */
+/** 会话关闭后异步执行自动评分（失败不影响关闭流程）：七项由模型打分，消息响应时效由系统计算（D-46） */
 export async function assessConversation(
   db: Db,
   gateway: LlmGateway,
@@ -66,7 +66,8 @@ export async function assessConversation(
   );
   if (existing.rowCount) return;
   const conversationResult = await db.query(
-    `select c.student_id, c.task_id, c.persona, c.state, s.name as scenario_name, s.objective, t.scoring_weights
+    `select c.student_id, c.task_id, c.persona, c.state, c.closed_at, c.closed_reason,
+            s.name as scenario_name, s.objective, s.stage, s.script, t.scoring_weights
      from conversations c
      left join scenarios s on s.id = c.scenario_id
      left join tasks t on t.id = c.task_id
@@ -79,26 +80,37 @@ export async function assessConversation(
   if (!conversation.task_id) return;
   // 评分读全量对话（J4），不再只取前 60 条
   const messagesResult = await db.query(
-    `select sender, content from conversation_messages
+    `select sender, content, created_at from conversation_messages
      where conversation_id = $1 order by created_at`,
     [conversationId],
   );
-  const rows = messagesResult.rows as Array<{ sender: string; content: string }>;
+  const rows = messagesResult.rows as Array<{ sender: string; content: string; created_at: Date }>;
   const studentMessages = rows.filter((row) => row.sender === "student").map((row) => row.content);
   if (studentMessages.length === 0) return;
 
   const condensed = await condenseTranscript(gateway, formatTranscript(rows), conversationId);
   const state = (conversation.state ?? {}) as SessionState;
+  const persona = (conversation.persona ?? {}) as Record<string, unknown>;
+  const productFacts = typeof persona.productFacts === "string" && persona.productFacts.trim() ? persona.productFacts : null;
+  const responsiveness = computeResponsiveness(
+    rows.map((row) => ({ sender: row.sender, at: row.created_at })),
+    { closedAt: conversation.closed_at, closedReason: conversation.closed_reason },
+  );
   const evidence: AssessmentEvidence = {
     forbiddenHits: await findForbiddenHits(db, studentMessages),
     turnScores: state.scores ?? [],
     summarized: condensed.summarized,
+    responsiveness,
+    hasProductFacts: !!productFacts,
   };
   const { data: parsed, info } = await gateway.completeJson(
     "assessment",
     buildAssessmentMessages({
       scenarioName: conversation.scenario_name ?? null,
       objective: conversation.objective ?? null,
+      stage: (conversation.stage as BusinessStage | null) ?? null,
+      script: (conversation.script as ScenarioScript | null) ?? null,
+      productFacts,
       transcript: condensed.text,
       evidence,
     }),
@@ -106,7 +118,8 @@ export async function assessConversation(
     { conversationId },
   );
   const scores: Record<string, number> = {};
-  for (const id of DIMENSION_IDS) scores[id] = (parsed.scores as Record<string, number>)[id] ?? 60;
+  for (const dim of AI_ASSESSMENT_DIMENSIONS) scores[dim.id] = (parsed.scores as Record<string, number | undefined>)[dim.id] ?? 60;
+  if (responsiveness.score != null) scores.responsiveness = responsiveness.score;
   const total = weightedTotal(scores, (conversation.scoring_weights ?? {}) as Record<string, number>);
   await db.query(
     `insert into assessments (conversation_id, student_id, scores, total, comment, suggestions, prompt_version, model, evidence)
@@ -158,14 +171,19 @@ export async function assessConversation(
   }
 }
 
-/** 总分：任务配置了考核权重则按权重加权，无任务/无权重时六维等权（AI 评分与教师复核共用） */
+/**
+ * 总分：任务配置了考核权重则按权重加权，无任务/无权重时各项等权（AI 评分与教师复核共用）。
+ * 只算有分的维度：老记录没有新增两项（D-46）、或响应时效无可计轮次时，不按 0 分拉低总分。
+ */
 export function weightedTotal(scores: Record<string, number>, weights: Record<string, number>): number {
+  const scored = DIMENSION_IDS.filter((id) => Number.isFinite(scores[id]));
+  if (!scored.length) return 0;
   const weightOf = (id: string) => {
     const value = Number(weights[id]);
     return Number.isFinite(value) && value > 0 ? value : 0;
   };
-  const weightSum = DIMENSION_IDS.reduce((sum, id) => sum + weightOf(id), 0);
+  const weightSum = scored.reduce((sum, id) => sum + weightOf(id), 0);
   return weightSum > 0
-    ? Math.round(DIMENSION_IDS.reduce((sum, id) => sum + (scores[id] ?? 0) * weightOf(id), 0) / weightSum)
-    : Math.round(DIMENSION_IDS.reduce((sum, id) => sum + (scores[id] ?? 0), 0) / DIMENSION_IDS.length);
+    ? Math.round(scored.reduce((sum, id) => sum + scores[id]! * weightOf(id), 0) / weightSum)
+    : Math.round(scored.reduce((sum, id) => sum + scores[id]!, 0) / scored.length);
 }

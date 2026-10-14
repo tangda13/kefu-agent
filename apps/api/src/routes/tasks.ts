@@ -63,21 +63,18 @@ const DIMENSION_IDS: readonly string[] = ASSESSMENT_DIMENSIONS.map(
   (item) => item.id,
 );
 
+/** 均衡权重：除不尽的余数从前往后各加 1（与教师端“均衡”预设一致） */
 function defaultScoringWeights(): Record<string, number> {
-  const weight = Math.floor(100 / DIMENSION_IDS.length);
-  const weights: Record<string, number> = {};
-  for (const id of DIMENSION_IDS) weights[id] = weight;
-  const assigned = weight * DIMENSION_IDS.length;
-  const firstId = DIMENSION_IDS[0]!;
-  weights[firstId] = (weights[firstId] ?? 0) + (100 - assigned);
-  return weights;
+  const base = Math.floor(100 / DIMENSION_IDS.length);
+  const rest = 100 - base * DIMENSION_IDS.length;
+  return Object.fromEntries(DIMENSION_IDS.map((id, index) => [id, base + (index < rest ? 1 : 0)]));
 }
 
 function validateScoringWeights(
   weights: Record<string, number>,
 ): string | null {
   const keys = Object.keys(weights);
-  if (keys.length < DIMENSION_IDS.length) return "评分维度不得少于 6 个";
+  if (keys.length < DIMENSION_IDS.length) return `评分权重须覆盖全部 ${DIMENSION_IDS.length} 个维度`;
   for (const key of keys) {
     if (!DIMENSION_IDS.includes(key)) return `未知评分维度：${key}`;
     const value = weights[key];

@@ -110,7 +110,7 @@ function TaskRequirements({ task }: { task: StudentTask }) {
         <dd>
           {weights.length > 0
             ? <span className="sl-chips">{weights.map((dim) => <span key={dim.id}>{dim.label} {task.scoringWeights[dim.id]}%</span>)}</span>
-            : "六项能力均衡评分"}
+            : "各项能力均衡评分"}
         </dd>
       </div>
     </dl>
@@ -338,7 +338,7 @@ export function TaskHall({
       <div className="th3-s3h"><b>开始三步</b><span>按顺序做，老师下发任务后这里换成任务列表</span></div>
       <div className={`th3-s3${curStep === 1 ? " cur" : ""}${baselineDone ? " done" : ""}`}>
         <span className="no">{baselineDone ? <Check size={14} strokeWidth={3} aria-hidden="true" /> : 1}</span>
-        <div><b>做训前测评</b><small>10 道题，约 8 分钟。测出六项能力的起点，以后的成绩都和它比</small></div>
+        <div><b>做训前测评</b><small>10 道题，约 8 分钟。测出各项能力的起点，以后的成绩都和它比</small></div>
         {!baselineDone ? <Button variant="primary" onClick={() => setShowQuiz(true)} disabled={!session}>开始测评</Button> : null}
       </div>
       <div className={`th3-s3${curStep === 2 ? " cur" : ""}${practiced ? " done" : ""}`}>
@@ -394,7 +394,7 @@ export function TaskHall({
       {needBaseline ? (
         <div className="th3-s3 cur th3-base">
           <span className="no">1</span>
-          <div><b>先做训前测评</b><small>10 道题，约 8 分钟，测出六项能力的起点</small></div>
+          <div><b>先做训前测评</b><small>10 道题，约 8 分钟，测出各项能力的起点</small></div>
           <Button size="sm" onClick={() => setShowQuiz(true)}>开始测评</Button>
         </div>
       ) : null}

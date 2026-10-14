@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { ASSESSMENT_DIMENSIONS } from "@cecs/contracts";
 import { toStudentPersonaView, ensurePersonaAvatar } from "@cecs/domain";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
@@ -118,14 +119,13 @@ export function registerOrderRoutes(
         createdAt: row.created_at,
       }));
       const scored = records.filter((row) => !row.practice);
+      // 各维度只在有分的记录里平均：老记录没有新增两项（D-46），不按 0 分算
       const radar: Record<string, number> = {};
-      if (scored.length > 0) {
-        for (const key of Object.keys(scored[0]!.scores as Record<string, number>)) {
-          radar[key] = Math.round(
-            scored.reduce((sum, item) => sum + Number((item.scores as Record<string, number>)[key] ?? 0), 0) /
-              scored.length,
-          );
-        }
+      for (const dim of ASSESSMENT_DIMENSIONS) {
+        const values = scored
+          .map((item) => (item.scores as Record<string, number | undefined>)[dim.id])
+          .filter((value): value is number => value != null && Number.isFinite(Number(value)));
+        if (values.length) radar[dim.id] = Math.round(values.reduce((sum, value) => sum + Number(value), 0) / values.length);
       }
       return { records, radar, average: scored.length ? Math.round(scored.reduce((s, r) => s + r.total, 0) / scored.length) : null };
     },

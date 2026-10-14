@@ -35,26 +35,45 @@
 /* 我的记录：第二行两块 */
 .sl-two { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 16px; }
 .sl-two > .board { margin-top: 0; }
-.sl-ab { padding: 6px 20px 14px; }
-.sl-abr { display: grid; grid-template-columns: 92px minmax(0, 1fr) 36px 96px; gap: 14px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--c-line); font-size: var(--fs-small); }
-.sl-abr:last-child { border-bottom: 0; }
-.sl-abr-nm { font-weight: 600; }
-.sl-abr-bt { position: relative; height: 8px; border-radius: 999px; background: var(--c-surface-hover); }
-.sl-abr-bt i { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--c-brand); }
-.sl-abr-bt i.is-lo { background: var(--c-danger); }
-.sl-abr-bt em { position: absolute; top: -4px; bottom: -4px; width: 2px; border-radius: 1px; background: var(--c-ink); }
-.sl-abr-bt.is-empty { background: repeating-linear-gradient(90deg, #e3e8ef 0 6px, transparent 6px 10px); }
-.sl-abr-val { font-size: 15px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
-.sl-abr-val.is-lo { color: var(--c-danger); }
-.sl-abr-dash { color: #c3cad5; }
-.sl-abr .kpi-pill { justify-self: start; white-space: nowrap; }
-.sl-abr-tip { grid-column: 2 / -1; margin-top: -4px; font-size: var(--fs-caption); color: var(--c-ink-3); }
-.sl-legend { display: flex; gap: 14px; font-size: var(--fs-caption); color: var(--c-ink-3); }
-.sl-legend span { display: inline-flex; align-items: center; gap: 5px; }
-.sl-legend i { width: 12px; height: 6px; border-radius: 3px; background: var(--c-brand); }
-.sl-legend em { width: 2px; height: 12px; background: var(--c-ink); }
-.sl-trend { padding: 12px 16px 16px; }
-.sl-trend-svg { display: block; width: 100%; height: auto; }
+/* 能力雷达（D-46）：图例在图内右上角，分数和较训前标在顶点旁，最弱两项的建议在下方 */
+.sl-radar { position: relative; height: 340px; margin: 8px 24px 0; }
+.sl-radar > svg { position: absolute; inset: 0; display: block; overflow: visible; }
+.sl-radar-legend { position: absolute; top: 4px; right: 0; z-index: 1; display: grid; gap: 4px; font-size: var(--fs-caption); color: var(--c-ink-3); }
+.sl-radar-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sl-radar-legend i { width: 14px; height: 8px; border-radius: 2px; background: rgba(29, 95, 209, 0.22); box-shadow: inset 0 0 0 1.5px var(--c-brand); }
+.sl-radar-legend em { width: 14px; border-top: 1.5px dashed #6b7686; }
+.sl-radar-legend em.is-pass { border-top-color: #e8b4ae; }
+.sl-radar-ring { fill: none; stroke: #edf0f4; }
+.sl-radar-ring.is-outer { stroke: var(--c-line); }
+.sl-radar-ring.is-pass { stroke: #e8b4ae; stroke-dasharray: 3 3; }
+.sl-radar-axis { stroke: #edf0f4; }
+.sl-radar-base { stroke: #6b7686; stroke-width: 1.5; stroke-dasharray: 5 4; }
+.sl-radar-avg { stroke: var(--c-brand); stroke-width: 2; stroke-linejoin: round; }
+.sl-radar-dot { fill: #fff; stroke: var(--c-brand); stroke-width: 2; }
+.sl-radar-dot.is-lo { stroke: var(--c-danger); }
+.sl-radar-dot.is-hover { fill: var(--c-brand); stroke: #fff; stroke-width: 3; }
+.sl-radar-dot.is-lo.is-hover { fill: var(--c-danger); }
+.sl-radar-hit { cursor: default; }
+.sl-radar-name { font-size: 13px; font-weight: 600; fill: var(--c-ink); }
+.sl-radar-hit:hover .sl-radar-name { fill: var(--c-brand); }
+.sl-radar-val { font-size: 13px; font-weight: 700; fill: var(--c-ink); font-variant-numeric: tabular-nums; }
+.sl-radar-val.is-lo { fill: var(--c-danger); }
+.sl-radar-val.is-none { fill: #c3cad5; }
+.sl-radar-dl { font-size: 12px; font-weight: 600; fill: var(--c-ok); }
+.sl-radar-dl.is-down { fill: var(--c-danger); }
+.sl-radar-tip { position: absolute; z-index: 2; width: 252px; padding: 10px 12px; border: 1px solid var(--c-line); border-radius: 10px; background: var(--c-surface); box-shadow: 0 8px 24px rgba(16, 24, 40, .14); font-size: var(--fs-caption); line-height: 18px; color: var(--c-ink-2); pointer-events: none; }
+.sl-radar-tip-h { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; font-size: var(--fs-small); font-weight: 600; color: var(--c-ink); }
+.sl-radar-tip-h b { font-size: 15px; }
+.sl-radar-tip-h b.is-lo { color: var(--c-danger); }
+.sl-radar-tip-k { margin-top: 6px; font-size: 11px; color: var(--c-ink-4); }
+.sl-radar-weak { display: grid; gap: 4px; margin: 4px 24px 16px; padding-top: 10px; border-top: 1px solid var(--c-line); font-size: var(--fs-caption); color: var(--c-ink-3); }
+.sl-radar-weak b { margin-right: 8px; font-weight: 600; color: var(--c-danger); }
+.sl-hint.is-below { position: static; transform: none; margin: 4px 24px 16px; padding: 0; border: 0; box-shadow: none; background: none; }
+/* 左右两块等高（网格拉伸）：卡片竖排，成绩走势占满剩余高度，按实际像素画 */
+.sl-two > .board { display: flex; flex-direction: column; }
+.sl-trend { display: flex; flex: 1; min-height: 260px; padding: 16px 20px 16px 16px; }
+.sl-trend-box { position: relative; flex: 1; min-width: 0; }
+.sl-trend-svg { position: absolute; inset: 0; display: block; overflow: visible; }
 .sl-trend-dot { cursor: pointer; }
 .sl-hint { position: absolute; left: 50%; top: 56%; z-index: 1; display: flex; align-items: center; gap: 10px; transform: translate(-50%, -50%); padding: 12px 16px; border: 1px solid var(--c-line); border-radius: 10px; background: var(--c-surface); box-shadow: 0 4px 14px rgba(16, 24, 40, .08); font-size: var(--fs-small); color: var(--c-ink-2); white-space: nowrap; }
 .sl-hint svg { color: var(--c-ink-3); }
@@ -68,9 +87,10 @@
 .sl-rr-name b { font-size: var(--fs-body); font-weight: 600; }
 .sl-rr-m2 { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: var(--fs-caption); color: var(--c-ink-3); }
 .sl-tag { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: var(--r-xs); background: var(--c-surface-2); box-shadow: inset 0 0 0 1px var(--c-line); font-size: 11px; font-weight: 500; color: var(--c-ink-2); white-space: nowrap; }
-.sl-mini { display: flex; align-items: flex-end; gap: 4px; height: 34px; }
-.sl-mini i { width: 12px; border-radius: 2px 2px 0 0; background: #bcd0f3; }
+.sl-mini { display: flex; align-items: flex-end; gap: 3px; height: 34px; }
+.sl-mini i { width: 10px; border-radius: 2px 2px 0 0; background: #bcd0f3; }
 .sl-mini i.is-lo { background: #e9a39d; }
+.sl-mini i.is-none { height: 2px; background: #e3e8ef; }
 .sl-cm { display: grid; gap: 4px; min-width: 0; font-size: var(--fs-caption); line-height: 18px; }
 .sl-cm > div { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
 .sl-who { flex: none; padding: 0 5px; border-radius: var(--r-xs); font-size: 11px; font-weight: 600; line-height: 18px; }
@@ -200,8 +220,6 @@
 .th3-radio .th3-dot { width: 13px; height: 13px; }
 /* 少用横线（2026-10-13）：列表行之间不画分隔线，靠行距和悬停底色分开；
    只保留标题行与内容之间的一条线、当前任务与其余任务之间的一条线 */
-.sl-abr { border-bottom: 0; padding: 7px 0; }
-.sl-abr .tip, .sl-abr-tip { margin-top: -2px; }
 .sl-rr { border-top: 0; border-bottom: 0; border-radius: 8px; margin: 0 8px; padding-left: 16px; padding-right: 16px; }
 .sl-rr:hover { background: var(--c-surface-2); }
 .th3-tr, .th3-dr { border-bottom: 0; border-radius: 8px; margin: 0 8px; padding-left: 16px; padding-right: 16px; }

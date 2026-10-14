@@ -14,7 +14,7 @@
 | STU-08 | 画像和关联订单信息面板 | portal/workbench、Persona/Commerce | 0/2 | 基础 |
 | STU-09 | 订单详情/物流/评价及各不少于 3 个 AI 话术 | portal/orders、Commerce/AI | 0/2 | 基础 |
 | STU-10 | 至少 4 个英文邮件模板 | portal/mail、Content | 0/2 | 基础 |
-| STU-11 | 六维评估必含违规用语合规、语法准确性、话术规范、沟通有效性、客户情绪安抚、问题解决，附成绩、评语、复盘和改进建议 | portal/records、Assessment | 0/2 | 基础 |
+| STU-11 | 评估必含违规用语合规、语法准确性、话术规范、沟通有效性、客户情绪安抚、问题解决（现为八项，D-46：显示名改为沟通用语合规、语法准确性、服务话术规范、客户沟通有效性、客户情绪安抚、订单问题解决，另加商品信息准确性、消息响应时效；参数原名见 ASSESSMENT_DIMENSIONS.paramLabel），附成绩、评语、复盘和改进建议 | portal/records、Assessment | 0/2 | 基础 |
 | STU-12 | 违规宣传用语自动检测与规范话术提示（工作台与邮件撰写） | Content 词库、合规检测服务、portal/mail | 2 | 计划 |
 | TCH-01 | 数据总览核心指标与薄弱项 | portal/teacher、Reporting | 0/3 | 基础 |
 | TCH-02 | 任务列表、新建、下发和评分权重 | portal/teacher、Training | 0/1 | 基础 |

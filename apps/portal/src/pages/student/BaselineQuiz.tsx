@@ -128,13 +128,13 @@ export function BaselineQuiz({ session, onClose, onCompleted }: {
           <div className="bq-result">
             <span className="bq-result-badge"><Check size={22} aria-hidden="true" /></span>
             <h2>初始测评完成</h2>
-            <p className="bq-result-sub">这是你的六维能力基线，已写入能力档案。之后每次实训成绩都会与它对照，在「我的记录」中可以看到初始与当前能力的雷达对比。</p>
+            <p className="bq-result-sub">这是你的能力起点，已写入能力档案。之后每次实训成绩都会与它对照，在「我的记录」的能力雷达里可以看到起点和现在的对比。</p>
             <div className="bq-result-total">
               <ResultRing value={result.total} />
               <span className={`rec-band big ${band.cls}`}>{band.label}</span>
             </div>
             <div className="bq-result-rows">
-              {ASSESSMENT_DIMENSIONS.map((dim) => {
+              {ASSESSMENT_DIMENSIONS.filter((dim) => result.scores[dim.id] != null).map((dim) => {
                 const score = result.scores[dim.id] ?? 0;
                 const dimBand = bandOf(score);
                 return (
@@ -160,7 +160,7 @@ export function BaselineQuiz({ session, onClose, onCompleted }: {
         <aside className="bq-rail">
           <div className="bq-rail-head">
             <strong>初始能力测评</strong>
-            <p>完成 10 道题，生成你的六维能力基线。之后每次实训都会与基线对照。</p>
+            <p>完成 10 道题，测出你的能力起点。之后每次实训都会与它对照。</p>
           </div>
           <div className="bq-nav" role="group" aria-label="题目导航">
             {(questions ?? []).map((item, i) => {

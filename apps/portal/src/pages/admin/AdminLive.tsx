@@ -887,7 +887,7 @@ export function AdminBackup({ session }: { session: Session }) {
         <ListRow
           leading={<span className="row-icon"><ClipboardCheck size={16} /></span>}
           title="考核数据"
-          meta="每次对话的六维评分和总分"
+          meta="每次对话的各项评分和总分"
           actions={<Button size="sm" icon={Download} onClick={() => download("/v1/admin/export/assessments", "考核数据.csv")}>导出</Button>}
         />
       </SettingSection>

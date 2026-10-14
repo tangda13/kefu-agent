@@ -56,13 +56,11 @@ interface TaskForm {
 
 const errorText = (cause: unknown) => (cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
 
+/** 均衡：除不尽的余数从前往后各加 1（八项时为 13/13/13/13/12/12/12/12） */
 function defaultWeights(): Record<string, number> {
   const base = Math.floor(100 / ASSESSMENT_DIMENSIONS.length);
-  const weights: Record<string, number> = {};
-  for (const dim of ASSESSMENT_DIMENSIONS) weights[dim.id] = base;
-  const firstId = ASSESSMENT_DIMENSIONS[0]!.id;
-  weights[firstId] = (weights[firstId] ?? 0) + (100 - base * ASSESSMENT_DIMENSIONS.length);
-  return weights;
+  const rest = 100 - base * ASSESSMENT_DIMENSIONS.length;
+  return Object.fromEntries(ASSESSMENT_DIMENSIONS.map((dim, index) => [dim.id, base + (index < rest ? 1 : 0)]));
 }
 
 function toLocalInput(iso: string | null): string {
@@ -328,24 +326,27 @@ const ARRIVAL_CARDS: Array<{ id: ArrivalMode; level: "easy" | "mid" | "hard"; le
   { id: "interval", level: "mid", levelLabel: "进阶", desc: "", lanes: [[46, 0], [46, 27], [46, 54]] },
   { id: "all_at_once", level: "hard", levelLabel: "挑战", desc: "开始后所有买家一起进来", lanes: [[98, 0], [98, 0], [98, 0]] },
 ];
-/** 六个评分维度的颜色（堆叠条和每行色块） */
-const WEIGHT_COLORS = ["var(--c-cat-1)", "var(--c-cat-2)", "var(--c-cat-3)", "var(--c-cat-4)", "var(--c-cat-5)", "var(--c-cat-6)"];
+/** 评分维度的颜色（堆叠条和每行色块） */
+const WEIGHT_COLORS = ["var(--c-cat-1)", "var(--c-cat-2)", "var(--c-cat-3)", "var(--c-cat-4)", "var(--c-cat-5)", "var(--c-cat-6)", "var(--c-cat-7)", "var(--c-cat-8)"];
 const DIM_IDS = ASSESSMENT_DIMENSIONS.map((dim) => dim.id);
 const toWeights = (values: number[]) => Object.fromEntries(DIM_IDS.map((id, index) => [id, values[index] ?? 0]));
-/** 评分权重预设（D-34）：顺序 = 合规、语法、话术、沟通有效性、情绪安抚、问题解决 */
+/**
+ * 评分权重预设（D-34、D-46），顺序同 ASSESSMENT_DIMENSIONS：
+ * 服务话术规范、客户沟通有效性、客户情绪安抚、订单问题解决、商品信息准确性、消息响应时效、语法准确性、沟通用语合规
+ */
 const STAGE_WEIGHTS: Record<BusinessStage, number[]> = {
-  pre_sale: [25, 15, 20, 20, 10, 10],
-  in_sale: [15, 10, 15, 20, 20, 20],
-  after_sale: [15, 10, 15, 15, 20, 25],
-  customer_care: [15, 10, 15, 25, 25, 10],
+  pre_sale: [15, 15, 5, 15, 20, 10, 10, 10],
+  in_sale: [10, 15, 15, 20, 10, 10, 10, 10],
+  after_sale: [10, 10, 20, 25, 10, 10, 5, 10],
+  customer_care: [15, 20, 20, 10, 10, 10, 10, 5],
 };
 function weightPresets(stage: BusinessStage) {
   return [
     { id: "balanced", label: "均衡", weights: defaultWeights() },
     { id: "stage", label: `${BUSINESS_STAGE_LABELS[stage]}推荐`, weights: toWeights(STAGE_WEIGHTS[stage]) },
-    { id: "compliance", label: "重合规", weights: toWeights([40, 12, 12, 12, 12, 12]) },
-    { id: "empathy", label: "重安抚", weights: toWeights([15, 10, 10, 15, 35, 15]) },
-    { id: "resolution", label: "重解决", weights: toWeights([15, 10, 10, 15, 15, 35]) },
+    { id: "compliance", label: "重合规", weights: toWeights([10, 10, 10, 10, 10, 10, 10, 30]) },
+    { id: "empathy", label: "重安抚", weights: toWeights([10, 15, 30, 15, 5, 10, 5, 10]) },
+    { id: "resolution", label: "重解决", weights: toWeights([10, 15, 10, 30, 10, 10, 5, 10]) },
   ];
 }
 /** 调整一项权重，其他项按原比例补齐，合计保持 100（取整误差落在最大的一项上） */

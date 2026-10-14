@@ -30,7 +30,7 @@ interface StudentAggregate {
   taskFinals: Map<string, number>;
   /** 综合成绩 = 各任务最终成绩的平均 */
   composite: number;
-  /** 六维均值：先按任务求维度均值，再跨任务平均（每任务等权） */
+  /** 各维度均值：先按任务求维度均值，再跨任务平均（每任务等权） */
   dims: Record<string, number | null>;
 }
 
@@ -575,7 +575,10 @@ export function registerTeacherRoutes(
       if (input !== undefined) {
         const next: Record<string, number> = {};
         for (const dim of ASSESSMENT_DIMENSIONS) {
-          const value = Number(input[dim.id] ?? scores[dim.id]);
+          // 老记录没有新增两项（D-46）：老师没填就保持“无分”，不当 0 分
+          const raw = input[dim.id] ?? scores[dim.id];
+          if (raw === undefined || raw === null || (raw as unknown) === "") continue;
+          const value = Number(raw);
           if (!Number.isFinite(value) || value < 0 || value > 100) {
             reply.code(400);
             return { code: "INVALID_INPUT", message: `「${dim.label}」要在 0–100 之间。` };

@@ -55,6 +55,8 @@
   --c-cat-4: #6c4fc9; --c-cat-4-soft: #eeeafb;
   --c-cat-5: #ab3964; --c-cat-5-soft: #fae7ee;
   --c-cat-6: #566572; --c-cat-6-soft: #eceff2;
+  --c-cat-7: #c2410c; --c-cat-7-soft: #fdeee6;
+  --c-cat-8: #4d7c0f; --c-cat-8-soft: #eef5e3;
 
   /* 字体与字号 */
   --font: Manrope, "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "HarmonyOS Sans SC", "Noto Sans SC", system-ui, sans-serif;

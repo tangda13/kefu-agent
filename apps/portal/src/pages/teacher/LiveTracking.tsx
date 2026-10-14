@@ -89,14 +89,15 @@ const GUIDANCE_PRESETS = [
   "先弄清买家真正想要什么",
 ];
 
-/** 与服务端 weightedTotal 一致：有任务权重按权重，否则六项等权 */
+/** 与服务端 weightedTotal 一致：有任务权重按权重，否则各项等权；只算有分的维度（D-46） */
 function previewTotal(scores: Record<string, number>, weights: Record<string, number>): number {
-  const ids = ASSESSMENT_DIMENSIONS.map((dim) => dim.id);
+  const ids = ASSESSMENT_DIMENSIONS.map((dim) => dim.id).filter((id) => Number.isFinite(scores[id]));
+  if (!ids.length) return 0;
   const weightOf = (id: string) => (Number(weights[id]) > 0 ? Number(weights[id]) : 0);
   const sum = ids.reduce((acc, id) => acc + weightOf(id), 0);
   return sum > 0
-    ? Math.round(ids.reduce((acc, id) => acc + (scores[id] ?? 0) * weightOf(id), 0) / sum)
-    : Math.round(ids.reduce((acc, id) => acc + (scores[id] ?? 0), 0) / ids.length);
+    ? Math.round(ids.reduce((acc, id) => acc + scores[id]! * weightOf(id), 0) / sum)
+    : Math.round(ids.reduce((acc, id) => acc + scores[id]!, 0) / ids.length);
 }
 
 function StudentMark({ name }: { name: string }) {
@@ -443,7 +444,7 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
               </div>
               <div className="mon-trend-h">
                 <span>走势</span>
-                <span className="mon-legend"><i className="is-sat" />满意度<i className="is-score" />得分<HelpTip>虚横线是 60 分。满意度由导演每轮评估，得分是实时六维评分的加权分</HelpTip></span>
+                <span className="mon-legend"><i className="is-sat" />满意度<i className="is-score" />得分<HelpTip>虚横线是 60 分。满意度由导演每轮评估，得分是导演每轮给的表现分</HelpTip></span>
               </div>
               <TrendChart satisfaction={trend} score={view.scoreTrend ?? []} />
               <span className="mon-cap">{trend.length >= 2 ? `满意度从 ${trend[0]} ${trend[trend.length - 1]! < trend[0]! ? "降到" : "升到"} ${trend[trend.length - 1]}` : "第 2 轮之后出现走势"}</span>
@@ -534,7 +535,7 @@ function Replay({ session, rows, reload }: { session: Session; rows: TeacherAsse
           <p className="board-quiet">{rows.length === 0 ? "还没有评分。学生结束一次接待后，AI 会自动评分并出现在这里。" : filter === "pending" ? "都复核过了" : "没有符合条件的记录"}</p>
         ) : (
           <>
-            <div className="rv-row is-head"><span>总分</span><span>学生 · 评语</span><span>六项能力</span><span>时间</span><span /></div>
+            <div className="rv-row is-head"><span>总分</span><span>学生 · 评语</span><span>各项能力</span><span>时间</span><span /></div>
             {visible.map((row) => {
               const band = row.total < 60 ? "is-bad" : row.total >= 80 ? "is-good" : "";
               return (
@@ -546,7 +547,8 @@ function Replay({ session, rows, reload }: { session: Session; rows: TeacherAsse
                   </span>
                   <span className="rv-dims" title={ASSESSMENT_DIMENSIONS.map((dim) => `${dim.label} ${row.scores?.[dim.id] ?? "—"}`).join("　")}>
                     {ASSESSMENT_DIMENSIONS.map((dim) => {
-                      const value = Number(row.scores?.[dim.id] ?? 0);
+                      if (row.scores?.[dim.id] == null) return <i key={dim.id} className="is-none" />;
+                      const value = Number(row.scores[dim.id]);
                       return <i key={dim.id} className={value < 60 ? "is-low" : undefined} style={{ height: `${Math.max(12, ((value - 30) / 70) * 100)}%` }} />;
                     })}
                   </span>
@@ -603,11 +605,15 @@ function ReviewDrawer({ session, item, onClose, onSaved }: { session: Session; i
     apiGet<ConversationMessage[]>(`/v1/teacher/conversations/${item.conversationId}/messages`, session).then(setMessages).catch((cause) => toast.error(errorText(cause)));
   }, [item.conversationId, session]);
 
-  const numeric = Object.fromEntries(Object.entries(scores).map(([id, value]) => [id, Number(value)]));
-  const invalid = ASSESSMENT_DIMENSIONS.find((dim) => scores[dim.id] === "" || !Number.isFinite(numeric[dim.id]) || numeric[dim.id]! < 0 || numeric[dim.id]! > 100);
-  const total = invalid ? null : previewTotal(numeric, item.weights);
   const aiScores = item.aiScores ?? item.scores;
   const aiTotal = item.aiTotal ?? item.total;
+  /* 老记录没有新增两项（D-46）：这两项可以留空，留空就不计入总分 */
+  const optional = (id: string) => aiScores?.[id] == null;
+  const numeric = Object.fromEntries(Object.entries(scores).filter(([, value]) => value.trim() !== "").map(([id, value]) => [id, Number(value)]));
+  const invalid = ASSESSMENT_DIMENSIONS.find((dim) =>
+    scores[dim.id]?.trim() === "" ? !optional(dim.id) : !Number.isFinite(numeric[dim.id]) || numeric[dim.id]! < 0 || numeric[dim.id]! > 100,
+  );
+  const total = invalid ? null : previewTotal(numeric, item.weights);
 
   async function save() {
     if (invalid) return toast.error(`「${invalid.label}」要填 0–100`);
@@ -669,7 +675,7 @@ function ReviewDrawer({ session, item, onClose, onSaved }: { session: Session; i
           <div className="review-total">
             <span>总分</span>
             <strong>{total ?? "—"}</strong>
-            <em>{total != null && total !== aiTotal ? `AI 原始 ${aiTotal}` : "AI 评分"}{Object.values(item.weights ?? {}).some((value) => value > 0) ? " · 按任务权重计算" : " · 六项等权"}</em>
+            <em>{total != null && total !== aiTotal ? `AI 原始 ${aiTotal}` : "AI 评分"}{Object.values(item.weights ?? {}).some((value) => value > 0) ? " · 按任务权重计算" : " · 各项等权"}</em>
           </div>
           <div className="review-dims">
             {ASSESSMENT_DIMENSIONS.map((dim) => {
@@ -686,6 +692,7 @@ function ReviewDrawer({ session, item, onClose, onSaved }: { session: Session; i
                     className="num-input review-dim-input"
                     type="number" min={0} max={100}
                     value={scores[dim.id]}
+                    placeholder={optional(dim.id) ? "—" : undefined}
                     onChange={(event) => setScores((current) => ({ ...current, [dim.id]: event.target.value }))}
                   />
                   <em>{changed ? `AI ${aiScores?.[dim.id] ?? "—"}` : ""}</em>
