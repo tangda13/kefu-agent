@@ -50,6 +50,16 @@ export async function generateBuyerReview(
   }
   const persona = row.persona as Record<string, unknown>;
   const state = (row.state ?? {}) as SessionState;
+  // 评价内容依据聊天原文（D-50 起没有备忘录了）；只取最近一段，评价用不着全部细节
+  const messageRows = await db.query(
+    "select sender, content from conversation_messages where conversation_id = $1 and sender <> 'teacher' order by created_at desc, id desc limit 30",
+    [conversationId],
+  );
+  const transcript = messageRows.rows
+    .reverse()
+    .map((message) => `${message.sender === "buyer" ? "Me" : "Store agent"}: ${message.content}`)
+    .join("\n")
+    .slice(-4000);
   const order = row.payload as Record<string, unknown>;
   const existing = order.review as { rating?: number; content?: string; at?: string } | null;
   const satisfaction = typeof state.satisfaction === "number" ? state.satisfaction : 60;
@@ -86,7 +96,7 @@ export async function generateBuyerReview(
         mode,
         rating: cappedRating,
         existing,
-        memory: state.memory,
+        transcript,
       }),
       buyerReviewSchema,
       { conversationId },

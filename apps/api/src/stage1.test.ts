@@ -1017,7 +1017,7 @@ describe("实训对话走模型网关（J1/J4/J5/J6 + B2）", () => {
       req.on("end", () => {
         const body = JSON.parse(raw) as Record<string, unknown>;
         requests.push(body);
-        // 结构化输出请求（导演）返回 JSON，其余返回买家台词
+        // 结构化输出请求（观察员）返回 JSON，其余返回买家台词；多给的 directive / memory 是旧版字段，应被丢弃
         const text = body.response_format
           ? JSON.stringify({ turnScore: 82, satisfaction: 71, emotion: "平静", stage: "方案协商", directive: "追问退款到账时间", memory: "客服同意补发配件", resolved: false })
           : "hmm ok ||| when will it arrive?";
@@ -1066,7 +1066,7 @@ describe("实训对话走模型网关（J1/J4/J5/J6 + B2）", () => {
     }
   }
 
-  it("售前会话：买家拿到在售商品；开场与回复按 ||| 拆条落库；导演 JSON 更新会话状态", async () => {
+  it("售前会话：买家拿到在售商品；开场与回复按 ||| 拆条落库；观察员 JSON 更新会话状态但不回写买家", async () => {
     const created = await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { scenarioId: "PRE-001" } });
     expect(created.statusCode).toBe(200);
     const conversationId = created.json().id ?? created.json().conversation?.id;
@@ -1091,13 +1091,29 @@ describe("实训对话走模型网关（J1/J4/J5/J6 + B2）", () => {
 
     await waitFor(async () => (await db.query("select state from conversations where id = $1", [conversationId])).rows[0].state.stage === "方案协商");
     const state = (await db.query("select state from conversations where id = $1", [conversationId])).rows[0].state;
-    expect(state).toMatchObject({ satisfaction: 71, emotion: "平静", stage: "方案协商", memory: "客服同意补发配件", studentTurns: 1 });
+    expect(state).toMatchObject({ satisfaction: 71, emotion: "平静", stage: "方案协商", studentTurns: 1 });
+    expect(state.memory).toBeUndefined();
+    expect(state.directive).toBeUndefined();
+
+    // D-50：评估结果只给教师端和评分，下一轮买家提示词里不出现情绪分数、指令或备忘录
+    const nextTurn = await app.inject({
+      method: "POST",
+      url: `/v1/conversations/${conversationId}/messages`,
+      headers: auth(student),
+      payload: { content: "It ships in 2 days." },
+    });
+    expect(nextTurn.body).toContain('"type":"done"');
+    const buyerSystem = (requests.filter((body) => !body.response_format).at(-1) as { messages: Array<{ content: string }> }).messages[0]!.content;
+    expect(buyerSystem).not.toContain("Director");
+    expect(buyerSystem).not.toContain("satisfaction");
+    expect(buyerSystem).not.toContain("方案协商");
 
     const metric = (await db.query("select provider, model, outcome, first_char_at >= received_at as ordered from conversation_metrics where conversation_id = $1", [conversationId])).rows;
-    expect(metric).toHaveLength(2);
+    expect(metric).toHaveLength(3);
     expect(metric.every((row) => row.provider === "对话测试" && row.model === "fake-model" && row.outcome === "success" && row.ordered)).toBe(true);
+    await waitFor(async () => (await db.query("select state from conversations where id = $1", [conversationId])).rows[0].state.studentTurns === 2);
     const usage = (await db.query("select purpose, count(*)::int as n from llm_usage where conversation_id = $1 group by purpose order by purpose", [conversationId])).rows;
-    expect(usage).toEqual([{ purpose: "dialogue", n: 2 }, { purpose: "director", n: 1 }]);
+    expect(usage).toEqual([{ purpose: "dialogue", n: 3 }, { purpose: "director", n: 2 }]);
   });
 });
 

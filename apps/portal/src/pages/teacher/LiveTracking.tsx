@@ -444,7 +444,7 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
               </div>
               <div className="mon-trend-h">
                 <span>走势</span>
-                <span className="mon-legend"><i className="is-sat" />满意度<i className="is-score" />得分<HelpTip>虚横线是 60 分。满意度由导演每轮评估，得分是导演每轮给的表现分</HelpTip></span>
+                <span className="mon-legend"><i className="is-sat" />满意度<i className="is-score" />得分<HelpTip>虚横线是 60 分。满意度和得分都由后台每轮评估，得分是学生这一轮的表现分</HelpTip></span>
               </div>
               <TrendChart satisfaction={trend} score={view.scoreTrend ?? []} />
               <span className="mon-cap">{trend.length >= 2 ? `满意度从 ${trend[0]} ${trend[trend.length - 1]! < trend[0]! ? "降到" : "升到"} ${trend[trend.length - 1]}` : "第 2 轮之后出现走势"}</span>

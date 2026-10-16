@@ -25,6 +25,7 @@ import { buildBuyerMessages, buildChineseFixMessages, hasChineseLeak } from "../
 import { loadEnabledPersonaTemplates } from "./catalog";
 import { loadStoreProfile } from "./store";
 import { once } from "../inflight";
+import { loadBuyerOrders } from "../buyer-orders";
 import { buildOutgoingTranslationMessages, buildTranslationMessages } from "../prompts/assist";
 
 interface ConversationRow {
@@ -45,13 +46,8 @@ const END_MARK = "[END_OF_SERVICE]";
 /** 买家连发分隔符：一轮回复拆成多条短消息（拟真聊天节奏） */
 const SPLIT_MARK = "|||";
 
-async function loadOrder(db: Db, conversationId: string): Promise<OrderInfo | null> {
-  const result = await db.query(
-    "select payload from orders where conversation_id = $1 and is_primary",
-    [conversationId],
-  );
-  return (result.rows[0]?.payload as OrderInfo | undefined) ?? null;
-}
+/** 漏中文改写最多试几次：flash 偶尔原样吐回来，再试一次通常就改掉了 */
+const CHINESE_FIX_ATTEMPTS = 2;
 
 async function loadScene(db: Db, scenarioId: string | null): Promise<{ prompt: string; script: ScenarioScript | null }> {
   const fallback = { prompt: "General customer service conversation.", script: null };
@@ -79,7 +75,7 @@ async function streamBuyerTurn(options: {
   // B2：首字耗时从收到请求那一刻算起（含查库、组装上下文），不是从调用模型时算
   const receivedAt = new Date(request.receivedAt);
   const scene = await loadScene(db, conversation.scenario_id);
-  const order = await loadOrder(db, conversation.id);
+  const orders = await loadBuyerOrders(db, conversation.id);
 
   reply.hijack();
   const raw = reply.raw;
@@ -147,8 +143,8 @@ async function streamBuyerTurn(options: {
     scenePrompt: scene.prompt,
     script: scene.script,
     personaSnapshot: conversation.persona,
-    orderSnapshot: order ? (order as unknown as Record<string, unknown>) : {},
-    sessionState: (conversation.state ?? {}) as never,
+    orderSnapshot: orders.primary ?? {},
+    pastOrders: orders.past,
     history,
     startedAt: conversation.created_at,
   });
@@ -192,21 +188,22 @@ async function streamBuyerTurn(options: {
   const buyerLanguage = conversation.persona.language as string | undefined;
   let corrected = false;
   if (outcome === "success" && hasChineseLeak(buyerReply, buyerLanguage)) {
-    try {
-      const { text } = await gateway.complete("assist", buildChineseFixMessages(buyerReply, buyerLanguage), {
-        conversationId: conversation.id,
-        temperature: 0.2,
-      });
-      const fixed = text.replace(END_MARK, "").trim();
-      if (fixed && !hasChineseLeak(fixed, buyerLanguage)) {
-        buyerReply = fixed;
-        corrected = true;
-      } else {
-        request.log.warn({ conversationId: conversation.id }, "buyer reply still has chinese after fix");
+    for (let attempt = 1; attempt <= CHINESE_FIX_ATTEMPTS && !corrected; attempt += 1) {
+      try {
+        const { text } = await gateway.complete("assist", buildChineseFixMessages(buyerReply, buyerLanguage), {
+          conversationId: conversation.id,
+          temperature: 0.2,
+        });
+        const fixed = text.replace(END_MARK, "").trim();
+        if (fixed && !hasChineseLeak(fixed, buyerLanguage)) {
+          buyerReply = fixed;
+          corrected = true;
+        }
+      } catch (error) {
+        request.log.error({ err: error, conversationId: conversation.id, attempt }, "buyer chinese fix failed");
       }
-    } catch (error) {
-      request.log.error({ err: error, conversationId: conversation.id }, "buyer chinese fix failed");
     }
+    if (!corrected) request.log.warn({ conversationId: conversation.id }, "buyer reply still has chinese after fix");
   }
 
   // 按 ||| 拆成多条短消息分行落库（拟真买家连发；回放/教师端同样逐条展示）
@@ -265,7 +262,7 @@ async function streamBuyerTurn(options: {
     }
   }
 
-  // 轻量Agent导演：异步评估学生表现、推演买家状态并更新记忆（不阻塞响应）
+  // 后台观察员（D-50）：异步评估学生表现与买家满意度，只给教师端、评分和催促用，不回写买家（不阻塞响应）
   if (outcome === "success" && !conversationClosed && history.some((item) => item.role === "student")) {
     void import("../director")
       .then(({ runDirector }) => runDirector(db, gateway, conversation.id))
@@ -457,11 +454,14 @@ export function registerConversationRoutes(
           ],
         );
       if (order) await insertOrder(order, true);
+      // 历史订单不抽这次咨询的商品：否则会出现“刚在店里看到这条裙子想批发”却“上个月买过两条正在退货”的矛盾
+      const consulting = new Set([order?.productName, (personaRecord.interestedProduct as { name?: string } | undefined)?.name].filter(Boolean));
+      const historyPool = productPool.filter((item) => !consulting.has(item.name));
       const historyOrders = generateBuyerOrderHistory(
         buyerHistoryOrderCount(persona.customerType as string, Math.random),
         Math.random,
         new Date(),
-        productPool,
+        historyPool.length > 0 ? historyPool : productPool,
         personaBrief,
       );
       for (const item of historyOrders) await insertOrder(item, false);

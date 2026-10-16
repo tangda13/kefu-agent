@@ -507,7 +507,7 @@ function RoutingSection({ session, llm, reload }: { session: Session; llm: LlmSt
               <Field label="回复长度上限"><Input type="number" min="16" value={routing.routes[purpose].maxTokens} onChange={(event) => update(purpose, { maxTokens: Number(event.target.value) })} /></Field>
             </div>
           ))}
-          <Field label="情绪与剧情推进的频率" hint="学生每发几条消息，在后台推演一次买家的情绪和剧情。调大能省钱，但买家情绪变化会慢一些。">
+          <Field label="满意度与表现评估的频率" hint="学生每发几条消息，在后台评估一次买家满意度、情绪和学生表现。调大能省钱，但教师端走势会粗一些，催促快慢按较早的情绪算。">
             <span className="inline-number">每<Input type="number" min="1" max="10" className="num-input" value={routing.directorEveryNTurns} onChange={(event) => setRouting({ ...routing, directorEveryNTurns: Number(event.target.value) || 1 })} />条运行一次</span>
           </Field>
         </Drawer>

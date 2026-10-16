@@ -63,7 +63,7 @@ export function buyerTimeLines(now: Date, startedAt?: Date | string | null): str
   return lines;
 }
 
-/** 导演提示词用（中文）：备忘录要把相对日期落成具体日期，买家才不会前后说岔 */
+/** 观察员提示词用（中文）：判断时效赶不赶得上期限时按具体日期比较 */
 export function directorTimeLine(now: Date): string {
   const { day: today, time } = localDay(now);
   const labels = ["本周", "下周", "下下周"];

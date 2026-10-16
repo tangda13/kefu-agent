@@ -4,6 +4,7 @@ import type { Db } from "./db";
 import type { LlmGateway } from "./llm/gateway";
 import { buildBuyerNudgeMessages, buildChineseFixMessages, hasChineseLeak } from "./prompts/buyer";
 import { once } from "./inflight";
+import { loadBuyerOrders } from "./buyer-orders";
 import { assessConversation } from "./assessment";
 import { generateBuyerReview } from "./review-gen";
 import type { SessionState } from "./director";
@@ -47,7 +48,7 @@ export async function sweepBuyerPatience(db: Db, gateway: LlmGateway, log: LogLi
     const count = previous?.count ?? 0;
     const waitedMinutes = (Date.now() - new Date(baseAt).getTime()) / 60_000;
     const persona = (row.persona ?? {}) as Record<string, unknown>;
-    // 当前情绪（导演推演）优先于初始情绪
+    // 当前情绪（后台观察员评估）优先于初始情绪
     const factor = patienceFactor({ emotion: state.emotion ?? persona.emotion, personality: persona.personality });
     const action = patienceAction(waitedMinutes, count, factor);
     if (!action) continue;
@@ -73,9 +74,10 @@ async function runNudge(
   const scenario = row.scenario_id
     ? (await db.query("select name, objective, script from scenarios where id = $1", [row.scenario_id])).rows[0]
     : null;
-  const orderRow = await db.query("select payload from orders where conversation_id = $1 and is_primary", [row.id]);
+  const orders = await loadBuyerOrders(db, row.id);
+  // 和实时回复一样看完整聊天（D-50），催的话才贴着刚才聊到的地方
   const historyRows = await db.query(
-    "select sender, content from conversation_messages where conversation_id = $1 order by created_at desc, id desc limit 12",
+    "select sender, content from conversation_messages where conversation_id = $1 order by created_at desc, id desc limit 300",
     [row.id],
   );
   const history = (historyRows.rows.reverse() as Array<{ sender: "buyer" | "student" | "teacher"; content: string }>).map((m) => ({
@@ -87,8 +89,8 @@ async function runNudge(
       scenePrompt: scenario ? `${scenario.name}：${scenario.objective}` : "General customer service conversation.",
       script: (scenario?.script as ScenarioScript | null) ?? null,
       personaSnapshot: row.persona ?? {},
-      orderSnapshot: (orderRow.rows[0]?.payload as Record<string, unknown> | undefined) ?? {},
-      sessionState: state as never,
+      orderSnapshot: orders.primary ?? {},
+      pastOrders: orders.past,
       history,
       startedAt: row.created_at,
     },

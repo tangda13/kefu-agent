@@ -181,7 +181,8 @@ export function buildBuyerReviewMessages(input: {
   mode: "create" | "revise";
   rating: number;
   existing: { rating?: number; content?: string } | null;
-  memory: string | undefined;
+  /** 最近一段聊天原文（买家称 Me，客服称 Store agent） */
+  transcript: string;
 }): ChatMessage[] {
   const persona = input.persona;
   return [
@@ -194,7 +195,7 @@ export function buildBuyerReviewMessages(input: {
         (input.mode === "revise"
           ? `You previously left a ${input.existing?.rating}-star review: "${input.existing?.content}". The support agent resolved your issue, so you are UPDATING your review to ${input.rating} stars. Mention that the seller followed up and resolved the problem.`
           : `Now you are leaving a ${input.rating}-star review for this order, reflecting both the product and the service experience.`) +
-        ` Key facts from the conversation: ${input.memory ?? "(none)"}. ` +
+        ` The end of your chat with the store, for reference (the agent may have typed Chinese; never copy Chinese words into the review):\n${input.transcript || "(no messages)"}\n` +
         `Write the review in ${languageNameOf(persona.language as string | undefined)} (your native language), 1-3 natural sentences, first person, no absolute marketing phrases. ` +
         'Return ONLY a JSON object: {"content":"..."}.',
     },
