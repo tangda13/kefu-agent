@@ -10,5 +10,15 @@ interface Window {
       | { ok: true; url: string; title: string; text: string; structured: string; images: Array<{ dataUrl: string }> }
       | { ok: false; reason: "invalid" | "closed" | "timeout" }
     >;
+    /** 登录页“记住密码”（D-51）：系统凭据加密后存本机；浏览器里没有这个能力 */
+    rememberedLogin?: {
+      load: () => Promise<{
+        ok: boolean;
+        available: boolean;
+        credentials: Partial<Record<"student" | "teacher" | "admin", { username: string; password: string }>>;
+      }>;
+      save: (role: "student" | "teacher" | "admin", username: string, password: string) => Promise<{ ok: boolean; available?: boolean }>;
+      remove: (role: "student" | "teacher" | "admin") => Promise<{ ok: boolean }>;
+    };
   };
 }

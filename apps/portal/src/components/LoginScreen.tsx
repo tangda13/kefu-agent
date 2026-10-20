@@ -1,9 +1,16 @@
 import { Eye, EyeOff } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { BrandMark, useBrand } from "../brand";
 import sceneImage from "../assets/login/scene.webp";
 import type { UserRole } from "@cecs/contracts";
 import { ApiError, changePassword, login, type Session } from "../api/client";
+import {
+  loadRememberedCredentials,
+  removeRememberedCredential,
+  saveRememberedCredential,
+  supportsRememberPassword,
+  type RememberedCredentials,
+} from "../api/remembered-login";
 
 const roleCopy: Record<UserRole, { account: string; accountHint: string; remember: string }> = {
   student: { account: "学号", accountHint: "请输入学号", remember: "记住学号" },
@@ -41,6 +48,10 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
   const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState(() => readRemembered()[initialRole] ?? "");
   const [remember, setRemember] = useState(() => Boolean(readRemembered()[initialRole]));
+  /** 记住密码只在客户端可用（主进程用系统凭据加密），浏览器里交给浏览器自己的密码管理器 */
+  const canRememberPassword = supportsRememberPassword();
+  const [rememberPassword, setRememberPassword] = useState(false);
+  const [remembered, setRemembered] = useState<RememberedCredentials>({});
   const { brand, online } = useBrand();
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -53,11 +64,57 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
   const [busy, setBusy] = useState(false);
   const copy = roleCopy[activeRole];
 
+  // 记住的密码由主进程解密，异步读回来；读到后回填当前页签
+  useEffect(() => {
+    if (!canRememberPassword) return;
+    let active = true;
+    void loadRememberedCredentials().then((credentials) => {
+      if (active) setRemembered(credentials);
+    });
+    return () => { active = false; };
+  }, [canRememberPassword]);
+
+  useEffect(() => {
+    const saved = remembered[activeRole];
+    if (!saved) return;
+    setUsername((current) => current || saved.username);
+    setPassword((current) => current || saved.password);
+    setRemember(true);
+    setRememberPassword(true);
+  }, [remembered, activeRole]);
+
+  function forgetPassword() {
+    setRemembered((prev) => {
+      if (!(activeRole in prev)) return prev;
+      const next = { ...prev };
+      delete next[activeRole];
+      return next;
+    });
+    void removeRememberedCredential(activeRole);
+  }
+
+  function toggleRemember(next: boolean) {
+    setRemember(next);
+    if (!next && rememberPassword) {
+      setRememberPassword(false);
+      forgetPassword();
+    }
+  }
+
+  function toggleRememberPassword(next: boolean) {
+    setRememberPassword(next);
+    if (next) setRemember(true);
+    else forgetPassword();
+  }
+
   function switchRole(next: UserRole) {
     if (busy || next === activeRole) return;
     setActiveRole(next);
     setUsername(readRemembered()[next] ?? "");
     setRemember(Boolean(readRemembered()[next]));
+    const saved = remembered[next];
+    setPassword(saved?.password ?? "");
+    setRememberPassword(Boolean(saved));
     setError("");
     setSwitchTo(null);
     setHint("");
@@ -71,8 +128,18 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
     setHint("");
     setBusy(true);
     try {
-      const session = await login(username.trim(), password, activeRole);
-      writeRemembered(activeRole, remember ? username.trim() : null);
+      const account = username.trim();
+      const session = await login(account, password, activeRole);
+      if (rememberPassword) {
+        // 密码和账号一起记住；账号也写入“记住学号”，避免下次密码没有对应账号
+        writeRemembered(activeRole, account);
+        setRemember(true);
+        setRemembered((prev) => ({ ...prev, [activeRole]: { username: account, password } }));
+        void saveRememberedCredential(activeRole, account, password);
+      } else {
+        writeRemembered(activeRole, remember ? account : null);
+        forgetPassword();
+      }
       if (session.user.mustChangePassword) {
         setPendingSession(session);
       } else {
@@ -108,7 +175,15 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
     setBusy(true);
     try {
       await changePassword(pendingSession, password, newPassword);
-      const session = await login(pendingSession.user.username, newPassword, activeRole);
+      const account = pendingSession.user.username;
+      const session = await login(account, newPassword, activeRole);
+      if (rememberPassword) {
+        // 首次登录改完密码后，把记住的临时密码换成新密码
+        setRemembered((prev) => ({ ...prev, [activeRole]: { username: account, password: newPassword } }));
+        void saveRememberedCredential(activeRole, account, newPassword);
+      } else {
+        forgetPassword();
+      }
       onLogin(session);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
@@ -176,7 +251,12 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
                 ) : null}
                 <button className="login-submit" type="submit" disabled={busy}>{busy ? "登录中…" : "登录"}</button>
                 <div className="login-row">
-                  <label className="login-check"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />{copy.remember}</label>
+                  <div className="login-checks">
+                    <label className="login-check"><input type="checkbox" checked={remember} onChange={(event) => toggleRemember(event.target.checked)} />{copy.remember}</label>
+                    {canRememberPassword ? (
+                      <label className="login-check"><input type="checkbox" checked={rememberPassword} onChange={(event) => toggleRememberPassword(event.target.checked)} />记住密码</label>
+                    ) : null}
+                  </div>
                   <button type="button" className="login-link" onClick={() => setHint(activeRole === "student" ? "请联系任课教师重置密码。" : activeRole === "teacher" ? "请联系平台管理员重置密码。" : "请在服务器上运行重置密码命令，见运维手册。")}>忘记密码</button>
                 </div>
                 {hint ? <p className="login-hint">{hint}</p> : null}

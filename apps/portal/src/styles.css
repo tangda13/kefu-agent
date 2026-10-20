@@ -122,7 +122,8 @@ small { color: var(--c-ink-3); }
 .login-submit { height: 44px; border: 0; border-radius: 10px; background: var(--c-primary); color: #fff; font-size: 15px; font-weight: 600; }
 .login-submit:hover { background: var(--c-primary-hover); }
 .login-submit:disabled { background: var(--c-primary-disabled); cursor: not-allowed; }
-.login-row { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-body); color: var(--c-ink-2); }
+.login-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: var(--fs-body); color: var(--c-ink-2); }
+.login-checks { display: inline-flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .login-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .login-check input { margin: 0; accent-color: var(--c-ink); }
 .login-link { padding: 0; margin-left: 8px; border: 0; background: none; color: var(--c-accent); font-size: var(--fs-body); }

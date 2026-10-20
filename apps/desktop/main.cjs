@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, session, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, session, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -137,6 +137,62 @@ ipcMain.handle("cecs:capture-page", async (event, options = {}) => {
     const userAgent = win.webContents.getUserAgent().replace(/\s?Electron\/\S+/, "").replace(/\s?@?cecs\S*/i, "");
     win.loadURL(target.toString(), { userAgent }).catch(() => undefined);
   });
+});
+
+// 登录页“记住密码”：只存本机，用系统凭据加密（Windows 为 DPAPI），不写明文。
+// 浏览器端没有系统凭据能力，由浏览器自带的密码管理器负责，不在这里处理。
+const REMEMBERED_LOGIN_ROLES = new Set(["student", "teacher", "admin"]);
+
+function rememberedLoginPath() {
+  return path.join(app.getPath("userData"), "remembered-login.json");
+}
+
+function readRememberedLogins() {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return {};
+    const envelope = JSON.parse(fs.readFileSync(rememberedLoginPath(), "utf8"));
+    if (typeof envelope?.data !== "string") return {};
+    const plain = safeStorage.decryptString(Buffer.from(envelope.data, "base64"));
+    const parsed = JSON.parse(plain);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    // 文件不存在、系统凭据变了、内容损坏：按没记住处理
+    return {};
+  }
+}
+
+function writeRememberedLogins(credentials) {
+  try {
+    const data = safeStorage.encryptString(JSON.stringify(credentials)).toString("base64");
+    fs.writeFileSync(rememberedLoginPath(), JSON.stringify({ v: 1, data }), { mode: 0o600 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+ipcMain.handle("cecs:remembered-login-load", () => {
+  const available = safeStorage.isEncryptionAvailable();
+  return { ok: true, available, credentials: available ? readRememberedLogins() : {} };
+});
+
+ipcMain.handle("cecs:remembered-login-save", (_event, payload = {}) => {
+  const role = payload.role;
+  const username = typeof payload.username === "string" ? payload.username.trim().slice(0, 64) : "";
+  const password = typeof payload.password === "string" ? payload.password.slice(0, 128) : "";
+  if (!REMEMBERED_LOGIN_ROLES.has(role) || !username || !password) return { ok: false };
+  if (!safeStorage.isEncryptionAvailable()) return { ok: false, available: false };
+  const credentials = readRememberedLogins();
+  credentials[role] = { username, password };
+  return { ok: writeRememberedLogins(credentials), available: true };
+});
+
+ipcMain.handle("cecs:remembered-login-remove", (_event, payload = {}) => {
+  const role = payload.role;
+  if (!REMEMBERED_LOGIN_ROLES.has(role)) return { ok: false };
+  const credentials = readRememberedLogins();
+  delete credentials[role];
+  return { ok: writeRememberedLogins(credentials) };
 });
 
 function createWindow() {
