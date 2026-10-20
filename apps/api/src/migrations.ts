@@ -626,4 +626,34 @@ alter table llm_profiles alter column thinking set default '{"enabled":false,"le
 alter table llm_profiles alter column thinking set not null;
 `,
   },
+  {
+    /* 参数核对 · 学生端（2026-10-19）：
+       - service_rating：接待结束时买家给服务打的 1–5 星（D-54），按结束时满意度换算，不是一条消息
+       - tool_followup：会话结束后用订单页工具（付款提醒 / 物流通知）、买家回复后的短跟进（D-56）：
+         { kind, orderId, sentAt, startedAt, studentTurns, endedAt, endReason }；跟进不评分、不出星级
+       - channel：chat = 在线会话，mail = 邮件任务（D-58，邮件和评分、任务进度复用会话这套）
+       - mail_submissions.conversation_id：任务邮件发出后和它的邮件会话关联 */
+    id: "038_params_student",
+    sql: `
+alter table conversations add column if not exists service_rating smallint check (service_rating between 1 and 5);
+alter table conversations add column if not exists tool_followup jsonb;
+alter table conversations add column if not exists channel text not null default 'chat' check (channel in ('chat','mail'));
+alter table mail_submissions add column if not exists conversation_id uuid references conversations(id) on delete set null;
+`,
+  },
+  {
+    /* D-54：已经结束的老接待按当时的满意度补上星级（和 starsFromSatisfaction 同一套分界），满意率不用从零开始 */
+    id: "039_service_rating_backfill",
+    sql: `
+-- 已经结束的老接待按当时的满意度补上星级（和 starsFromSatisfaction 同一套分界），满意率不用从零开始
+update conversations c set service_rating = case
+    when coalesce((c.state->>'satisfaction')::numeric, 60) >= 85 then 5
+    when coalesce((c.state->>'satisfaction')::numeric, 60) >= 70 then 4
+    when coalesce((c.state->>'satisfaction')::numeric, 60) >= 45 then 3
+    when coalesce((c.state->>'satisfaction')::numeric, 60) >= 25 then 2
+    else 1 end
+where c.status = 'closed' and c.service_rating is null and c.channel = 'chat'
+  and exists (select 1 from conversation_messages m where m.conversation_id = c.id and m.sender = 'buyer');
+`,
+  },
 ];

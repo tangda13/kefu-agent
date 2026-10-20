@@ -89,7 +89,7 @@ export function registerOrderRoutes(
     async (request) => {
       const user = request.user!;
       const result = await db.query(
-        `select a.*, c.persona, c.task_id, s.name as scenario_name, s.stage as scenario_stage,
+        `select a.*, c.persona, c.task_id, c.channel, c.service_rating, s.name as scenario_name, s.stage as scenario_stage,
                 t.name as task_name, t.pass_score
          from assessments a
          join conversations c on c.id = a.conversation_id
@@ -116,6 +116,10 @@ export function registerOrderRoutes(
         suggestions: row.suggestions,
         /* 自由练习（无任务归属）：保留 AI 反馈供学习，但不计入平均分与雷达 */
         practice: row.task_id == null,
+        /* D-58：邮件任务的记录，复盘里看这封邮件 */
+        channel: (row.channel ?? "chat") as "chat" | "mail",
+        /* D-54：买家给这次服务打的星 */
+        serviceRating: row.service_rating == null ? null : Number(row.service_rating),
         createdAt: row.created_at,
       }));
       const scored = records.filter((row) => !row.practice);

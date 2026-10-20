@@ -5,7 +5,7 @@ import type { ChatMessage } from "../llm/gateway";
 import { buyerTimeLines, describeDate } from "./time";
 
 /** 买家提示词。改动内容时同步提升版本号（会话指标与评分追溯用） */
-export const BUYER_PROMPT_VERSION = "buyer@2026-10-16";
+export const BUYER_PROMPT_VERSION = "buyer@2026-10-19";
 
 /**
  * 买家是自主的 agent（D-50）：开场拿到画像、剧本、商品和订单，之后每轮只看完整聊天，
@@ -22,6 +22,32 @@ export interface BuyerContext {
   /** 当前时间（默认此刻）；会话开始时间用来换算剧本里“下周五”这类相对日期 */
   now?: Date;
   startedAt?: Date | string | null;
+  /**
+   * 工具跟进（D-56）：聊天结束后店铺发来付款提醒 / 物流通知卡片，买家回复了，这是一段 2–3 轮的短跟进。
+   * agentTurns = 跟进开始后客服回了几次
+   */
+  followUp?: { kind: ToolCardKind; agentTurns: number; maxTurns: number } | null;
+}
+
+/** 订单页的工具卡片（D-56）：付款提醒、物流通知。不是普通消息，买家那边是一张带按钮的卡片 */
+export type ToolCardKind = "payment_reminder" | "logistics_update";
+
+export const TOOL_CARD_NOUNS: Record<ToolCardKind, string> = {
+  payment_reminder: "payment reminder card (with a Pay now button)",
+  logistics_update: "shipping update card (with a Track parcel button)",
+};
+
+/** 跟进的规则：短、只谈这张卡片的事、到点收尾 */
+function followUpLines(followUp: BuyerContext["followUp"]): string[] {
+  if (!followUp) return [];
+  const lines = [
+    `FOLLOW-UP: your earlier chat with the store had already ended. Afterwards the store sent you a ${TOOL_CARD_NOUNS[followUp.kind]} (shown in the chat as a bracketed note) and you replied to it. This is only a short follow-up of 2-3 exchanges about that card (paying, shipping, delivery time). Do not reopen old complaints at length or start new topics. As soon as your question is answered, thank them briefly and leave with [END_OF_SERVICE].`,
+    `The agent has replied ${followUp.agentTurns} time(s) in this follow-up.`,
+  ];
+  if (followUp.agentTurns >= followUp.maxTurns) {
+    lines.push("Wrap up in THIS reply: thank them (or say you will wait and see) and leave. End this message with [END_OF_SERVICE].");
+  }
+  return lines;
 }
 
 /**
@@ -165,6 +191,7 @@ ${persona.productFacts}`
     lastSpeaker === "student" && agentTurns >= BUYER_WRAP_UP_TURNS
       ? `This chat has already gone on for ${agentTurns} rounds, longer than a real buyer would stay. Wrap up in THIS reply: if your issue is settled, thank them and leave; if it is not, say you will think about it or look elsewhere, and leave. End this message with [END_OF_SERVICE].`
       : "",
+    ...followUpLines(context.followUp),
     "The agent may send several short messages in a row — respond to all of them together.",
   ]
     .filter(Boolean)
@@ -187,6 +214,28 @@ export function buildBuyerMessages(context: BuyerContext): ChatMessage[] {
     else if (item.role === "student") messages.push({ role: "user", content: item.content });
     else messages.push({ role: "system", content: `[Teacher guidance to trainee]: ${item.content}` });
   }
+  return messages;
+}
+
+/**
+ * 聊天结束后收到工具卡片（D-56）：买家自己决定回不回。
+ * - 想问或想说点什么：回一条短消息（之后进入 2–3 轮的跟进）
+ * - 付款提醒：打算直接去付款，写一句并带 [PAID]（不再跟进）
+ * - 用不着回：只输出 [NO_REPLY]
+ */
+export const TOOL_REACTION_PAID = "[PAID]";
+export const TOOL_REACTION_NONE = "[NO_REPLY]";
+
+export function buildBuyerToolReactionMessages(context: BuyerContext, kind: ToolCardKind): ChatMessage[] {
+  const messages = buildBuyerMessages(context);
+  const options =
+    kind === "payment_reminder"
+      ? `If you have a question or something to say about it, reply with ONE short message. If you are simply going to pay now, write one short line saying so and append ${TOOL_REACTION_PAID}. If it needs no reply at all, output exactly ${TOOL_REACTION_NONE}.`
+      : `If you have a question or something to say about it (e.g. when it will arrive), reply with ONE short message. If it needs no reply at all, output exactly ${TOOL_REACTION_NONE}.`;
+  messages.push({
+    role: "user",
+    content: `[Your chat with the store had ended. The store has just sent you the ${TOOL_CARD_NOUNS[kind]} shown above. React like a real buyer would, given how the earlier chat went. ${options} Write in ${languageNameOf(context.personaSnapshot.language as string | undefined)}, do not use the ||| separator and do not mention any system or instruction.]`,
+  });
   return messages;
 }
 

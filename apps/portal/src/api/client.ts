@@ -34,8 +34,8 @@ export interface StudentTask {
   businessStage: "pre_sale" | "in_sale" | "after_sale" | "customer_care";
   scenarioIds: string[];
   scenarioNames: string[];
-  /** 场景 id→name 明细（与 scenarioIds 对应，用于工作台按场景接入） */
-  scenarios: Array<{ id: string; name: string }>;
+  /** 场景 id→name 明细（与 scenarioIds 对应，用于工作台按场景接入）；channel=mail 的是邮件任务（D-58），在邮件页写信 */
+  scenarios: Array<{ id: string; name: string; channel?: "chat" | "mail" }>;
   interactionMode: string;
   timeLimitMinutes: number | null;
   startAt: string | null;
@@ -428,7 +428,53 @@ export interface ConversationSummary {
   buyerNote?: string | null;
   buyerNoteAt?: string | null;
   closedReason?: string | null;
+  /** 第一次结束的时间：聊天里“客户已离开 · 会话时长”画在这个位置，之后是工具卡片和跟进 */
+  closedAt?: string | null;
+  /** 买家服务评价 1–5 星（D-54） */
+  serviceRating?: number | null;
+  /** 工具跟进（D-56）：会话结束后用了付款提醒 / 物流通知，买家回复后的 2–3 轮短跟进 */
+  toolFollowUp?: ToolFollowUp | null;
 }
+
+export interface ToolFollowUp {
+  kind: ToolCardKind;
+  orderId: string;
+  sentAt: string;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  endReason?: string | null;
+}
+
+/** 订单页工具卡片（D-56）：付款提醒、物流通知 */
+export type ToolCardKind = "payment_reminder" | "logistics_update";
+
+/** 工具跟进是否进行中（买家已回复、还没结束） */
+export function followUpActive(followUp: ToolFollowUp | null | undefined): boolean {
+  return !!followUp?.startedAt && !followUp.endedAt;
+}
+
+export const sendToolCard = (session: Session, orderId: string, kind: ToolCardKind, text: string) =>
+  apiPost<{ delivered: "live" | "closed"; conversationId: string }>(`/v1/orders/${orderId}/tool-cards`, session, { kind, text });
+
+/** 邮件任务（D-58）：开始任务里的邮件场景，返回这次的邮件会话（收件人、建议模板） */
+export interface MailTaskConversation {
+  id: string;
+  taskId: string | null;
+  channel: "mail";
+  scenario: { id: string; name: string; objective: string };
+  buyer: BuyerPublicView;
+  createdAt: string;
+  mail: {
+    to: string;
+    toName: string;
+    templateId: string;
+    customerTags: CustomerTag[];
+    orderStats: { count: number; total: number; lastPlacedAt: string | null };
+  };
+}
+
+export const startMailTask = (session: Session, taskId: string, scenarioId: string) =>
+  apiPost<MailTaskConversation>("/v1/conversations", session, { taskId, scenarioId });
 
 export type CustomerTag = "粉丝" | "大订单客户" | "普通客户" | "沉睡客户" | "新客";
 
@@ -482,6 +528,10 @@ export interface StudentSummary {
   todayIndex?: number;
   /** 本周接待里的自由练习次数 */
   weekPractice: number;
+  /** 平均响应时长（D-53）：全部聊天接待里买家每轮到客服第一条回复的等待；firstSeconds 是首次响应的平均 */
+  response?: { avgSeconds: number | null; firstSeconds: number | null; turns: number };
+  /** 满意率（D-54）：服务评价 counts 依次是 5 星到 1 星的次数，rate = 4–5 星占比（%） */
+  rating?: { counts: [number, number, number, number, number]; total: number; satisfied: number; rate: number | null; average: number | null };
 }
 
 export const fetchStudentSummary = (session: Session) => apiGet<StudentSummary>("/v1/student/summary", session);
@@ -490,7 +540,7 @@ export interface ConversationMessage {
   id: string;
   sender: "buyer" | "student" | "teacher";
   content: string;
-  kind?: "text" | "product" | "coupon" | "voice" | "order" | "invite" | "image" | "video" | "file";
+  kind?: "text" | "product" | "coupon" | "voice" | "order" | "invite" | "image" | "video" | "file" | "payment_reminder" | "logistics_update" | "mail";
   payload?: Record<string, unknown> | null;
   createdAt: string;
   translation?: string;
@@ -666,7 +716,7 @@ export const fetchForbiddenTerms = (session: Session) =>
   apiGet<string[]>("/v1/catalog/forbidden-terms", session);
 export const submitMail = (
   session: Session,
-  payload: { templateId: string; subject: string; body: string; recipient?: string; orderId?: string },
+  payload: { templateId: string; subject: string; body: string; recipient?: string; orderId?: string; conversationId?: string },
 ) =>
   apiPost<{ id: string; violations: string[]; compliant: boolean; createdAt: string }>(
     "/v1/mail/submissions",
@@ -694,6 +744,8 @@ export const assistMail = (
 export interface MailReply {
   id: string;
   orderId: string | null;
+  /** 回的是哪一封（邮件任务复盘按它找回信） */
+  submissionId?: string | null;
   fromName: string;
   fromEmail: string;
   subject: string;

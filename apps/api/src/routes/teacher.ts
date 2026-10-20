@@ -215,7 +215,8 @@ export function registerTeacherRoutes(
            select sender, content, created_at from conversation_messages m
            where m.conversation_id = c.id and m.sender <> 'teacher' order by m.created_at desc limit 1
          ) lm on true
-         where c.status = 'active' and c.task_id is not null and c.student_id in (${scopedStudentsSql(isAdmin)})
+         where c.status = 'active' and c.task_id is not null and c.channel = 'chat' and c.tool_followup is null
+           and c.student_id in (${scopedStudentsSql(isAdmin)})
          order by coalesce(lm.created_at, c.created_at) desc limit 40`,
         params,
       );
@@ -510,8 +511,8 @@ export function registerTeacherRoutes(
       const isAdmin = user.role === "admin";
       const params = isAdmin ? [] : [user.sub];
       const result = await db.query(
-        `select a.*, u.display_name as student_name, u.username, c.persona, c.task_id, s.name as scenario_name,
-                t.name as task_name, t.scoring_weights
+        `select a.*, u.display_name as student_name, u.username, c.persona, c.task_id, c.channel, c.service_rating, c.closed_at,
+                s.name as scenario_name, t.name as task_name, t.scoring_weights
          from assessments a
          join users u on u.id = a.student_id
          join conversations c on c.id = a.conversation_id
@@ -539,6 +540,10 @@ export function registerTeacherRoutes(
         taskName: row.task_name ?? null,
         username: row.username,
         weights: row.scoring_weights ?? {},
+        /* D-58 邮件任务回放看邮件；D-54 买家服务评价（星级）；回放按结束时间画结束提示 */
+        channel: (row.channel ?? "chat") as "chat" | "mail",
+        serviceRating: row.service_rating == null ? null : Number(row.service_rating),
+        closedAt: row.closed_at ?? null,
         createdAt: row.created_at,
       }));
     },

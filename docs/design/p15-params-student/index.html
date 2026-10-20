@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>学生端参数改动</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+* { box-sizing: border-box; } html, body { margin: 0; }
+body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 24px; } .doc h2 { margin: 48px 0 8px; font-size: 20px; } .doc h2 small { font-size: 13px; font-weight: 400; color: #465163; margin-left: 8px; }
+.doc h3.sub { margin: 28px 0 6px; font-size: 16px; }
+.lede { margin: 0 0 16px; color: #465163; max-width: 1120px; }
+.note { font-size: 12px; color: #465163; margin-top: 8px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } .tri { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; } figure { margin: 0; } figcaption { font-size: 12px; color: #465163; margin-top: 6px; }
+.before { width: 100%; display: block; border-radius: 10px; border: 1px solid #d6dce5; }
+.frame { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid #d6dce5; box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); background: #f4f6f9; margin-top: 8px; }
+.screen { position: absolute; top: 0; left: 0; width: 1440px; transform-origin: 0 0; overflow: hidden; }
+.t { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d6dce5; border-radius: 10px; overflow: hidden; font-size: 13px; }
+.t th, .t td { text-align: left; padding: 9px 14px; border-bottom: 1px solid #edf0f4; vertical-align: top; } .t th { background: #f6f8fb; color: #465163; font-size: 12px; white-space: nowrap; } .t td:first-child { white-space: nowrap; font-weight: 600; }
+.t td .api { display: inline-block; margin: 2px 4px 0 0; padding: 0 6px; border-radius: 4px; background: #fdf1dc; color: #8a5300; font-size: 11px; font-weight: 600; }
+.t td .d { color: #5e6a7b; font-size: 12px; }
+.keep { color: #1a7445; } .chg { color: #174aa8; }
+.lv { display: inline-flex; gap: 8px; flex-wrap: wrap; } .lv span { padding: 0 10px; border-radius: 12px; background: #fff; border: 1px solid #d6dce5; font-size: 12px; } .lv .g { color: #1a7445; } .lv .r { color: #b8302a; }
+ol.q { margin: 0; padding-left: 20px; max-width: 1120px; } ol.q li { margin-bottom: 8px; }
+
+/* 织 UI 令牌 */
+.s { --canvas:#f4f6f9; --line:#e3e7ee; --hover:#eef2f7; --ink:#161c26; --ink-2:#465163; --ink-3:#5e6a7b; --ink-4:#9aa3b0; --brand:#1d5fd1; --brand-soft:#e8effc; --brand-ink:#174aa8; --ok:#1a7445; --ok-wash:#e3f4ea; --bad:#b8302a; --bad-wash:#fbe8e6; --warn:#a3640b; --warn-wash:#fdf1dc;
+  background: var(--canvas); color: var(--ink); font: 400 14px/22px Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.s svg.ic { width: 18px; height: 18px; stroke-width: 1.75; flex: none; }
+.num { font-variant-numeric: tabular-nums; }
+.app { display: grid; grid-template-columns: 232px 1fr; grid-template-rows: minmax(0, 1fr); height: 100%; } .app > .main { overflow: hidden; }
+.side { background: #fff; border-right: 1px solid var(--line); padding: 14px 12px; display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 18px; font-weight: 700; font-size: 14px; }
+.mark { display: inline-flex; width: 26px; height: 26px; border-radius: 6px; background: var(--brand); color: #fff; align-items: center; justify-content: center; } .mark svg { width: 16px !important; height: 16px !important; }
+.nav { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 6px; color: var(--ink-2); } .nav svg { color: var(--ink-3); } .nav.on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; } .nav.on svg { color: var(--brand-ink); }
+.nav .badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; } .nav .badge.soft { background: var(--hover); color: var(--ink-2); }
+.navlabel { display: flex; align-items: center; gap: 8px; margin: 16px 12px 6px; font-size: 13px; color: var(--ink-2); } .navlabel .shop { width: 20px; height: 20px; border-radius: 5px; background: #1c2230; color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.side-foot { margin-top: auto; border-top: 1px solid var(--line); padding-top: 8px; }
+.main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+.head { display: flex; align-items: center; gap: 16px; height: 56px; flex: none; padding: 0 40px; background: #fff; border-bottom: 1px solid var(--line); } .head h1 { margin: 0; font-size: 20px; }
+.head.store { padding: 0 24px; }
+.head .right { margin-left: auto; display: flex; gap: 12px; align-items: center; color: var(--ink-2); }
+.av { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: #eef2f7; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--brand-ink); }
+.body { padding: 28px 40px; flex: 1; min-height: 0; }
+.sbody { flex: 1; min-height: 0; background: #fff; }
+.htabs { display: flex; gap: 28px; height: 56px; align-items: stretch; } .htabs span { display: flex; align-items: center; font-size: 15px; color: var(--ink-2); border-bottom: 2px solid transparent; } .htabs span.on { color: var(--ink); font-weight: 700; border-color: var(--brand); } .htabs i { font-style: normal; margin-left: 6px; color: var(--ink-4); font-size: 14px; } .htabs i.red { color: var(--bad); font-weight: 700; }
+.help { display: inline-flex; color: var(--ink-4); } .help svg { width: 15px !important; height: 15px !important; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 16px; border-radius: 6px; font-size: 14px; white-space: nowrap; } .btn svg { width: 16px !important; height: 16px !important; }
+.btn.p { background: var(--brand); color: #fff; font-weight: 600; } .btn.g { color: var(--ink-2); } .btn.o { border: 1px solid #c8cfda; background: #fff; } .btn.s { height: 30px; padding: 0 12px; font-size: 13px; border: 1px solid #c8cfda; background: #fff; } .btn.dis { opacity: .45; }
+.tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; font-size: 12px; background: var(--hover); color: var(--ink-2); } .tag.fan { background: #fbe7ef; color: #a3245a; } .tag.ok { background: var(--ok-wash); color: var(--ok); } .tag.brand { background: var(--brand-soft); color: var(--brand-ink); }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.face { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 15px; flex: none; } .face.sm { width: 32px; height: 32px; font-size: 13px; } .face.xs { width: 28px; height: 28px; font-size: 12px; }
+
+/* 关键数字卡 */
+.kc-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+.kc { position: relative; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; height: 112px; }
+.kc .lb { display: flex; gap: 4px; align-items: center; font-size: 13px; color: var(--ink-2); }
+.kc .v b { font-size: 28px; font-weight: 700; line-height: 40px; } .kc .v b.dash { color: #c3cad5; } .kc .v small { margin-left: 4px; color: var(--ink-3); font-size: 13px; }
+.kc .sub { font-size: 12px; color: var(--ink-3); } .kc .viz { position: absolute; right: 20px; top: 22px; }
+.kbar { height: 8px; border-radius: 4px; background: #edf0f4; margin-top: 8px; width: 100%; overflow: hidden; } .kbar i { display: block; height: 100%; background: var(--ok); border-radius: 4px; } .kbar.empty { background: repeating-linear-gradient(45deg, #edf0f4 0 6px, #f6f8fb 6px 12px); }
+.pill { display: inline-flex; gap: 2px; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 12px; font-weight: 600; align-items: center; background: var(--ok-wash); color: var(--ok); white-space: nowrap; margin-right: 4px; }
+.tipbox { position: absolute; width: 268px; padding: 10px 12px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(16,24,40,.16); font-size: 12px; line-height: 18px; color: var(--ink-2); z-index: 3; } .tipbox b { display: block; color: var(--ink); font-size: 13px; margin-bottom: 2px; }
+
+/* 任务大厅 */
+.hall-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 328px; gap: 16px; align-items: start; } .hall-grid > .board:first-child { grid-column: span 3; } .kc-row.hall { grid-template-columns: repeat(3, minmax(0, 1fr)) 328px; }
+.board { background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+.tb-h { display: flex; gap: 32px; height: 56px; padding: 0 28px; border-bottom: 1px solid var(--line); } .tb-tab { display: flex; align-items: center; font-size: 16px; color: var(--ink-2); border-bottom: 2px solid transparent; } .tb-tab.on { color: var(--brand-ink); font-weight: 700; border-color: var(--brand); } .tb-tab i { font-style: normal; margin-left: 6px; color: var(--ink-4); font-size: 13px; font-weight: 400; }
+.cur { padding: 22px 28px; border-bottom: 1px solid var(--line); }
+.cur .r1 { display: flex; align-items: center; gap: 8px; } .cur .stg { font-size: 13px; color: var(--ink-3); } .cur h4 { margin: 0 0 0 4px; font-size: 20px; }
+.due { font-size: 13px; color: var(--ink-3); white-space: nowrap; } .due.warn { color: var(--warn); font-weight: 600; } .cur .due { margin-left: auto; }
+.cur .meta { margin-top: 6px; font-size: 13px; color: var(--ink-3); }
+.steps { list-style: none; margin: 14px 0 18px; padding: 0; display: grid; gap: 10px; } .steps li { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+.steps .no { width: 22px; height: 22px; border-radius: 50%; background: #e3e7ee; color: var(--ink-2); font-size: 12px; display: grid; place-items: center; } .steps li.done .no { background: var(--ok); color: #fff; } .steps li.done .no svg { width: 13px !important; height: 13px !important; } .steps li.next .no { background: var(--brand); color: #fff; }
+.steps svg.k { width: 16px !important; height: 16px !important; color: var(--ink-3); } .steps em { font-style: normal; font-size: 13px; font-weight: 400; color: var(--ink-3); } .steps li.done em { color: var(--ok); } .steps li.next em { color: var(--brand-ink); }
+.acts { display: flex; align-items: center; gap: 12px; } .acts .note { margin-left: auto; font-size: 13px; color: var(--ink-3); }
+.tr { display: grid; grid-template-columns: 12px minmax(0, 1fr) 110px 120px 56px; gap: 12px; align-items: center; padding: 14px 28px; border-bottom: 1px solid var(--line); } .tr:last-child { border-bottom: 0; }
+.tr b { display: block; font-size: 15px; } .tr small { font-size: 13px; color: var(--ink-3); } .tr .p { font-size: 14px; color: var(--ink-2); } .go { color: var(--brand-ink); font-weight: 600; text-align: right; } .go.off { color: var(--ink-4); font-weight: 400; }
+.base-row { display: flex; align-items: center; gap: 12px; margin: 16px 28px 0; padding: 12px 16px; border-radius: 10px; background: var(--brand-soft); } .base-row .bi { width: 32px; height: 32px; border-radius: 8px; background: #fff; color: var(--brand); display: grid; place-items: center; } .base-row .bi svg { width: 18px !important; height: 18px !important; } .base-row b { display: block; } .base-row small { color: var(--ink-3); font-size: 12px; } .base-row .btn { margin-left: auto; }
+.pr { padding: 22px 24px; } .pr h3 { margin: 0; font-size: 18px; } .pr p { margin: 4px 0 14px; font-size: 13px; color: var(--ink-3); }
+.radio { display: grid; gap: 4px; margin-bottom: 14px; } .ri { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 8px; font-size: 15px; } .ri.on { background: var(--hover); font-weight: 700; } .ri .rd { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #b9c1cd; } .ri.on .rd { border: 5px solid var(--brand); }
+.sel { height: 40px; border: 1px solid #c8cfda; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; margin-bottom: 14px; } .pr .btn { width: 100%; height: 40px; }
+.steps3 { padding: 22px 28px; } .s3h { margin-bottom: 12px; } .s3h b { font-size: 16px; } .s3h span { margin-left: 10px; color: var(--ink-3); font-size: 13px; }
+.s3 { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 10px; } .s3.cur3 { background: var(--brand-soft); } .s3 .no { width: 26px; height: 26px; border-radius: 50%; background: #e3e7ee; display: grid; place-items: center; font-weight: 700; font-size: 13px; } .s3.cur3 .no { background: var(--brand); color: #fff; } .s3 b { display: block; } .s3 small { color: var(--ink-3); font-size: 13px; } .s3 .btn, .s3 .st { margin-left: auto; } .s3 .st { color: var(--ink-4); font-size: 13px; }
+
+/* 我的记录 */
+.two { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 16px; }
+.bh { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 24px; border-bottom: 1px solid var(--line); } .bh h3 { margin: 0; font-size: 16px; } .bh .n { color: var(--ink-3); font-size: 13px; }
+.bh .ex { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.seg { display: flex; padding: 3px; border-radius: 8px; background: #f8f9fb; box-shadow: inset 0 0 0 1px var(--line); } .seg span { padding: 1px 12px; border-radius: 6px; font-size: 13px; color: var(--ink-2); } .seg .on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.lgd { display: flex; gap: 14px; font-size: 12px; color: var(--ink-3); } .lgd span { display: inline-flex; align-items: center; gap: 5px; }
+.lgd.in { position: absolute; top: 14px; right: 24px; flex-direction: column; gap: 4px; } .lgd em.pass { border-top: 1.5px dashed #e8b4ae; }
+.lgd i { width: 14px; height: 8px; border-radius: 2px; background: rgba(29,95,209,.22); border: 1.5px solid var(--brand); } .lgd em { width: 14px; height: 0; border-top: 1.5px dashed #6b7686; }
+.rd .ring { fill: none; stroke: #edf0f4; } .rd .ring.outer { stroke: #e3e7ee; } .rd .ring.pass { stroke: #e8b4ae; stroke-dasharray: 3 3; } .rd .axis { stroke: #edf0f4; }
+.rd .avg { stroke: #1d5fd1; stroke-width: 2; stroke-linejoin: round; } .rd .base { fill: none; stroke: #6b7686; stroke-width: 1.5; stroke-dasharray: 5 4; stroke-linejoin: round; } .rd .sel { fill: rgba(163,100,11,.08); stroke: #a3640b; stroke-width: 2; stroke-linejoin: round; }
+.rd .dot { fill: #fff; stroke: #1d5fd1; stroke-width: 2; } .rd .dot.lo { stroke: #b8302a; }
+.rd .lb { font-size: 13px; font-weight: 600; fill: #161c26; } .rd .val { font-size: 13px; font-weight: 700; fill: #161c26; } .rd .val.lo { fill: #b8302a; } .rd .val.none { fill: #c3cad5; } .rd .dl { font-size: 12px; font-weight: 600; fill: #1a7445; } .rd .dl.down { fill: #b8302a; }
+.rd.compact .lb { font-size: 12px; } .rd.compact .val { font-size: 12px; }
+.rb { position: relative; padding: 4px 24px 12px; height: 400px; display: flex; flex-direction: column; } .rb .rd { flex: 1; min-height: 0; }
+.rb-tips { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); } .rb-tips b { color: var(--bad); font-weight: 600; margin-right: 6px; }
+.hint { display: flex; align-items: center; gap: 8px; padding: 0 24px 20px; color: var(--ink-3); font-size: 13px; }
+.trend { padding: 12px 16px 16px; height: 400px; } .trend svg { width: 100%; height: 100%; }
+.rec { margin-top: 16px; } .chips { margin-left: auto; display: flex; gap: 8px; } .chips span { padding: 1px 12px; border-radius: 14px; border: 1px solid #c8cfda; font-size: 13px; color: var(--ink-2); } .chips .on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.rrow { display: grid; grid-template-columns: 56px minmax(0, 1fr) 140px minmax(0, 1fr) 80px; gap: 20px; align-items: center; padding: 14px 24px; border-bottom: 1px solid var(--line); } .rrow:last-child { border-bottom: 0; }
+.rrow .nm b { font-size: 15px; } .rrow .nm div { font-size: 13px; color: var(--ink-3); } .rrow .nm .tag { margin-left: 8px; height: 20px; vertical-align: 2px; }
+.sc { width: 56px; height: 52px; border-radius: 8px; display: grid; place-items: center; line-height: 1; font-size: 20px; font-weight: 700; } .sc small { font-size: 11px; font-weight: 400; } .sc.hi { background: var(--ok-wash); color: var(--ok); } .sc.mid { background: var(--hover); color: var(--ink); } .sc.pr { background: var(--hover); color: var(--ink-3); font-size: 14px; }
+.mini { display: flex; gap: 4px; align-items: flex-end; height: 40px; } .mini i { flex: 1; background: #bfd2f3; border-radius: 2px; } .mini i.lo { background: #f0b9b4; } .mini i.na { height: 3px !important; background: #e3e7ee; }
+.ai { font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ai b { font-size: 11px; padding: 0 4px; border: 1px solid #c8cfda; border-radius: 4px; margin-right: 6px; font-weight: 400; color: var(--ink-3); }
+.empty-line { display: flex; align-items: center; padding: 20px 24px; } .empty-line b { display: block; } .empty-line div div { color: var(--ink-3); font-size: 13px; } .empty-line .btn { margin-left: auto; }
+
+/* 复盘弹窗 */
+.ov { position: absolute; inset: 0; background: rgba(22,28,38,.45); display: grid; place-items: center; z-index: 5; }
+.modal { width: 1180px; height: 800px; background: #fff; border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 64px rgba(0,0,0,.25); }
+.mh { display: flex; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--line); } .mh strong { font-size: 17px; } .mh p { margin: 0; font-size: 13px; color: var(--ink-3); } .band { margin-left: auto; padding: 4px 12px; border-radius: 16px; background: var(--ok-wash); color: var(--ok); font-weight: 600; font-size: 13px; }
+.mb { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 420px; }
+.mailv { padding: 20px 28px; background: #f8f9fb; border-right: 1px solid var(--line); overflow: hidden; }
+.mailv .kv { display: grid; grid-template-columns: 56px 1fr; gap: 6px 12px; font-size: 13px; padding-bottom: 14px; border-bottom: 1px solid var(--line); } .mailv .kv span { color: var(--ink-3); } .mailv .kv em { font-style: normal; }
+.mailv .subj { font-size: 17px; font-weight: 700; margin: 14px 0 10px; } .mailv .txt { white-space: pre-line; font-size: 14px; line-height: 23px; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.mailv .chk { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; color: var(--ok); } .mailv .chk svg { width: 14px !important; height: 14px !important; }
+.mailv .rep { margin-top: 14px; padding: 12px 16px; border-left: 3px solid #c8cfda; background: #fff; border-radius: 0 8px 8px 0; font-size: 13px; } .mailv .rep b { display: block; font-size: 12px; color: var(--ink-3); font-weight: 400; margin-bottom: 2px; }
+.aside { padding: 16px 22px; overflow: hidden; } .aside h4 { margin: 14px 0 6px; font-size: 13px; color: var(--ink-2); } .aside h4:first-child { margin-top: 0; }
+.quote { font-size: 13px; color: var(--ink-2); background: #f8f9fb; border-radius: 8px; padding: 8px 12px; line-height: 20px; }
+.dimr { display: grid; grid-template-columns: 104px 1fr 30px 44px; white-space: nowrap; gap: 8px; align-items: center; font-size: 12px; height: 24px; } .dimr .bar { height: 6px; border-radius: 3px; background: #edf0f4; overflow: hidden; } .dimr .bar i { display: block; height: 100%; background: #1d5fd1; } .dimr strong { text-align: right; } .dimr .dl { font-size: 11px; color: var(--ok); } .dimr .dl.down { color: var(--bad); } .dimr.na { color: var(--ink-4); } .dimr.na .bar { background: repeating-linear-gradient(45deg, #edf0f4 0 4px, #f8f9fb 4px 8px); }
+.tips { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); } .tips li { margin-bottom: 4px; }
+
+/* 工作台 */
+.shift { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--ink-2); } .shift b { margin-left: 6px; color: var(--ink); } .online { height: 24px; padding: 0 8px; border-radius: 12px; background: var(--ok); color: #fff; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center; gap: 2px; } .online svg { width: 13px !important; height: 13px !important; }
+.vsep { width: 1px; height: 20px; background: var(--line); }
+.taskchip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 16px; border: 1px dashed #c8cfda; font-size: 12px; color: var(--ink-2); } .taskchip b { color: var(--ink); } .taskchip svg { width: 14px !important; height: 14px !important; }
+.wb { display: grid; grid-template-columns: 296px minmax(0, 1fr) 336px; grid-template-rows: minmax(0, 1fr); height: 100%; }
+.ql { border-right: 1px solid var(--line); background: #fff; display: flex; flex-direction: column; overflow: hidden; }
+.ql-top { padding: 12px 12px 6px; } .search { height: 34px; border: 1px solid #c8cfda; border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--ink-4); font-size: 13px; } .search svg { width: 15px !important; height: 15px !important; }
+.seg2 { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 8px; background: #f1f3f7; } .seg2 span { text-align: center; padding: 3px 0; font-size: 13px; color: var(--ink-2); border-radius: 6px; } .seg2 .on { background: #fff; font-weight: 600; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); } .seg2 i { font-style: normal; color: var(--ink-4); margin-left: 4px; }
+.qg { margin: 10px 16px 4px; font-size: 12px; color: var(--ink-3); }
+.qi { display: flex; gap: 10px; padding: 10px 16px; align-items: center; } .qi.on { background: var(--brand-soft); box-shadow: inset 3px 0 0 var(--brand); } .qi .tx { min-width: 0; flex: 1; } .qi .l1 { display: flex; } .qi b { font-size: 14px; } .qi .qt { margin-left: auto; font-size: 12px; color: var(--ink-4); } .qi small { display: block; font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat { display: flex; flex-direction: column; min-width: 0; background: var(--canvas); overflow: hidden; }
+.ch { height: 60px; flex: none; background: #fff; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; padding: 0 20px; } .ch b { display: block; font-size: 15px; } .ch small { font-size: 12px; color: var(--ink-3); } .ch .r { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.cb { height: 30px; padding: 0 10px; border-radius: 6px; background: #f1f3f7; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); } .cb b { font-size: 13px; display: inline; color: var(--ink); } .cb svg { width: 15px !important; height: 15px !important; } .cb.line { background: #fff; border: 1px solid #c8cfda; } .cb.closed { background: #fff; border: 1px solid var(--line); color: var(--ink-3); }
+.msgs { flex: 1; min-height: 0; padding: 16px 28px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+.sys { align-self: center; padding: 2px 12px; border-radius: 12px; background: #e9edf3; font-size: 12px; color: var(--ink-3); }
+.m { display: flex; gap: 10px; max-width: 72%; } .m .bb { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 14px; line-height: 21px; } .m .ft { font-size: 11px; color: var(--ink-4); margin-top: 3px; display: flex; gap: 12px; } .m .ft span { display: inline-flex; align-items: center; gap: 3px; } .m .ft svg { width: 12px !important; height: 12px !important; }
+.m.me { align-self: flex-end; flex-direction: row-reverse; } .m.me .bb { background: var(--brand-soft); border-color: #cddcf6; } .m.me .ft { justify-content: flex-end; }
+.rate .stars { font-size: 15px; letter-spacing: 2px; } .rate { align-self: center; display: inline-flex; align-items: center; gap: 6px; padding: 4px 14px; border-radius: 14px; background: #fff; border: 1px solid var(--line); font-size: 13px; color: var(--ink-2); } .rate svg { width: 16px !important; height: 16px !important; } .rate.good svg, .rate.good b { color: var(--ok); } .rate.bad svg, .rate.bad b { color: var(--bad); } .rate.mid svg { color: var(--ink-3); }
+.new-sys { align-self: stretch; display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--brand-ink); } .new-sys::before, .new-sys::after { content: ""; flex: 1; height: 1px; background: #cddcf6; }
+.comp { flex: none; margin: 0 20px 16px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; } .comp .tools { display: flex; gap: 14px; color: var(--ink-3); font-size: 13px; align-items: center; } .comp .tools svg { width: 17px !important; height: 17px !important; } .comp .ph { color: var(--ink-4); margin: 8px 0 14px; } .comp .bot { display: flex; align-items: center; gap: 10px; } .comp .bot .r { margin-left: auto; display: flex; align-items: center; gap: 12px; color: var(--ink-4); font-size: 12px; }
+.ptt { height: 28px; padding: 0 10px; border-radius: 14px; border: 1px solid var(--line); display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--ink-3); } .ptt svg { width: 14px !important; height: 14px !important; }
+.closed-c { flex: none; margin: 0 20px 16px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; display: flex; align-items: center; gap: 10px; color: var(--ink-2); font-size: 14px; } .closed-c span:last-child { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+.cp { border-left: 1px solid var(--line); background: #fff; overflow: hidden; } .cust { padding: 16px 20px; border-bottom: 1px solid var(--line); } .who { display: flex; gap: 12px; align-items: center; } .who b { font-size: 16px; } .who .tg { display: flex; gap: 8px; align-items: center; margin-top: 2px; font-size: 13px; color: var(--ink-3); }
+.kv2 { display: grid; grid-template-columns: 88px 1fr; gap: 4px 8px; margin-top: 14px; font-size: 13px; } .kv2 dt { color: var(--ink-3); } .kv2 dd { margin: 0; }
+.notebox { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 13px; } .notebox div { color: var(--ink-4); }
+.ptabs { display: flex; gap: 24px; padding: 0 20px; height: 44px; border-bottom: 1px solid var(--line); } .ptabs span { display: flex; align-items: center; font-size: 14px; color: var(--ink-2); border-bottom: 2px solid transparent; } .ptabs span.on { color: var(--ink); font-weight: 700; border-color: var(--brand); }
+.oc { margin: 14px 20px; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 13px; } .oc .h { display: flex; gap: 6px; align-items: center; font-weight: 700; } .oc .h .tag { margin-left: auto; } .oc .pd { display: flex; gap: 10px; margin-top: 10px; } .oc .img { width: 44px; height: 44px; border-radius: 6px; background: #eef2f7; display: grid; place-items: center; color: var(--ink-4); } .oc .pd small { display: block; color: var(--ink-3); } .oc .lg { margin-top: 10px; padding: 8px 10px; background: #f8f9fb; border-radius: 6px; color: var(--ink-3); }
+
+/* 工具卡片 */
+.tcard { width: 400px; background: #fff; border: 1px solid #d6dce5; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(16,24,40,.06); }
+.tcard .th { display: flex; align-items: center; gap: 8px; padding: 9px 14px; background: #f6f8fb; border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 700; } .tcard .th small { margin-left: auto; font-weight: 400; color: var(--ink-3); font-size: 12px; }
+.tcard .ico { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; color: #fff; } .tcard .ico svg { width: 14px !important; height: 14px !important; } .tcard .ico.pay { background: #d9822b; } .tcard .ico.lg { background: #1d5fd1; }
+.tcard .tb { display: flex; gap: 10px; padding: 12px 14px 8px; font-size: 13px; } .tcard .tb .img { width: 46px; height: 46px; border-radius: 6px; background: #eef2f7; display: grid; place-items: center; color: var(--ink-4); flex: none; } .tcard .tb b { display: block; font-size: 14px; } .tcard .tb small { display: block; color: var(--ink-3); } .tcard .tb em { font-style: normal; color: #b45f12; font-weight: 600; } .tcard .tb em.lg { color: var(--brand-ink); }
+.tcard .tn { margin: 0 14px 12px; padding: 8px 10px; border-radius: 8px; background: #f8f9fb; font-size: 13px; line-height: 20px; color: var(--ink); }
+.tcard .tf { display: flex; align-items: center; padding: 8px 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); } .tcard .tf .cta { margin-left: auto; height: 28px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--brand); color: var(--brand-ink); font-weight: 600; display: inline-flex; align-items: center; }
+.toolrow { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; } .toolrow .ft { font-size: 11px; color: var(--ink-4); }
+.cards-demo { display: grid; grid-template-columns: 300px 400px 400px; gap: 40px; padding: 28px 48px; align-items: start; height: 100%; } .cards-demo h5 { margin: 0 0 10px; font-size: 13px; color: var(--ink-2); font-weight: 600; }
+/* 订单 / 评价 / 邮件 */
+.od { padding: 16px 24px; height: 100%; overflow: hidden; } .back { font-size: 13px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 4px; } .back svg { width: 14px !important; height: 14px !important; }
+.odp { margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; } .odh { display: flex; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--line); } .odh h2 { margin: 0; font-size: 17px; } .segt { margin-left: auto; display: flex; padding: 3px; border-radius: 8px; background: #f1f3f7; } .segt span { padding: 2px 14px; font-size: 13px; border-radius: 6px; color: var(--ink-2); } .segt .on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.lt { padding: 14px 24px 4px; } .lrow { display: grid; grid-template-columns: 28px 1fr; gap: 12px; padding-bottom: 10px; } .lrow .ld { width: 26px; height: 26px; border-radius: 50%; background: #e3e7ee; color: var(--ink-3); display: grid; place-items: center; } .lrow .ld svg { width: 14px !important; height: 14px !important; } .lrow.done .ld { background: var(--brand); color: #fff; } .lrow b { font-size: 14px; } .lrow b small { margin-left: 8px; color: var(--ink-4); font-weight: 400; font-size: 12px; } .lrow p { margin: 2px 0 0; font-size: 13px; color: var(--ink-3); } .lrow p.hl { color: var(--brand-ink); font-weight: 600; }
+.sug { margin: 6px 20px 20px; border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; } .sug .h { display: flex; align-items: center; gap: 8px; font-weight: 700; } .sug .h svg { width: 16px !important; height: 16px !important; color: var(--brand); } .sug .h span { margin-left: auto; color: var(--brand-ink); font-weight: 400; font-size: 13px; display: inline-flex; gap: 4px; align-items: center; }
+.vers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; } .ver { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 13px; line-height: 20px; color: var(--ink-2); background: #f8f9fb; } .ver.on { border-color: var(--brand); background: var(--brand-soft); } .ver .k { display: block; font-size: 12px; font-weight: 700; color: var(--brand-ink); margin-bottom: 2px; } .ver .zh { display: block; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #d6dce5; color: var(--ink-3); font-size: 12px; }
+.ta { margin-top: 12px; border: 1px solid #c8cfda; border-radius: 8px; padding: 10px 14px; font-size: 14px; line-height: 22px; min-height: 76px; }
+.sb { display: flex; align-items: center; gap: 12px; margin-top: 12px; } .sb .mute { font-size: 13px; color: var(--ink-3); display: inline-flex; gap: 6px; align-items: center; } .sb .mute svg { width: 14px !important; height: 14px !important; } .sb .r { margin-left: auto; display: flex; gap: 8px; }
+.rv { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 40px; padding: 24px 32px; height: 100%; }
+.rv-sum h3 { margin: 0; font-size: 18px; } .stars { color: #f2b01e; letter-spacing: 1px; } .stars .off { color: #d6dce5; }
+.dist { display: grid; grid-template-columns: 28px 1fr 36px; gap: 6px 10px; align-items: center; font-size: 13px; margin-top: 14px; } .dist .b { height: 14px; background: #edf0f4; border-radius: 3px; overflow: hidden; } .dist .b i { display: block; height: 100%; background: #e2a12b; } .dist span:nth-child(3n) { text-align: right; color: var(--ink-3); }
+.rv-item .top { display: flex; align-items: center; gap: 10px; } .rv-item .top b { font-size: 15px; } .rv-item .meta2 { font-size: 13px; color: var(--ink-3); } .rv-item .prod { font-size: 13px; color: var(--ink-3); margin-top: 6px; } .rv-item .prod em { font-style: normal; color: #a3640b; } .rv-item .ct { margin: 8px 0 4px; font-size: 14px; line-height: 23px; }
+.rr { margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; } .rr .h { display: flex; align-items: center; gap: 8px; font-weight: 700; } .rr .h span { margin-left: auto; font-weight: 400; font-size: 13px; color: var(--brand-ink); display: inline-flex; gap: 4px; align-items: center; } .rr .h svg { width: 15px !important; height: 15px !important; }
+.rr .sm { font-size: 12px; color: var(--ink-3); margin-top: 8px; }
+.mail { display: grid; grid-template-columns: 380px minmax(0, 1fr); height: 100%; }
+.mlist { border-right: 1px solid var(--line); overflow: hidden; } .mlist .search { margin: 12px 14px; } .mi { display: flex; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); } .mi .tx { min-width: 0; flex: 1; font-size: 13px; } .mi .l1 { display: flex; } .mi .l1 b { font-size: 14px; } .mi .l1 span { margin-left: auto; font-size: 12px; color: var(--ink-4); } .mi .sj { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .mi small { display: block; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .mi .on { color: var(--brand-ink); }
+.cmp { padding: 20px 28px; overflow: hidden; } .cmp .h { display: flex; align-items: center; gap: 8px; } .cmp .h h3 { margin: 0; font-size: 18px; }
+.fr { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 12px; margin-top: 12px; } .fr > span { color: var(--ink-3); font-size: 14px; } .inp { min-height: 36px; border: 1px solid #c8cfda; border-radius: 6px; padding: 6px 12px; font-size: 14px; display: flex; align-items: center; gap: 8px; } .inp .rc { display: inline-flex; align-items: center; gap: 8px; padding: 2px 10px 2px 3px; border-radius: 16px; background: var(--hover); } .inp .rc small { color: var(--ink-3); }
+.tplrow { display: flex; gap: 6px; flex-wrap: nowrap; } .tplrow span { padding: 1px 10px; border-radius: 14px; border: 1px solid #c8cfda; font-size: 12px; white-space: nowrap; } .tplrow span.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; } .tplrow span.new { border-style: dashed; }
+.fr.top { align-items: start; } .fr.top > span { padding-top: 10px; } .mbox { border: 1px solid #c8cfda; border-radius: 8px; } .mbox .txt { white-space: pre-line; padding: 12px 16px; font-size: 14px; line-height: 22px; } .mbox .bt { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--line); } .mbox .bt .ok { color: var(--ok); font-size: 12px; display: inline-flex; gap: 4px; align-items: center; } .mbox .bt .ok svg { width: 14px !important; height: 14px !important; } .mbox .bt .r { margin-left: auto; display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>学生端 · 参数核对后的改动</h1>
+  <p class="lede">2026-10-19 按参数逐条核对学生端，共定下 8 处改动（决策 D-52～D-58）。这份稿子只画要改的地方，外壳和没点到的部分照现状。截图以外的数据是编的（按 45 人的班级），只看版式。</p>
+
+  <h2>一、要改什么</h2>
+  <table class="t">
+    <tr><th>#</th><th>位置</th><th>现在</th><th>参数原文</th><th>改法</th></tr>
+    <tr><td>1</td><td>任务大厅 · 数字卡</td><td>本周接待、进行中的任务、最近截止、已完成任务</td><td>“展示个人数据概览，包括已完成任务、平均分、班级排名、累计对话”</td><td class="chg">换成参数四项，后三张从“我的记录”搬来；“进行中的任务”“最近截止”去掉，数量看页签、截止看每一行（D-52）</td></tr>
+    <tr><td>2</td><td>任务大厅 · 任务列表</td><td>只有“进行中 / 已完成”，没开始的混在进行中里</td><td>“展示待办/进行中/已完成实训任务列表”</td><td class="chg">三个页签：待办 / 进行中 / 已完成；训前测评提示放进待办（D-52）</td></tr>
+    <tr><td>3</td><td>我的记录 · 数字卡</td><td>平均分、班级排名、达标率、累计对话（三张搬去任务大厅）</td><td>—</td><td class="chg">本周接待、达标率、平均响应时长、满意率：练习量、成绩、速度、服务质量（D-53）</td></tr>
+    <tr><td>4</td><td>客服工作台 · 接待结束</td><td>末尾只有“客户已离开 · 会话时长”；顶栏“满意率”其实是满意度平均值</td><td>—（满意率口径）</td><td class="chg">接待结束后对话末尾出一条“买家评价了本次服务 ★★★★☆”，1–5 星；满意率 = 4 星和 5 星的占比（D-54）</td></tr>
+    <tr><td>5</td><td>订单 · 催付 / 物流同步</td><td>发出去是一条普通文字消息；会话结束后提示“关联会话已结束，无法发送”</td><td>“生成不少于 3 个版本……供学生选择、二次编辑并发送”</td><td class="chg">催付、物流同步是工具，发出去的是工具卡片（付款提醒 / 物流通知），和文字消息区分开；会话结束后照样能发，卡片记在原会话里；买家回复后可以跟进，2–3 轮内收尾，不计任务成绩（D-56）</td></tr>
+    <tr><td>6</td><td>评价 · 差评回复</td><td>按买家语言生成，德国买家生成的是德语</td><td>“不少于 3 个版本的英文回复及话术建议”</td><td class="chg">固定生成英文，切入角度和中文意思照旧；非英语买家多一个“译成德语”这类按钮（D-57）</td></tr>
+    <tr><td>7</td><td>邮件 · 邮件任务</td><td>邮件类场景按在线会话下发；邮件不进任务、不评分，老师看不到</td><td>“教师按环节布置实训任务：英文邮件撰写”“支持学生编辑模板内容并完成邮件实训”</td><td class="chg">任务大厅“写邮件”直接打开写信框（收件人、模板已带好）→ 发送后评六项 → 进我的记录和教师回放（D-58）</td></tr>
+    <tr><td>8</td><td>邮件 · 模板</td><td>正好 4 个</td><td>“内置不少于 4 个邮件模板”</td><td class="chg">扩到 8 个：补催付提醒、物流延误说明、售后致歉补偿、好评邀请（D-58）</td></tr>
+  </table>
+
+  <h2>二、现在</h2>
+  <div class="tri">
+    <figure><img class="before" src="assets/before-hall.png" alt=""><figcaption>任务大厅：四张卡和参数对不上；列表只有两个页签</figcaption></figure>
+    <figure><img class="before" src="assets/before-records.png" alt=""><figcaption>我的记录：四张卡要搬三张去任务大厅</figcaption></figure>
+    <figure><img class="before" src="assets/before-workbench-ended.png" alt=""><figcaption>工作台：接待结束只有一行“客户已离开 · 会话时长”</figcaption></figure>
+    <figure><img class="before" src="assets/before-logistics-send.png" alt=""><figcaption>订单：会话结束后话术发不出去（你圈出的位置）</figcaption></figure>
+    <figure><img class="before" src="assets/before-reviews.png" alt=""><figcaption>评价：回复按买家语言生成</figcaption></figure>
+    <figure><img class="before" src="assets/before-mail-compose.png" alt=""><figcaption>邮件：4 个模板；写信和任务、评分都没有关系</figcaption></figure>
+  </div>
+
+  <h2>三、任务大厅 <small>改 1、2、7</small></h2>
+  <p class="lede">顶部四张卡按参数原文的顺序排，第四列和下面的“自由练习”同宽（328px）、竖线对齐，样式统一成我的记录那种带小图的卡：已完成任务配进度条，平均分配半圆仪表（刻 60 分线），班级排名配名次柱，累计对话配圆环。任务列表拆成三个页签。邮件类场景在步骤里带信封图标，轮到它时主按钮变成“写邮件”。</p>
+  <div class="frame" data-h="760"><div class="screen s" data-tpl="hallDoing"></div></div>
+  <h3 class="sub">待办页签</h3>
+  <p class="lede">没开始的任务放这里，还没到开放时间的排在最后，标“未开放”。“先做训前测评”只在没做过测评时出现，放在最上面，前面用测评图标，不再用序号“1”（那是“开始三步”里的步骤号，放在列表里没有意义）。打开页面默认停在“进行中”，没有进行中的任务才停在“待办”。</p>
+  <div class="frame" data-h="760"><div class="screen s" data-tpl="hallTodo"></div></div>
+
+  <h2>四、我的记录 <small>改 3、7</small></h2>
+  <p class="lede">四张卡：本周接待（七天柱图，今天高亮）、达标率（圆环）、平均响应时长（刻度条：45 秒内满分区、2 分钟起偏慢，黑色三角是你的平均值）、满意率（右侧是 5 星到 1 星的分布，算满意的 4、5 星用蓝色，下面写平均星级）。后两张统计全部接待；口径收进问号（下图停在“满意率”）。能力雷达、成绩走势不动。成绩记录里邮件任务带“邮件”标签，小柱图里邮件不评的两项画成灰线。</p>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="records"></div></div>
+  <h3 class="sub">邮件的复盘</h3>
+  <p class="lede">弹窗版式和对话复盘一样，左边的对话回放换成这封邮件：收件人、主题、正文、发送时的违规词检测结果；买家回了信就接在下面。右边照旧：能力对比、AI 评语、各项得分、改进建议。邮件不评“客户情绪安抚”“消息响应时效”，这两行写“不适用”，总分只算其余六项（D-46 现成的规则）。</p>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="mailReplay"></div></div>
+
+  <h2>五、客服工作台 <small>改 4、5</small></h2>
+  <p class="lede">接待结束后，在“客户已离开 · 会话时长”下面再出一条服务评价，同千牛的“服务评价”、飞鸽的“邀评”。用五星表示，不用“很满意”这类文字，也不显示分数。星级由结束时的满意度换算，和商品评价同一套分界：85 分以上 5 星、70–84 分 4 星、45–69 分 3 星、25–44 分 2 星、25 分以下 1 星。顶栏的“满意率”改为当天 4 星和 5 星的占比。复盘和教师回放里也能看到这一条。</p>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="wbRating"></div></div>
+  <h3 class="sub">工具卡片：催付、物流同步不是消息</h3>
+  <p class="lede">订单页的催付、物流同步是工具，同千牛的催付卡片：发出去的是一张卡片，有标题、订单摘要、学生选好并改过的话术，以及买家那边的“去付款 / 查看物流”按钮，和学生在输入框里打的文字明显区分开。聊天、复盘、教师回放都按卡片显示。</p>
+  <div class="frame" data-h="330"><div class="screen s" data-tpl="toolCards"></div></div>
+  <h3 class="sub">会话结束后用了工具：跟进规则</h3>
+  <p class="lede">已结束的会话本身不能再打字（客服关闭、超时关闭的会话不能继续发送），工作台“最近联系”里照现状显示“不能再发消息”。工具卡片不受这个限制，发出后仍记在原会话里。买家回复了，学生可以接着回，但这段跟进要短：</p>
+  <table class="t">
+    <tr><th>规则</th><th>内容</th></tr>
+    <tr><td>卡片放哪</td><td>记在原会话里，接在结束提示和服务评价下面，下方小字“物流同步 · 从订单页发送”；不另开新会话</td></tr>
+    <tr><td>买家怎么反应</td><td>由买家 AI 决定：回复、直接去付款（付款提醒），或者不理会</td></tr>
+    <tr><td>什么时候能回复</td><td>买家回复后，这个会话回到“接待中”（待回复），输入框解锁；买家没回复，会话保持结束，什么都不变</td></tr>
+    <tr><td>跟进多长</td><td><b>最多 3 轮</b>（买家一句 + 学生一句算一轮）。买家 AI 按“2–3 轮内收尾”回：问清楚就道谢离开，不开新话题；学生回满 3 次后系统结束跟进，输入框重新锁上</td></tr>
+    <tr><td>学生不回</td><td>照现有买家耐心规则：约 2 分钟催一次，再不回买家离开，跟进结束</td></tr>
+    <tr><td>结束后</td><td>末尾一条“跟进结束”提示；不再出新的服务评价（星级）；原成绩不动，跟进内容不计分，复盘和教师回放里能看到</td></tr>
+    <tr><td>防刷</td><td>跟进结束前，同一张订单不能再发同一种卡片</td></tr>
+    <tr><td>会话进行中用工具</td><td>卡片直接进当前聊天，算一次工具使用，不受 3 轮限制，照常评分</td></tr>
+  </table>
+  <p class="lede" style="margin-top:16px">下图：买家回复了物流通知，会话回到“接待中”，输入框恢复可用。界面上不显示“还剩几轮”（真实平台没有这种提示），收尾由买家自然完成，系统的 3 轮上限只是兜底。</p>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="wbResume"></div></div>
+
+  <h2>六、订单 · 会话结束后发送 <small>改 5</small></h2>
+  <p class="lede">按钮改叫“发送物流通知”（催付处叫“发送付款提醒”），发出去的是上面那种卡片。会话结束后照样可用，按钮旁一行灰字说明发出去会怎样；会话还在进行时，卡片直接进当前聊天。</p>
+  <div class="frame" data-h="690"><div class="screen s" data-tpl="orderSync"></div></div>
+
+  <h2>七、评价 · 差评回复 <small>改 6</small></h2>
+  <p class="lede">3 版回复固定是英文，每版带切入角度和中文意思。买家不是英语用户时，编辑框下方多一个“译成德语”（按买家语言显示，英语买家没有这个按钮），点一下把编辑框里的英文译过去，译完还能再改。</p>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="review"></div></div>
+
+  <h2>八、邮件 · 邮件任务 <small>改 7、8</small></h2>
+  <p class="lede">在任务大厅点“写邮件”，打开这个写信框：收件人已经按场景从店铺客户里挑好（新品推广挑老客或粉丝），模板已经套好，学生在上面改。顶栏右侧是任务条（和工作台一样，属于外壳，不算沉浸层）。模板扩到 8 个，单独一行排开，新加的 4 个虚线框标出；“AI 辅助”挪到编辑框底栏。邮件一律用英文写（输入框提示改为“用英文写邮件正文”）。发出后提示“已发送”，不当场显示分数；分数出来后在我的记录里看，买家仍按概率回信。</p>
+  <div class="frame" data-h="900"><div class="screen s" data-tpl="mailTask"></div></div>
+
+  <h2>九、没有数据时</h2>
+  <p class="lede">新学生：四张卡照常画，数字用浅灰“—”，小图只画灰底；任务大厅没任务时下面仍是“开始三步”，我的记录各块照常画骨架。</p>
+  <div class="frame" data-h="640"><div class="screen s" data-tpl="hallEmpty"></div></div>
+  <div class="frame" data-h="640" style="margin-top:16px"><div class="screen s" data-tpl="recordsEmpty"></div></div>
+
+  <h2>十、改动范围</h2>
+  <table class="t">
+    <tr><th>部分</th><th>前端</th><th>后端</th></tr>
+    <tr><td>任务大厅</td><td class="chg">四张卡换成参数四项（带小图）；三个页签；邮件步骤带图标，主按钮按下一步变“进入工作台 / 写邮件”</td><td class="keep">不用改（学生汇总接口现成）；任务列表补每个场景是聊天还是邮件</td></tr>
+    <tr><td>我的记录</td><td class="chg">四张卡换成本周接待、达标率、平均响应时长、满意率；成绩记录显示邮件；邮件复盘</td><td><span class="api">要补接口</span>学生汇总加平均响应时长（首次 / 平均）、满意率；成绩接口带上邮件记录</td></tr>
+    <tr><td>服务评价</td><td class="chg">工作台、复盘、教师回放显示这一条</td><td><span class="api">要补接口</span>接待结束后（等观察员最后一轮评估完）写一条系统消息，带 1–5 星；工作台顶栏满意率按 4–5 星占比算</td></tr>
+    <tr><td>会话结束后发送</td><td class="chg">两种工具卡片（聊天、复盘、教师回放都按卡片显示）；订单页按钮改名、去掉“无法发送”；跟进中的会话回到接待中，结束后末尾显示“跟进结束”</td><td><span class="api">要补接口</span>新增消息类型“付款提醒 / 物流通知”（带订单摘要和话术）；会话已结束时卡片照样写进原会话；买家能读到卡片并决定回复、去付款或不理；买家回复后会话进入“跟进中”（回到接待中、最多 3 轮、到点自动结束、不计分、不出新评价）；买家提示词加跟进收尾规则；同一订单跟进期间不能重复发同种卡片</td></tr>
+    <tr><td>差评回复</td><td class="chg">加“译成 X 语”按钮</td><td class="chg">回复提示词改回固定英文；翻译复用现有的客服输入框翻译</td></tr>
+    <tr><td>邮件任务</td><td class="chg">写信框带收件人和模板、顶栏任务条、发送后更新任务进度</td><td><span class="api">要补接口</span>邮件类场景按邮件下发（生成收件客户）；邮件记录关联任务；邮件评分（新的评分提示词，评六项）；计入任务进度；教师回放和复核能看邮件</td></tr>
+    <tr><td>邮件模板</td><td class="keep">不用改（模板列表来自接口）</td><td class="chg">内置模板加 4 个</td></tr>
+    <tr><td>其余</td><td class="keep" colspan="2">能力雷达、成绩走势、工作台其他部分、订单其他页签、评价页其他部分都不动</td></tr>
+  </table>
+
+  <h2>十一、已确认（2026-10-19）</h2>
+  <ol class="q">
+    <li><b>催付、物流同步是工具，不是消息。</b>发出去的是工具卡片，和文字消息区分显示；会话结束后照样能发，卡片记在原会话里；买家回复后学生可以跟进，最多 3 轮、2–3 轮内收尾，原成绩不动，跟进不计分。</li>
+    <li><b>工作台里已结束的会话不能直接发消息</b>，照现状。</li>
+    <li><b>邮件评六项</b>：服务话术规范、客户沟通有效性、订单问题解决（看行动号召是否清楚）、商品信息准确性、语法准确性、违规用语合规；客户情绪安抚、消息响应时效不评。</li>
+    <li><b>我的记录</b>的能力雷达、成绩走势保持现在的分栏比例。</li>
+  </ol>
+</div>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const I = (n, c = "") => `<i data-lucide="${n}" class="ic ${c}"></i>`;
+const H = `<span class="help">${I("circle-help")}</span>`;
+const STAGE = { pre: ["售前沟通", "#0a7a70"], in: ["售中处理", "#1d5fd1"], after: ["售后处理", "#a3640b"], care: ["客户分层维护", "#7a4fd1"] };
+const face = (ch, color, cls = "") => `<span class="face ${cls}" style="background:${color}">${ch}</span>`;
+
+/* ---------- 外壳 ---------- */
+function shell({ nav, title, head = "", body, store = false }) {
+  const learn = [["tasks", "layout-dashboard", "任务大厅"], ["records", "graduation-cap", "我的记录"]];
+  const shop = [["workbench", "message-square-more", "客服工作台"], ["orders", "package-search", "订单"], ["reviews", "star", "评价"], ["mail", "mail", "邮件", `<span class="badge soft">46</span>`]];
+  const items = (list) => list.map(([id, ic, label, extra = ""]) => `<div class="nav${id === nav ? " on" : ""}">${I(ic)}${label}${extra}</div>`).join("");
+  return `<div class="app"><nav class="side"><div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>${items(learn)}
+    <div class="navlabel"><span class="shop">A</span>店铺后台 · Aurora Mart</div>${items(shop)}
+    <div class="side-foot"><div class="nav">${I("book-open-check")}使用帮助</div><div class="nav">${I("panel-left-close")}收起侧栏</div></div></nav>
+    <div class="main"><header class="head${store ? " store" : ""}">${title ? `<h1>${title}</h1>` : ""}${head}<div class="right">${I("bell")}<span class="av">张</span>张三 ${I("chevron-down")}</div></header>
+    <div class="${store ? "sbody" : "body"}">${body}</div></div></div>`;
+}
+
+/* ---------- 小图 ---------- */
+function gauge(v, mark = 60, small = false) {
+  const cx = 65, cy = 68, r = 53;
+  const pt = (f, rr = r) => { const a = Math.PI * (1 - f); return [cx + rr * Math.cos(a), cy - rr * Math.sin(a)]; };
+  const [t1x, t1y] = pt(mark / 100, 43), [t2x, t2y] = pt(mark / 100, 63);
+  let s = `<svg width="${small ? 112 : 130}" height="${small ? 74 : 86}" viewBox="0 -10 130 86"><path d="M12 68 A53 53 0 0 1 118 68" fill="none" stroke="#edf0f4" stroke-width="10" stroke-linecap="round"/>`;
+  if (v != null) { const [x, y] = pt(v / 100); s += `<path d="M12 68 A53 53 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)}" fill="none" stroke="#1d5fd1" stroke-width="10" stroke-linecap="round"/>`; }
+  return s + `<line x1="${t1x.toFixed(1)}" y1="${t1y.toFixed(1)}" x2="${t2x.toFixed(1)}" y2="${t2y.toFixed(1)}" stroke="#465163" stroke-width="1.5"/><text x="${t2x.toFixed(1)}" y="${(t2y - 3).toFixed(1)}" font-size="9" fill="#9aa3b0" text-anchor="middle">60</text></svg>`;
+}
+const rankBars = (pos, total) => {
+  const n = 9, hit = pos == null ? -1 : Math.min(n - 1, Math.floor((1 - pos / total) * n));
+  return `<svg width="92" height="52" viewBox="0 0 92 52">${Array.from({ length: n }, (_, i) => { const h = 10 + i * 4.5; return `<rect x="${i * 10 + 1}" y="${50 - h}" width="7" height="${h}" rx="1.5" fill="${i === hit ? "#1d5fd1" : "#e6ebf2"}"/>`; }).join("")}</svg>`;
+};
+const ring = (p, c) => `<svg width="74" height="74" viewBox="0 0 74 74"><circle cx="37" cy="37" r="30" fill="none" stroke="#edf0f4" stroke-width="8"/>${p == null ? "" : `<circle cx="37" cy="37" r="30" fill="none" stroke="${c}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(188.5 * p).toFixed(1)} 188.5" transform="rotate(-90 37 37)"/>`}</svg>`;
+const weekBars = (arr, today) => {
+  const max = Math.max(1, ...arr);
+  return `<svg width="126" height="58" viewBox="0 0 126 58">${arr.map((n, i) => { const h = n ? 6 + Math.round((n / max) * 30) : 2; return `<rect x="${i * 18 + 2}" y="${40 - h}" width="11" height="${h}" rx="2" fill="${i === today ? "#1d5fd1" : n ? "#bfd2f3" : "#e3e7ee"}"/><text x="${i * 18 + 7.5}" y="55" font-size="10" fill="${i === today ? "#174aa8" : "#9aa3b0"}" text-anchor="middle">${"一二三四五六日"[i]}</text>`; }).join("")}</svg>`;
+};
+const respBar = (avg) => {
+  const W = 132, max = 180, x = (sec) => Math.min(W, (sec / max) * W);
+  return `<svg width="${W}" height="44" viewBox="0 0 ${W} 44"><rect x="0" y="16" width="${x(45) - 1}" height="8" rx="2" fill="#cfe9da"/><rect x="${x(45) + 1}" y="16" width="${x(120) - x(45) - 2}" height="8" fill="#f6e3c3"/><rect x="${x(120) + 1}" y="16" width="${W - x(120) - 1}" height="8" rx="2" fill="#f5d2cf"/>${avg == null ? "" : `<path d="M${x(avg).toFixed(1)} 13 l-5 -8 h10 z" fill="#161c26"/>`}<text x="${x(45)}" y="38" font-size="10" fill="#9aa3b0" text-anchor="middle">45 秒</text><text x="${x(120)}" y="38" font-size="10" fill="#9aa3b0" text-anchor="middle">2 分</text></svg>`;
+};
+const starHist = (counts) => {
+  /* counts：[5 星, 4 星, 3 星, 2 星, 1 星] 的次数；4–5 星算满意，用品牌蓝 */
+  const max = Math.max(1, ...(counts ?? [0]));
+  return `<svg width="128" height="60" viewBox="0 0 128 60">${[5, 4, 3, 2, 1].map((star, i) => {
+    const n = counts ? counts[i] : 0, y = i * 12, w = counts ? Math.round((n / max) * 84) : 0;
+    return `<text x="0" y="${y + 9}" font-size="10" fill="#5e6a7b">${star}</text><text x="8" y="${y + 9}" font-size="9" fill="#f2b01e">★</text><rect x="20" y="${y + 2}" width="84" height="7" rx="2" fill="#edf0f4"/>${w ? `<rect x="20" y="${y + 2}" width="${w}" height="7" rx="2" fill="${star >= 4 ? "#1d5fd1" : "#c3cad5"}"/>` : ""}${counts ? `<text x="110" y="${y + 9}" font-size="10" fill="#9aa3b0">${n}</text>` : ""}`;
+  }).join("")}</svg>`;
+};
+const kc = ({ label, value, sub = "", viz = "", top = 22 }) => `<div class="kc"><div class="lb">${label}${H}</div><div class="v num">${value}</div><div class="sub">${sub}</div>${viz ? `<div class="viz" style="top:${top}px">${viz}</div>` : ""}</div>`;
+const dash = `<b class="dash">—</b>`;
+
+/* ---------- 任务大厅 ---------- */
+const hallCards = (empty) => `<div class="kc-row hall">
+  ${kc({ label: "已完成任务", value: empty ? dash : `<b>3</b><small>/ 7</small>`, sub: `<div class="kbar${empty ? " empty" : ""}"><i style="width:${empty ? 0 : 43}%"></i></div>` })}
+  ${kc({ label: "平均分", value: empty ? dash : `<b>72</b><small>/ 100</small>`, sub: empty ? "" : `<span class="pill">↑9</span>较训前`, viz: gauge(empty ? null : 72, 60, true), top: 30 })}
+  ${kc({ label: "班级排名", value: empty ? `${dash}<small>/ 45</small>` : `<b>第 5</b><small>/ 45</small>`, sub: empty ? "" : `<span class="pill">↑2</span>较上周`, viz: rankBars(empty ? null : 5, 45), top: 30 })}
+  ${kc({ label: "累计对话", value: `<b${empty ? ' class="dash"' : ""}>${empty ? 0 : 38}</b><small>次</small>`, sub: empty ? "" : "共 412 轮 · 其中练习 9 次", viz: ring(empty ? null : 0.76, "#0a7a70"), top: 18 })}
+</div>`;
+const tabs = (on, [a, b, c]) => `<div class="tb-h">${[["todo", "待办", a], ["doing", "进行中", b], ["done", "已完成", c]].map(([id, l, n]) => `<span class="tb-tab${id === on ? " on" : ""}">${l}<i>${n}</i></span>`).join("")}</div>`;
+const STEP_TEXT = { done: "已完成", next: "未开始", idle: "未开始" };
+const step = (i, name, kind, state, text) => `<li class="${state}"><span class="no">${state === "done" ? I("check") : i}</span>${I(kind === "mail" ? "mail" : "message-circle", "k")}${name}<em>${text ?? STEP_TEXT[state]}</em></li>`;
+const cur = ({ stage, name, due = "", tone = "", meta, steps, primary, note }) => `<article class="cur"><div class="r1"><i class="dot" style="background:${STAGE[stage][1]}"></i><span class="stg">${STAGE[stage][0]}</span><h4>${name}</h4>${due ? `<span class="due ${tone}">${due}</span>` : ""}</div><div class="meta">${meta}</div><ol class="steps">${steps}</ol><div class="acts">${primary}<span class="btn g">任务要求</span><span class="note">${note}</span></div></article>`;
+const trow = ({ stage, name, meta, prog, due, tone = "", go, off }) => `<div class="tr"><i class="dot" style="background:${STAGE[stage][1]}"></i><div><b>${name}</b><small>${meta}</small></div><span class="p num">${prog}</span><span class="due ${tone}">${due}</span><span class="go${off ? " off" : ""}">${go}</span></div>`;
+const practice = () => `<section class="board pr"><h3>自由练习</h3><p>不计成绩，场景随便挑。</p><div class="radio">${[["全部随机", null, true], ["售前沟通", "pre"], ["售中处理", "in"], ["售后处理", "after"], ["客户分层维护", "care"]].map(([l, s, on]) => `<div class="ri${on ? " on" : ""}"><i class="rd"></i>${s ? `<i class="dot" style="background:${STAGE[s][1]}"></i>` : ""}${l}</div>`).join("")}</div><div class="sel">场景：全部随机 ${I("chevron-down")}</div><span class="btn o">开始练习</span></section>`;
+
+const hallDoing = () => shell({ nav: "tasks", title: "任务大厅", body: `${hallCards()}<div class="hall-grid"><section class="board">${tabs("doing", [2, 2, 3])}
+  ${cur({ stage: "pre", name: "新品上市推广", due: "还剩 2 天", tone: "warn", meta: "每次接待限时 20 分钟 · 文字 + 语音 · 达标线 60 · 王老师 10 月 17 日下发", steps: step(1, "新品咨询与卖点介绍", "chat", "done", "已接待") + step(2, "新品推广邮件", "mail", "next", "未开始"), primary: `<span class="btn p">${I("pen-line")}写邮件</span>`, note: "收件人和模板已经备好" })}
+  ${trow({ stage: "after", name: "售后差评挽回演练", meta: "售后处理 · 1 个场景 · 不限时 · 文字 + 语音", prog: "0 / 1 场景", due: "还剩 5 天", go: "继续" })}
+</section>${practice()}</div>` });
+
+const hallTodo = () => shell({ nav: "tasks", title: "任务大厅", body: `${hallCards()}<div class="hall-grid"><section class="board">${tabs("todo", [2, 2, 3])}
+  <div class="base-row"><span class="bi">${I("clipboard-check")}</span><div><b>先做训前测评</b><small>10 道题，约 8 分钟，测出各项能力的起点</small></div><span class="btn s">开始测评</span></div>
+  ${cur({ stage: "care", name: "沉睡客户唤醒", due: "还剩 6 天", meta: "每次接待限时 15 分钟 · 文字 · 达标线 70 · 王老师 10 月 18 日下发", steps: step(1, "沉睡客复购唤醒", "chat", "next") + step(2, "粉丝客节日关怀", "mail", "idle"), primary: `<span class="btn p">${I("headset")}进入工作台</span>`, note: "买家会一位一位进线" })}
+  ${trow({ stage: "in", name: "催付与物流同步", meta: "售中处理 · 2 个场景 · 每次限时 15 分钟 · 文字", prog: "0 / 2 场景", due: "10/22 08:00 开放", go: "未开放", off: true })}
+</section>${practice()}</div>` });
+
+const hallEmpty = () => shell({ nav: "tasks", title: "任务大厅", body: `${hallCards(true)}<div class="hall-grid"><section class="board">${tabs("doing", [0, 0, 0])}
+  <div class="steps3"><div class="s3h"><b>开始三步</b><span>按顺序做，老师下发任务后这里换成任务列表</span></div>
+  <div class="s3 cur3"><span class="no">1</span><div><b>做训前测评</b><small>10 道题，约 8 分钟。测出各项能力的起点，以后的成绩都和它比</small></div><span class="btn p">开始测评</span></div>
+  <div class="s3"><span class="no">2</span><div><b>用自由练习熟悉客服工作台</b><small>接待一位练习买家：回消息、查订单、发商品，不计成绩</small></div><span class="btn s">开始练习</span></div>
+  <div class="s3"><span class="no">3</span><div><b>等老师下发任务</b><small>下发后会出现在这里，右上角的铃铛也会提醒你</small></div><span class="st">等待中</span></div></div>
+</section>${practice()}</div>` });
+
+/* ---------- 我的记录 ---------- */
+const DIMS = ["服务话术规范", "客户沟通有效性", "客户情绪安抚", "订单问题解决", "商品信息准确性", "消息响应时效", "语法准确性", "沟通用语合规"];
+const NOW = [71, 66, 62, 58, 74, 69, 77, 86];
+const BASE = [62, 60, 55, 40, null, null, 58, 64];
+function radar({ w, h, R, now, base, sel, compact = false }) {
+  const cx = w / 2, cy = h / 2, n = DIMS.length;
+  const pt = (i, v, r = R) => { const a = -Math.PI / 2 + (i * 2 * Math.PI) / n; const k = (r * v) / 100; return [cx + k * Math.cos(a), cy + k * Math.sin(a)]; };
+  let s = `<svg class="rd${compact ? " compact" : ""}" viewBox="0 0 ${w} ${h}" style="width:100%;height:100%"><defs><linearGradient id="g${w}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(29,95,209,.26)"/><stop offset="1" stop-color="rgba(29,95,209,.06)"/></linearGradient></defs>`;
+  [20, 40, 80, 100].forEach((v) => (s += `<circle cx="${cx}" cy="${cy}" r="${(R * v) / 100}" class="ring${v === 100 ? " outer" : ""}"/>`));
+  s += `<circle cx="${cx}" cy="${cy}" r="${R * 0.6}" class="ring pass"/>`;
+  DIMS.forEach((_, i) => { const [x, y] = pt(i, 100); s += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" class="axis"/>`; });
+  if (base) base.forEach((v, i) => { const u = base[(i + 1) % n]; if (v == null || u == null) return; const [x1, y1] = pt(i, v), [x2, y2] = pt((i + 1) % n, u); s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="base"/>`; });
+  if (now) {
+    s += `<polygon points="${now.map((v, i) => pt(i, v).join(",")).join(" ")}" class="avg" fill="url(#g${w})"/>`;
+    now.forEach((v, i) => { const [x, y] = pt(i, v); s += `<circle cx="${x}" cy="${y}" r="3.5" class="dot${v < 60 ? " lo" : ""}"/>`; });
+  }
+  if (sel) { const pts = sel.map((v, i) => (v == null ? null : pt(i, v).join(","))).filter(Boolean); s += `<polygon points="${pts.join(" ")}" class="sel"/>`; }
+  DIMS.forEach((name, i) => {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / n, dx = Math.cos(a), dy = Math.sin(a);
+    const [x, y] = pt(i, 100, R + 14); const anc = Math.abs(dx) < 0.3 ? "middle" : dx > 0 ? "start" : "end";
+    const yy = y + (dy > 0.3 ? 12 : dy < -0.3 ? -16 : -4);
+    s += `<text x="${x}" y="${yy}" text-anchor="${anc}" class="lb">${name}</text>`;
+    if (!compact) {
+      const v = now ? now[i] : null, b = base ? base[i] : null, d = v != null && b != null ? v - b : null;
+      s += `<text x="${x}" y="${yy + 18}" text-anchor="${anc}"><tspan class="val${v == null ? " none" : v < 60 ? " lo" : ""}">${v ?? "—"}</tspan>${d == null ? "" : `<tspan class="dl${d < 0 ? " down" : ""}" dx="6">${d >= 0 ? "↑" : "↓"}${Math.abs(d)} 较训前</tspan>`}</text>`;
+    }
+  });
+  return s + `</svg>`;
+}
+const recCards = (empty) => `<div class="kc-row">
+  ${kc({ label: "本周接待", value: `<b${empty ? ' class="dash"' : ""}>${empty ? 0 : 7}</b><small>次</small>`, sub: empty ? "" : "其中练习 2 次", viz: weekBars(empty ? [0, 0, 0, 0, 0, 0, 0] : [1, 0, 3, 2, 1, 0, 0], 4), top: 26 })}
+  ${kc({ label: "达标率", value: empty ? dash : `<b>75%</b>`, sub: empty ? "" : "12 次任务接待 9 次达标", viz: ring(empty ? null : 0.75, "#1a7445"), top: 18 })}
+  ${kc({ label: "平均响应时长", value: empty ? dash : `<b>38</b><small>秒</small>`, sub: empty ? "" : "首次响应平均 25 秒", viz: respBar(empty ? null : 38), top: 30 })}
+  ${kc({ label: "满意率", value: empty ? dash : `<b>68%</b>`, sub: empty ? "" : `<span style="color:#f2b01e">★</span> 平均 3.9 · 25 次评价`, viz: starHist(empty ? null : [6, 11, 5, 2, 1]), top: 16 })}
+</div>`;
+const legend = `<div class="lgd in"><span><i></i>近期平均</span><span><em></em>训前测评</span><span><em class="pass"></em>60 分线</span></div>`;
+const radarBoard = (empty) => `<div class="board" style="position:relative"><div class="bh"><h3>能力雷达</h3><span class="n">${empty ? "训前测评 54 分" : "12 次接待的平均"}</span><div class="ex">${empty ? "" : `<div class="seg"><span class="on">全部</span><span>近 7 天</span><span>近 30 天</span></div>`}</div></div>
+  <div class="rb"${empty ? ' style="height:330px"' : ""}>${legend}${radar({ w: 640, h: 330, R: 104, now: empty ? null : NOW, base: BASE })}
+  ${empty ? "" : `<div class="rb-tips"><div><b>订单问题解决</b>给出能执行的方案（补发 / 退款 / 折扣），写清时限和步骤</div><div><b>客户情绪安抚</b>买家不满时先共情再给方案：I completely understand… / I'm so sorry…</div></div>`}</div>
+  ${empty ? `<div class="hint">${I("message-square-dashed")}完成第一次接待后，这里出现你的能力雷达 ${H}</div>` : ""}</div>`;
+const trendBoard = (empty) => {
+  const pts = [[60, 58], [140, 66], [220, 62], [300, 71], [380, 80], [460, 76], [530, 83]], Y = (v) => 320 - (v - 20) * 3.6;
+  let s = `<svg viewBox="0 0 560 360">`;
+  [100, 80, 60, 40].forEach((v) => (s += `<line x1="40" x2="545" y1="${Y(v)}" y2="${Y(v)}" stroke="#edf0f4"/><text x="8" y="${Y(v) + 4}" font-size="12" fill="#9aa3b0">${v}</text>`));
+  s += `<line x1="40" x2="545" y1="${Y(60)}" y2="${Y(60)}" stroke="#161c26" stroke-dasharray="4 4"/><text x="545" y="${Y(60) - 6}" text-anchor="end" font-size="12" fill="#465163">达标线 60</text>`;
+  if (!empty) {
+    s += `<polyline points="${pts.map(([x, v]) => `${x},${Y(v)}`).join(" ")}" fill="none" stroke="#1d5fd1" stroke-width="2"/>`;
+    pts.forEach(([x, v], i) => (s += `<circle cx="${x}" cy="${Y(v)}" r="5" fill="#fff" stroke="${v < 60 ? "#b8302a" : "#1d5fd1"}" stroke-width="2"/><text x="${x}" y="350" text-anchor="middle" font-size="12" fill="#9aa3b0">10/${12 + i}</text>`));
+  } else {
+    s += `<polyline points="60,${Y(60)} 530,${Y(60)}" fill="none" stroke="#dfe4ea" stroke-width="2" stroke-dasharray="4 4"/>`;
+  }
+  return `<div class="board"><div class="bh"><h3>成绩走势</h3><span class="n">任务接待</span><div class="ex">${H}</div></div><div class="trend"${empty ? ' style="height:330px"' : ""}>${s}</svg></div>${empty ? `<div class="hint">${I("chart-line")}每次任务接待出分后连成线</div>` : ""}</div>`;
+};
+const mini = (vals) => `<div class="mini">${vals.map((v) => (v == null ? `<i class="na"></i>` : `<i class="${v < 60 ? "lo" : ""}" style="height:${v * 0.4}px"></i>`)).join("")}</div>`;
+const recRow = ({ sc, tone, name, tag = "", l2, vals, ai, practice: pr }) => `<div class="rrow"><div class="sc ${tone} num">${pr ? "练习" : `${sc}<small>分</small>`}</div><div class="nm"><b>${name}</b>${tag}<div>${l2}</div></div>${mini(vals)}<div class="ai"><b>AI</b>${ai}</div><span class="btn s">复盘</span></div>`;
+const recList = () => `<div class="board rec"><div class="bh"><h3>成绩记录</h3><span class="n">14</span><div class="chips"><span class="on">全部</span><span>任务 12</span><span>练习 2</span><span>有老师评语 3</span></div></div>
+  ${recRow({ sc: 80, tone: "hi", name: "售中物流同步演练", l2: "清关延误安抚 · Diego Fernandez · 今天 10:42", vals: [82, 78, 75, 80, 72, 88, 85, 100], ai: "能主动给出物流节点和预计时间，安抚到位；开场确认订单号稍慢…" })}
+  ${recRow({ sc: 76, tone: "mid", name: "新品上市推广", tag: `<span class="tag brand">邮件</span>`, l2: "新品推广邮件 · 发给 Emma Schneider · 10 月 18 日", vals: [78, 72, null, 70, 80, null, 74, 100], ai: "主题清楚、卖点具体，优惠信息和截止时间写得明确；正文第二段偏长…" })}
+  ${recRow({ practice: true, tone: "pr", name: "自由练习", l2: "物流查询 · Sakura Sato · 10 月 17 日", vals: [64, 60, 58, 55, 66, 52, 70, 90], ai: "回复礼貌，但没有先查订单状态就承诺了到货时间…" })}
+</div>`;
+const records = () => shell({ nav: "records", title: "我的记录", body: `<div style="position:relative">${recCards()}
+  <div class="tipbox" style="left:${1128 - 268 - 4}px;top:100px"><b>满意率</b>接待结束时，买家给服务打 4 星或 5 星的次数占比，统计全部接待（含自由练习）。</div></div>
+  <div class="two">${radarBoard()}${trendBoard()}</div>${recList()}` });
+const recordsEmpty = () => shell({ nav: "records", title: "我的记录", body: `${recCards(true)}<div class="two">${radarBoard(true)}${trendBoard(true)}</div>` });
+
+/* ---------- 邮件复盘 ---------- */
+const dimRow = (name, v, avg) => v == null ? `<div class="dimr na"><span>${name}</span><span class="bar"></span><strong>—</strong><span>不适用</span></div>` : `<div class="dimr"><span>${name}</span><span class="bar"><i style="width:${v}%;${v < 60 ? "background:#b8302a" : ""}"></i></span><strong class="num">${v}</strong><span class="dl${v - avg < 0 ? " down" : ""}">${v - avg >= 0 ? "+" : ""}${v - avg}</span></div>`;
+const MAIL_SCORES = [78, 72, null, 70, 80, null, 74, 100];
+const mailReplay = () => `<div style="position:relative;height:100%">${records()}<div class="ov"><div class="modal">
+  <div class="mh">${face("E", "#8a5cc7")}<div><strong>新品上市推广 · 新品推广邮件</strong><p>Emma Schneider · 德国 · 10 月 18 日 15:20 发送</p></div><span class="band">总分 76 · 达标（达标线 60）</span>${I("x")}</div>
+  <div class="mb"><div class="mailv">
+    <div class="kv"><span>发件人</span><em>Aurora Mart &lt;service@auroramart.shop&gt;</em><span>收件人</span><em>Emma Schneider &lt;emma.schneider@outlook.com&gt; <span class="tag fan">粉丝</span></em><span>模板</span><em>新品推广（改写了约六成）</em></div>
+    <div class="subj">Just landed: Smart LED String Lights for cozy evenings</div>
+    <div class="txt">Hi Emma,
+
+Thank you for being one of our loyal customers at Aurora Mart. We are excited to share a new arrival with you: the Smart LED String Lights (10 m, RGB, app control, IP65).
+
+They are made for cozy evenings on the balcony or in the living room, and you can set colors and a timer right from your phone. Since you liked our desk lamp last spring, we think they will suit your home well.
+
+As a thank-you, here is a 10% code just for you: AURORA10, valid until October 31.
+
+If you have any questions about size, installation or delivery to Germany, simply reply to this email.
+
+Best regards,
+Aurora Mart Customer Service</div>
+    <div class="chk">${I("shield-check")}发送时检测：没有违规用语</div>
+    <div class="rep"><b>买家回信 · 10 月 18 日 18:02</b>Thanks! Do they also work outdoors when it rains? Our balcony is not covered.</div>
+  </div>
+  <div class="aside"><h4>能力对比</h4><div style="height:196px">${radar({ w: 420, h: 196, R: 60, now: NOW, sel: MAIL_SCORES, compact: true })}</div>
+    <h4>AI 评语</h4><div class="quote">主题清楚、卖点具体，结合了买家去年买过台灯的经历，优惠码和截止时间写得明确。正文第二段偏长，可以把参数挪到要点列表里。</div>
+    <h4>各项得分 · 对比平均</h4>${DIMS.map((d, i) => dimRow(d, MAIL_SCORES[i], NOW[i])).join("")}
+    <h4>改进建议</h4><ol class="tips"><li>把规格写成 2–3 个要点，正文控制在 120 词以内</li><li>结尾给一个明确的下一步，例如 “Reply ‘YES’ and we will reserve a set for you”</li></ol>
+  </div></div></div></div></div>`;
+
+/* ---------- 客服工作台 ---------- */
+const shiftHead = (sat) => `<div class="shift"><span class="online">在线${I("chevron-down")}</span><span class="vsep"></span><span>今日接待<b class="num">3</b></span><span>平均响应<b class="num">32 秒</b></span><span>未回复<b class="num">0</b></span><span>满意率<b class="num">${sat}</b></span>${I("chevron-down")}</div><span style="margin-left:auto"></span><span class="taskchip">${I("graduation-cap")}<i class="dot" style="background:${STAGE.after[1]}"></i>售后处理 <b>售后差评挽回演练</b> 0/1 ${I("chevron-down")}</span>`;
+const qi = (ch, color, name, last, t, on) => `<div class="qi${on ? " on" : ""}">${face(ch, color)}<div class="tx"><div class="l1"><b>${name}</b><span class="qt">${t}</span></div><small>${last}</small></div></div>`;
+const bubble = (text, { me = false, t, tr = false, f = "J", c = "#c0533a" } = {}) => `<div class="m${me ? " me" : ""}">${me ? "" : face(f, c, "xs")}<div><div class="bb">${text}</div><div class="ft">${me ? "" : `<span>${I("volume-2")}播报</span><span>${I("languages")}${tr ? "显示译文" : "翻译"}</span>`}<span>${t}</span></div></div></div>`;
+const custPanel = ({ ch, color, name, tag, country, orders, last, visits, order }) => `<aside class="cp"><div class="cust"><div class="who">${face(ch, color)}<div><b>${name}</b><div class="tg">${tag}<span>${country}</span></div></div></div>
+  <dl class="kv2"><dt>历史订单</dt><dd>${orders}</dd><dt>最近下单</dt><dd>${last}</dd><dt>72 小时咨询</dt><dd>${visits}</dd></dl><div class="notebox">客户备注<div>添加备注</div></div></div>
+  <div class="ptabs"><span class="on">订单 1</span><span>商品</span><span>优惠券 4</span></div>${order}</aside>`;
+const orderCard = (no, prod, spec, price, st, lg) => `<div class="oc"><div class="h">${no}<span class="tag brand">本次咨询</span><span class="tag">${st}</span></div><div class="pd"><span class="img">${I("package")}</span><div><b>${prod}</b><small>${spec}</small></div><b style="margin-left:auto">${price}</b></div><div class="lg">${lg}</div></div>`;
+
+const wbRating = () => shell({ nav: "workbench", store: true, head: shiftHead("67%"), body: `<div class="wb">
+  <aside class="ql"><div class="ql-top"><div class="search">${I("search")}搜索买家或聊天内容</div><div class="seg2"><span class="on">接待中<i>2</i></span><span>最近联系<i>30</i></span></div></div>
+    <p class="qg">已回复 · 2</p>${qi("M", "#3a7bd5", "Mia Becker", "Okay, I'll wait for the tracking number.", "14:05")}${qi("O", "#2f8f6a", "Oliver Brown", "Is there a bigger size?", "14:03")}
+    <p class="qg">刚结束 · 1</p>${qi("J", "#c0533a", "Javier Sánchez", "¡Genial, muchas gracias! Hasta luego.", "14:06", true)}</aside>
+  <section class="chat"><div class="ch">${face("J", "#c0533a", "sm")}<div><b>Javier Sánchez</b><small>西班牙</small></div><div class="r"><span class="cb">咨询类型 <b>补发配件</b></span><span class="cb">${I("star")}待跟进</span><span class="cb closed">已结束</span></div></div>
+    <div class="msgs"><span class="sys">14:02 会话已分配给你</span>
+      ${bubble("Hola, el pedido PO-202610-731204 llegó, pero falta el cable USB de la lámpara.", { t: "14:02", tr: true })}
+      ${bubble("Hola Javier, siento mucho la molestia. Le enviaremos un cable nuevo hoy mismo, sin coste. ¿Le parece bien?", { me: true, t: "14:03" })}
+      ${bubble("Perfecto, ¿cuándo llegará?", { t: "14:04", tr: true })}
+      ${bubble("Saldrá hoy y llegará en 5–7 días laborables. Le enviaré el número de seguimiento por aquí.", { me: true, t: "14:05" })}
+      ${bubble("¡Genial, muchas gracias! Hasta luego.", { t: "14:06", tr: true })}
+      <span class="sys">客户已离开 · 会话时长 4 分 12 秒</span>
+      <span class="rate">买家评价了本次服务 ${stars(5)}</span>
+    </div>
+    <div class="closed-c">${I("lock")}<span>这位买家已离开，不能再发消息。</span><span>${I("mail")}发邮件跟进</span></div></section>
+  ${custPanel({ ch: "J", color: "#c0533a", name: "Javier Sánchez", tag: `<span class="tag fan">粉丝</span>`, country: "西班牙", orders: "4 笔 · USD 186.40", last: "10 月 12 日", visits: "1 次", order: orderCard("PO-202610-73…", "Smart Desk Lamp", "White / USB-C × 1", "$32.9", "已送达", "YunExpress · 已送达") })}
+</div>` });
+
+const payCard = () => `<div class="tcard"><div class="th"><span class="ico pay">${I("wallet")}</span>订单待付款<small>付款提醒</small></div>
+  <div class="tb"><span class="img">${I("headphones")}</span><div><b>Wireless Earbuds Pro × 1</b><small class="num">#PO-202610-558201</small><em class="num">USD 39.90 · 11 小时后自动关闭</em></div></div>
+  <div class="tn">Hi Mia, just a friendly reminder that your Wireless Earbuds Pro are reserved for you until tomorrow 10:00. You can complete the payment anytime with the button below.</div>
+  <div class="tf">Aurora Mart<span class="cta">去付款</span></div></div>`;
+const logiCard = () => `<div class="tcard"><div class="th"><span class="ico lg">${I("truck")}</span>物流动态<small>物流通知</small></div>
+  <div class="tb"><span class="img">${I("package")}</span><div><b>国际干线 · 下一站：清关</b><small class="num">Cainiao Global · LP5595160617</small><em class="lg num">10/9 19:24 航班抵达法兰克福</em></div></div>
+  <div class="tn">Hi Laura, thanks for your patience — your order PO-202610-797372 is in the international linehaul stage, and the next step will be customs clearance.</div>
+  <div class="tf">Aurora Mart<span class="cta">查看物流</span></div></div>`;
+const toolCards = () => `<div class="cards-demo">
+  <div><h5>普通消息（学生在输入框里打的字）</h5><div class="m me" style="max-width:none"><div><div class="bb">Hi Laura, your parcel has arrived in Germany and is waiting for customs clearance.</div><div class="ft"><span>14:05</span></div></div></div></div>
+  <div><h5>付款提醒卡片（订单详情 · 催付）</h5>${payCard()}</div>
+  <div><h5>物流通知卡片（物流 · 物流同步）</h5>${logiCard()}</div></div>`;
+
+const wbResume = () => shell({ nav: "workbench", store: true, head: shiftHead("67%"), body: `<div class="wb">
+  <aside class="ql"><div class="ql-top"><div class="search">${I("search")}搜索买家或聊天内容</div><div class="seg2"><span class="on">接待中<i>3</i></span><span>最近联系<i>29</i></span></div></div>
+    <p class="qg">待回复 · 1</p>${qi("L", "#b0478a", "Laura Richter", "Danke für das Update! Wissen Sie ungefähr, wann…", "00:12", true)}
+    <p class="qg">已回复 · 2</p>${qi("M", "#3a7bd5", "Mia Becker", "Okay, I'll wait for the tracking number.", "14:05")}${qi("O", "#2f8f6a", "Oliver Brown", "Is there a bigger size?", "14:03")}</aside>
+  <section class="chat"><div class="ch">${face("L", "#b0478a", "sm")}<div><b>Laura Richter</b><small>德国</small></div><div class="r"><span class="cb">咨询类型 <b>物流查询</b></span><span class="cb">${I("star")}待跟进</span><span class="cb line">${I("circle-stop")}结束接待</span></div></div>
+    <div class="msgs" style="justify-content:flex-end"><span class="sys">10 月 17 日 09:12 会话已分配给你</span>
+      ${bubble("Hallo, mein Paket PO-202610-797372 ist seit Tagen unterwegs. Wo ist es?", { t: "09:12", tr: true, f: "L", c: "#b0478a" })}
+      <span class="sys">客户已离开 · 会话时长 3 分 05 秒</span>
+      <span class="rate">买家评价了本次服务 ${stars(2)}</span>
+      <div class="toolrow">${logiCard()}<span class="ft">物流同步 · 从订单页发送 · 10 月 19 日 14:20</span></div>
+      <span class="sys">10 月 19 日 14:21 买家回复了物流通知</span>
+      ${bubble("Danke für das Update! Wissen Sie ungefähr, wann es ankommt?", { t: "14:21", tr: true, f: "L", c: "#b0478a" })}
+    </div>
+    <div class="comp"><div class="tools">${I("smile")}${I("image")}${I("film")}${I("paperclip")}<span style="display:inline-flex;gap:4px;align-items:center">${I("message-square-text")}快捷短语</span><span style="margin-left:auto" class="cb line">${I("languages")}翻译 中→德</span></div><div class="ph">输入消息，Enter 发送</div><div class="bot"><span class="ptt">${I("mic")}按住说话</span><span class="r">0 / 1000<span class="btn p" style="height:30px">发送 ${I("send")}</span></span></div></div></section>
+  ${custPanel({ ch: "L", color: "#b0478a", name: "Laura Richter", tag: `<span class="tag">普通客户</span>`, country: "德国", orders: "1 笔 · USD 41.80", last: "10 月 6 日", visits: "1 次", order: orderCard("PO-202610-79…", "Stainless Insulated Tumbler 600ml", "Matte green / double wall × 2", "$41.8", "运输中", "Cainiao Global · LP5595160617 · 国际干线") })}
+</div>` });
+
+/* ---------- 订单 ---------- */
+const ordTabs = `<div class="htabs"><span>全部<i>50</i></span><span>待付款<i>1</i></span><span>待发货<i>10</i></span><span class="on">已发货<i>11</i></span><span>已送达<i>20</i></span><span>已成功<i>8</i></span></div>`;
+const orderSync = () => shell({ nav: "orders", store: true, head: ordTabs, body: `<div class="od"><span class="back">${I("arrow-left")}返回订单列表</span>
+  <div class="odp"><div class="odh"><h2>订单状态：运输中</h2><div class="segt"><span>订单详情</span><span class="on">物流</span><span>评价</span></div></div>
+    <div class="lt"><div class="lrow done"><span class="ld">${I("plane")}</span><div><b>国际干线<small>10/9 19:24</small></b><p>10/8 21:59 【广州白云国际机场】国际航班已起飞</p><p class="hl">10/9 19:24 【法兰克福机场】航班抵达目的国</p></div></div>
+    <div class="lrow"><span class="ld">${I("shield-check")}</span><div><b>清关<small>待更新</small></b><p>等待清关</p></div></div></div>
+    <div class="sug"><div class="h">${I("sparkles")}物流同步 · 选择一个版本，可二次编辑后发送<span>${I("refresh-cw")}重新生成</span></div>
+      <div class="vers"><div class="ver on"><span class="k">版本 1</span>Hi Laura, thanks for your patience — your order PO-202610-797372 is in the international linehaul stage with Cainiao Global (tracking: LP5595160617), and the next step will be customs clearance.</div>
+      <div class="ver"><span class="k">版本 2</span>Hello Laura, a quick update: your parcel is on the international leg right now, and tracking LP5595160617 will show the next scan once it clears customs.</div>
+      <div class="ver"><span class="k">版本 3</span>Hi Laura, your order is moving through the international linehaul and should reach customs soon. If tracking hasn't updated in a few days, that's normal for this stage.</div></div>
+      <div class="ta">Hi Laura, thanks for your patience — your order PO-202610-797372 is in the international linehaul stage with Cainiao Global (tracking: LP5595160617), and the next step will be customs clearance.</div>
+      <div class="sb"><span class="btn p">${I("send")}发送物流通知</span><span class="mute">${I("info")}原会话已结束，卡片会发到买家的聊天里，买家回复后可以跟进 2–3 轮</span></div></div></div></div>` });
+
+/* ---------- 评价 ---------- */
+const rvTabs = `<div class="htabs"><span>全部<i>22</i></span><span class="on">差评<i>11</i></span><span>中评<i>1</i></span><span>好评<i>10</i></span></div>`;
+const stars = (n) => `<span class="stars">${"★".repeat(n)}<span class="off">${"★".repeat(5 - n)}</span></span>`;
+const review = () => shell({ nav: "reviews", store: true, head: rvTabs, body: `<div class="rv">
+  <div class="rv-sum"><h3>买家评价</h3><div style="margin-top:6px">${stars(3)} <b style="font-size:18px;margin-left:6px">3.0</b> <small style="color:#5e6a7b">满分 5 星</small></div><small style="color:#5e6a7b">共 22 条评价</small>
+    <div class="dist">${[[5, 36], [4, 9], [3, 5], [2, 23], [1, 27]].map(([s, p]) => `<span>${s} 星</span><span class="b"><i style="width:${p}%"></i></span><span>${p}%</span>`).join("")}</div>
+    <div style="margin-top:20px;padding-top:14px;border-top:1px solid #e3e7ee;font-size:13px;line-height:24px"><b>好评率 45%</b><br>已回复 0 / 22</div></div>
+  <div class="rv-item"><div class="top">${face("L", "#b0478a")}<div><b>Laura Richter</b><div class="meta2">${stars(2)} 10 月 18 日 · 德国</div></div></div>
+    <div class="prod">Stainless Insulated Tumbler 600ml · Matte green / double wall · <em>已购买</em></div>
+    <p class="ct">Der Becher hält Getränke gut kalt, aber die Lieferung hat fast drei Wochen gedauert, und auf meine Nachfrage kam vom Kundenservice kaum eine Antwort. So macht Einkaufen keinen Spaß.</p>
+    <div class="rr"><div class="h">回复 Laura Richter<span>${I("sparkles")}重新生成</span></div>
+      <div class="sm">AI 草稿 3 版 · 已填入「致歉补偿」</div>
+      <div class="vers"><div class="ver on"><span class="k">致歉补偿</span>Hi Laura, we're truly sorry the delivery took almost three weeks and that our replies fell short. We've added a 15% voucher to your account for your next order, and we're reviewing our shipping partner for Germany.<span class="zh">非常抱歉配送用了近三周、回复也不到位。已给你账户加了一张 15% 优惠券，并在核查德国线路的承运商。</span></div>
+      <div class="ver"><span class="k">说明原因</span>Hi Laura, thank you for the honest feedback. Your parcel was held at customs longer than usual; we should have kept you updated. We're glad the tumbler keeps your drinks cold.<span class="zh">感谢坦诚反馈。包裹在海关滞留比平时久，我们本该及时告诉你。很高兴杯子保冷效果让你满意。</span></div>
+      <div class="ver"><span class="k">私信跟进</span>Hi Laura, we're sorry about the long wait and slow replies. Our team has sent you a message with a priority contact so this won't happen again on your next order.<span class="zh">抱歉让你久等、回复又慢。我们已私信你一个优先联系方式，下次下单不会再这样。</span></div></div>
+      <div class="ta">Hi Laura, we're truly sorry the delivery took almost three weeks and that our replies fell short. We've added a 15% voucher to your account for your next order, and we're reviewing our shipping partner for Germany.</div>
+      <div class="sb"><span class="btn s">${I("languages")}译成德语</span><span class="r"><span class="btn g">取消</span><span class="btn g">清空</span><span class="btn p">发布回复</span></span></div></div></div>
+</div>` });
+
+/* ---------- 邮件 ---------- */
+const mailHead = `<div class="htabs"><span class="on">收件箱<i>52</i></span><span>待回复<i class="red">52</i></span><span>已发送</span><span>草稿<i>2</i></span></div><span style="margin-left:auto"></span><span class="taskchip">${I("graduation-cap")}<i class="dot" style="background:${STAGE.pre[1]}"></i>售前沟通 <b>新品上市推广</b> 1/2 ${I("chevron-down")}</span><span class="btn p" style="height:32px">${I("pen-line")}写邮件</span>`;
+const mi = (ch, color, name, d, sj, sm) => `<div class="mi">${face(ch, color, "sm")}<div class="tx"><div class="l1"><b>${name}</b><span>${d}</span></div><div class="sj">${sj}</div><small>${sm}</small></div></div>`;
+const mailTask = () => shell({ nav: "mail", store: true, head: mailHead, body: `<div class="mail">
+  <div class="mlist"><div class="search">${I("search")}搜索发件人、主题或订单号</div>
+    ${mi("L", "#b0478a", "Laura Richter", "10月17日", "Where is my parcel? PO-202610-797372", "Hello, it's been quite a while since order PO-202610-7…")}
+    ${mi("L", "#3a7bd5", "Lauren Anderson", "10月15日", "Package status inquiry - PO-202610-657507", "Hi, the tracking for my order PO-202610-657507 has…")}
+    ${mi("L", "#b0478a", "Laura Richter", "10月15日", "Customs delay? Order PO-202610-463630", "Hi Support team, my tracking shows the Wireless Noi…")}
+    ${mi("L", "#6b7686", "Louis Moreau", "10月14日", "Disappointed with my order PO-202610-467568", "Hello, I received the Pet Interactive Feeder Toy, but I…")}
+    ${mi("C", "#8a5cc7", "Camila Costa", "10月14日", "Disappointed with my order PO-202610-451186", "Hello, I received the Stainless Insulated Tumbler 600…")}
+    ${mi("É", "#2f8f6a", "Élise Fournier", "10月14日", "When will order PO-202610-630000 ship?", "Hello, my payment for order PO-202610-630000 (收…")}</div>
+  <div class="cmp"><div class="h"><h3>写邮件</h3><span class="tag ok">合规</span></div>
+    <div class="fr"><span>收件人</span><div class="inp"><span class="rc">${face("E", "#8a5cc7", "xs")}Emma Schneider <small>emma.schneider@outlook.com</small></span><span class="tag fan">粉丝</span><small style="color:#5e6a7b">德国 · 历史订单 3 笔</small></div></div>
+    <div class="fr"><span>主题</span><div class="inp">Just landed: Smart LED String Lights for cozy evenings</div></div>
+    <div class="fr"><span>模板</span><div class="tplrow"><span class="on">新品推广</span><span>新客开发</span><span>节日关怀</span><span>复购唤醒</span><span class="new">催付提醒</span><span class="new">物流延误说明</span><span class="new">售后致歉补偿</span><span class="new">好评邀请</span></div></div>
+    <div class="fr top"><span>正文</span><div class="mbox"><div class="txt">Hi Emma,
+
+Thank you for being one of our loyal customers at Aurora Mart. We are excited to share a new arrival with you: the Smart LED String Lights (10 m, RGB, app control, IP65).
+
+They are made for cozy evenings on the balcony or in the living room, and you can set colors and a timer right from your phone.
+
+As a thank-you, here is a 10% code just for you: AURORA10, valid until October 31.
+
+If you have any questions, simply reply to this email.
+
+Best regards,
+Aurora Mart Customer Service</div>
+      <div class="bt"><span class="btn s">${I("sparkles")}AI 辅助</span><span class="ok">${I("shield-check")}没有违规用语</span><span class="r"><span class="btn g">丢弃</span><span class="btn s">${I("archive")}存草稿</span><span class="btn p" style="height:30px">${I("send")}发送</span></span></div></div></div></div>
+</div>` });
+
+const T = { toolCards, hallDoing, hallTodo, hallEmpty, records, recordsEmpty, mailReplay, wbRating, wbResume, orderSync, review, mailTask };
+document.querySelectorAll(".screen[data-tpl]").forEach((el) => { el.innerHTML = T[el.dataset.tpl](); });
+if (window.lucide) lucide.createIcons();
+function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const h = +(f.dataset.h || 900); s.style.height = `${h}px`; const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${h * k}px`; }); }
+fit(); addEventListener("resize", fit);
+</script></body></html>

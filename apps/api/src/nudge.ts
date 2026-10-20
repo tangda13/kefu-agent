@@ -8,6 +8,8 @@ import { loadBuyerOrders } from "./buyer-orders";
 import { assessConversation } from "./assessment";
 import { generateBuyerReview } from "./review-gen";
 import type { SessionState } from "./director";
+import { rateService } from "./service-rating";
+import { endFollowUp, followUpActive } from "./tool-followup";
 
 /**
  * 买家耐心（D-40）：买家最后一条消息之后客服一直没回，约 2 / 5 分钟催促，约 10 分钟留言离开（buyer_left）。
@@ -31,7 +33,7 @@ export async function sweepBuyerPatience(db: Db, gateway: LlmGateway, log: LogLi
   if (!gateway.isConfigured("dialogue")) return 0;
   // 最后一条非教师消息是买家发的、会话进行中；取最后消息 id 与时间
   const result = await db.query(
-    `select c.id, c.persona, c.state, c.scenario_id, c.created_at, last.id as last_id, last.created_at as last_at
+    `select c.id, c.persona, c.state, c.scenario_id, c.created_at, c.tool_followup, last.id as last_id, last.created_at as last_at
      from conversations c
      join lateral (
        select m.id, m.sender, m.created_at from conversation_messages m
@@ -128,13 +130,19 @@ async function runNudge(
   if (!saved.rowCount) return false;
 
   const nextCount = step.count + 1;
+  if (step.leaving && followUpActive(row.tool_followup)) {
+    // 跟进中等不到回复：只结束跟进，不评分、不打星、不留评（D-56）
+    await endFollowUp(db, row.id, "buyer_left");
+    return true;
+  }
   if (step.leaving) {
     const closed = await db.query(
       "update conversations set status = 'closed', closed_reason = 'buyer_left', closed_at = now() where id = $1 and status = 'active' returning id",
       [row.id],
     );
     if (closed.rowCount) {
-      // 与买家在回复里带 [END_OF_SERVICE] 离开走同一套收尾：评分 + 买家留评
+      // 与买家在回复里带 [END_OF_SERVICE] 离开走同一套收尾：服务评价 + 评分 + 买家留评
+      await rateService(db, row.id).catch((error) => log.error(error, "service rating failed"));
       void assessConversation(db, gateway, row.id).catch((error) => log.error(error, "assessment failed"));
       void generateBuyerReview(db, gateway, row.id, log).catch((error) => log.error(error, "buyer review failed"));
     }

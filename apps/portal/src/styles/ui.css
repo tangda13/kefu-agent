@@ -1584,3 +1584,20 @@
 .today-roster em { margin-left: auto; font-style: normal; font-size: var(--fs-caption); color: var(--c-ink-3); white-space: nowrap; }
 /* 任务卡片三格：平均分、剩余在各自区域内居中 */
 .tl-figs > div:not(:first-child) { justify-items: center; text-align: center; padding: 0 8px; }
+
+/* 教师回放：买家服务评价（D-54）、邮件任务（D-58） */
+.review-rating { align-self: center; margin: 4px 0 0; padding: 3px 12px; border-radius: 12px; background: var(--c-surface); box-shadow: inset 0 0 0 1px var(--c-line); font-size: var(--fs-caption); color: var(--c-ink-2); }
+.review-rating span { margin-left: 4px; letter-spacing: 1px; color: #f2b01e; }
+.review-rating i { font-style: normal; color: #d6dce5; }
+.mon-msg p.is-mail { max-width: 560px; border-radius: 8px; }
+
+/* 回放里的卡片、语音、图片：和学生工作台同一个消息体（学生复盘、教师回放共用） */
+.rec-rich { display: block; }
+.rec-msg.me .rec-bubble .wbk-voice-play { color: #fff; }
+.mon-rich.is-bubble { padding: 10px 14px; border: 1px solid var(--c-line); border-radius: 4px 14px 14px 14px; background: var(--c-surface); }
+.mon-msg.is-me .mon-rich.is-bubble { border-color: var(--c-brand); border-radius: 14px 4px 14px 14px; background: var(--c-brand); color: var(--c-on-brand); }
+.rec-chat .wbk-rate { display: flex; width: max-content; margin: 4px auto 6px; }
+.rec-msg.me .rec-bubble .wbk-voice small, .mon-msg.is-me .mon-rich .wbk-voice small { color: rgba(255, 255, 255, 0.85); opacity: 1; }
+.mon-msg .mon-rich .wbk-voice small { display: block; margin-top: 0; font-size: 12px; text-align: left; }
+.mon-msg.is-me .mon-rich .wbk-voice-play { color: var(--c-on-brand); }
+.mon-msg .mon-rich .wbk-card small, .mon-msg .mon-rich .wbk-tool small { display: block; margin-top: 0; font-size: 12px; text-align: left; color: var(--c-ink-3); }

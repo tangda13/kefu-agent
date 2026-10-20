@@ -148,7 +148,45 @@ export const emailTemplates = [
     id: "MAIL-004", name: "复购唤醒", subject: "An update based on your previous order", purpose: "基于历史偏好促进复购",
     body: "Dear {customer},\n\nIt has been a while since your last order. Based on what you purchased before, we selected a few updates you might like, and your previous size and preference records are still on file.\n\nWould you like me to share the latest options?\n\nBest regards,\n{agent}",
   },
+  /* D-58：补齐售中、售后用得上的四个 */
+  {
+    id: "MAIL-005", name: "催付提醒", subject: "Your order is reserved for you", purpose: "提醒未付款订单完成付款",
+    body: "Dear {customer},\n\nThank you for your order. We have reserved the item for you, and it will be shipped as soon as the payment is completed.\n\nIf anything is holding you back, such as shipping costs, delivery time or the payment method, just reply to this email and we will be glad to help.\n\nBest regards,\n{agent}",
+  },
+  {
+    id: "MAIL-006", name: "物流延误说明", subject: "An update on your delivery", purpose: "说明物流延误并给出预计时间",
+    body: "Dear {customer},\n\nWe want to let you know that your parcel is taking longer than expected at the current shipping stage. We are in contact with the carrier and will keep tracking it for you.\n\nThe current estimated delivery date is [date]. You can follow the parcel with tracking number [tracking number].\n\nWe are sorry for the wait and thank you for your patience.\n\nBest regards,\n{agent}",
+  },
+  {
+    id: "MAIL-007", name: "售后致歉补偿", subject: "We are sorry, and here is how we will make it right", purpose: "售后问题致歉并给出补偿方案",
+    body: "Dear {customer},\n\nWe are sorry for the trouble with your order. We have looked into it, and here is what we can do for you: [replacement / refund / partial refund].\n\nPlease reply to confirm which option you prefer, and we will take care of the rest within [time].\n\nThank you for giving us the chance to fix this.\n\nBest regards,\n{agent}",
+  },
+  {
+    id: "MAIL-008", name: "好评邀请", subject: "How are you enjoying your purchase?", purpose: "收货后邀请留下真实评价",
+    body: "Dear {customer},\n\nWe hope you are enjoying your purchase. If you have a moment, we would really appreciate an honest review on the product page; it helps other shoppers and helps us improve.\n\nIf anything is not right with your order, please reply to this email first so we can help.\n\nBest regards,\n{agent}",
+  },
 ] as const;
+
+/**
+ * 邮件类场景（D-58）默认套哪个模板：按场景名称里的关键词找，找不到用新品推广。
+ * 老师可以改场景名称，这里只是“打开写信框时先套上”的建议，学生随时可以换模板。
+ */
+const MAIL_TEMPLATE_KEYWORDS: Array<[RegExp, string]> = [
+  [/新品|推广|上新/, "MAIL-001"],
+  [/新客|开发|首次/, "MAIL-002"],
+  [/节日|关怀|问候/, "MAIL-003"],
+  [/复购|唤醒|沉睡|回购/, "MAIL-004"],
+  [/催付|付款|未付/, "MAIL-005"],
+  [/物流|延误|清关|派送/, "MAIL-006"],
+  [/致歉|补偿|售后|退款|换货/, "MAIL-007"],
+  [/好评|评价|邀评/, "MAIL-008"],
+];
+
+export function mailTemplateForScenario(scenarioName: string | null | undefined): (typeof emailTemplates)[number] {
+  const name = scenarioName ?? "";
+  const id = MAIL_TEMPLATE_KEYWORDS.find(([pattern]) => pattern.test(name))?.[1] ?? "MAIL-001";
+  return emailTemplates.find((item) => item.id === id) ?? emailTemplates[0];
+}
 
 export const forbiddenTerms = [
   "100% guaranteed", "absolute best", "always works", "anti-cancer", "anti-inflammatory cure",
@@ -941,6 +979,7 @@ export * from "./store";
 export * from "./patience";
 export * from "./responsiveness";
 export * from "./language";
+export * from "./service-rating";
 
 /**
  * 商品资料卡（D-32）：给买家 AI 的“店铺真实信息”，用来判断客服说得对不对、让追问有依据。

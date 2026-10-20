@@ -386,14 +386,27 @@ export function registerCatalogRoutes(
 
   // 邮件实训提交（服务端复核违规词后落库；词库与前端同源读 DB，DB 为空回退内置词库；
   // 关联到买家订单时，异步生成买家 AI 回信）
-  app.post<{ Body: { templateId?: string; subject?: string; body?: string; recipient?: string; orderId?: string } }>(
+  app.post<{ Body: { templateId?: string; subject?: string; body?: string; recipient?: string; orderId?: string; conversationId?: string } }>(
     "/v1/mail/submissions",
     { preHandler: guard.requireRole("student") },
     async (request, reply) => {
-      const { templateId, subject, body, recipient, orderId } = request.body ?? {};
+      const { templateId, subject, body, recipient, orderId, conversationId } = request.body ?? {};
       if (!templateId?.trim() || !subject?.trim() || !body?.trim()) {
         reply.code(400);
         return { code: "INVALID_INPUT", message: "请填写模板、主题与正文。" };
+      }
+      /* 邮件任务（D-58）：发往这次任务的邮件会话，发出后会话结束、按六项评分、计入任务进度 */
+      let mailConversation: { id: string; persona: Record<string, unknown> } | null = null;
+      if (conversationId) {
+        const owned = await db.query(
+          "select id, persona from conversations where id = $1 and student_id = $2 and channel = 'mail' and status = 'active'",
+          [conversationId, request.user!.sub],
+        );
+        if (!owned.rowCount) {
+          reply.code(409);
+          return { code: "MAIL_TASK_CLOSED", message: "这封任务邮件已经发出或任务已结束。" };
+        }
+        mailConversation = owned.rows[0] as { id: string; persona: Record<string, unknown> };
       }
       if (recipient !== undefined && (typeof recipient !== "string" || recipient.length > 200)) {
         reply.code(400);
@@ -410,16 +423,42 @@ export function registerCatalogRoutes(
       const haystack = `${subject}\n${body}`.toLowerCase();
       const violations = terms.filter((term) => haystack.includes(term.toLowerCase()));
       const saved = await db.query(
-        `insert into mail_submissions (student_id, template_id, subject, body, violations, recipient)
-         values ($1, $2, $3, $4, $5, $6) returning id, created_at`,
-        [request.user!.sub, templateId, subject.trim(), body.trim(), JSON.stringify(violations), recipient?.trim() || null],
+        `insert into mail_submissions (student_id, template_id, subject, body, violations, recipient, conversation_id)
+         values ($1, $2, $3, $4, $5, $6, $7) returning id, created_at`,
+        [request.user!.sub, templateId, subject.trim(), body.trim(), JSON.stringify(violations), recipient?.trim() || null, mailConversation?.id ?? null],
       );
+      if (mailConversation) {
+        const persona = mailConversation.persona;
+        await db.query(
+          "insert into conversation_messages (conversation_id, sender, content, kind, payload) values ($1, 'student', $2, 'mail', $3)",
+          [
+            mailConversation.id,
+            `Subject: ${subject.trim()}\n\n${body.trim()}`,
+            JSON.stringify({
+              subject: subject.trim(),
+              body: body.trim(),
+              to: recipient?.trim() || null,
+              toName: persona.name ?? null,
+              templateId: templateId.trim(),
+              violations,
+              submissionId: saved.rows[0].id,
+            }),
+          ],
+        );
+        await db.query(
+          "update conversations set status = 'closed', closed_reason = 'mail_sent', closed_at = now() where id = $1 and status = 'active'",
+          [mailConversation.id],
+        );
+        const { assessConversation } = await import("../assessment");
+        void assessConversation(db, gateway, mailConversation.id).catch((error) => request.log.error(error, "mail assessment failed"));
+      }
       void generateBuyerMailReply(
         db,
         gateway,
         {
           submissionId: saved.rows[0].id,
           orderId: typeof orderId === "string" && orderId.trim() ? orderId.trim() : null,
+          conversationId: mailConversation?.id ?? null,
           studentId: request.user!.sub,
           subject: subject.trim(),
           body: body.trim(),
@@ -514,7 +553,7 @@ export function registerCatalogRoutes(
     { preHandler: guard.requireRole("student") },
     async (request) => {
       const result = await db.query(
-        `select id, order_id, from_name, from_email, subject, body, created_at
+        `select id, order_id, submission_id, from_name, from_email, subject, body, created_at
          from mail_replies where student_id = $1
          order by created_at desc limit 100`,
         [request.user!.sub],
@@ -522,6 +561,7 @@ export function registerCatalogRoutes(
       return result.rows.map((row) => ({
         id: row.id,
         orderId: row.order_id,
+        submissionId: row.submission_id ?? null,
         fromName: row.from_name,
         fromEmail: row.from_email,
         subject: row.subject,

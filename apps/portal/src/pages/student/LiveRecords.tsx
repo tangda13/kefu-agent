@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChartLine, MessageSquareDashed, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChartLine, MessageSquareDashed, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ASSESSMENT_DIMENSIONS } from "@cecs/contracts";
 import { BuyerAvatar } from "../../components/BuyerAvatar";
@@ -7,13 +7,16 @@ import {
   apiGet,
   fetchBaselineStatus,
   fetchConversationMessages,
+  fetchMailReplies,
   type BaselineResult,
   type BuyerPublicView,
   type ConversationMessage,
   type Session,
 } from "../../api/client";
 import { Bench, Board, Button, FilterChips, HelpTip, Segmented } from "../../ui";
-import { StudentKpis } from "./StudentKpis";
+import { RecordKpis } from "./StudentKpis";
+import { MessageBody, ServiceRatingLine, isCardKind, mediaUrl } from "./workbench/shared";
+import "../../styles/student-workbench.css";
 import "../../styles/student-learn.css";
 
 interface AssessmentRecord {
@@ -35,6 +38,10 @@ interface AssessmentRecord {
   suggestions: string[];
   /** 自由练习：保留 AI 反馈供复盘，但不计入平均分/走势/能力雷达 */
   practice?: boolean;
+  /** 邮件任务（D-58）：复盘里看这封邮件；不评客户情绪安抚、消息响应时效 */
+  channel?: "chat" | "mail";
+  /** 买家服务评价 1–5 星（D-54） */
+  serviceRating?: number | null;
   createdAt: string;
 }
 
@@ -51,16 +58,31 @@ function errorText(cause: unknown): string {
 /** 能力雷达的维度，顺序即雷达上的顺序（D-46：八项） */
 const DIMS = ASSESSMENT_DIMENSIONS;
 
-/** 每一项的一句建议：最弱两项显示在雷达下方，其余悬停查看 */
+/*
+ * 能力雷达每一项的说明：定义 + 建议，按平台规范说明的口吻写（不用口语，不用对话）。
+ * ASSESSMENT_DIMENSIONS.hint 是给评分模型的评分口径，不直接显示给学生。
+ */
+const DIM_DEFINITIONS: Record<string, string> = {
+  professionalism: "考察开场问候、问题确认、结束语等环节的话术完整性，以及称谓、语气和礼仪是否符合专业客服标准与买家所在国的沟通习惯。",
+  effectiveness: "考察对买家诉求的理解与回应：是否优先回应核心问题、表述是否清晰完整，信息不足时是否主动确认。",
+  empathy: "考察识别买家负面情绪并进行安抚的能力，以及沟通过程中买家情绪的改善程度。",
+  resolution: "考察解决方案的可执行性与完整性：处理方式、时限和步骤是否明确，问题是否最终闭环；售前环节同时考察是否推动成交。",
+  knowledge: "考察所提供的商品规格、价格、物流时效及退换政策等信息与店铺资料是否一致，是否存在超出政策范围的承诺。",
+  responsiveness: "考察对买家消息的响应速度，包括首次响应与平均响应时间，以及是否因等待过久导致买家催促或离开；由系统按消息时间计算。",
+  grammar: "考察外语表达的拼写、语法与用词准确性。",
+  compliance: "考察用语是否符合跨境电商平台规范，包括是否使用绝对化宣传用语、作出无法兑现的承诺或泄露买家隐私。",
+};
+
+/** 每一项的建议：最弱两项显示在雷达下方，悬停时与定义一起显示 */
 const DIM_TIPS: Record<string, string> = {
-  professionalism: "按“问候、确认问题、给方案、约定下一步”的顺序组织回复",
-  effectiveness: "先回应买家最关心的问题，再补充说明；一条消息只讲一件事",
-  empathy: "买家不满时先共情再给方案：I completely understand… / I'm so sorry…",
-  resolution: "给出能执行的方案（补发 / 退款 / 折扣），写清时限和步骤",
-  knowledge: "回答规格、时效、退换政策前先查商品详情；拿不准先说会核实后回复",
-  responsiveness: "买家进线先回一句确认再去查资料；同时接待几位时先回等得最久的",
-  grammar: "多用短句，发送前通读一遍，注意时态一致",
-  compliance: "避免 best、guarantee、100% 这类绝对化说法",
+  professionalism: "按“问候—确认需求—提供方案—确认后续事项”的流程组织回复，结束前确认买家是否还有其他问题。",
+  effectiveness: "优先回应买家最关注的问题，单条消息聚焦一个要点；信息不足时先确认订单号、用途或预算等关键信息。",
+  empathy: "提出方案前先表达理解与歉意，如 “I completely understand how frustrating this is.”，再说明处理措施。",
+  resolution: "给出具体可执行的方案（补发、退款或补偿）并明确时限；售前环节在解答疑问后适时引导下单。",
+  knowledge: "回复前核对商品详情与店铺政策；无法确认的信息告知买家核实后答复，避免臆测或超范围承诺。",
+  responsiveness: "买家消息到达后先简短确认再查询资料；同时接待多位买家时，优先回复等待时间最长的会话。",
+  grammar: "使用简洁句式，发送前复核时态、主谓一致与拼写。",
+  compliance: "避免使用 best、guarantee、100% 等绝对化表述，以客观、可验证的商品信息替代。",
 };
 
 /* ---------- 复盘弹窗用：分数档位、雷达图 ---------- */
@@ -156,22 +178,42 @@ function RadarChart({ average, selected, selectedName, compact, gradientId }: {
   );
 }
 
-/* ---------- 复盘消息渲染（非文本消息显示类型标记） ---------- */
+/* ---------- 复盘消息渲染：和工作台用同一个消息体（商品卡、订单卡、语音、图片、工具卡片），回放看到的和当时一样 ---------- */
 
-const KIND_LABELS: Record<string, string> = {
-  product: "商品卡片",
-  coupon: "优惠券",
-  voice: "语音消息",
-  order: "订单卡片",
-  invite: "下单邀请",
-  image: "图片",
-  video: "视频",
-  file: "文件",
-};
+function ReplayBody({ message, onPlayVoice }: { message: ConversationMessage; onPlayVoice: (url: string) => void }) {
+  if (!message.kind || message.kind === "text") return <p className="rec-bubble">{message.content}</p>;
+  // 卡片类不套气泡；语音在气泡里（播放条 + 转写）
+  return isCardKind(message)
+    ? <div className="rec-rich"><MessageBody message={message} onPlayVoice={onPlayVoice} /></div>
+    : <div className="rec-bubble"><MessageBody message={message} onPlayVoice={onPlayVoice} /></div>;
+}
 
-function replayText(message: ConversationMessage): string {
-  if (message.kind && message.kind !== "text") return `【${KIND_LABELS[message.kind] ?? "消息"}】`;
-  return message.content;
+/** 邮件任务复盘（D-58）：左边是这封邮件，买家回了信就接在下面 */
+function MailReplay({ messages, replyText }: { messages: ConversationMessage[] | null; replyText: { at: string; body: string } | null }) {
+  const mail = messages?.find((message) => message.kind === "mail")?.payload as
+    | { subject?: string; body?: string; to?: string | null; toName?: string | null; violations?: string[] }
+    | undefined;
+  if (messages === null) return <p className="muted rec-chat-hint">加载邮件…</p>;
+  if (!mail) return <p className="muted rec-chat-hint">这封邮件没有可显示的内容。</p>;
+  const violations = mail.violations ?? [];
+  return (
+    <div className="rec-mail">
+      <dl className="rec-mail-kv">
+        <dt>收件人</dt><dd>{mail.toName ?? "—"}{mail.to ? <span className="muted"> &lt;{mail.to}&gt;</span> : null}</dd>
+      </dl>
+      <h4>{mail.subject}</h4>
+      <div className="rec-mail-body">{mail.body}</div>
+      {violations.length > 0
+        ? <p className="rec-mail-chk is-bad"><ShieldAlert size={14} aria-hidden="true" />发送时检测到违规用语：{violations.join("、")}</p>
+        : <p className="rec-mail-chk"><ShieldCheck size={14} aria-hidden="true" />发送时检测：没有违规用语</p>}
+      {replyText ? (
+        <div className="rec-mail-reply">
+          <b>买家回信 · {new Date(replyText.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</b>
+          <p>{replyText.body}</p>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /* ---------- 时间 ---------- */
@@ -319,10 +361,10 @@ function AbilityRadar({ values, base }: { values: Record<string, number> | null;
               </span>
             ) : null}
           </div>
-          <div className="sl-radar-tip-k">看什么</div>
-          <div>{hovered.hint}</div>
+          <div className="sl-radar-tip-k">定义</div>
+          <p className="sl-radar-tip-d">{DIM_DEFINITIONS[hovered.id]}</p>
           <div className="sl-radar-tip-k">建议</div>
-          <div>{DIM_TIPS[hovered.id]}</div>
+          <p className="sl-radar-tip-d">{DIM_TIPS[hovered.id]}</p>
         </div>
       ) : null}
     </div>
@@ -418,6 +460,16 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
   const [data, setData] = useState<AssessmentData | null>(null);
   const [active, setActive] = useState<AssessmentRecord | null>(null);
   const [replay, setReplay] = useState<ConversationMessage[] | null>(null);
+  /** 邮件复盘：这封邮件的买家回信 */
+  const [mailReply, setMailReply] = useState<{ at: string; body: string } | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playVoice = (url: string) => {
+    audioRef.current?.pause();
+    const audio = new Audio(mediaUrl(url));
+    audioRef.current = audio;
+    void audio.play();
+  };
+  useEffect(() => () => audioRef.current?.pause(), []);
   const [range, setRange] = useState<RangeKey>("all");
   const [filter, setFilter] = useState<ListFilter>("all");
   /** 从任务大厅“看复盘”进来：只看这个任务的记录，并直接打开最近一次复盘 */
@@ -451,8 +503,21 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
       setReplay(null);
       return;
     }
+    setReplay(null);
+    setMailReply(null);
     fetchConversationMessages(session, active.conversationId)
-      .then(setReplay)
+      .then((rows) => {
+        setReplay(rows);
+        const submissionId = rows.find((row) => row.kind === "mail")?.payload?.submissionId;
+        if (active.channel === "mail" && typeof submissionId === "string") {
+          fetchMailReplies(session)
+            .then((replies) => {
+              const hit = replies.find((item) => item.submissionId === submissionId);
+              if (hit) setMailReply({ at: hit.createdAt, body: hit.body });
+            })
+            .catch(() => undefined);
+        }
+      })
       .catch(() => setReplay([]));
   }, [session, active]);
 
@@ -514,7 +579,7 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
   return (
     <Bench className="sl-page">
       {error ? <p className="sl-form-error" role="alert">{error}</p> : null}
-      <StudentKpis session={session} />
+      <RecordKpis session={session} />
 
       <div className="sl-two">
         <Board
@@ -585,9 +650,9 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
                 {record.practice ? "练习" : <>{record.total}<small>分</small></>}
               </span>
               <div className="sl-rr-name">
-                <b>{record.taskName ?? "自由练习"}</b>
+                <b>{record.taskName ?? "自由练习"}{record.channel === "mail" ? <span className="sl-tag is-mail">邮件</span> : null}</b>
                 <div className="sl-rr-m2">
-                  {record.scenarioName} · {record.buyer.name} · {rowTime(record.createdAt)}
+                  {record.scenarioName} · {record.channel === "mail" ? `发给 ${record.buyer.name}` : record.buyer.name} · {rowTime(record.createdAt)}
                   {record.reviewed ? <span className="sl-tag">已复核</span> : null}
                 </div>
               </div>
@@ -627,6 +692,12 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
               <button className="icon-button" onClick={() => setActive(null)} aria-label="关闭复盘"><X size={18} /></button>
             </header>
             <div className="rec-modal-body">
+              {active.channel === "mail" ? (
+                <div className="rec-chat">
+                  <div className="rec-chat-day">邮件</div>
+                  <MailReplay messages={replay} replyText={mailReply} />
+                </div>
+              ) : (
               <div className="rec-chat">
                 <div className="rec-chat-day">对话回放{replay ? ` · ${replay.length} 条消息` : ""}</div>
                 {(replay ?? []).map((message) =>
@@ -636,15 +707,17 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
                     <div key={message.id} className={message.sender === "student" ? "rec-msg me" : "rec-msg"}>
                       {message.sender === "buyer" ? <BuyerAvatar buyer={active.buyer} size="tiny" /> : null}
                       <div>
-                        <p className="rec-bubble">{replayText(message)}</p>
+                        <ReplayBody message={message} onPlayVoice={playVoice} />
                         <small>{message.sender === "student" ? "我 · " : ""}{timeOf(message.createdAt)}</small>
                       </div>
                     </div>
                   ),
                 )}
+                {replay && replay.length > 0 && active.serviceRating ? <ServiceRatingLine stars={active.serviceRating} /> : null}
                 {replay === null ? <p className="muted rec-chat-hint">加载对话…</p> : null}
                 {replay?.length === 0 ? <p className="muted rec-chat-hint">该会话没有可显示的消息。</p> : null}
               </div>
+              )}
               <aside className="rec-analysis">
                 <h3 className="rec-side-title">能力对比</h3>
                 <RadarChart average={radar} selected={active.scores} selectedName="本次会话" compact gradientId="recRadarSide" />
@@ -661,12 +734,14 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
                   {DIMS.map((dim) => {
                     const score = active.scores[dim.id];
                     if (score == null) {
+                      // 邮件不评客户情绪安抚、消息响应时效（D-58）；老记录没有新增两项（D-46）
+                      const na = active.channel === "mail";
                       return (
-                        <div key={dim.id} className="rec-dim-row">
+                        <div key={dim.id} className={na ? "rec-dim-row is-na" : "rec-dim-row"}>
                           <span>{dim.label}</span>
                           <i className="rec-bar" />
                           <strong className="muted">—</strong>
-                          <span />
+                          <span className="muted">{na ? "不适用" : ""}</span>
                         </div>
                       );
                     }

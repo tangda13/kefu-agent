@@ -1,4 +1,4 @@
-import { Package2, Paperclip, ShoppingCart, TicketPercent } from "lucide-react";
+import { Package2, Paperclip, ShoppingCart, TicketPercent, Truck, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 import { DefaultSilhouette, buyerInitial, initialTone } from "../../../components/BuyerAvatar";
 import {
@@ -152,10 +152,73 @@ export function goToPage(page: "records" | "mail", _label: string, hint?: { key:
 /* ---------- 消息气泡里的内容 ---------- */
 
 export function isCardKind(message: ConversationMessage): boolean {
-  return ["order", "product", "invite", "coupon", "image", "video", "file"].includes(message.kind ?? "");
+  return ["order", "product", "invite", "coupon", "image", "video", "file", "payment_reminder", "logistics_update"].includes(message.kind ?? "");
+}
+
+/** 订单页工具卡片（D-56）的名称；不是工具卡片返回 null */
+export function toolCardLabel(message: ConversationMessage): string | null {
+  if (message.kind === "payment_reminder") return "付款提醒卡片";
+  if (message.kind === "logistics_update") return "物流通知卡片";
+  return null;
+}
+
+/** 买家服务评价（D-54）：接待结束时打的 1–5 星，画在“客户已离开 · 会话时长”下面 */
+export function ServiceRatingLine({ stars }: { stars: number }) {
+  const value = Math.max(1, Math.min(5, Math.round(stars)));
+  return (
+    <span className="wbk-sys wbk-rate" aria-label={`买家评价了本次服务 ${value} 星`}>
+      买家评价了本次服务
+      <span className="wbk-stars" aria-hidden="true">{"★".repeat(value)}<i>{"★".repeat(5 - value)}</i></span>
+    </span>
+  );
+}
+
+/** 工具卡片：标题 + 订单摘要 + 学生选好并改过的话术 + 买家那边的按钮（和文字消息区分开） */
+function ToolCard({ message }: { message: ConversationMessage }) {
+  const card = (message.payload ?? {}) as {
+    orderNo?: string; productName?: string; productImage?: string | null; quantity?: number; totalAmount?: number; currency?: string;
+    text?: string; carrier?: string; trackingNo?: string; node?: string | null; nextNode?: string | null;
+  };
+  const pay = message.kind === "payment_reminder";
+  const Icon = pay ? Wallet : Truck;
+  return (
+    <div className="wbk-tool">
+      <div className="wbk-tool-h">
+        <span className={pay ? "wbk-tool-ico is-pay" : "wbk-tool-ico"}><Icon size={14} aria-hidden="true" /></span>
+        {pay ? "订单待付款" : "物流动态"}
+        <small>{pay ? "付款提醒" : "物流通知"}</small>
+      </div>
+      <div className="wbk-tool-b">
+        {card.productImage ? <img src={assetUrl(card.productImage) ?? undefined} alt={card.productName} /> : <span className="wbk-card-thumb"><Package2 size={20} /></span>}
+        <span>
+          {pay ? (
+            <>
+              <b>{card.productName} ×{card.quantity ?? 1}</b>
+              <small className="num">#{card.orderNo}</small>
+              <em className="num">{card.currency} {card.totalAmount}</em>
+            </>
+          ) : (
+            <>
+              <b>{card.node ?? "运输中"}{card.nextNode ? ` · 下一站：${card.nextNode}` : ""}</b>
+              <small className="num">{card.carrier} · {card.trackingNo}</small>
+              <small className="num">#{card.orderNo}</small>
+            </>
+          )}
+        </span>
+      </div>
+      {card.text ? <p className="wbk-tool-t">{card.text}</p> : null}
+      <div className="wbk-tool-f">
+        <span>{pay ? "买家可在卡片上直接付款" : "买家可在卡片上查看物流"}</span>
+        <i>{pay ? "去付款" : "查看物流"}</i>
+      </div>
+    </div>
+  );
 }
 
 export function MessageBody({ message, onPlayVoice }: { message: ConversationMessage; onPlayVoice?: (url: string) => void }) {
+  if ((message.kind === "payment_reminder" || message.kind === "logistics_update") && message.payload) {
+    return <ToolCard message={message} />;
+  }
   if (message.kind === "voice" && message.payload) {
     const voice = message.payload as { audioUrl?: string; durationMs?: number; transcript?: string };
     const seconds = Math.max(1, Math.round((voice.durationMs ?? 0) / 1000));

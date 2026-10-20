@@ -1,4 +1,4 @@
-import { Check, Headset } from "lucide-react";
+import { Check, ClipboardCheck, Headset, Mail, MessageCircle, PenLine } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ASSESSMENT_DIMENSIONS, BUSINESS_STAGES, BUSINESS_STAGE_LABELS, type BusinessStage } from "@cecs/contracts";
 import {
@@ -17,9 +17,11 @@ import { ScenarioPicker } from "./ScenarioPicker";
 import { Bench, Button, Drawer } from "../../ui";
 import { dueText } from "../teacher/widgets";
 import { BaselineQuiz } from "./BaselineQuiz";
+import { HallKpis } from "./StudentKpis";
 import "../../styles/student-learn.css";
 
-type HallTab = "todo" | "done";
+/** 参数原文“待办 / 进行中 / 已完成”（D-52）：待办 = 没开始的（含未到开放时间的），进行中 = 已开始接待的 */
+type HallTab = "todo" | "doing" | "done";
 
 /** 业务环节 → 分类色序号（同 StageTag） */
 const STAGE_CAT: Record<BusinessStage, number> = { in_sale: 1, pre_sale: 2, after_sale: 3, customer_care: 4 };
@@ -74,15 +76,31 @@ function rowMeta(task: StudentTask): string {
   return `${BUSINESS_STAGE_LABELS[task.businessStage]} · ${task.scenarioIds.length} 个场景 · ${limit} · ${INTERACTION_LABELS[task.interactionMode] ?? task.interactionMode}`;
 }
 
-/** 任务下每个场景的接待状态：按已开过会话的场景和已完成数推断 */
-function scenarioSteps(task: StudentTask): Array<{ id: string; name: string; state: "done" | "cur" | "idle"; text: string }> {
+type Step = { id: string; name: string; mail: boolean; state: "done" | "cur" | "idle"; text: string };
+
+/** 任务下每个场景的状态：按已开过会话的场景和已完成数推断；邮件类场景（D-58）是“写信中 / 已发送” */
+function scenarioSteps(task: StudentTask): Step[] {
   const started = task.startedScenarioIds.filter((id): id is string => !!id);
   const doneIds = new Set(started.slice(0, task.progressDone));
   return task.scenarios.map((scenario) => {
-    if (doneIds.has(scenario.id)) return { id: scenario.id, name: scenario.name, state: "done" as const, text: "已接待" };
-    if (started.includes(scenario.id)) return { id: scenario.id, name: scenario.name, state: "cur" as const, text: "接待中" };
-    return { id: scenario.id, name: scenario.name, state: "idle" as const, text: "未开始" };
+    const mail = scenario.channel === "mail";
+    if (doneIds.has(scenario.id)) return { id: scenario.id, name: scenario.name, mail, state: "done" as const, text: mail ? "已发送" : "已接待" };
+    if (started.includes(scenario.id)) return { id: scenario.id, name: scenario.name, mail, state: "cur" as const, text: mail ? "写信中" : "接待中" };
+    return { id: scenario.id, name: scenario.name, mail, state: "idle" as const, text: "未开始" };
   });
+}
+
+/** 这个任务下一步做什么：轮到邮件类场景就写邮件，否则进工作台接待 */
+function nextStep(task: StudentTask): { mail: boolean; scenarioId?: string } {
+  const scenarios = task.scenarios ?? [];
+  if (task.completionRule === "all_scenarios") {
+    const step = scenarioSteps(task).find((item) => item.state !== "done");
+    return step ? { mail: step.mail, scenarioId: step.id } : { mail: false };
+  }
+  // 按会话数完成：有聊天场景就去工作台，全是邮件场景才写邮件
+  const chat = scenarios.find((item) => item.channel !== "mail");
+  const mail = scenarios.find((item) => item.channel === "mail");
+  return chat || !mail ? { mail: false } : { mail: true, scenarioId: mail.id };
 }
 
 /** 任务要求：抽屉里的完整说明 */
@@ -123,10 +141,13 @@ function StageDot({ stage }: { stage: BusinessStage }) {
 
 export function TaskHall({
   onStart,
+  onWriteMail,
   onOpenRecords,
   session,
 }: {
   onStart: (taskId?: string) => void;
+  /** 邮件类场景（D-58）：打开邮件页写信框，收件人和模板已备好 */
+  onWriteMail?: (taskId: string, scenarioId: string) => void;
   /** 传任务 id：直接看这个任务的复盘 */
   onOpenRecords: (taskId?: string) => void;
   session?: Session | null;
@@ -135,7 +156,8 @@ export function TaskHall({
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [reloadTick, setReloadTick] = useState(0);
-  const [tab, setTab] = useState<HallTab>("todo");
+  /** 没手动切过页签时：有进行中的停在进行中，没有就停在待办 */
+  const [pickedTab, setPickedTab] = useState<HallTab | null>(null);
   const [baseline, setBaseline] = useState<BaselineStatus | null>(null);
   const [summary, setSummary] = useState<StudentSummary | null>(null);
   const [showQuiz, setShowQuiz] = useState(false);
@@ -177,7 +199,7 @@ export function TaskHall({
     };
   }, [session, reloadTick]);
 
-  /* 进行中：进行中 → 待开始 → 未开放；按截止升序，未开放按开放时间升序。已完成单独一组 */
+  /* 进行中：已开始接待的，按截止升序；待办：待开始 → 未开放（按开放时间升序）；已完成单独一组 */
   const groups = useMemo(() => {
     const byDeadline = (a: StudentTask, b: StudentTask) =>
       (a.deadline ? new Date(a.deadline).getTime() : Number.POSITIVE_INFINITY) - (b.deadline ? new Date(b.deadline).getTime() : Number.POSITIVE_INFINITY);
@@ -189,16 +211,9 @@ export function TaskHall({
     const done = tasks
       .filter((task) => statusOf(task) === "done")
       .sort((a, b) => (b.completedAt ? new Date(b.completedAt).getTime() : 0) - (a.completedAt ? new Date(a.completedAt).getTime() : 0));
-    return { todo: [...active, ...pending, ...upcoming], done, activeCount: active.length };
+    return { todo: [...pending, ...upcoming], doing: active, done };
   }, [tasks]);
-
-  /* 最近截止：未完成任务里截止最早的 */
-  const nearest = useMemo(
-    () => groups.todo.filter((task) => task.deadline).sort((a, b) => new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime())[0] ?? null,
-    [groups],
-  );
-  const nearestDue = nearest ? dueText(nearest.deadline) : null;
-  const nearestLeft = nearest ? Math.max(0, nearest.requiredTotal - nearest.progressDone) : 0;
+  const tab: HallTab = pickedTab ?? (groups.doing.length ? "doing" : "todo");
 
   /* 已完成页签的右侧概览：平均分 + 达标个数 */
   const doneFact = useMemo(() => {
@@ -235,70 +250,6 @@ export function TaskHall({
     }
   }
 
-  /* 顶部四张卡 */
-  const weekDaily = summary?.weekDaily ?? [0, 0, 0, 0, 0, 0, 0];
-  const weekMax = Math.max(1, ...weekDaily);
-  const todayIndex = summary?.todayIndex ?? (new Date().getDay() + 6) % 7;
-  const weekCard = (
-    <section className="th3-card">
-      <div className="lb">本周接待</div>
-      <div className="v">
-        <b className={summary && summary.weekConversations > 0 ? undefined : "dash"}>{summary ? summary.weekConversations : "—"}</b>
-        <small>{summary && summary.weekConversations > 0 ? `次 · 其中练习 ${summary.weekPractice} 次` : "次"}</small>
-      </div>
-      <div className="th3-bars">
-        {weekDaily.map((count, index) => (
-          <i
-            key={index}
-            title={`周${WEEK_LABELS[index]} ${count} 次`}
-            style={{ height: count ? 6 + Math.round((count / weekMax) * 26) : 2 }}
-            className={`${index === todayIndex ? "today" : ""}${count ? "" : " zero"}`}
-          />
-        ))}
-      </div>
-    </section>
-  );
-  const doingCard = isEmpty || groups.todo.length === 0 ? (
-    <section className="th3-card">
-      <div className="lb">进行中的任务</div>
-      <div className="v"><b className="dash">{isEmpty ? "—" : "0"}</b></div>
-      <div className="ft">{isEmpty ? "老师下发后显示" : "没有要完成的任务"}</div>
-    </section>
-  ) : (
-    <section className="th3-card">
-      <div className="lb">进行中的任务</div>
-      <div className="v"><b>{groups.todo.length}</b><small>个</small></div>
-      <div className="ft">{groups.activeCount} 个正在接待 · {groups.todo.length - groups.activeCount} 个还没开始</div>
-    </section>
-  );
-  const nearestCard = nearest && nearestDue ? (
-    <section className={`th3-card${nearestDue.tone ? ` is-${nearestDue.tone}` : ""}`}>
-      <div className="lb">最近截止</div>
-      <div className="v"><b>{nearestDue.text}</b></div>
-      <div className="ft">「{nearest.name}」还差 {nearestLeft} 个{nearest.completionRule === "conversation_count" ? "接待" : "场景"}</div>
-    </section>
-  ) : (
-    <section className="th3-card">
-      <div className="lb">最近截止</div>
-      <div className="v"><b className="dash">—</b></div>
-      <div className="ft">{isEmpty ? "老师下发后显示" : "没有设截止的任务"}</div>
-    </section>
-  );
-  const donePercent = tasks.length ? Math.round((groups.done.length / tasks.length) * 100) : 0;
-  const doneCard = isEmpty ? (
-    <section className="th3-card">
-      <div className="lb">已完成任务</div>
-      <div className="v"><b className="dash">—</b></div>
-      <div className="th3-track empty" />
-    </section>
-  ) : (
-    <section className="th3-card">
-      <div className="lb">已完成任务</div>
-      <div className="v"><b>{groups.done.length}</b><small>/ {tasks.length}</small></div>
-      <div className="th3-track"><i style={{ width: `${donePercent}%` }} /></div>
-    </section>
-  );
-
   const practiceCard = (
     <section className="th3-side">
       <h3>自由练习</h3>
@@ -320,11 +271,13 @@ export function TaskHall({
   );
 
   /* 任务板标题行：页签 + 已完成页签右侧概览 */
+  const tabs: Array<[HallTab, string, number]> = [["todo", "待办", groups.todo.length], ["doing", "进行中", groups.doing.length], ["done", "已完成", groups.done.length]];
   const head = (
     <div className="th3-h">
       <div className="th3-tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={tab === "todo"} className={tab === "todo" ? "on" : undefined} onClick={() => setTab("todo")}>进行中 <i>{groups.todo.length}</i></button>
-        <button type="button" role="tab" aria-selected={tab === "done"} className={tab === "done" ? "on" : undefined} onClick={() => setTab("done")}>已完成 <i>{groups.done.length}</i></button>
+        {tabs.map(([id, label, count]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "on" : undefined} onClick={() => setPickedTab(id)}>{label} <i>{count}</i></button>
+        ))}
       </div>
       {tab === "done" && groups.done.length > 0 ? (
         <span className="th3-hfact">平均 <b>{doneFact.average ?? "—"}</b> 分 · {groups.done.length} 个里 <b>{doneFact.passed}</b> 个达标</span>
@@ -354,12 +307,21 @@ export function TaskHall({
     </div>
   );
 
-  /* 进行中：第一条展开，其余一行 */
-  const first = groups.todo[0] && statusOf(groups.todo[0]) !== "upcoming" ? groups.todo[0] : null;
-  const restTodo = first ? groups.todo.slice(1) : groups.todo;
+  /** 开始 / 继续：轮到邮件就写邮件，否则进工作台 */
+  const go = (task: StudentTask) => {
+    const next = nextStep(task);
+    if (next.mail && next.scenarioId && onWriteMail) onWriteMail(task.id, next.scenarioId);
+    else onStart(task.id);
+  };
+
+  /* 待办 / 进行中：第一条展开，其余一行（未开放的不展开） */
+  const list = tab === "doing" ? groups.doing : groups.todo;
+  const first = list[0] && statusOf(list[0]) !== "upcoming" ? list[0] : null;
+  const restList = first ? list.slice(1) : list;
   const firstView = first ? (() => {
     const due = dueText(first.deadline);
     const steps = first.completionRule === "all_scenarios" ? scenarioSteps(first) : [];
+    const next = nextStep(first);
     return (
       <article className="th3-cur">
         <div className="th3-row1">
@@ -371,19 +333,27 @@ export function TaskHall({
         <div className="th3-meta">{metaLine(first)}</div>
         {steps.length > 0 ? (
           <ol className="th3-steps">
-            {steps.map((step, index) => (
-              <li key={step.id} className={step.state === "idle" ? undefined : step.state}>
-                <span>{index + 1}</span>{step.name}<em>{step.text}</em>
-              </li>
-            ))}
+            {steps.map((step, index) => {
+              const KindIcon = step.mail ? Mail : MessageCircle;
+              const isNext = step.id === next.scenarioId && step.state !== "done";
+              return (
+                <li key={step.id} className={step.state === "done" ? "done" : isNext || step.state === "cur" ? "cur" : undefined}>
+                  <span>{step.state === "done" ? <Check size={12} strokeWidth={3} aria-hidden="true" /> : index + 1}</span>
+                  <KindIcon size={15} className="th3-kind" aria-label={step.mail ? "邮件" : "聊天"} />
+                  {step.name}<em>{step.text}</em>
+                </li>
+              );
+            })}
           </ol>
         ) : (
           <p className="th3-meta">已完成 {first.progressDone} / {first.requiredTotal} 次接待</p>
         )}
         <div className="th3-acts">
-          <Button variant="primary" icon={Headset} onClick={() => onStart(first.id)}>进入工作台</Button>
+          {next.mail
+            ? <Button variant="primary" icon={PenLine} onClick={() => go(first)}>写邮件</Button>
+            : <Button variant="primary" icon={Headset} onClick={() => go(first)}>进入工作台</Button>}
           <Button variant="ghost" onClick={() => setDetail(first)}>任务要求</Button>
-          <span className="th3-note">{ARRIVAL_NOTES[first.arrivalMode](first.arrivalIntervalMinutes)}</span>
+          <span className="th3-note">{next.mail ? "收件人和模板已经备好" : ARRIVAL_NOTES[first.arrivalMode](first.arrivalIntervalMinutes)}</span>
         </div>
       </article>
     );
@@ -391,15 +361,16 @@ export function TaskHall({
 
   const todoView = (
     <>
-      {needBaseline ? (
+      {/* 训前测评也是一件待办；前面用测评图标，不用序号（序号是“开始三步”里的步骤号） */}
+      {needBaseline && tab === "todo" ? (
         <div className="th3-s3 cur th3-base">
-          <span className="no">1</span>
+          <span className="no is-icon"><ClipboardCheck size={15} aria-hidden="true" /></span>
           <div><b>先做训前测评</b><small>10 道题，约 8 分钟，测出各项能力的起点</small></div>
           <Button size="sm" onClick={() => setShowQuiz(true)}>开始测评</Button>
         </div>
       ) : null}
       {firstView}
-      {restTodo.map((task) => {
+      {restList.map((task) => {
         const status = statusOf(task);
         const due = dueText(task.deadline);
         return (
@@ -411,12 +382,14 @@ export function TaskHall({
             {status === "upcoming" ? (
               <span className="th3-go is-off">未开放</span>
             ) : (
-              <button type="button" className="th3-go" onClick={() => onStart(task.id)}>{status === "active" ? "继续" : "开始"}</button>
+              <button type="button" className="th3-go" onClick={() => go(task)}>{status === "active" ? "继续" : "开始"}</button>
             )}
           </div>
         );
       })}
-      {groups.todo.length === 0 && !needBaseline ? <p className="th3-none">现在没有要完成的任务，已完成的可以在“已完成”里看复盘。</p> : null}
+      {list.length === 0 && !(needBaseline && tab === "todo") ? (
+        <p className="th3-none">{tab === "doing" ? "现在没有正在做的任务，没开始的在“待办”里。" : "没有待办的任务，已完成的可以在“已完成”里看复盘。"}</p>
+      ) : null}
     </>
   );
 
@@ -450,19 +423,14 @@ export function TaskHall({
 
   return (
     <Bench className="sl-page">
-      <div className="th3-cards">
-        {weekCard}
-        {doingCard}
-        {nearestCard}
-        {doneCard}
-      </div>
+      <HallKpis session={session} />
 
       {loadError ? <p className="sl-form-error" role="alert">{loadError}<button type="button" className="sl-retry" onClick={() => setReloadTick((tick) => tick + 1)}>重试</button></p> : null}
 
       <div className="th3-grid">
         <section className="th3-main">
           {head}
-          {!loaded ? <p className="th3-none">正在加载任务</p> : isEmpty ? stepsView : tab === "todo" ? todoView : doneView}
+          {!loaded ? <p className="th3-none">正在加载任务</p> : isEmpty ? stepsView : tab === "done" ? doneView : todoView}
         </section>
         {practiceCard}
       </div>

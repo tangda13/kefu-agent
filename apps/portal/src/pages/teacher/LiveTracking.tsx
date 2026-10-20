@@ -11,6 +11,8 @@ import {
   Bench, Board, Button, Drawer, Empty, Field, FilterChips, HeaderTabs, HelpTip, Input, MoreMenu, SearchBox, Tag, Textarea, Toolbar, toast,
 } from "../../ui";
 import { formatIdle, takeReplaySearch, takeTrackingTab } from "./widgets";
+import { MessageBody, isCardKind } from "../student/workbench/shared";
+import "../../styles/student-workbench.css";
 
 interface TrackingItem {
   conversationId: string;
@@ -73,12 +75,29 @@ interface TeacherAssessment {
   reviewedAt: string | null;
   practice: boolean;
   weights: Record<string, number>;
+  /** 邮件任务（D-58）：回放里看这封邮件 */
+  channel?: "chat" | "mail";
+  /** 买家服务评价 1–5 星（D-54） */
+  serviceRating?: number | null;
   createdAt: string;
 }
 
 const errorText = (cause: unknown) => (cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
 const SENDER_LABELS: Record<string, string> = { buyer: "买家", student: "学生", teacher: "老师" };
-const KIND_LABELS: Record<string, string> = { product: "[商品卡片]", coupon: "[优惠券]", order: "[订单]", invite: "[邀评]", image: "[图片]", video: "[视频]", file: "[文件]", voice: "[语音]" };
+const KIND_LABELS: Record<string, string> = {
+  product: "[商品卡片]", coupon: "[优惠券]", order: "[订单]", invite: "[邀评]", image: "[图片]", video: "[视频]", file: "[文件]", voice: "[语音]",
+  payment_reminder: "[付款提醒卡片]", logistics_update: "[物流通知卡片]", mail: "[邮件]",
+};
+
+/** 导出回放用的消息文字：工具卡片（D-56）是学生选定的话术，邮件（D-58）是主题和正文 */
+function messageText(message: ConversationMessage): string {
+  const payload = (message.payload ?? {}) as { text?: string; subject?: string; body?: string };
+  if (message.kind === "payment_reminder" || message.kind === "logistics_update") return payload.text ?? message.content;
+  if (message.kind === "mail") return `${payload.subject ?? ""}
+
+${payload.body ?? ""}`.trim();
+  return message.content;
+}
 const time = (iso: string) => new Date(iso).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 
 /* 常用指导语：一键填入，老师可以再改 */
@@ -109,18 +128,19 @@ function MessageBubble({ message, buyer, studentName }: { message: ConversationM
   if (message.sender === "teacher") {
     return <div className="mon-guide"><Lightbulb size={14} />老师指导：{message.content} · {time(message.createdAt)}</div>;
   }
-  const audioUrl = message.kind === "voice" ? (message.payload as { audioUrl?: string } | null)?.audioUrl : undefined;
-  const mark = KIND_LABELS[message.kind ?? ""];
   const mine = message.sender === "student";
+  // 卡片、语音、图片、工具卡片和学生工作台画得一样（共用 MessageBody）；邮件显示主题和正文
+  const rich = !!message.kind && message.kind !== "text" && message.kind !== "mail";
+  const playVoice = (url: string) => { const src = assetUrl(url); if (src) void new Audio(src).play(); };
   return (
     <div className={mine ? "mon-msg is-me" : "mon-msg"}>
       {mine ? <StudentMark name={studentName ?? "学"} /> : <BuyerAvatar buyer={buyer ?? null} size="tiny" />}
       <div>
-        <p>
-          {mark ? <span className="chat-kind">{mark}</span> : null}
-          {message.content}
-          {audioUrl ? <button type="button" className="chat-play" onClick={() => { const url = assetUrl(audioUrl); if (url) void new Audio(url).play(); }}>播放</button> : null}
-        </p>
+        {rich ? (
+          <div className={isCardKind(message) ? "mon-rich" : "mon-rich is-bubble"}><MessageBody message={message} onPlayVoice={playVoice} /></div>
+        ) : (
+          <p className={message.kind === "mail" ? "is-mail" : undefined}>{messageText(message)}</p>
+        )}
         <small>{mine ? studentName ?? "学生" : SENDER_LABELS[message.sender] ?? message.sender} · {time(message.createdAt)}</small>
       </div>
     </div>
@@ -635,7 +655,8 @@ function ReviewDrawer({ session, item, onClose, onSaved }: { session: Session; i
       `买家：${item.buyerName}　时间：${new Date(item.createdAt).toLocaleString("zh-CN")}`,
       "",
       "【对话】",
-      ...(messages ?? []).map((message) => `${time(message.createdAt)} ${SENDER_LABELS[message.sender] ?? message.sender}：${KIND_LABELS[message.kind ?? ""] ?? ""}${message.content}`),
+      ...(messages ?? []).map((message) => `${time(message.createdAt)} ${SENDER_LABELS[message.sender] ?? message.sender}：${KIND_LABELS[message.kind ?? ""] ?? ""}${messageText(message)}`),
+      ...(item.serviceRating ? [`买家评价了本次服务：${item.serviceRating} 星`] : []),
       "",
       `【评分】总分 ${item.total}${item.reviewedAt ? `（AI 原始 ${aiTotal}）` : ""}`,
       ...ASSESSMENT_DIMENSIONS.map((dim) => `${dim.label}：${item.scores?.[dim.id] ?? "—"}`),
@@ -670,6 +691,9 @@ function ReviewDrawer({ session, item, onClose, onSaved }: { session: Session; i
         <div className="review-chat">
           <p className="review-chat-meta">{item.taskName ?? "自由练习"} · 买家 {item.buyerName} · {new Date(item.createdAt).toLocaleString("zh-CN")}</p>
           {messages === null ? <p className="console-hint">正在读取对话…</p> : messages.length === 0 ? <Empty>这次接待没有消息</Empty> : messages.map((message) => <MessageBubble key={message.id} message={message} studentName={item.studentName} />)}
+          {messages && messages.length > 0 && item.serviceRating ? (
+            <p className="review-rating">买家评价了本次服务 <span aria-label={`${item.serviceRating} 星`}>{"★".repeat(item.serviceRating)}<i>{"★".repeat(5 - item.serviceRating)}</i></span></p>
+          ) : null}
         </div>
         <div className="review-side">
           <div className="review-total">

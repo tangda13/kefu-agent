@@ -29,6 +29,7 @@ import {
   createMyPhrase,
   deleteMyPhrase,
   fetchConversationMessages,
+  followUpActive,
   fetchConversationOrders,
   fetchConversations,
   fetchMyPhrases,
@@ -76,7 +77,7 @@ import { TranslateButton, targetOf } from "./workbench/TranslateButton";
 import { BUSINESS_STAGE_LABELS } from "@cecs/contracts";
 import { PRACTICE_EVENT, bumpPractice, readPractice, readPracticeTotal, writePractice, writePracticeTotal, type PracticeConfig } from "./practice";
 import { MAX_SERVE_LIMIT, type AgentState } from "./workbench/AgentStatus";
-import { Av, MessageBody, errorMessage, goToPage, hashSeed, isCardKind, timeLabel } from "./workbench/shared";
+import { Av, MessageBody, ServiceRatingLine, errorMessage, goToPage, hashSeed, isCardKind, timeLabel, toolCardLabel } from "./workbench/shared";
 
 type PanelTab = "order" | "product" | "coupon";
 
@@ -129,7 +130,7 @@ function mergeRows(current: ConversationMessage[] | null, rows: ConversationMess
 
 /** 任务下一位要进线的场景；ok=false 表示没有可进线的了 */
 function pendingScenario(task: StudentTask): { ok: boolean; scenarioId?: string } {
-  const list = task.scenarios ?? [];
+  const list = (task.scenarios ?? []).filter((item) => item.channel !== "mail");
   const started = new Set((task.startedScenarioIds ?? []).filter(Boolean));
   if (task.completionRule === "conversation_count") {
     if ((task.conversationCount ?? 0) >= task.requiredTotal) return { ok: false };
@@ -175,7 +176,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const [practiceScenarios, setPracticeScenarios] = useState<ScenarioSummary[]>([]);
   useEffect(() => {
     if (!practice) return;
-    fetchScenarios(session).then((rows) => setPracticeScenarios(rows.filter((row) => row.enabled !== false))).catch(() => undefined);
+    // 自由练习只练聊天接待；邮件类场景在任务里写（D-58）
+    fetchScenarios(session).then((rows) => setPracticeScenarios(rows.filter((row) => row.enabled !== false && row.channel !== "mail"))).catch(() => undefined);
   }, [practice, session]);
 
   /** 任务条里选中的任务（只影响任务条和倒计时，不筛会话列表）；从任务大厅进入时就是那个任务 */
@@ -282,7 +284,9 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
 
   const allKnown = useMemo(() => [...conversations, ...justEnded, ...closedConversations], [conversations, justEnded, closedConversations]);
   const active = allKnown.find((item) => item.id === activeId) ?? null;
-  const isClosed = active?.status === "closed" || (activeId !== null && closedLocal.has(activeId)) || (activeId !== null && closedIdsRef.current.has(activeId));
+  /** 工具跟进（D-56）：服务端把会话放回了“进行中”，本地标过的结束状态不再作数 */
+  const followUpLive = !!active && followUpActive(active.toolFollowUp) && conversations.some((item) => item.id === active.id);
+  const isClosed = !followUpLive && (active?.status === "closed" || (activeId !== null && closedLocal.has(activeId)) || (activeId !== null && closedIdsRef.current.has(activeId)));
   const closedReason = activeId ? closedReasonLocal[activeId] ?? active?.closedReason ?? null : null;
   const buyer = active?.buyer ?? null;
   // 切到另一位买家：输入框翻译的目标语言回到这位买家的语言
@@ -329,6 +333,17 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       ]);
       setConversations(conversationList);
       setTasks(taskList);
+      // 买家回复了订单页的工具卡片：这位买家回到“接待中”，去掉本地的结束标记
+      const revived = conversationList.filter((item) => followUpActive(item.toolFollowUp)).map((item) => item.id);
+      if (revived.length) {
+        setClosedLocal((set) => {
+          if (!revived.some((id) => set.has(id))) return set;
+          const next = new Set(set);
+          revived.forEach((id) => next.delete(id));
+          return next;
+        });
+        setJustEnded((list) => list.filter((item) => !revived.includes(item.id)));
+      }
       setActiveId((current) => current ?? conversationList[0]?.id ?? null);
       setDataReady(true);
       loadStats();
@@ -1114,7 +1129,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const closedTasksRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!dataReady) return;
-    const openList = conversations.filter((item) => !closedLocal.has(item.id));
+    const openList = conversations.filter((item) => !closedLocal.has(item.id) && !followUpActive(item.toolFollowUp));
     const activeOfTask = (taskId: string) => openList.filter((item) => item.taskId === taskId).length;
     const nextScenario = pendingScenario;
     const arrive = async (task: StudentTask, scenarioId?: string) => {
@@ -1213,7 +1228,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     const evaluate = () => {
       if (agentStateRef.current !== "online" || practiceBusyRef.current) return;
       if (practiceTotal && (practice.arrived ?? 0) >= practiceTotal) return;
-      const open = conversations.filter((item) => !item.taskId && !closedLocal.has(item.id)).length;
+      const open = conversations.filter((item) => !item.taskId && !closedLocal.has(item.id) && !followUpActive(item.toolFollowUp)).length;
       if (open >= maxServe) {
         practiceNotBeforeRef.current = null;
         return;
@@ -1270,7 +1285,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   }, [closedConversations, conversations, taskFilter]);
 
   // 本场信息栏：聚焦哪个任务、倒计时从哪场会话开始算
-  const activeOpen = active && !isClosed ? active : null;
+  // 跟进中的会话（D-56）不属于任务接待：不计时、不显示本场进度
+  const activeOpen = active && !isClosed && !followUpLive ? active : null;
   const filterTask = taskFocus ? taskById.get(taskFocus) ?? null : null;
   const focusTask: StudentTask | null = activeOpen
     ? (activeOpen.taskId ? taskById.get(activeOpen.taskId) ?? null : null)
@@ -1278,7 +1294,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const timingConv = useMemo(() => {
     if (!focusTask) return null;
     if (activeOpen && activeOpen.taskId === focusTask.id) return activeOpen;
-    const list = conversations.filter((item) => item.taskId === focusTask.id && !closedLocal.has(item.id));
+    const list = conversations.filter((item) => item.taskId === focusTask.id && !closedLocal.has(item.id) && !followUpActive(item.toolFollowUp));
     return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null;
   }, [focusTask, activeOpen, conversations, closedLocal]);
 
@@ -1291,7 +1307,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const queueInfo = useMemo(() => {
     const task = focusTask;
     if (!task || task.progressStatus !== "in_progress") return null;
-    const openOfTask = conversations.filter((item) => item.taskId === task.id && !closedLocal.has(item.id));
+    const openOfTask = conversations.filter((item) => item.taskId === task.id && !closedLocal.has(item.id) && !followUpActive(item.toolFollowUp));
     const left = pendingScenario(task).ok ? Math.max(0, task.requiredTotal - task.progressDone - openOfTask.length) : 0;
     const remainTotal = Math.max(0, task.requiredTotal - task.progressDone);
     if (left <= 0) return remainTotal > 0 ? { text: "排队中 0 人" } : null;
@@ -1310,6 +1326,57 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   }, [activeId, products]);
 
   const visibleMessages = (messages ?? []).filter((message) => message.sender !== "teacher");
+
+  /** 消息流里的一条（买家 / 学生 / 工具卡片） */
+  const renderMessage = (message: ConversationMessage) => {
+    const mine = message.sender === "student";
+    const text = !message.kind || message.kind === "text";
+    const translated = !mine && text && Boolean(message.translation) && (autoTranslate || message.showTranslation);
+    const failed = translateFailed.has(message.id);
+    const pending = !mine && text && autoTranslate && !message.translation && !failed;
+    const playing = playingId === message.id;
+    return (
+      <div key={message.id} className={mine ? "wbk-m is-me" : "wbk-m"}>
+        {!mine ? <Av buyer={buyer} size={30} /> : null}
+        <div className="wbk-mbody">
+          <div className={isCardKind(message) ? "wbk-bub is-card" : "wbk-bub"}>
+            <MessageBody message={message} onPlayVoice={playVoice} />
+            {translated ? <div className="wbk-tr">{message.translation}</div> : null}
+            {pending ? <div className="wbk-tr is-pending">翻译中…</div> : null}
+            {!mine && text && autoTranslate && failed && !message.translation ? <div className="wbk-tr is-pending">翻译没成功，<button type="button" onClick={() => { setTranslateFailed((set) => { const next = new Set(set); next.delete(message.id); return next; }); }}>重试</button></div> : null}
+          </div>
+          <div className="wbk-mt">
+            {!mine && text ? (
+              <button type="button" className={playing ? "is-playing" : ""} onClick={() => void playTts(message)} title={playing ? "停止播报" : "播报这条消息"}>
+                <Volume2 size={12} />{playing ? "播报中" : "播报"}
+              </button>
+            ) : null}
+            {!mine && text && !autoTranslate ? (
+              translatingIds.has(message.id) ? (
+                <button type="button" className="is-busy" disabled>
+                  <LoaderCircle size={12} className="wbk-spin" />翻译中…
+                </button>
+              ) : (
+                <button type="button" onClick={() => void toggleTranslation(message)}>
+                  <Languages size={12} />{message.translation ? (message.showTranslation ? "隐藏译文" : "显示译文") : "翻译"}
+                </button>
+              )
+            ) : null}
+            {toolCardLabel(message) ? <span className="wbk-tool-src">{message.kind === "payment_reminder" ? "催付" : "物流同步"} · 从订单页发送</span> : null}
+            <time>{timeLabel(message.createdAt)}</time>
+            {mine ? <CheckCheck size={13} className="wbk-tick" /> : null}
+          </div>
+        </div>
+      </div>
+    );
+  };
+  // 结束过的会话：“客户已离开 · 会话时长”和服务评价画在第一次结束的时间点；
+  // 之后的工具卡片、跟进消息接在下面（D-56）
+  const closedAtMs = active?.closedAt ? new Date(active.closedAt).getTime() : activeId ? closedAtLocal[activeId] ?? null : null;
+  const ended = !!active && messages !== null && (isClosed || (followUpLive && closedAtMs !== null));
+  const before = ended && closedAtMs !== null ? visibleMessages.filter((item) => new Date(item.createdAt).getTime() <= closedAtMs) : visibleMessages;
+  const after = ended && closedAtMs !== null ? visibleMessages.filter((item) => new Date(item.createdAt).getTime() > closedAtMs) : [];
+  const followUp = active?.toolFollowUp ?? null;
   // 买家正在输入时学生照常可以打字、发文字（真实客服软件不会锁输入框）；卡片要等买家这条回完
   const composerDisabled = !active || isClosed || agentState === "offline";
   const cardDisabled = composerDisabled || streamingText !== null;
@@ -1424,47 +1491,16 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
 
         <div className="wbk-msgs" ref={listRef}>
           {active && messages !== null ? <span className="wbk-sys">{timeLabel(active.createdAt)} 会话已分配给你</span> : null}
-          {visibleMessages.map((message) => {
-            const mine = message.sender === "student";
-            const text = !message.kind || message.kind === "text";
-            const translated = !mine && text && Boolean(message.translation) && (autoTranslate || message.showTranslation);
-            const failed = translateFailed.has(message.id);
-            const pending = !mine && text && autoTranslate && !message.translation && !failed;
-            const playing = playingId === message.id;
-            return (
-              <div key={message.id} className={mine ? "wbk-m is-me" : "wbk-m"}>
-                {!mine ? <Av buyer={buyer} size={30} /> : null}
-                <div className="wbk-mbody">
-                  <div className={isCardKind(message) ? "wbk-bub is-card" : "wbk-bub"}>
-                    <MessageBody message={message} onPlayVoice={playVoice} />
-                    {translated ? <div className="wbk-tr">{message.translation}</div> : null}
-                    {pending ? <div className="wbk-tr is-pending">翻译中…</div> : null}
-                    {!mine && text && autoTranslate && failed && !message.translation ? <div className="wbk-tr is-pending">翻译没成功，<button type="button" onClick={() => { setTranslateFailed((set) => { const next = new Set(set); next.delete(message.id); return next; }); }}>重试</button></div> : null}
-                  </div>
-                  <div className="wbk-mt">
-                    {!mine && text ? (
-                      <button type="button" className={playing ? "is-playing" : ""} onClick={() => void playTts(message)} title={playing ? "停止播报" : "播报这条消息"}>
-                        <Volume2 size={12} />{playing ? "播报中" : "播报"}
-                      </button>
-                    ) : null}
-                    {!mine && text && !autoTranslate ? (
-                      translatingIds.has(message.id) ? (
-                        <button type="button" className="is-busy" disabled>
-                          <LoaderCircle size={12} className="wbk-spin" />翻译中…
-                        </button>
-                      ) : (
-                        <button type="button" onClick={() => void toggleTranslation(message)}>
-                          <Languages size={12} />{message.translation ? (message.showTranslation ? "隐藏译文" : "显示译文") : "翻译"}
-                        </button>
-                      )
-                    ) : null}
-                    <time>{timeLabel(message.createdAt)}</time>
-                    {mine ? <CheckCheck size={13} className="wbk-tick" /> : null}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {before.map(renderMessage)}
+          {ended && active ? (
+            <>
+              <EndCard conversation={active} messages={before} closedReason={closedReason} endedAt={closedAtMs} />
+              {active.serviceRating ? <ServiceRatingLine stars={active.serviceRating} /> : null}
+            </>
+          ) : null}
+          {after.map(renderMessage)}
+          {followUp?.endReason === "paid" ? <span className="wbk-sys">买家已付款</span> : null}
+          {followUp?.startedAt && followUp.endedAt && isClosed ? <span className="wbk-sys">跟进结束</span> : null}
           {streamingText !== null ? (
             <div className="wbk-m">
               <Av buyer={buyer} size={30} />
@@ -1473,16 +1509,6 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
                 <div className="wbk-mt"><span className="is-typing">对方正在输入…</span></div>
               </div>
             </div>
-          ) : null}
-          {isClosed && messages !== null && active ? (
-            <>
-              <EndCard
-                conversation={active}
-                messages={messages}
-                closedReason={closedReason}
-                endedAt={closedAtLocal[active.id] ?? null}
-              />
-            </>
           ) : null}
           {!active && dataReady ? <p className="wbk-chat-empty">暂无会话</p> : null}
         </div>

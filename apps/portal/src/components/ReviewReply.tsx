@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, CircleAlert, ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, CircleAlert, Languages, ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   ApiError,
@@ -8,10 +8,17 @@ import {
   migrateLocalOnce,
   saveReviewReplyRecord,
   streamConversationMessage,
+  translateText,
   type ReviewReplyRecord,
   type Session,
 } from "../api/client";
 import { Button } from "../ui";
+import { targetOf } from "../pages/student/workbench/TranslateButton";
+
+/** “译成 X 语”按钮上的语言名 */
+const LANGUAGE_NAMES: Record<string, string> = {
+  es: "西班牙语", fr: "法语", de: "德语", it: "意大利语", pt: "葡萄牙语", ru: "俄语", ja: "日语", ko: "韩语", ar: "阿拉伯语",
+};
 import "../styles/student-store.css";
 
 /** 已发送的评价回复（云端保存，供列表展示"商家回复"，教师端可查看） */
@@ -34,7 +41,7 @@ function errorText(cause: unknown): string {
   return cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。";
 }
 
-/** 一版回复：angle 是切入角度，text 是买家语言的回复，zh 是中文对照 */
+/** 一版回复：angle 是切入角度，text 是英文回复（D-57），zh 是中文对照 */
 interface Variant {
   angle: string;
   text: string;
@@ -44,8 +51,9 @@ interface Variant {
 const MAX_LENGTH = 1000;
 
 /**
- * 评价回复区：先点“AI 帮写”拿三版买家语言的回复（带中文对照），
- * 选一版填进下方编辑框再改，也可以直接自己写；发送沿用原有逻辑（发进关联会话并保存回复记录）。
+ * 评价回复区：先点“AI 帮写”拿三版英文回复（带切入角度和中文对照，D-57），
+ * 选一版填进下方编辑框再改，也可以直接自己写；买家不是英语用户时可以一键译成买家的语言。
+ * 发送沿用原有逻辑（发进关联会话并保存回复记录）。
  */
 export function ReviewReply({
   session,
@@ -54,6 +62,7 @@ export function ReviewReply({
   conversationOpen,
   onSent,
   buyerName,
+  buyerLanguage,
   initialText = "",
   onCancel,
 }: {
@@ -64,6 +73,8 @@ export function ReviewReply({
   onSent: (text: string) => void;
   /** 评价流里就地展开时：标题写“回复 xx”，带取消；编辑已发布的回复时传入原文 */
   buyerName?: string;
+  /** 买家语言（如 de-DE）：不是英语时显示“译成德语” */
+  buyerLanguage?: string;
   initialText?: string;
   onCancel?: () => void;
 }) {
@@ -76,6 +87,9 @@ export function ReviewReply({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [terms, setTerms] = useState<string[]>([]);
+  const [translating, setTranslating] = useState(false);
+  const target = targetOf(buyerLanguage);
+  const targetName = target !== "en" ? LANGUAGE_NAMES[target] ?? null : null;
 
   useEffect(() => {
     let alive = true;
@@ -112,6 +126,22 @@ export function ReviewReply({
     setPicked(index);
     setDraft(variants[index]?.text ?? "");
     setFolded(true);
+  }
+
+  /** 把编辑框里的英文译成买家的语言，译完还能再改 */
+  async function translate() {
+    const text = draft.trim();
+    if (!text || translating) return;
+    setTranslating(true);
+    setError("");
+    try {
+      setDraft(await translateText(session, text, target));
+      setPicked(null);
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setTranslating(false);
+    }
   }
 
   async function send() {
@@ -185,7 +215,7 @@ export function ReviewReply({
         value={draft}
         maxLength={MAX_LENGTH}
         onChange={(event) => { setDraft(event.target.value); setPicked(null); }}
-        placeholder="用买家的语言回复，也可以点“AI 帮写”选一版再改"
+        placeholder="用英文回复，也可以点“AI 帮写”选一版再改"
         aria-label="回复内容"
       />
       <div className="rr-ft">
@@ -195,6 +225,11 @@ export function ReviewReply({
           <span className="sx-bad-line"><ShieldAlert size={14} />含违规用语：{hits.join("、")}</span>
         )}
         <span className="num">{draft.length} / {MAX_LENGTH}</span>
+        {targetName ? (
+          <Button variant="secondary" size="sm" icon={Languages} loading={translating} disabled={!draft.trim() || busy} onClick={() => void translate()}>
+            译成{targetName}
+          </Button>
+        ) : null}
         {error ? <span className="sx-bad-line"><CircleAlert size={13} />{error}</span> : null}
         <span className="r">
           {onCancel ? (

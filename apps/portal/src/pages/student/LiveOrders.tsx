@@ -697,9 +697,9 @@ export function LiveOrders({ session }: { session: Session }) {
             type="payment_reminder"
             icon={BellRing}
             title="催付提醒"
-            hint="买家已下单但尚未付款。AI 将结合订单状态与买家资料，生成 3 版催付话术供你选择与编辑。"
+            hint="买家已下单但尚未付款。AI 将结合订单状态与买家资料，生成 3 版催付话术供你选择与编辑，发出去是一张付款提醒卡片。"
             buttonLabel="礼貌催付"
-            onSent={() => setNotice("催付话术已发送给买家，可到客服工作台查看买家回复。")}
+            onSent={(delivered) => setNotice(delivered === "live" ? "付款提醒已发到聊天里，可到客服工作台查看买家回复。" : "付款提醒已发给买家；买家回复后会出现在客服工作台的接待中。")}
           />
         ) : null}
       </div>
@@ -783,9 +783,9 @@ export function LiveOrders({ session }: { session: Session }) {
           type="logistics_update"
           icon={Truck}
           title="物流同步"
-          hint="AI 将根据当前物流节点与买家资料，生成 3 版物流通知或安抚话术，主动同步给买家。"
+          hint="AI 将根据当前物流节点与买家资料，生成 3 版物流通知或安抚话术，发出去是一张物流通知卡片。"
           buttonLabel="物流同步"
-          onSent={() => setNotice("物流同步话术已发送给买家，可到客服工作台查看买家回复。")}
+          onSent={(delivered) => setNotice(delivered === "live" ? "物流通知已发到聊天里，可到客服工作台查看买家回复。" : "物流通知已发给买家；买家回复后会出现在客服工作台的接待中。")}
         />
       </div>
     );
@@ -851,6 +851,7 @@ export function LiveOrders({ session }: { session: Session }) {
             orderId={current.id}
             conversationId={current.conversationId}
             conversationOpen={conversationOpen}
+            buyerLanguage={current.buyer.language}
             onSent={(text) => {
               setReplies((prev) => ({ ...prev, [current.id]: { text, at: new Date().toISOString() } }));
               setNotice("回复已发布。");

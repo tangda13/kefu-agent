@@ -1,22 +1,25 @@
 import type { LucideIcon } from "lucide-react";
-import { CircleAlert, RefreshCw, Send, Sparkles } from "lucide-react";
+import { CircleAlert, Info, RefreshCw, Send, Sparkles } from "lucide-react";
 import { useState } from "react";
 import {
   ApiError,
   fetchOrderSuggestions,
-  streamConversationMessage,
+  sendToolCard,
   type Session,
+  type ToolCardKind,
 } from "../api/client";
 
-export type SuggestionType = "payment_reminder" | "logistics_update" | "review_reply";
+/** 订单页的两个工具（D-56）：付款提醒、物流通知；差评回复走 ReviewReply */
+export type SuggestionType = ToolCardKind;
 
 function errorText(cause: unknown): string {
   return cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。";
 }
 
 /**
- * AI 话术工作区：主动发起 → 实时生成 3 版话术 → 选择 → 二次编辑 → 发送给买家。
- * 订单详情（催付）、物流（同步安抚）、评价（差评挽回）三处共用。
+ * AI 话术工作区：主动发起 → 实时生成 3 版话术 → 选择 → 二次编辑 → 作为工具卡片发给买家（D-56）。
+ * 订单详情（催付 → 付款提醒卡片）、物流（物流同步 → 物流通知卡片）共用。
+ * 发出去的是卡片不是普通消息：会话结束后照样能发，买家回复后有 2–3 轮的跟进。
  */
 export function SuggestionComposer({
   session,
@@ -32,14 +35,16 @@ export function SuggestionComposer({
 }: {
   session: Session;
   orderId: string;
-  conversationId: string;
+  /** 保留给调用方：卡片按订单找到它的聊天，不再需要会话 id */
+  conversationId?: string;
   conversationOpen: boolean;
   type: SuggestionType;
   icon: LucideIcon;
   title: string;
   hint: string;
   buttonLabel: string;
-  onSent?: () => void;
+  /** live = 卡片进了正在进行的聊天；closed = 会话已结束，买家看了卡片自己决定回不回 */
+  onSent?: (delivered: "live" | "closed") => void;
 }) {
   const [suggestions, setSuggestions] = useState<string[] | null>(null);
   const [phase, setPhase] = useState<"idle" | "loading" | "ready">("idle");
@@ -71,15 +76,11 @@ export function SuggestionComposer({
     setBusy(true);
     setError("");
     try {
-      await streamConversationMessage(session, conversationId, draft.trim(), {
-        onDelta: () => undefined,
-        onDone: () => undefined,
-        onError: (message) => setError(message),
-      });
+      const result = await sendToolCard(session, orderId, type, draft.trim());
       setPhase("idle");
       setSuggestions(null);
       setDraft("");
-      onSent?.();
+      onSent?.(result.delivered);
     } catch (cause) {
       setError(errorText(cause));
     } finally {
@@ -140,12 +141,12 @@ export function SuggestionComposer({
       <div className="form-actions">
         <button
           className="primary-button compact"
-          disabled={busy || !draft.trim() || !conversationOpen}
+          disabled={busy || !draft.trim()}
           onClick={() => void send()}
         >
-          <Send size={14} /> 发送给买家
+          <Send size={14} /> {type === "payment_reminder" ? "发送付款提醒" : "发送物流通知"}
         </button>
-        {!conversationOpen ? <span className="muted"><CircleAlert size={13} /> 关联会话已结束，无法发送</span> : null}
+        {!conversationOpen ? <span className="muted"><Info size={13} /> 原会话已结束，卡片会发到买家的聊天里，买家回复后可以跟进 2–3 轮</span> : null}
         {error ? <span className="composer-error"><CircleAlert size={13} /> {error}</span> : null}
       </div>
     </div>

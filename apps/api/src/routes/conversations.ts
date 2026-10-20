@@ -6,6 +6,8 @@ import {
   composePersonaWithRule,
   computeCustomerTags,
   CONTACT_REASONS,
+  deriveBuyerEmail,
+  mailTemplateForScenario,
   suggestContactReason,
   NoMatchingPersonaError,
   ensurePersonaAvatar,
@@ -21,12 +23,33 @@ import type { AuthGuard } from "../auth-context";
 import type { CallInfo, LlmGateway } from "../llm/gateway";
 import type { VoiceService } from "../voice/service";
 import { resolveBuyerLanguage } from "../voice/buyer-language";
-import { buildBuyerMessages, buildChineseFixMessages, hasChineseLeak } from "../prompts/buyer";
+import {
+  buildBuyerMessages,
+  buildBuyerToolReactionMessages,
+  buildChineseFixMessages,
+  countAgentTurns,
+  hasChineseLeak,
+  TOOL_REACTION_NONE,
+  TOOL_REACTION_PAID,
+} from "../prompts/buyer";
 import { loadEnabledPersonaTemplates } from "./catalog";
 import { loadStoreProfile } from "./store";
 import { once } from "../inflight";
 import { loadBuyerOrders } from "../buyer-orders";
 import { buildOutgoingTranslationMessages, buildTranslationMessages } from "../prompts/assist";
+import { rateService } from "../service-rating";
+import {
+  endFollowUp,
+  FOLLOWUP_MAX_TURNS,
+  followUpActive,
+  followUpOpen,
+  isToolCardKind,
+  paidOrder,
+  toolCardContent,
+  toolCardPayload,
+  toolCardProblem,
+  type ToolFollowUp,
+} from "../tool-followup";
 
 interface ConversationRow {
   id: string;
@@ -37,6 +60,20 @@ interface ConversationRow {
   state?: Record<string, unknown> | null;
   status: string;
   created_at: string;
+  /** 工具跟进（D-56），见 tool-followup.ts */
+  tool_followup?: ToolFollowUp | null;
+  channel?: string;
+}
+
+type LogLike = { error: (obj: unknown, msg?: string) => void; warn: (obj: unknown, msg?: string) => void; info: (obj: unknown, msg?: string) => void };
+
+/** 跟进开始后客服回了几轮（连发的几条算一轮） */
+async function followUpAgentTurns(db: Db, conversationId: string, startedAt: string): Promise<number> {
+  const rows = await db.query(
+    "select sender from conversation_messages where conversation_id = $1 and created_at > $2 and sender <> 'teacher' order by created_at, id",
+    [conversationId, startedAt],
+  );
+  return countAgentTurns(rows.rows.map((row) => ({ role: row.sender as string })));
 }
 
 const STREAM_TIMEOUT_MS = 60_000;
@@ -62,32 +99,43 @@ async function loadScene(db: Db, scenarioId: string | null): Promise<{ prompt: s
     : fallback;
 }
 
-/** 以 SSE 流式输出一轮买家回复，落库消息与验收指标 */
+/**
+ * 生成一轮买家回复，落库消息与验收指标。
+ * 带 request / reply 时以 SSE 流式推给前端；不带时在后台生成（订单页发工具卡片时没有聊天窗口在等），
+ * 后台生成不是“有效对话请求”，不记验收指标。
+ */
 async function streamBuyerTurn(options: {
   db: Db;
   gateway: LlmGateway;
-  request: FastifyRequest;
-  reply: FastifyReply;
+  request?: FastifyRequest;
+  reply?: FastifyReply;
+  log?: LogLike;
   conversation: ConversationRow;
   history: Array<{ role: "buyer" | "student" | "teacher"; content: string }>;
-}): Promise<void> {
+}): Promise<{ closed: boolean }> {
   const { db, gateway, request, reply, conversation, history } = options;
+  const log: LogLike = request?.log ?? options.log ?? console;
   // B2：首字耗时从收到请求那一刻算起（含查库、组装上下文），不是从调用模型时算
-  const receivedAt = new Date(request.receivedAt);
+  const receivedAt = request ? new Date(request.receivedAt) : new Date();
   const scene = await loadScene(db, conversation.scenario_id);
   const orders = await loadBuyerOrders(db, conversation.id);
+  // 工具跟进（D-56）：买家知道这是短跟进，客服回满 3 轮后这一条收尾
+  const followUp = followUpActive(conversation.tool_followup) ? conversation.tool_followup : null;
+  const followUpTurns = followUp ? await followUpAgentTurns(db, conversation.id, followUp.startedAt) : 0;
 
-  reply.hijack();
-  const raw = reply.raw;
-  raw.writeHead(200, {
-    "content-type": "text/event-stream; charset=utf-8",
-    "cache-control": "no-cache",
-    connection: "keep-alive",
-    "access-control-allow-origin": String(request.headers.origin ?? "*"),
-    "access-control-allow-credentials": "true",
-  });
+  const raw = reply && request ? reply.raw : null;
+  if (reply && request) {
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+      "access-control-allow-origin": String(request.headers.origin ?? "*"),
+      "access-control-allow-credentials": "true",
+    });
+  }
   const send = (payload: Record<string, unknown>) => {
-    raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+    raw?.write(`data: ${JSON.stringify(payload)}\n\n`);
   };
 
   let firstCharAt: Date | null = null;
@@ -147,6 +195,7 @@ async function streamBuyerTurn(options: {
     pastOrders: orders.past,
     history,
     startedAt: conversation.created_at,
+    followUp: followUp ? { kind: followUp.kind, agentTurns: followUpTurns, maxTurns: FOLLOWUP_MAX_TURNS } : null,
   });
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
@@ -169,7 +218,7 @@ async function streamBuyerTurn(options: {
       break;
     } catch (error) {
       outcome = timedOut ? "timeout" : "error";
-      request.log.error({ err: error, attempt }, "llm stream failed");
+      log.error({ err: error, attempt }, "llm stream failed");
       if (timedOut || buyerReply.length > 0 || attempt === 2) break;
     }
   }
@@ -200,10 +249,10 @@ async function streamBuyerTurn(options: {
           corrected = true;
         }
       } catch (error) {
-        request.log.error({ err: error, conversationId: conversation.id, attempt }, "buyer chinese fix failed");
+        log.error({ err: error, conversationId: conversation.id, attempt }, "buyer chinese fix failed");
       }
     }
-    if (!corrected) request.log.warn({ conversationId: conversation.id }, "buyer reply still has chinese after fix");
+    if (!corrected) log.warn({ conversationId: conversation.id }, "buyer reply still has chinese after fix");
   }
 
   // 按 ||| 拆成多条短消息分行落库（拟真买家连发；回放/教师端同样逐条展示）
@@ -225,7 +274,7 @@ async function streamBuyerTurn(options: {
   if (segments.length === 0 && outcome === "success") {
     outcome = "error";
   }
-  await db.query(
+  if (raw) await db.query(
     `insert into conversation_metrics
        (conversation_id, received_at, first_char_at, completed_at, valid_chars, provider, model, outcome)
      values ($1, $2, $3, $4, $5, $6, $7, $8)`,
@@ -243,30 +292,37 @@ async function streamBuyerTurn(options: {
 
   // 买家离开：自动结束会话并触发评分（真实规则：只有客户会主动断开）
   let conversationClosed = false;
-  if (buyerLeft && outcome === "success") {
+  if (followUp && outcome === "success") {
+    // 跟进：买家收尾离开，或客服已回满 3 轮（这一条是买家的收尾），跟进结束；不评分、不打星、不留评
+    if (buyerLeft || followUpTurns >= FOLLOWUP_MAX_TURNS) {
+      conversationClosed = await endFollowUp(db, conversation.id, buyerLeft ? "buyer_left" : "turn_limit");
+    }
+  } else if (buyerLeft && outcome === "success") {
     const closed = await db.query(
       "update conversations set status = 'closed', closed_reason = 'buyer_left', closed_at = now() where id = $1 and status = 'active' returning id",
       [conversation.id],
     );
     if (closed.rowCount) {
       conversationClosed = true;
+      await rateService(db, conversation.id).catch((error) => log.error(error, "service rating failed"));
       const { assessConversation } = await import("../assessment");
       void assessConversation(db, gateway, conversation.id).catch((error) =>
-        request.log.error(error, "assessment failed"),
+        log.error(error, "assessment failed"),
       );
       // 闭环评价：买家按本次服务结果留评/改评（异步，不阻塞）
       const { generateBuyerReview } = await import("../review-gen");
-      void generateBuyerReview(db, gateway, conversation.id, request.log).catch((error) =>
-        request.log.error(error, "buyer review failed"),
+      void generateBuyerReview(db, gateway, conversation.id, log).catch((error) =>
+        log.error(error, "buyer review failed"),
       );
     }
   }
 
-  // 后台观察员（D-50）：异步评估学生表现与买家满意度，只给教师端、评分和催促用，不回写买家（不阻塞响应）
-  if (outcome === "success" && !conversationClosed && history.some((item) => item.role === "student")) {
+  // 后台观察员（D-50）：异步评估学生表现与买家满意度，只给教师端、评分和催促用，不回写买家（不阻塞响应）。
+  // 跟进不评估：原来那次的满意度和走势留给教师端、评分
+  if (outcome === "success" && !conversationClosed && !followUp && history.some((item) => item.role === "student")) {
     void import("../director")
       .then(({ runDirector }) => runDirector(db, gateway, conversation.id))
-      .catch((error) => request.log.error(error, "director failed"));
+      .catch((error) => log.error(error, "director failed"));
   }
 
   const durationSeconds = firstCharAt
@@ -284,7 +340,87 @@ async function streamBuyerTurn(options: {
       outcome,
     },
   });
-  raw.end();
+  raw?.end();
+  return { closed: conversationClosed };
+}
+
+/**
+ * 会话已结束时收到工具卡片（D-56）：买家看了卡片自己决定回复、直接付款或不理。
+ * 回复了就开始跟进（会话回到进行中）；付款了把订单改成已付款；后台执行，失败只记日志。
+ */
+async function buyerReactToToolCard(db: Db, gateway: LlmGateway, conversationId: string, log: LogLike): Promise<void> {
+  const conversationResult = await db.query<ConversationRow>("select * from conversations where id = $1", [conversationId]);
+  const conversation = conversationResult.rows[0];
+  const followUp = conversation?.tool_followup;
+  if (!conversation || conversation.status !== "closed" || !followUp || followUp.startedAt || followUp.endedAt) return;
+  const scene = await loadScene(db, conversation.scenario_id);
+  const orders = await loadBuyerOrders(db, conversation.id);
+  const historyRows = await db.query(
+    "select sender, content from conversation_messages where conversation_id = $1 order by created_at desc, id desc limit 300",
+    [conversation.id],
+  );
+  const history = historyRows.rows.reverse().map((row) => ({ role: row.sender as "buyer" | "student" | "teacher", content: row.content as string }));
+  const { text } = await gateway.complete(
+    "dialogue",
+    buildBuyerToolReactionMessages(
+      {
+        scenePrompt: scene.prompt,
+        script: scene.script,
+        personaSnapshot: conversation.persona,
+        orderSnapshot: orders.primary ?? {},
+        pastOrders: orders.past,
+        history,
+        startedAt: conversation.created_at,
+      },
+      followUp.kind,
+    ),
+    { conversationId: conversation.id },
+  );
+  const paid = followUp.kind === "payment_reminder" && text.includes(TOOL_REACTION_PAID);
+  const left = text.includes(END_MARK);
+  let content = text
+    .replace(TOOL_REACTION_PAID, "")
+    .replace(TOOL_REACTION_NONE, "")
+    .replace(END_MARK, "")
+    .split(SPLIT_MARK)
+    .map((part) => part.trim())
+    .find(Boolean) ?? "";
+  const language = conversation.persona.language as string | undefined;
+  if (content && hasChineseLeak(content, language)) {
+    const fixed = (await gateway.complete("assist", buildChineseFixMessages(content, language), { conversationId, temperature: 0.2 })).text.trim();
+    content = fixed && !hasChineseLeak(fixed, language) ? fixed : "";
+  }
+  if (paid) {
+    const order = await db.query("select payload from orders where id = $1", [followUp.orderId]);
+    const info = order.rows[0]?.payload as OrderInfo | undefined;
+    if (info && info.status === "pending_payment") {
+      await db.query("update orders set status = 'paid', payload = $2 where id = $1", [followUp.orderId, JSON.stringify(paidOrder(info))]);
+    }
+  }
+  if (!content) {
+    await db.query(
+      `update conversations set tool_followup = tool_followup || jsonb_build_object('endedAt', now(), 'endReason', $2::text)
+       where id = $1 and status = 'closed'`,
+      [conversationId, paid ? "paid" : "no_reply"],
+    );
+    log.info(`tool card ${followUp.kind}: buyer ${paid ? "paid without replying" : "did not reply"} (${conversationId})`);
+    return;
+  }
+  await db.query("insert into conversation_messages (conversation_id, sender, content) values ($1, 'buyer', $2)", [conversationId, content]);
+  if (paid || left) {
+    await db.query(
+      `update conversations set tool_followup = tool_followup || jsonb_build_object('endedAt', now(), 'endReason', $2::text)
+       where id = $1 and status = 'closed'`,
+      [conversationId, paid ? "paid" : "buyer_left"],
+    );
+    return;
+  }
+  // 买家回复了：跟进开始，会话回到进行中（结束原因、结束时间、星级、成绩都保留原样）
+  await db.query(
+    `update conversations set status = 'active', tool_followup = tool_followup || jsonb_build_object('startedAt', now())
+     where id = $1 and status = 'closed'`,
+    [conversationId],
+  );
 }
 
 /** 客服在接待中的标记（C2）：系统客户标签只读，咨询原因 / 待跟进 / 客户备注由学生写 */
@@ -326,6 +462,31 @@ export function registerConversationRoutes(
   gateway: LlmGateway,
   voice: VoiceService,
 ): void {
+  /** 邮件会话（D-58）给写信框用的信息：收件人、建议模板、客户标签和历史订单 */
+  async function mailConversationView(conversation: ConversationRow, scenario: { id: string; name: string; objective: string }) {
+    const orderRows = await db.query("select payload from orders where conversation_id = $1", [conversation.id]);
+    const store = await loadStoreProfile(db);
+    const meta = serviceMetaOf(conversation as unknown as Record<string, unknown>, orderRows.rows.map((row) => row.payload as OrderInfo), store.tiers);
+    const persona = ensurePersonaAvatar(conversation.persona as never, conversation.id);
+    const name = String(conversation.persona.name ?? "Customer");
+    return {
+      id: conversation.id,
+      taskId: conversation.task_id,
+      channel: "mail" as const,
+      scenario: { id: scenario.id, name: scenario.name, objective: scenario.objective },
+      buyer: toStudentPersonaView(persona),
+      order: null,
+      createdAt: conversation.created_at,
+      mail: {
+        to: deriveBuyerEmail(name, conversation.id),
+        toName: name,
+        templateId: mailTemplateForScenario(scenario.name).id,
+        customerTags: meta.customerTags,
+        orderStats: meta.orderStats,
+      },
+    };
+  }
+
   app.post<{ Body: { taskId?: string; scenarioId?: string } }>(
     "/v1/conversations",
     { preHandler: guard.requireRole("student") },
@@ -371,10 +532,10 @@ export function registerConversationRoutes(
         );
       }
 
-      let scenario: { id: string; name: string; objective: string; stage: BusinessStage; orderKind: OrderKind | null } | null = null;
+      let scenario: { id: string; name: string; objective: string; stage: BusinessStage; orderKind: OrderKind | null; channel: string } | null = null;
       if (resolvedScenarioId) {
         const result = await db.query(
-          "select id, name, objective, stage, order_kind as \"orderKind\" from scenarios where id = $1 and enabled",
+          "select id, name, objective, stage, order_kind as \"orderKind\", coalesce(channel, 'chat') as channel from scenarios where id = $1 and enabled",
           [resolvedScenarioId],
         );
         scenario = result.rows[0] ?? null;
@@ -382,6 +543,20 @@ export function registerConversationRoutes(
           reply.code(400);
           return { code: "INVALID_INPUT", message: "场景不存在或未启用。" };
         }
+      }
+      /* 邮件类场景（D-58）：只在任务里按邮件下发；同一任务同一场景还没发出的邮件会话接着用（收件人不变） */
+      const channel = scenario?.channel === "mail" ? "mail" : "chat";
+      if (channel === "mail") {
+        if (!taskId) {
+          reply.code(400);
+          return { code: "MAIL_SCENARIO_NEEDS_TASK", message: "邮件类场景请在任务里完成。" };
+        }
+        const existing = await db.query<ConversationRow>(
+          `select * from conversations where task_id = $1 and student_id = $2 and scenario_id = $3 and channel = 'mail' and status = 'active'
+           order by created_at desc limit 1`,
+          [taskId, user.sub, resolvedScenarioId],
+        );
+        if (existing.rows[0]) return mailConversationView(existing.rows[0], scenario!);
       }
 
       // 服务端生成画像快照（D-33）：按任务规则先筛人群范围，再随机沟通方式和姓名；没有符合的画像时拒绝开始
@@ -430,9 +605,9 @@ export function registerConversationRoutes(
         }
       }
       const created = await db.query<ConversationRow>(
-        `insert into conversations (task_id, student_id, scenario_id, persona, contact_reason_suggested)
-         values ($1, $2, $3, $4, $5) returning *`,
-        [taskId ?? null, user.sub, resolvedScenarioId, JSON.stringify(persona), suggestContactReason(scenario?.name, scenario?.stage)],
+        `insert into conversations (task_id, student_id, scenario_id, persona, contact_reason_suggested, channel)
+         values ($1, $2, $3, $4, $5, $6) returning *`,
+        [taskId ?? null, user.sub, resolvedScenarioId, JSON.stringify(persona), suggestContactReason(scenario?.name, scenario?.stage), channel],
       );
       const conversation = created.rows[0]!;
 
@@ -465,6 +640,7 @@ export function registerConversationRoutes(
         personaBrief,
       );
       for (const item of historyOrders) await insertOrder(item, false);
+      if (channel === "mail") return mailConversationView(conversation, scenario!);
 
       return {
         id: conversation.id,
@@ -499,7 +675,7 @@ export function registerConversationRoutes(
            select content, sender, created_at from conversation_messages m
            where m.conversation_id = c.id order by m.created_at desc limit 1
          ) lm on true
-         where c.student_id = $1 and c.status = $2
+         where c.student_id = $1 and c.status = $2 and c.channel = 'chat'
          order by coalesce(lm.created_at, c.created_at) desc limit 30`,
         [user.sub, status],
       );
@@ -535,6 +711,11 @@ export function registerConversationRoutes(
         unreplied: row.last_sender === "buyer",
         visits72h: Number(row.visits72 ?? 0),
         createdAt: row.created_at,
+        closedAt: row.closed_at ?? null,
+        /* 服务评价 1–5 星（D-54），没结束或买家没说过话时为空 */
+        serviceRating: row.service_rating == null ? null : Number(row.service_rating),
+        /* 工具跟进（D-56）：进行中时界面按跟进处理（不计时、不计分），结束后在聊天末尾显示“跟进结束” */
+        toolFollowUp: row.tool_followup ?? null,
       }));
     },
   );
@@ -637,7 +818,7 @@ export function registerConversationRoutes(
     },
   );
 
-  // 学生客服指标：今日接待/平均响应/未回复/12小时响应率/满意率/询单支付金额/付款人数/询单转化率
+  // 学生客服指标：今日接待/平均响应/未回复/12小时响应率/满意率（今天 4–5 星占比）/询单支付金额/付款人数/询单转化率
   app.get(
     "/v1/student/workbench-stats",
     { preHandler: guard.requireRole("student") },
@@ -646,7 +827,7 @@ export function registerConversationRoutes(
       const [today, unreplied, response, twelveHour, satisfaction, paid] = await Promise.all([
         db.query(
           `select count(*) as n from conversations
-           where student_id = $1 and created_at::date = current_date`,
+           where student_id = $1 and channel = 'chat' and created_at::date = current_date`,
           [user.sub],
         ),
         db.query(
@@ -687,11 +868,10 @@ export function registerConversationRoutes(
            where reply_at is not null or buyer_at < now() - interval '12 hours'`,
           [user.sub],
         ),
-        // 满意率：近 7 天会话导演满意度均值
+        // 满意率（D-54）：今天结束的接待里，买家服务评价 4–5 星的占比
         db.query(
-          `select avg((state->>'satisfaction')::numeric) as s from conversations
-           where student_id = $1 and state ? 'satisfaction'
-             and created_at > now() - interval '7 days'`,
+          `select count(*) filter (where service_rating >= 4)::int as satisfied, count(*)::int as rated from conversations
+           where student_id = $1 and service_rating is not null and closed_at::date = current_date`,
           [user.sub],
         ),
         // 询单支付金额/付款人数：今日会话中已付款（含发货后各状态）的关联订单
@@ -709,7 +889,7 @@ export function registerConversationRoutes(
       const avg = response.rows[0]?.avg_s;
       const todayCount = Number(today.rows[0]?.n ?? 0);
       const twelveTotal = Number(twelveHour.rows[0]?.total ?? 0);
-      const satisfactionAvg = satisfaction.rows[0]?.s;
+      const rated = Number(satisfaction.rows[0]?.rated ?? 0);
       const paidBuyers = Number(paid.rows[0]?.buyers ?? 0);
       return {
         todayConversations: todayCount,
@@ -717,10 +897,7 @@ export function registerConversationRoutes(
         avgResponseSeconds: avg === null || avg === undefined ? null : Math.round(Number(avg)),
         twelveHourResponseRate:
           twelveTotal > 0 ? Math.round((Number(twelveHour.rows[0]?.ok ?? 0) / twelveTotal) * 1000) / 10 : null,
-        satisfactionRate:
-          satisfactionAvg === null || satisfactionAvg === undefined
-            ? null
-            : Math.round(Number(satisfactionAvg)),
+        satisfactionRate: rated > 0 ? Math.round((Number(satisfaction.rows[0]?.satisfied ?? 0) / rated) * 100) : null,
         inquiryPaidAmount: Math.round(Number(paid.rows[0]?.amount ?? 0) * 100) / 100,
         paidBuyers,
         conversionRate: todayCount > 0 ? Math.round((paidBuyers / todayCount) * 1000) / 10 : null,
@@ -786,6 +963,18 @@ export function registerConversationRoutes(
     { preHandler: guard.requireRole("student") },
     async (request, reply) => {
       const user = request.user!;
+      const owned = await db.query<ConversationRow>(
+        "select * from conversations where id = $1 and student_id = $2 and status = 'active'",
+        [request.params.conversationId, user.sub],
+      );
+      if (!owned.rowCount) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "会话不存在或已关闭。" };
+      }
+      if (followUpActive(owned.rows[0]!.tool_followup)) {
+        await endFollowUp(db, request.params.conversationId, "student_ended");
+        return { ok: true };
+      }
       const result = await db.query(
         `update conversations set status = 'closed', closed_reason = 'student_ended', closed_at = now()
          where id = $1 and student_id = $2 and status = 'active' returning id`,
@@ -795,6 +984,7 @@ export function registerConversationRoutes(
         reply.code(404);
         return { code: "NOT_FOUND", message: "会话不存在或已关闭。" };
       }
+      await rateService(db, request.params.conversationId).catch((error) => request.log.error(error, "service rating failed"));
       // 后台异步评分，不阻塞关闭
       const { assessConversation } = await import("../assessment");
       void assessConversation(db, gateway, request.params.conversationId).catch((error) =>
@@ -1253,6 +1443,78 @@ export function registerConversationRoutes(
         conversation,
         history: [...history, { role: "student", content }],
       });
+    },
+  );
+
+  /**
+   * 订单页工具卡片（D-56）：付款提醒 / 物流通知。
+   * 会话进行中：卡片进当前聊天，买家在后台回复（工作台轮询会刷出来）；
+   * 会话已结束：卡片记在原会话里，买家看了自己决定回复、付款或不理，回复了就开始 2–3 轮的跟进
+   */
+  app.post<{ Params: { orderId: string }; Body: { kind?: string; text?: string } }>(
+    "/v1/orders/:orderId/tool-cards",
+    { preHandler: guard.requireRole("student") },
+    async (request, reply) => {
+      const user = request.user!;
+      const kind = request.body?.kind;
+      const text = typeof request.body?.text === "string" ? request.body.text.trim().slice(0, 1000) : "";
+      if (!isToolCardKind(kind) || !text) {
+        reply.code(400);
+        return { code: "INVALID_INPUT", message: "请选择卡片类型并填写话术。" };
+      }
+      const found = await db.query(
+        "select o.id as order_id, o.payload as order_payload, o.conversation_id from orders o where o.id = $1 and o.student_id = $2",
+        [request.params.orderId, user.sub],
+      );
+      const orderRow = found.rows[0];
+      if (!orderRow) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "订单不存在。" };
+      }
+      const info = orderRow.order_payload as OrderInfo;
+      const problem = toolCardProblem(kind, info);
+      if (problem) {
+        reply.code(409);
+        return { code: "TOOL_NOT_APPLICABLE", message: problem };
+      }
+      if (!gateway.isConfigured()) {
+        reply.code(503);
+        return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "请由管理员配置 LLM 对话服务。" };
+      }
+      const conversation = (await db.query<ConversationRow>("select * from conversations where id = $1", [orderRow.conversation_id])).rows[0];
+      if (!conversation || conversation.channel !== "chat") {
+        reply.code(409);
+        return { code: "TOOL_NOT_APPLICABLE", message: "这笔订单没有可以联系的聊天。" };
+      }
+      const open = followUpOpen(conversation.tool_followup) ? conversation.tool_followup : null;
+      if (open && (conversation.status === "closed" || (open.kind === kind && open.orderId === orderRow.order_id))) {
+        reply.code(409);
+        return {
+          code: "TOOL_FOLLOWUP_OPEN",
+          message: conversation.status === "closed" ? "买家还没看上一张卡片，稍后再发。" : "这张订单刚发过同样的卡片，等这段跟进结束后再发。",
+        };
+      }
+      const content = toolCardContent(kind, info, text);
+      const payload = toolCardPayload(kind, orderRow.order_id, info, text);
+      const historyResult = await db.query(
+        "select sender, content from conversation_messages where conversation_id = $1 order by created_at desc limit 300",
+        [conversation.id],
+      );
+      const history = historyResult.rows.reverse().map((row) => ({ role: row.sender as "buyer" | "student" | "teacher", content: row.content as string }));
+      await db.query(
+        "insert into conversation_messages (conversation_id, sender, content, kind, payload) values ($1, 'student', $2, $3, $4)",
+        [conversation.id, content, kind, JSON.stringify(payload)],
+      );
+      if (conversation.status === "active") {
+        void streamBuyerTurn({ db, gateway, log: request.log, conversation, history: [...history, { role: "student", content }] }).catch((error) =>
+          request.log.error(error, "buyer reply to tool card failed"),
+        );
+        return { delivered: "live", conversationId: conversation.id };
+      }
+      const followUp: ToolFollowUp = { kind, orderId: orderRow.order_id, sentAt: new Date().toISOString() };
+      await db.query("update conversations set tool_followup = $2 where id = $1 and status = 'closed'", [conversation.id, JSON.stringify(followUp)]);
+      void buyerReactToToolCard(db, gateway, conversation.id, request.log).catch((error) => request.log.error(error, "buyer reaction to tool card failed"));
+      return { delivered: "closed", conversationId: conversation.id };
     },
   );
 

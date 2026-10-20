@@ -10,7 +10,10 @@ import {
   assessmentOutputSchema,
   buildAssessmentMessages,
   buildChunkSummaryMessages,
+  buildMailAssessmentMessages,
   formatTranscript,
+  MAIL_ASSESSMENT_DIMENSION_IDS,
+  mailAssessmentOutputSchema,
   type AssessmentEvidence,
 } from "./prompts/assessment";
 
@@ -66,7 +69,7 @@ export async function assessConversation(
   );
   if (existing.rowCount) return;
   const conversationResult = await db.query(
-    `select c.student_id, c.task_id, c.persona, c.state, c.closed_at, c.closed_reason,
+    `select c.student_id, c.task_id, c.persona, c.state, c.closed_at, c.closed_reason, c.channel,
             s.name as scenario_name, s.objective, s.stage, s.script, t.scoring_weights
      from conversations c
      left join scenarios s on s.id = c.scenario_id
@@ -78,6 +81,10 @@ export async function assessConversation(
   if (!conversation) return;
   /* 自由练习（无任务会话）不评分：只有任务实训才进入考核统计 */
   if (!conversation.task_id) return;
+  if (conversation.channel === "mail") {
+    await assessMail(db, gateway, conversationId, conversation);
+    return;
+  }
   // 评分读全量对话（J4），不再只取前 60 条
   const messagesResult = await db.query(
     `select sender, content, created_at from conversation_messages
@@ -136,39 +143,94 @@ export async function assessConversation(
       JSON.stringify(evidence),
     ],
   );
-  if (conversation.task_id) {
-    /* 任务 = 考核单位：任务成绩 = 该任务下所有已评会话的平均分，进行中持续更新（教师端可实时跟踪）。
-       是否「完成」按任务配置的完成标准判定：
-       - all_scenarios：任务勾选的每个场景至少完成一次已评会话
-       - conversation_count：已评会话数达到 required_count
-       达标与否由前端按 score 与 pass_score 推导展示，这里只负责状态推进 */
-    const taskResult = await db.query(
-      "select scenario_ids, completion_rule, required_count from tasks where id = $1",
-      [conversation.task_id],
-    );
-    const task = taskResult.rows[0];
-    const scenarioIds = (task?.scenario_ids ?? []) as string[];
-    const progressResult = await db.query(
-      `select count(*)::int as assessed_count,
-              count(distinct c.scenario_id) filter (where c.scenario_id = any($3))::int as covered_scenarios,
-              round(avg(a.total))::int as avg_total
-       from assessments a join conversations c on c.id = a.conversation_id
-       where c.task_id = $1 and a.student_id = $2`,
-      [conversation.task_id, conversation.student_id, scenarioIds],
-    );
-    const progress = progressResult.rows[0]!;
-    const completed =
-      task?.completion_rule === "conversation_count"
-        ? Number(progress.assessed_count) >= Math.max(1, Number(task.required_count) || 1)
-        : scenarioIds.length === 0 || Number(progress.covered_scenarios) >= scenarioIds.length;
-    await db.query(
-      `update task_progress set
-         status = case when $3 or status = 'done' then 'done' else 'in_progress' end,
-         score = $4, updated_at = now()
-       where task_id = $1 and student_id = $2`,
-      [conversation.task_id, conversation.student_id, completed, progress.avg_total],
-    );
-  }
+  if (conversation.task_id) await updateTaskProgress(db, conversation.task_id, conversation.student_id);
+}
+
+/** 邮件任务评分（D-58）：评六项，客户情绪安抚、消息响应时效不评；违规词命中作为客观依据 */
+async function assessMail(db: Db, gateway: LlmGateway, conversationId: string, conversation: Record<string, any>): Promise<void> {
+  const mailResult = await db.query(
+    "select payload from conversation_messages where conversation_id = $1 and sender = 'student' and kind = 'mail' order by created_at desc limit 1",
+    [conversationId],
+  );
+  const mail = mailResult.rows[0]?.payload as { subject?: string; body?: string; to?: string; toName?: string; templateId?: string } | undefined;
+  if (!mail?.body) return;
+  const persona = (conversation.persona ?? {}) as Record<string, unknown>;
+  const { emailTemplates } = await import("@cecs/domain");
+  const template = emailTemplates.find((item) => item.id === mail.templateId);
+  const evidence: AssessmentEvidence = {
+    forbiddenHits: await findForbiddenHits(db, [`${mail.subject ?? ""}\n${mail.body}`]),
+    turnScores: [],
+    summarized: false,
+    hasProductFacts: typeof persona.productFacts === "string" && !!persona.productFacts.trim(),
+  };
+  const { data: parsed, info } = await gateway.completeJson(
+    "assessment",
+    buildMailAssessmentMessages({
+      scenarioName: conversation.scenario_name ?? null,
+      objective: conversation.objective ?? null,
+      stage: (conversation.stage as BusinessStage | null) ?? null,
+      templatePurpose: template ? `${template.name}（${template.purpose}）` : null,
+      recipient: `${mail.toName ?? persona.name ?? "customer"}，${persona.nationality ?? ""}，客户类型 ${persona.customerType ?? "-"}`,
+      productFacts: typeof persona.productFacts === "string" ? persona.productFacts : null,
+      subject: mail.subject ?? "",
+      body: mail.body,
+      forbiddenHits: evidence.forbiddenHits,
+    }),
+    mailAssessmentOutputSchema,
+    { conversationId },
+  );
+  const scores: Record<string, number> = {};
+  for (const id of MAIL_ASSESSMENT_DIMENSION_IDS) scores[id] = (parsed.scores as Record<string, number | undefined>)[id] ?? 60;
+  const total = weightedTotal(scores, (conversation.scoring_weights ?? {}) as Record<string, number>);
+  await db.query(
+    `insert into assessments (conversation_id, student_id, scores, total, comment, suggestions, prompt_version, model, evidence)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict (conversation_id) do nothing`,
+    [
+      conversationId,
+      conversation.student_id,
+      JSON.stringify(scores),
+      total,
+      parsed.comment.slice(0, 300),
+      JSON.stringify(parsed.suggestions.slice(0, 3)),
+      `${ASSESSMENT_PROMPT_VERSION}#mail`,
+      `${info.profileName} / ${info.model}`,
+      JSON.stringify(evidence),
+    ],
+  );
+  if (conversation.task_id) await updateTaskProgress(db, conversation.task_id, conversation.student_id);
+}
+
+/**
+ * 任务进度：评完一次接待（聊天或邮件）后推进。任务 = 考核单位：任务成绩 = 该任务下所有已评会话的平均分，
+ * 进行中持续更新（教师端可实时跟踪）。是否「完成」按任务配置的完成标准判定：
+ * - all_scenarios：任务勾选的每个场景至少完成一次已评会话
+ * - conversation_count：已评会话数达到 required_count
+ * 达标与否由前端按 score 与 pass_score 推导展示，这里只负责状态推进
+ */
+async function updateTaskProgress(db: Db, taskId: string, studentId: string): Promise<void> {
+  const taskResult = await db.query("select scenario_ids, completion_rule, required_count from tasks where id = $1", [taskId]);
+  const task = taskResult.rows[0];
+  const scenarioIds = (task?.scenario_ids ?? []) as string[];
+  const progressResult = await db.query(
+    `select count(*)::int as assessed_count,
+            count(distinct c.scenario_id) filter (where c.scenario_id = any($3))::int as covered_scenarios,
+            round(avg(a.total))::int as avg_total
+     from assessments a join conversations c on c.id = a.conversation_id
+     where c.task_id = $1 and a.student_id = $2`,
+    [taskId, studentId, scenarioIds],
+  );
+  const progress = progressResult.rows[0]!;
+  const completed =
+    task?.completion_rule === "conversation_count"
+      ? Number(progress.assessed_count) >= Math.max(1, Number(task.required_count) || 1)
+      : scenarioIds.length === 0 || Number(progress.covered_scenarios) >= scenarioIds.length;
+  await db.query(
+    `update task_progress set
+       status = case when $3 or status = 'done' then 'done' else 'in_progress' end,
+       score = $4, updated_at = now()
+     where task_id = $1 and student_id = $2`,
+    [taskId, studentId, completed, progress.avg_total],
+  );
 }
 
 /**

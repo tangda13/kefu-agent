@@ -494,3 +494,25 @@
 .wbk-rp .wbk-oc-badges { margin-left: auto; }
 .wbk-rp .wbk-oc-it > div { min-width: 0; }
 .wbk-rp .wbk-oc-it > b.num { white-space: nowrap; overflow: visible; }
+
+/* 参数核对 · 学生端（设计稿 docs/design/p15-params-student）
+   服务评价（D-54）：结束提示下面一行星级 */
+.wbk-rate { display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px; background: var(--c-surface); box-shadow: inset 0 0 0 1px var(--c-line); color: var(--c-ink-2); }
+.wbk-stars { font-size: 14px; letter-spacing: 1px; color: #f2b01e; }
+.wbk-stars i { font-style: normal; color: #d6dce5; }
+/* 工具卡片（D-56）：付款提醒 / 物流通知，和文字气泡、商品卡区分开 */
+.wbk-tool { width: 340px; overflow: hidden; border-radius: 10px; background: var(--c-surface); box-shadow: inset 0 0 0 1px var(--c-line-strong); text-align: left; }
+.wbk-tool-h { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--c-line); background: var(--c-surface-2); font-size: 13px; font-weight: 700; color: var(--c-ink); }
+.wbk-tool-h small { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--c-ink-3); }
+.wbk-tool-ico { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 6px; background: var(--c-brand); color: #fff; }
+.wbk-tool-ico.is-pay { background: #d9822b; }
+.wbk-tool-b { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding: 10px 12px 6px; font-size: 12px; color: var(--c-ink-3); }
+.wbk-tool-b img { width: 52px; height: 52px; border-radius: 6px; object-fit: cover; }
+.wbk-tool-b > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.wbk-tool-b b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--c-ink); }
+.wbk-tool-b em { font-style: normal; font-size: 13px; font-weight: 700; color: #b45f12; }
+.wbk-tool-t { margin: 0 12px 10px; padding: 8px 10px; border-radius: 8px; background: var(--c-surface-2); font-size: 13px; line-height: 20px; color: var(--c-ink); white-space: pre-wrap; }
+.wbk-tool-f { display: flex; align-items: center; padding: 7px 12px; border-top: 1px solid var(--c-line); font-size: 12px; color: var(--c-ink-3); }
+.wbk-tool-f i { margin-left: auto; padding: 2px 12px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--c-brand); font-style: normal; font-weight: 600; color: var(--c-brand-ink); }
+/* 工具卡片下的小字（从订单页发送）、跟进结束提示 */
+.wbk-tool-src { align-self: flex-end; margin-top: -6px; font-size: 11px; color: var(--c-ink-4, #9aa3b0); }

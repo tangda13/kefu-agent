@@ -47,25 +47,37 @@ export function replyTurnScore(seconds: number): number {
   return 0;
 }
 
-export function computeResponsiveness(
-  messages: TimedMessage[],
-  closing?: { closedAt?: string | Date | null; closedReason?: string | null },
-): ResponsivenessResult {
-  const time = (value: string | Date) => new Date(value).getTime();
-  const sorted = messages.filter((m) => m.sender === "buyer" || m.sender === "student").sort((a, b) => time(a.at) - time(b.at));
+const timeOf = (value: string | Date) => new Date(value).getTime();
+
+/** 逐轮扫描：waits = 每一轮买家第一条消息到客服第一条回复的秒数；pendingSince = 最后还没回的那一轮从何时开始等 */
+function scanWaits(messages: TimedMessage[]): { waits: number[]; pendingSince: number | null } {
+  const sorted = messages.filter((m) => m.sender === "buyer" || m.sender === "student").sort((a, b) => timeOf(a.at) - timeOf(b.at));
   const waits: number[] = [];
   let pendingSince: number | null = null;
   for (const message of sorted) {
     if (message.sender === "buyer") {
-      if (pendingSince == null) pendingSince = time(message.at);
+      if (pendingSince == null) pendingSince = timeOf(message.at);
     } else if (pendingSince != null) {
-      waits.push(Math.max(0, (time(message.at) - pendingSince) / 1000));
+      waits.push(Math.max(0, (timeOf(message.at) - pendingSince) / 1000));
       pendingSince = null;
     }
   }
+  return { waits, pendingSince };
+}
+
+/** 每一轮的等待秒数（买家连发、催促不重置计时）；没回复的轮次不算 */
+export function replyWaits(messages: TimedMessage[]): number[] {
+  return scanWaits(messages).waits;
+}
+
+export function computeResponsiveness(
+  messages: TimedMessage[],
+  closing?: { closedAt?: string | Date | null; closedReason?: string | null },
+): ResponsivenessResult {
+  const { waits, pendingSince } = scanWaits(messages);
   let leftWaiting = false;
   if (pendingSince != null && closing?.closedAt) {
-    const waited = (time(closing.closedAt) - pendingSince) / 1000;
+    const waited = (timeOf(closing.closedAt) - pendingSince) / 1000;
     if (waited >= UNANSWERED_MIN_SEC) {
       waits.push(waited);
       leftWaiting = closing.closedReason === "buyer_left";

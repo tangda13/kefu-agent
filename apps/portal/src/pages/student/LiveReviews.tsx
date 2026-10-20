@@ -309,6 +309,7 @@ export function LiveReviews({
             conversationId={record.conversationId}
             conversationOpen={record.conversationStatus === "active" && !composing?.edit}
             buyerName={record.buyer.name}
+            buyerLanguage={record.buyer.language}
             initialText={composing?.edit ? replied?.text ?? "" : ""}
             onCancel={() => setComposing(null)}
             onSent={(text) => {

@@ -94,6 +94,67 @@ export function buildAssessmentMessages(input: {
   ];
 }
 
+/**
+ * 邮件任务评分（D-58）：评六项——服务话术规范、客户沟通有效性、订单问题解决（邮件里看行动号召）、商品信息准确性、
+ * 语法准确性、违规用语合规；客户情绪安抚、消息响应时效不评（总分只算有分的维度）
+ */
+export const MAIL_ASSESSMENT_DIMENSION_IDS = ["professionalism", "effectiveness", "resolution", "knowledge", "grammar", "compliance"] as const;
+
+const MAIL_DIMENSION_HINTS: Record<(typeof MAIL_ASSESSMENT_DIMENSION_IDS)[number], string> = {
+  professionalism: "称呼、开头、结尾和落款是否得体，语气是否专业，是否符合收件人所在国的商务习惯",
+  effectiveness: "主题行是否清楚，重点是否先说，篇幅是否合适，是否结合收件人的情况（老客、新客、粉丝）写",
+  resolution: "是否有清楚可执行的行动号召（回复、下单、领券），优惠和时限是否写明",
+  knowledge: "商品规格、价格、优惠、物流和售后政策是否和店铺资料一致，有没有编造或乱承诺",
+  grammar: "英文拼写、语法、用词是否准确",
+  compliance: "有无绝对化宣传、虚假承诺、诱导好评等违规用语；命中违规词库会明显扣分",
+};
+
+export const mailAssessmentOutputSchema = z.object({
+  scores: z.object(
+    Object.fromEntries(MAIL_ASSESSMENT_DIMENSION_IDS.map((id) => [id, dimensionScore.optional()])) as Record<
+      (typeof MAIL_ASSESSMENT_DIMENSION_IDS)[number],
+      z.ZodOptional<typeof dimensionScore>
+    >,
+  ),
+  comment: z.string().max(600).default(""),
+  suggestions: z.array(z.string().max(300)).max(5).default([]),
+});
+
+export function buildMailAssessmentMessages(input: {
+  scenarioName: string | null;
+  objective: string | null;
+  stage?: BusinessStage | null;
+  templatePurpose: string | null;
+  recipient: string;
+  productFacts?: string | null;
+  subject: string;
+  body: string;
+  forbiddenHits: AssessmentEvidence["forbiddenHits"];
+}): ChatMessage[] {
+  const dims = MAIL_ASSESSMENT_DIMENSION_IDS.map((id) => `- ${id}：${MAIL_DIMENSION_HINTS[id]}`).join("\n");
+  const example = Object.fromEntries(MAIL_ASSESSMENT_DIMENSION_IDS.map((id) => [id, 80]));
+  const hits = input.forbiddenHits.length ? input.forbiddenHits.map((hit) => `“${hit.term}”`).join("、") : "无";
+  const system =
+    "你是跨境电商客服实训评分专家。下面是客服学员写给海外客户的一封英文邮件（营销 / 客户维护类）。" +
+    `从下面 ${MAIL_ASSESSMENT_DIMENSION_IDS.length} 个维度打分（0-100 整数）：\n${dims}\n` +
+    "并写一段不超过 80 字的中文总评，以及 2-3 条中文改进建议。命中违规用语时 compliance 应明显扣分并在总评中指出。" +
+    "邮件应当用英文写；整封不是英文时 grammar 和 professionalism 明显扣分。\n" +
+    `只返回一个 JSON 对象：${JSON.stringify({ scores: example, comment: "...", suggestions: ["...", "..."] })}`;
+  const user =
+    `训练场景：${input.scenarioName ?? "邮件"}` +
+    (input.stage ? `（业务环节：${BUSINESS_STAGE_LABELS[input.stage]}）` : "") +
+    `（目标：${input.objective ?? "-"}）\n` +
+    (input.templatePurpose ? `学员套用的模板：${input.templatePurpose}\n` : "") +
+    `收件人：${input.recipient}\n` +
+    `店铺商品资料：${input.productFacts ? `\n${input.productFacts}` : "无"}\n` +
+    `客观依据——违规用语命中：${hits}\n` +
+    `邮件主题：${input.subject}\n邮件正文：\n${input.body}`;
+  return [
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ];
+}
+
 export function buildChunkSummaryMessages(chunk: string, index: number, total: number): ChatMessage[] {
   return [
     {

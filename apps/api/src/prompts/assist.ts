@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { ChatMessage } from "../llm/gateway";
 
 /** 辅助生成类提示词（用途 assist）：翻译、话术建议、写信辅助、买家回信、买家评价 */
-export const ASSIST_PROMPT_VERSION = "assist@2026-10-12";
+export const ASSIST_PROMPT_VERSION = "assist@2026-10-19";
 
 const nonEmpty = z.string().trim().min(1);
 
@@ -56,7 +56,7 @@ export function buildSuggestionMessages(input: {
   ];
 }
 
-// ---------- 评价回复（C5：固定 3 版英文，各附中文意思和切入角度） ----------
+// ---------- 评价回复（C5 / D-57：固定 3 版英文，各附中文意思和切入角度；要用买家语言时学生点“译成 X 语”） ----------
 export const reviewReplySchema = z.object({
   items: z
     .array(z.object({ angle: nonEmpty, en: nonEmpty, zh: nonEmpty }))
@@ -69,15 +69,15 @@ export function buildReviewReplyMessages(input: {
   storeName: string;
   signature: string;
 }): ChatMessage[] {
-  // 用买家的语言回复（买家用德语留评，就用德语回）；中文意思照常给学生看
-  const replyLanguage = languageNameOf(input.persona.language as string | undefined);
+  // 参数要求英文回复（D-57）：买家用德语留评也先给英文版，学生需要时再一键译成买家的语言
+  const reviewLanguage = languageNameOf(input.persona.language as string | undefined);
   return [
     {
       role: "system",
       content:
         `You are a customer service coach for the cross-border online store "${input.storeName}". ` +
         "Write exactly 3 alternative PUBLIC replies to the buyer's product review (rating and text are in order.review). " +
-        `All replies MUST be written in ${replyLanguage}, the buyer's language. Each reply takes a different angle ` +
+        `All replies MUST be written in English, even if the review is written in ${reviewLanguage}. Each reply takes a different angle ` +
         "(e.g. apologise and reship, offer a refund option, invite a private conversation; for positive reviews: thank, invite to buy again, ask to share photos). " +
         "2-4 sentences each, address the buyer by first name, concrete remedy for reviews of 3 stars or lower, no absolute claims ('best', '100% guaranteed'), no signature line. " +
         "For each reply also give `angle`: a 4-8 character Simplified Chinese label of the approach, and `zh`: a faithful Simplified Chinese translation. " +

@@ -3,11 +3,15 @@ import { ASSESSMENT_DIMENSIONS, BUSINESS_STAGES } from "@cecs/contracts";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import { teacherOwnsClass, writeAudit } from "../auth-context";
-import { filterPersonaTemplates, type PersonaRule } from "@cecs/domain";
+import { filterPersonaTemplates, replyWaits, type PersonaRule } from "@cecs/domain";
+import { ratingSummary } from "../service-rating";
 import { loadEnabledPersonaTemplates } from "./catalog";
 import type { LlmGateway } from "../llm/gateway";
 import { sweepConversations } from "../lifecycle";
 import { aggregateTaskCentric, type AssessedRow } from "./teacher";
+
+/** 平均响应时长的单轮封顶（秒），和买家耐心规则里“约 10 分钟离开”一致 */
+const RESPONSE_CAP_SEC = 600;
 
 interface CreateTaskBody {
   name?: string;
@@ -439,7 +443,7 @@ export function registerTaskRoutes(
     },
   );
 
-  /* C1 学生四项关键数字：已完成任务、平均分（任务口径，同教师端考核报表）、班级排名（含较上周变化）、累计对话 */
+  /* 学生关键数字：任务大厅四项（D-52：已完成任务、平均分、班级排名、累计对话）+ 我的记录四项（D-53：本周接待、达标率、平均响应时长、满意率） */
   app.get(
     "/v1/student/summary",
     { preHandler: guard.requireRole("student") },
@@ -468,11 +472,41 @@ export function registerTaskRoutes(
                   count(m.id)::int as rounds
            from conversations c
            join conversation_messages m on m.conversation_id = c.id and m.sender = 'student'
-           where c.student_id = $1`,
+           where c.student_id = $1 and c.channel = 'chat'`,
           [user.sub],
         ),
         db.query("select total from baseline_assessments where student_id = $1", [user.sub]),
       ]);
+      /* 平均响应时长（D-53）：全部聊天接待（含练习）里买家每一轮到客服第一条回复的等待，和“消息响应时效”同一种算法 */
+      const timing = await db.query(
+        `select m.conversation_id, m.sender, m.created_at from conversation_messages m
+         join conversations c on c.id = m.conversation_id
+         where c.student_id = $1 and c.channel = 'chat' and m.sender in ('buyer', 'student')
+         order by m.conversation_id, m.created_at`,
+        [user.sub],
+      );
+      const byConversation = new Map<string, Array<{ sender: string; at: string }>>();
+      for (const row of timing.rows) {
+        const list = byConversation.get(row.conversation_id) ?? [];
+        list.push({ sender: row.sender, at: row.created_at });
+        byConversation.set(row.conversation_id, list);
+      }
+      let waitSum = 0;
+      let waitTurns = 0;
+      let firstSum = 0;
+      let firstCount = 0;
+      // 单轮等待按 10 分钟封顶：买家等这么久早已离开（D-40），隔天才回的老会话不该把平均值拉到几十小时
+      const cap = (seconds: number) => Math.min(seconds, RESPONSE_CAP_SEC);
+      for (const messages of byConversation.values()) {
+        const waits = replyWaits(messages);
+        if (!waits.length) continue;
+        for (const seconds of waits) waitSum += cap(seconds);
+        waitTurns += waits.length;
+        firstSum += cap(waits[0]!);
+        firstCount += 1;
+      }
+      /* 满意率（D-54）：买家服务评价 4–5 星的占比，全部接待 */
+      const rating = await ratingSummary(db, user.sub, "and c.channel = 'chat'");
       /* 达标率：任务接待里达到该任务达标线（没设按 60）的次数占比；本周练习：本周开始的接待次数（含自由练习） */
       const [pass, week] = await Promise.all([
         db.query(
@@ -484,7 +518,7 @@ export function registerTaskRoutes(
         db.query(
           `select (created_at::date - date_trunc('week', now())::date)::int as d, count(*)::int as n,
                   count(*) filter (where task_id is null)::int as practice
-           from conversations where student_id = $1 and created_at >= date_trunc('week', now())
+           from conversations where student_id = $1 and channel = 'chat' and created_at >= date_trunc('week', now())
            group by 1`,
           [user.sub],
         ),
@@ -530,6 +564,12 @@ export function registerTaskRoutes(
           practice: Number(talk.rows[0]?.practice ?? 0),
           rounds: Number(talk.rows[0]?.rounds ?? 0),
         },
+        response: {
+          avgSeconds: waitTurns ? Math.round(waitSum / waitTurns) : null,
+          firstSeconds: firstCount ? Math.round(firstSum / firstCount) : null,
+          turns: waitTurns,
+        },
+        rating,
       };
     },
   );
@@ -550,7 +590,7 @@ export function registerTaskRoutes(
                   where s.id::text in (select jsonb_array_elements_text(t.scenario_ids))
                 ), '[]'::json) as scenario_names,
                 coalesce((
-                  select json_agg(json_build_object('id', s.id, 'name', s.name))
+                  select json_agg(json_build_object('id', s.id, 'name', s.name, 'channel', coalesce(s.channel, 'chat')))
                   from scenarios s
                   where s.id::text in (select jsonb_array_elements_text(t.scenario_ids))
                 ), '[]'::json) as scenarios,

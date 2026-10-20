@@ -1456,3 +1456,186 @@ describe("买家耐心（D-40）", () => {
     expect(await messageCount(easygoing)).toBe(1);
   });
 });
+
+describe("参数核对 · 学生端（D-53 关键数字、D-54 服务评价、D-56 工具卡片跟进、D-58 邮件任务）", () => {
+  let upstream: Server;
+  let student: Session;
+  let studentId: string;
+  const requests: Array<{ messages: Array<{ role: string; content: string }>; response_format?: unknown }> = [];
+  /** 下一条买家台词（假上游按它回） */
+  let nextReply = "ok";
+
+  beforeAll(async () => {
+    upstream = createServer((req, res) => {
+      let raw = "";
+      req.on("data", (chunk) => (raw += chunk));
+      req.on("end", () => {
+        const body = JSON.parse(raw);
+        requests.push(body);
+        // 结构化输出（观察员、评分、邮件评分）共用一份 JSON，各自只取自己的字段
+        const text = body.response_format
+          ? JSON.stringify({
+              turnScore: 80, satisfaction: 88, emotion: "平静", stage: "方案协商",
+              scores: { professionalism: 81, effectiveness: 78, empathy: 75, resolution: 72, knowledge: 80, grammar: 85, compliance: 95 },
+              comment: "主题清楚", suggestions: ["正文再短一点"],
+            })
+          : nextReply;
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.end(
+          `data: ${JSON.stringify({ id: "x", choices: [{ index: 0, delta: { content: text } }] })}\n\n` +
+            `data: ${JSON.stringify({ id: "x", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n` +
+            "data: [DONE]\n\n",
+        );
+      });
+    });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`;
+    const { createSecretSealer } = await import("./llm/secret");
+    await db.query("update llm_profiles set is_default = false");
+    await db.query(
+      `insert into llm_profiles (name, base_url, api_key_enc, model, json_mode, is_default, test_status)
+       values ('参数核对测试', $1, $2, 'fake-model', true, true, 'ok')`,
+      [`${base}/v1`, createSecretSealer("test-secret").seal("sk-param")],
+    );
+    await db.query("delete from app_settings where key = 'llm_routing'");
+    const admin = await login("admin", "Admin#Prod9");
+    expect((await app.inject({ method: "PUT", url: "/v1/admin/llm/routing", headers: auth(admin), payload: { directorEveryNTurns: 1 } })).statusCode).toBe(200);
+    const { hashPassword } = await import("./security");
+    await db.query(
+      `insert into users (username, display_name, role, password_hash, must_change_password)
+       values ('s-param', '参数核对学生', 'student', $1, false) on conflict (username) do nothing`,
+      [await hashPassword("Student#Param1")],
+    );
+    student = await login("s-param", "Student#Param1");
+    studentId = (await db.query("select id from users where username = 's-param'")).rows[0].id;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => upstream.close(() => resolve()));
+  });
+
+  async function waitFor(check: () => Promise<boolean>, tries = 100) {
+    for (let i = 0; i < tries; i += 1) {
+      if (await check()) return;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  const conversationRow = async (id: string) => (await db.query("select * from conversations where id = $1", [id])).rows[0];
+
+  it("D-54：结束接待按满意度打星（不是消息），满意率按 4–5 星算；D-53：平均响应时长", async () => {
+    const created = await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { scenarioId: "AFTER-001" } });
+    const id = created.json().id as string;
+    await db.query(
+      `insert into conversation_messages (conversation_id, sender, content, created_at) values
+         ($1, 'buyer', 'It arrived broken', now() - interval '90 seconds'),
+         ($1, 'student', 'So sorry, sending a new one today', now() - interval '60 seconds')`,
+      [id],
+    );
+    await db.query("update conversations set state = coalesce(state, '{}'::jsonb) || jsonb_build_object('satisfaction', 88) where id = $1", [id]);
+    expect((await app.inject({ method: "POST", url: `/v1/conversations/${id}/close`, headers: auth(student) })).statusCode).toBe(200);
+    expect((await conversationRow(id)).service_rating).toBe(5);
+    expect(Number((await db.query("select count(*) from conversation_messages where conversation_id = $1", [id])).rows[0].count)).toBe(2);
+    const closed = (await app.inject({ method: "GET", url: "/v1/conversations?status=closed", headers: auth(student) })).json() as Array<Record<string, unknown>>;
+    expect(closed.find((item) => item.id === id)).toMatchObject({ serviceRating: 5 });
+
+    const summary = (await app.inject({ method: "GET", url: "/v1/student/summary", headers: auth(student) })).json();
+    expect(summary.rating).toMatchObject({ total: 1, satisfied: 1, rate: 100, counts: [1, 0, 0, 0, 0] });
+    expect(summary.response.turns).toBe(1);
+    expect(summary.response.avgSeconds).toBe(30);
+    const stats = (await app.inject({ method: "GET", url: "/v1/student/workbench-stats", headers: auth(student) })).json();
+    expect(stats.satisfactionRate).toBe(100);
+  });
+
+  it("D-56：会话结束后发物流通知卡片，买家回复后跟进，客服回满 3 轮自动结束，不改原结束原因和星级", async () => {
+    const created = await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { scenarioId: "IN-002" } });
+    const id = created.json().id as string;
+    await db.query("insert into conversation_messages (conversation_id, sender, content) values ($1, 'buyer', 'Where is my parcel?')", [id]);
+    await app.inject({ method: "POST", url: `/v1/conversations/${id}/close`, headers: auth(student) });
+    const before = await conversationRow(id);
+    expect(before).toMatchObject({ status: "closed", closed_reason: "student_ended" });
+    const order = (await db.query("select id, payload from orders where conversation_id = $1 and payload->'logistics' <> 'null'::jsonb order by is_primary desc limit 1", [id])).rows[0];
+    expect(order).toBeTruthy();
+
+    // 付款提醒只给待付款订单
+    const wrong = await app.inject({ method: "POST", url: `/v1/orders/${order.id}/tool-cards`, headers: auth(student), payload: { kind: "payment_reminder", text: "Please pay" } });
+    expect(wrong.json().code).toBe("TOOL_NOT_APPLICABLE");
+
+    nextReply = "Thanks! When will it arrive?";
+    const sent = await app.inject({ method: "POST", url: `/v1/orders/${order.id}/tool-cards`, headers: auth(student), payload: { kind: "logistics_update", text: "Your parcel is in customs now." } });
+    expect(sent.json()).toMatchObject({ delivered: "closed", conversationId: id });
+    await waitFor(async () => (await conversationRow(id)).status === "active");
+    const reopened = await conversationRow(id);
+    expect(reopened.tool_followup).toMatchObject({ kind: "logistics_update", orderId: order.id });
+    expect(reopened.tool_followup.startedAt).toBeTruthy();
+    expect(reopened.closed_reason).toBe("student_ended");
+    const card = (await db.query("select kind, payload from conversation_messages where conversation_id = $1 and kind = 'logistics_update'", [id])).rows[0];
+    expect(card.payload).toMatchObject({ text: "Your parcel is in customs now.", trackingNo: expect.any(String) });
+    const list = (await app.inject({ method: "GET", url: "/v1/conversations", headers: auth(student) })).json() as Array<Record<string, unknown>>;
+    expect(list.find((item) => item.id === id)).toMatchObject({ toolFollowUp: { kind: "logistics_update" } });
+
+    // 跟进期间同一订单不能再发同一种卡片
+    const again = await app.inject({ method: "POST", url: `/v1/orders/${order.id}/tool-cards`, headers: auth(student), payload: { kind: "logistics_update", text: "Again" } });
+    expect(again.json().code).toBe("TOOL_FOLLOWUP_OPEN");
+
+    nextReply = "ok";
+    for (const text of ["About 3 days.", "It is already in Germany.", "Anything else?"]) {
+      const reply = await app.inject({ method: "POST", url: `/v1/conversations/${id}/messages`, headers: auth(student), payload: { content: text } });
+      expect(reply.body).toContain('"type":"done"');
+    }
+    const lastBuyerPrompt = requests.filter((body) => !body.response_format).at(-1)!.messages[0]!.content;
+    expect(lastBuyerPrompt).toContain("FOLLOW-UP");
+    expect(lastBuyerPrompt).toContain("Wrap up in THIS reply");
+    const after = await conversationRow(id);
+    expect(after).toMatchObject({ status: "closed", closed_reason: "student_ended", service_rating: before.service_rating });
+    expect(after.tool_followup.endReason).toBe("turn_limit");
+  });
+
+  it("D-58：邮件类场景只在任务里按邮件下发；发出后结束、评六项、计入任务进度；模板 8 个", async () => {
+    const templates = (await app.inject({ method: "GET", url: "/v1/catalog/mail-templates", headers: auth(student) })).json();
+    expect(templates).toHaveLength(8);
+    const practice = await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { scenarioId: "PRE-006" } });
+    expect(practice.json().code).toBe("MAIL_SCENARIO_NEEDS_TASK");
+
+    const adminId = (await db.query("select id from users where username = 'admin'")).rows[0].id;
+    const task = await db.query(
+      `insert into tasks (name, business_stage, scenario_ids, interaction_mode, scoring_weights, status, created_by)
+       values ('新品推广邮件', 'pre_sale', '["PRE-006"]', 'text', '{}', 'published', $1) returning id`,
+      [adminId],
+    );
+    const taskId = task.rows[0].id as string;
+    await db.query("insert into task_progress (task_id, student_id) values ($1, $2)", [taskId, studentId]);
+    const tasks = (await app.inject({ method: "GET", url: "/v1/student/tasks", headers: auth(student) })).json() as Array<{ id: string; scenarios: Array<{ channel: string }> }>;
+    expect(tasks.find((item) => item.id === taskId)!.scenarios[0]!.channel).toBe("mail");
+
+    const opened = (await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { taskId, scenarioId: "PRE-006" } })).json();
+    expect(opened).toMatchObject({ channel: "mail", mail: { templateId: "MAIL-001" } });
+    expect(opened.mail.to).toContain("@");
+    const reopened = (await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { taskId, scenarioId: "PRE-006" } })).json();
+    expect(reopened.id).toBe(opened.id);
+    const chats = (await app.inject({ method: "GET", url: "/v1/conversations", headers: auth(student) })).json() as Array<{ id: string }>;
+    expect(chats.some((item) => item.id === opened.id)).toBe(false);
+
+    const sent = await app.inject({
+      method: "POST",
+      url: "/v1/mail/submissions",
+      headers: auth(student),
+      payload: { templateId: "MAIL-001", subject: "Just landed", body: "Hi, our new lamp is here.", recipient: opened.mail.to, conversationId: opened.id },
+    });
+    expect(sent.statusCode).toBe(200);
+    expect(await conversationRow(opened.id)).toMatchObject({ status: "closed", closed_reason: "mail_sent", channel: "mail" });
+    await waitFor(async () => (await db.query("select 1 from assessments where conversation_id = $1", [opened.id])).rowCount === 1);
+    const assessment = (await db.query("select scores, prompt_version from assessments where conversation_id = $1", [opened.id])).rows[0];
+    expect(Object.keys(assessment.scores).sort()).toEqual(["compliance", "effectiveness", "grammar", "knowledge", "professionalism", "resolution"]);
+    expect(assessment.prompt_version).toContain("#mail");
+    expect((await db.query("select status from task_progress where task_id = $1 and student_id = $2", [taskId, studentId])).rows[0].status).toBe("done");
+    const records = (await app.inject({ method: "GET", url: "/v1/student/assessments", headers: auth(student) })).json();
+    expect(records.records.find((item: { conversationId: string }) => item.conversationId === opened.id)).toMatchObject({ channel: "mail" });
+    const resend = await app.inject({
+      method: "POST",
+      url: "/v1/mail/submissions",
+      headers: auth(student),
+      payload: { templateId: "MAIL-001", subject: "Again", body: "Again", conversationId: opened.id },
+    });
+    expect(resend.json().code).toBe("MAIL_TASK_CLOSED");
+  });
+});

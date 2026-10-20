@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  GraduationCap,
   PackageSearch,
   PenLine,
   RefreshCw,
@@ -13,7 +14,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { deriveBuyerEmail } from "@cecs/domain";
 import { BuyerAvatar } from "../../components/BuyerAvatar";
 import { HeaderExtra, TabCount, useBuyerTags, ZhTranslation } from "../../components/StoreHeader";
@@ -34,6 +35,8 @@ import {
   fetchMailTemplates,
   fetchPhrases,
   fetchStudentOrders,
+  fetchStudentTasks,
+  startMailTask,
   submitMail,
   type MailReply,
   type MailSubmission,
@@ -41,11 +44,26 @@ import {
   type Session,
   type StoreProfile,
   type StudentOrder,
+  type CustomerTag,
 } from "../../api/client";
+import { BUSINESS_STAGE_LABELS, type BusinessStage } from "@cecs/contracts";
 import { Button, HeaderTabs, MoreMenu } from "../../ui";
 import "../../styles/student-store.css";
 
 type Tab = "inbox" | "pending" | "sent" | "drafts";
+
+/** 任务大厅点“写邮件”（D-58）：{ taskId, scenarioId } 存在这里，邮件页打开后直接进写信框 */
+export const MAIL_TASK_KEY = "cecs.mailTask";
+
+/** 任务邮件的草稿 id：同一任务同一场景只有一份，换机器登录也能接着写 */
+function taskDraftId(taskId: string, scenarioId: string): string {
+  return `task:${taskId}:${scenarioId}`;
+}
+
+function parseTaskDraftId(id: string): { taskId: string; scenarioId: string } | null {
+  const match = /^task:([^:]+):(.+)$/.exec(id);
+  return match ? { taskId: match[1]!, scenarioId: match[2]! } : null;
+}
 
 /** 店铺客服邮箱的兜底值（店铺资料读不到时使用） */
 const DEFAULT_MAILBOX = "support@auroramart.com";
@@ -174,6 +192,19 @@ interface ComposeState {
   templateId: string | null;
   /** 关联订单：回信时来自来信，主动写信时按收件人邮箱反查（买家 AI 回信依赖它定位人设） */
   orderId: string | null;
+  /** 任务邮件（D-58）：发往这次任务的邮件会话，收件人固定，发出后评分、计入任务进度 */
+  task?: {
+    taskId: string;
+    scenarioId: string;
+    conversationId: string;
+    taskName: string;
+    stage: BusinessStage;
+    progress: string;
+    recipientName: string;
+    nationality: string;
+    tags: CustomerTag[];
+    orderCount: number;
+  } | null;
 }
 
 interface AssistVersion {
@@ -227,25 +258,55 @@ interface EditorProps {
   flush?: boolean;
   /** 固定在阅读区底部的回复区（不套框，只有输入框有边框） */
   dock?: boolean;
+  /** 写新邮件：模板单独一行排开，AI 辅助挪到编辑框底栏（设计稿 p15） */
+  inlineTemplates?: boolean;
 }
 
 function MailEditor(props: EditorProps) {
   const [showTpl, setShowTpl] = useState(false);
+  // 写新邮件的正文框随内容向下长高，到 CSS 的 max-height 后改为框内滚动
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el || !props.inlineTemplates) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [props.body, props.inlineTemplates]);
   /** 选中一版后草稿列表自动收起成一行，可再展开换版本；新一批草稿到了自动展开 */
   const [folded, setFolded] = useState(false);
   const { assist, assistVersions, violations } = props;
   useEffect(() => { setFolded(false); }, [assistVersions]);
   const pickedIndex = assistVersions.findIndex((version) => props.body.startsWith(version.body));
+  const assistButton = <Button size="sm" icon={Sparkles} loading={assist === "loading"} onClick={props.onAssist}>AI 辅助</Button>;
   return (
-    <div className={props.dock ? "ml2-reply is-dock" : "ml2-reply"} style={props.flush ? { margin: 0 } : undefined}>
-      <div className="h">
-        {props.title}
-        <div className="r">
-          <Button size="sm" variant="ghost" icon={FileText} onClick={() => setShowTpl((value) => !value)} aria-expanded={showTpl}>模板</Button>
-          <Button size="sm" icon={Sparkles} loading={assist === "loading"} onClick={props.onAssist}>AI 辅助</Button>
+    <div className={props.dock ? "ml2-reply is-dock" : props.inlineTemplates ? "ml2-reply is-inline" : "ml2-reply"} style={props.flush ? { margin: 0 } : undefined}>
+      {props.inlineTemplates ? (
+        <div className="ml2-tplrow">
+          <span className="ml2-tplrow-l">模板</span>
+          <div className="ml2-tplrow-c">
+            {props.templates.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                className={props.templateId === template.id ? "ml2-chip is-on" : "ml2-chip"}
+                title={template.purpose}
+                onClick={() => props.onTemplate(template)}
+              >
+                {template.name}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
-      {showTpl ? (
+      ) : (
+        <div className="h">
+          {props.title}
+          <div className="r">
+            <Button size="sm" variant="ghost" icon={FileText} onClick={() => setShowTpl((value) => !value)} aria-expanded={showTpl}>模板</Button>
+            {assistButton}
+          </div>
+        </div>
+      )}
+      {showTpl && !props.inlineTemplates ? (
         <div className="ml2-tpl">
           {props.templates.map((template) => (
             <button
@@ -300,6 +361,7 @@ function MailEditor(props: EditorProps) {
       ) : null}
       <div className="ml2-box">
       <textarea
+        ref={bodyRef}
         value={props.body}
         onChange={(event) => props.onBody(event.target.value)}
         placeholder={props.placeholder}
@@ -315,6 +377,7 @@ function MailEditor(props: EditorProps) {
         </div>
       ) : null}
       <div className="bt">
+        {props.inlineTemplates ? assistButton : null}
         <span>{props.note}</span>
         {violations.length === 0 && props.body.trim() ? <span className="sx-ok-line"><ShieldCheck size={13} />没有违规用语</span> : null}
         <div className="r">
@@ -324,6 +387,88 @@ function MailEditor(props: EditorProps) {
         </div>
       </div>
       </div>
+    </div>
+  );
+}
+
+/** 收件人候选：收件箱里来过信的买家，同一个邮箱只出现一次 */
+interface RecipientOption {
+  email: string;
+  name: string;
+  buyer: StudentOrder["buyer"];
+  tag: string | null;
+}
+
+/**
+ * 收件人输入框 + 下拉候选（替代浏览器自带的 datalist：那个是系统深色长列表，几十个邮箱一次全铺开）。
+ * 最多显示 6 行、超出滚动；按姓名或邮箱筛；上下键选择、回车确认、Esc 收起；也可以直接输入任意邮箱。
+ */
+function RecipientPicker({ value, options, onChange }: { value: string; options: RecipientOption[]; onChange: (email: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const keyword = value.trim().toLowerCase();
+  const matched = useMemo(() => {
+    if (!keyword) return options;
+    // 输入的正好是某个候选的完整邮箱：不再弹出
+    if (options.some((item) => item.email.toLowerCase() === keyword)) return [];
+    return options.filter((item) => item.email.toLowerCase().includes(keyword) || item.name.toLowerCase().includes(keyword));
+  }, [options, keyword]);
+  useEffect(() => { setActive(0); }, [keyword]);
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
+  const pick = (item: RecipientOption) => {
+    onChange(item.email);
+    setOpen(false);
+  };
+  const showList = open && matched.length > 0;
+  return (
+    <div className="ml2-rp">
+      <input
+        value={value}
+        onChange={(event) => { onChange(event.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(event) => {
+          if (!showList) {
+            if (event.key === "ArrowDown") setOpen(true);
+            return;
+          }
+          if (event.key === "ArrowDown") { event.preventDefault(); setActive((index) => Math.min(matched.length - 1, index + 1)); }
+          else if (event.key === "ArrowUp") { event.preventDefault(); setActive((index) => Math.max(0, index - 1)); }
+          else if (event.key === "Enter") { event.preventDefault(); const item = matched[active]; if (item) pick(item); }
+          else if (event.key === "Escape") setOpen(false);
+        }}
+        placeholder="输入姓名或邮箱"
+        role="combobox"
+        aria-expanded={showList}
+        aria-autocomplete="list"
+        aria-label="收件人"
+      />
+      {showList ? (
+        <div className="ml2-rp-list" role="listbox" ref={listRef}>
+          {!keyword ? <div className="ml2-rp-g">最近来信的客户</div> : null}
+          {matched.map((item, index) => (
+            <button
+              key={item.email}
+              type="button"
+              role="option"
+              aria-selected={index === active}
+              data-index={index}
+              className={index === active ? "ml2-rp-i is-on" : "ml2-rp-i"}
+              onMouseDown={(event) => event.preventDefault()}
+              onMouseEnter={() => setActive(index)}
+              onClick={() => pick(item)}
+            >
+              <span className="sx-av is-28"><BuyerAvatar buyer={item.buyer} size="tiny" /></span>
+              <span className="ml2-rp-n"><b>{item.name}</b>{item.tag ? <span className="sx-tag">{item.tag}</span> : null}</span>
+              <span className="ml2-rp-e">{item.email}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -356,6 +501,68 @@ export function LiveMail({
   const [busy, setBusy] = useState(false);
   const [savedNote, setSavedNote] = useState("");
   const buyerTags = useBuyerTags(session);
+
+  /** 任务邮件（D-58）：拿到这次的邮件会话（收件人固定），有草稿接着写，没有就套上建议模板 */
+  const openMailTask = useCallback(async (taskId: string, scenarioId: string) => {
+    setError("");
+    try {
+      const [conversation, templateList, taskList, draftList, profile] = await Promise.all([
+        startMailTask(session, taskId, scenarioId),
+        fetchMailTemplates(session),
+        fetchStudentTasks(session),
+        fetchMailDrafts(session),
+        fetchStoreProfile(session).catch(() => null),
+      ]);
+      const task = taskList.find((item) => item.id === taskId);
+      const template = templateList.find((item) => item.id === conversation.mail.templateId) ?? templateList[0];
+      const draft = draftList.find((item) => item.id === taskDraftId(taskId, scenarioId));
+      const name = conversation.mail.toName;
+      const signature = profile?.signature?.trim() ?? "";
+      let body = "";
+      if (template) {
+        body = template.body.replace("{customer}", name);
+        if (signature) body = body.replace(/(Best|Warm|Kind) regards,\n\{agent\}/, signature);
+        body = body.replace("{agent}", session.user.displayName);
+      }
+      setCompose({
+        draftId: draft ? draft.id : taskDraftId(taskId, scenarioId),
+        to: conversation.mail.to,
+        subject: draft?.subject ?? template?.subject ?? "",
+        body: draft?.body ?? body,
+        templateId: draft?.templateId ?? template?.id ?? null,
+        orderId: null,
+        task: {
+          taskId,
+          scenarioId,
+          conversationId: conversation.id,
+          taskName: task?.name ?? conversation.scenario.name,
+          stage: (task?.businessStage ?? "pre_sale") as BusinessStage,
+          progress: task ? `${task.progressDone}/${task.requiredTotal}` : "",
+          recipientName: name,
+          nationality: conversation.buyer.nationality,
+          tags: conversation.mail.customerTags,
+          orderCount: conversation.mail.orderStats.count,
+        },
+      });
+      setAssist("closed");
+      setAssistVersions([]);
+      setNotice("");
+    } catch (cause) {
+      setError(errorText(cause));
+    }
+  }, [session]);
+
+  useEffect(() => {
+    let pending: { taskId?: string; scenarioId?: string } | null = null;
+    try {
+      const raw = sessionStorage.getItem(MAIL_TASK_KEY);
+      sessionStorage.removeItem(MAIL_TASK_KEY);
+      pending = raw ? (JSON.parse(raw) as { taskId?: string; scenarioId?: string }) : null;
+    } catch {
+      pending = null;
+    }
+    if (pending?.taskId && pending.scenarioId) void openMailTask(pending.taskId, pending.scenarioId);
+  }, [openMailTask]);
 
   const mailbox = store?.supportEmail || DEFAULT_MAILBOX;
   const signature = store?.signature?.trim() ?? "";
@@ -598,6 +805,11 @@ export function LiveMail({
   }
 
   function resumeDraft(draft: DraftMail) {
+    const task = parseTaskDraftId(draft.id);
+    if (task) {
+      void openMailTask(task.taskId, task.scenarioId);
+      return;
+    }
     setCompose({
       draftId: draft.id,
       to: draft.to,
@@ -742,13 +954,15 @@ export function LiveMail({
         subject: compose.subject.trim(),
         body: compose.body.trim(),
         recipient: compose.to.trim(),
-        orderId: linkedOrderId(compose),
+        orderId: compose.task ? undefined : linkedOrderId(compose),
+        conversationId: compose.task?.conversationId,
       });
       if (compose.draftId) removeDraft(compose.draftId);
+      const sentNote = compose.task ? "邮件已发送，评分出来后在“我的记录”里看。" : "邮件已发送。";
       setNotice(
         result.compliant
-          ? "邮件已发送。"
-          : `邮件已发送，但检测到 ${result.violations.length} 个违规宣传用语，已记录：${result.violations.join("、")}。`,
+          ? sentNote
+          : `${sentNote}检测到 ${result.violations.length} 个违规宣传用语，已记录：${result.violations.join("、")}。`,
       );
       setCompose(null);
       setAssist("closed");
@@ -861,6 +1075,15 @@ export function LiveMail({
     );
   }
 
+  const recipientOptions = useMemo(() => {
+    const seen = new Map<string, RecipientOption>();
+    for (const mail of [...inbox].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())) {
+      const email = mail.fromEmail.toLowerCase();
+      if (!seen.has(email)) seen.set(email, { email: mail.fromEmail, name: mail.buyer.name, buyer: mail.buyer, tag: buyerTags[mail.buyer.id]?.[0] ?? null });
+    }
+    return [...seen.values()];
+  }, [inbox, buyerTags]);
+
   function renderCompose(state: ComposeState) {
     return (
       <div className="ml2-detail">
@@ -871,27 +1094,28 @@ export function LiveMail({
               {composeViolations.length === 0 ? "合规" : `${composeViolations.length} 个违规词`}
             </span>
           </h3>
-          <label className="ml2-field">收件人
-            <input
-              value={state.to}
-              onChange={(event) => setCompose({ ...state, to: event.target.value })}
-              placeholder="buyer@example.com"
-              list="ml2-buyer-emails"
-            />
-          </label>
-          <datalist id="ml2-buyer-emails">
-            {[...new Map(inbox.map((mail) => [mail.fromEmail, mail.buyer.name])).entries()].map(([email, name]) => (
-              <option key={email} value={email}>{name}</option>
-            ))}
-          </datalist>
+          {state.task ? (
+            <div className="ml2-field">收件人
+              <div className="ml2-rcpt">
+                <span className="ml2-rcpt-chip"><span className="avatar">{state.task.recipientName.slice(0, 1).toUpperCase()}</span>{state.task.recipientName}<small>{state.to}</small></span>
+                {state.task.tags[0] ? <span className="sx-tag">{state.task.tags[0]}</span> : null}
+                <small>{state.task.nationality}{state.task.orderCount > 0 ? ` · 历史订单 ${state.task.orderCount} 笔` : ""}</small>
+              </div>
+            </div>
+          ) : (
+            <div className="ml2-field">收件人
+              <RecipientPicker value={state.to} options={recipientOptions} onChange={(to) => setCompose({ ...state, to })} />
+            </div>
+          )}
           <label className="ml2-field">主题
             <input value={state.subject} onChange={(event) => setCompose({ ...state, subject: event.target.value })} />
           </label>
           <MailEditor
             flush
+            inlineTemplates
             title={<span>正文</span>}
             body={state.body}
-            placeholder="以买家的语言写邮件正文"
+            placeholder="用英文写邮件正文"
             onBody={(value) => setCompose({ ...state, body: value })}
             templates={templates}
             templateId={state.templateId}
@@ -1030,7 +1254,14 @@ export function LiveMail({
         ]}
       />
       <HeaderExtra>
-        <Button variant="primary" size="sm" icon={PenLine} onClick={() => startCompose()}>写邮件</Button>
+        {compose?.task ? (
+          <span className="ml2-taskchip" title="这封邮件属于老师下发的任务">
+            <GraduationCap size={14} aria-hidden="true" />
+            <i className={`ml2-taskchip-dot is-${compose.task.stage}`} />
+            {BUSINESS_STAGE_LABELS[compose.task.stage]} <b>{compose.task.taskName}</b>{compose.task.progress ? ` ${compose.task.progress}` : ""}
+          </span>
+        ) : null}
+        <Button variant="primary" size="sm" icon={PenLine} onClick={() => { leaveCompose(); startCompose(); }}>写邮件</Button>
       </HeaderExtra>
       {notice ? <p className="sx-notice" role="status">{notice}</p> : null}
       {error ? <p className="sx-error" role="alert">{error}</p> : null}

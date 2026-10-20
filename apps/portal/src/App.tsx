@@ -4,7 +4,7 @@ import { AdminPages } from "./pages/admin/AdminPages";
 import { AppShell, roleNav, type ShellAnnouncement, type ShellNotificationCenter } from "./components/AppShell";
 import { LoginScreen } from "./components/LoginScreen";
 import { MailStudio } from "./pages/student/MailStudio";
-import { LiveMail, countUnreadMail } from "./pages/student/LiveMail";
+import { LiveMail, MAIL_TASK_KEY, countUnreadMail } from "./pages/student/LiveMail";
 import { Orders } from "./pages/student/Orders";
 import { LiveOrders, OPEN_ORDER_KEY } from "./pages/student/LiveOrders";
 import { LiveReviews } from "./pages/student/LiveReviews";
@@ -315,6 +315,10 @@ function StudentPage({
       onStart={(taskId) => {
         setStartTaskId(taskId ?? null);
         onNavigate("workbench");
+      }}
+      onWriteMail={(taskId, scenarioId) => {
+        sessionStorage.setItem(MAIL_TASK_KEY, JSON.stringify({ taskId, scenarioId }));
+        onNavigate("mail");
       }}
       onOpenRecords={(taskId) => {
         if (taskId) sessionStorage.setItem(RECORD_TASK_KEY, taskId);

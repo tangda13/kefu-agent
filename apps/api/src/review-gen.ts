@@ -1,17 +1,8 @@
-import { NEGATIVE_REVIEW_POOL, POSITIVE_REVIEW_POOL } from "@cecs/domain";
+import { NEGATIVE_REVIEW_POOL, POSITIVE_REVIEW_POOL, starsFromSatisfaction } from "@cecs/domain";
 import type { Db } from "./db";
 import type { LlmGateway } from "./llm/gateway";
 import { buildBuyerReviewMessages, buyerReviewSchema } from "./prompts/assist";
 import type { SessionState } from "./director";
-
-/** 满意度(0-100) → 星级 */
-function ratingFromSatisfaction(satisfaction: number): number {
-  if (satisfaction >= 85) return 5;
-  if (satisfaction >= 70) return 4;
-  if (satisfaction >= 45) return 3;
-  if (satisfaction >= 25) return 2;
-  return 1;
-}
 
 function fallbackContent(rating: number): string {
   const pool = rating >= 4 ? POSITIVE_REVIEW_POOL : NEGATIVE_REVIEW_POOL;
@@ -40,7 +31,7 @@ export async function generateBuyerReview(
     `select o.id as order_id, o.payload, o.order_no, c.persona, c.state
      from conversations c
      join orders o on o.conversation_id = c.id and o.is_primary
-     where c.id = $1 and c.status = 'closed'`,
+     where c.id = $1 and c.status = 'closed' and c.tool_followup is null`,
     [conversationId],
   );
   const row = result.rows[0];
@@ -81,8 +72,8 @@ export async function generateBuyerReview(
   }
 
   const rating = mode === "revise"
-    ? Math.max(ratingFromSatisfaction(satisfaction), (existing?.rating ?? 1) + 2)
-    : ratingFromSatisfaction(satisfaction);
+    ? Math.max(starsFromSatisfaction(satisfaction), (existing?.rating ?? 1) + 2)
+    : starsFromSatisfaction(satisfaction);
   const cappedRating = Math.min(5, rating);
 
   let content = "";

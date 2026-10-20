@@ -20,6 +20,8 @@ const MARKETING_MOODS = [
 export interface BuyerMailReplyInput {
   submissionId: string;
   orderId: string | null;
+  /** 邮件任务（D-58）：没有关联订单时按邮件会话取买家 */
+  conversationId?: string | null;
   studentId: string;
   subject: string;
   body: string;
@@ -36,7 +38,7 @@ export async function generateBuyerMailReply(
   input: BuyerMailReplyInput,
   log: { info: (msg: string) => void; warn: (msg: string) => void },
 ): Promise<void> {
-  if (!input.orderId) {
+  if (!input.orderId && !input.conversationId) {
     log.info(`mail-reply skip: submission ${input.submissionId} has no linked order`);
     return;
   }
@@ -44,15 +46,21 @@ export async function generateBuyerMailReply(
     log.warn("mail-reply skip: AI provider not configured");
     return;
   }
-  const result = await db.query(
-    `select o.payload, o.order_no, c.persona from orders o
-     join conversations c on c.id = o.conversation_id
-     where o.id = $1 and o.student_id = $2`,
-    [input.orderId, input.studentId],
-  );
+  const result = input.orderId
+    ? await db.query(
+        `select o.payload, o.order_no, c.persona from orders o
+         join conversations c on c.id = o.conversation_id
+         where o.id = $1 and o.student_id = $2`,
+        [input.orderId, input.studentId],
+      )
+    : await db.query(
+        `select '{}'::jsonb as payload, c.id::text as order_no, c.persona from conversations c
+         where c.id = $1 and c.student_id = $2`,
+        [input.conversationId, input.studentId],
+      );
   const row = result.rows[0];
   if (!row) {
-    log.info(`mail-reply skip: order ${input.orderId} not found for student`);
+    log.info(`mail-reply skip: order ${input.orderId ?? input.conversationId} not found for student`);
     return;
   }
   const persona = row.persona as Record<string, unknown>;
