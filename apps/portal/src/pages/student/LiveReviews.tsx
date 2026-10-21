@@ -61,12 +61,12 @@ function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
 export function LiveReviews({
   session,
   onOpenOrder,
-  onOpenConversation,
+  onMailBuyer,
 }: {
   session: Session;
   onOpenOrder?: (orderId: string) => void;
-  /** 联系买家：跳到客服工作台的这位买家会话 */
-  onOpenConversation?: (conversationId: string) => void;
+  /** 发邮件联系（D-76）：评价都是买家离开后写的，聊天已经发不了，改为打开写给这位买家的邮件（关联这笔订单） */
+  onMailBuyer?: (record: StudentReview) => void;
 }) {
   const [records, setRecords] = useState<StudentReview[]>([]);
   const [orders, setOrders] = useState<Record<string, StudentOrder>>({});
@@ -249,7 +249,7 @@ export function LiveReviews({
         return next;
       });
     const menu = [
-      ...(onOpenConversation ? [{ label: "联系买家", onClick: () => onOpenConversation(record.conversationId) }] : []),
+      ...(onMailBuyer ? [{ label: "发邮件联系", onClick: () => onMailBuyer(record) }] : []),
       { label: "复制订单号", onClick: () => void navigator.clipboard?.writeText(record.orderNo).catch(() => undefined) },
     ];
     return (

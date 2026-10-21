@@ -55,6 +55,21 @@ type Tab = "inbox" | "pending" | "sent" | "drafts";
 /** 任务大厅点“写邮件”（D-58）：{ taskId, scenarioId } 存在这里，邮件页打开后直接进写信框 */
 export const MAIL_TASK_KEY = "cecs.mailTask";
 
+/** 评价页“发邮件联系”、工作台会话结束后“发邮件跟进”（D-76）：{ to, subject, orderId } 存在这里，邮件页打开后直接进写信框 */
+export const MAIL_COMPOSE_KEY = "cecs.mailCompose";
+
+/**
+ * 写给某位买家的邮件预填：收件人按买家名和订单号算（和邮件页、邮件任务同一规则），关联订单（买家会回信），
+ * 主题预填订单号、可改；没有订单时按会话 id 算邮箱，不预填主题
+ */
+export function buyerMailPreset(name: string, order: { id: string; orderNo: string } | null, conversationId?: string): string {
+  return JSON.stringify({
+    to: deriveBuyerEmail(name, order?.orderNo ?? conversationId ?? name),
+    subject: order ? `About your order ${order.orderNo}` : "",
+    orderId: order?.id ?? null,
+  });
+}
+
 /** 任务邮件的草稿 id：同一任务同一场景只有一份，换机器登录也能接着写 */
 function taskDraftId(taskId: string, scenarioId: string): string {
   return `task:${taskId}:${scenarioId}`;
@@ -562,7 +577,18 @@ export function LiveMail({
       pending = null;
     }
     if (pending?.taskId && pending.scenarioId) void openMailTask(pending.taskId, pending.scenarioId);
-  }, [openMailTask]);
+    // 从评价页 / 工作台带着收件人、订单跳过来：直接进写信框
+    type ComposePreset = { to?: string; subject?: string; orderId?: string | null };
+    let preset: ComposePreset | null = null;
+    try {
+      const raw = sessionStorage.getItem(MAIL_COMPOSE_KEY);
+      sessionStorage.removeItem(MAIL_COMPOSE_KEY);
+      preset = raw ? (JSON.parse(raw) as ComposePreset) : null;
+    } catch {
+      preset = null;
+    }
+    if (preset?.to) startCompose({ to: preset.to, subject: preset.subject ?? "", orderId: preset.orderId ?? null });
+  }, [openMailTask]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const mailbox = store?.supportEmail || DEFAULT_MAILBOX;
   const signature = store?.signature?.trim() ?? "";

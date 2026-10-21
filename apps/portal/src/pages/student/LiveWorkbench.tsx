@@ -10,9 +10,9 @@ import {
   MessageSquareText,
   Mic,
   Paperclip,
+  Send,
   SendHorizontal,
   Smile,
-  TicketPercent,
   Volume2,
   X,
 } from "lucide-react";
@@ -62,6 +62,7 @@ import {
   type WorkbenchStats,
 } from "../../api/client";
 import { OPEN_CONVERSATION_EVENT, OPEN_CONVERSATION_KEY } from "../../App";
+import { MAIL_COMPOSE_KEY, buyerMailPreset } from "./LiveMail";
 import { WavRecorder } from "../../api/recorder";
 import { Button, Confirm, Dialog, Switch, Tabs, Textarea, toast } from "../../ui";
 import "../../styles/student-workbench.css";
@@ -1389,11 +1390,6 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     textareaRef.current?.focus();
   }
 
-  function appendToInput(text: string) {
-    setInput((current) => (current ? `${current} ${text}` : text));
-    textareaRef.current?.focus();
-  }
-
   function pickConversation(id: string) {
     setActiveId(id);
     setJustEnded((list) => list.filter((item) => item.id === id));
@@ -1504,7 +1500,12 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         {isClosed ? (
           <div className="wbk-closed-bar">
             <Lock size={16} />{closedNotice}
-            <Button size="sm" variant="ghost" icon={Mail} className="wbk-closed-mail" onClick={() => goToPage("mail", "邮件")}>发邮件跟进</Button>
+            <Button size="sm" variant="ghost" icon={Mail} className="wbk-closed-mail" onClick={() => {
+              // 直接打开写给这位买家的邮件，关联这次咨询的订单（D-76）
+              const primary = orders?.find((order) => order.isPrimary) ?? null;
+              const preset = buyer ? buyerMailPreset(buyer.name, primary ? { id: primary.id, orderNo: primary.detail.orderNo } : null, active?.id) : null;
+              goToPage("mail", "邮件", preset ? { key: MAIL_COMPOSE_KEY, value: preset } : undefined);
+            }}>发邮件跟进</Button>
           </div>
         ) : (
           <div className={mode === "voice" ? "wbk-composer is-voice" : "wbk-composer"}>
@@ -1660,13 +1661,16 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
           {panelTab === "coupon" ? (
             <div className="wbk-coupons">
               {coupons.map((coupon) => (
-                <article key={coupon.id} className="wbk-pc">
-                  <span className="wbk-card-thumb is-coupon is-lg"><TicketPercent size={22} /></span>
-                  <div className="wbk-pc-main">
-                    <b>{coupon.title}</b>
-                    <div className="wbk-pc-m">{coupon.rule} · {coupon.scope}</div>
-                    <div className="wbk-pc-m">有效期 {coupon.validDays} 天</div>
-                    <div className="wbk-pc-ac"><Button size="sm" disabled={cardDisabled} onClick={() => void sendCard("coupon", coupon.id)}>发送</Button></div>
+                // 票面（D-75，同店铺后台优惠券 D-66）：左边面额和门槛，右边名称、适用范围，发送和有效期同一行
+                <article key={coupon.id} className="wbk-cp">
+                  <div className="wbk-cp-face"><b>{coupon.face.value}</b><small>{coupon.face.gate}</small></div>
+                  <div className="wbk-cp-body">
+                    <b title={coupon.title}>{coupon.title}</b>
+                    <p title={coupon.scope}>{coupon.scope}</p>
+                    <div className="wbk-cp-ft">
+                      有效期 {coupon.validDays} 天
+                      <Button size="sm" icon={Send} disabled={cardDisabled} onClick={() => void sendCard("coupon", coupon.id)}>发送</Button>
+                    </div>
                   </div>
                 </article>
               ))}
@@ -1680,9 +1684,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         <ProductDrawer
           product={detailProduct}
           canSend={!cardDisabled}
-          canFill={Boolean(active) && !isClosed && canType}
           onClose={() => setDetailProduct(null)}
-          onQuote={appendToInput}
           onSend={(type) => {
             void sendCard(type, detailProduct.id);
             setDetailProduct(null);

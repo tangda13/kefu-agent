@@ -4,7 +4,7 @@ import { AdminPages } from "./pages/admin/AdminPages";
 import { AppShell, roleNav, type ShellAnnouncement, type ShellNotificationCenter } from "./components/AppShell";
 import { LoginScreen } from "./components/LoginScreen";
 import { MailStudio } from "./pages/student/MailStudio";
-import { LiveMail, MAIL_TASK_KEY, countUnreadMail } from "./pages/student/LiveMail";
+import { LiveMail, MAIL_COMPOSE_KEY, MAIL_TASK_KEY, buyerMailPreset, countUnreadMail } from "./pages/student/LiveMail";
 import { Orders } from "./pages/student/Orders";
 import { LiveOrders, OPEN_ORDER_KEY } from "./pages/student/LiveOrders";
 import { LiveReviews } from "./pages/student/LiveReviews";
@@ -282,10 +282,9 @@ function StudentPage({
     return session ? (
       <LiveReviews
         session={session}
-        onOpenConversation={(conversationId) => {
-          sessionStorage.setItem(OPEN_CONVERSATION_KEY, conversationId);
-          onNavigate("workbench");
-          window.dispatchEvent(new CustomEvent(OPEN_CONVERSATION_EVENT));
+        onMailBuyer={(record) => {
+          sessionStorage.setItem(MAIL_COMPOSE_KEY, buyerMailPreset(record.buyer.name, { id: record.orderId, orderNo: record.orderNo }));
+          onNavigate("mail");
         }}
         onOpenOrder={(orderId) => {
           sessionStorage.setItem(OPEN_ORDER_KEY, orderId);

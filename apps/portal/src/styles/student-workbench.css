@@ -272,6 +272,16 @@
 .wbk-rp > .wbk-empty { padding: 20px 18px; }
 
 .wbk-orders, .wbk-products, .wbk-coupons { display: grid; gap: 12px; align-content: start; }
+/* 右栏优惠券：票面（D-75，同店铺后台优惠券 D-66）——左边面额和门槛，右边名称、适用范围，发送和有效期同一行 */
+.wbk-cp { display: grid; grid-template-columns: 78px minmax(0, 1fr); border: 1px solid var(--c-line); border-radius: 10px; }
+.wbk-cp-face { display: grid; place-content: center; padding: 10px 4px; border-right: 2px dashed #f0d7b3; border-radius: 9px 0 0 9px; background: var(--c-warn-wash); color: #b45f06; text-align: center; }
+.wbk-cp-face b { font-size: 20px; line-height: 26px; font-variant-numeric: tabular-nums; }
+.wbk-cp-face small { font-size: 11px; line-height: 16px; }
+.wbk-cp-body { min-width: 0; padding: 10px 12px; }
+.wbk-cp-body > b { display: block; overflow: hidden; font-size: 14px; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
+.wbk-cp-body > p { margin: 2px 0 0; overflow: hidden; font-size: 12px; line-height: 18px; color: var(--c-ink-3); text-overflow: ellipsis; white-space: nowrap; }
+.wbk-cp-ft { display: flex; align-items: center; margin-top: 6px; font-size: 12px; color: var(--c-ink-3); }
+.wbk-cp-ft .ui-btn { margin-left: auto; }
 .wbk-toolbar { display: grid; grid-template-columns: 112px 1fr; gap: 8px; }
 .wbk-oc { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--c-line); border-radius: 10px; font-size: 12px; }
 .wbk-oc.is-dim { opacity: 0.8; }
@@ -338,23 +348,23 @@
 .wbk-pd section h5 { margin: 0 0 10px; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
 .wbk-pd section h5 span { font-size: 12px; font-weight: 400; color: var(--c-ink-3); }
 .wbk-pd-spec { margin: 0; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; border: 1px solid var(--c-line); border-radius: 8px; font-size: 13px; }
-.wbk-pd-spec > div { position: relative; display: grid; grid-template-columns: 76px 1fr; gap: 8px; padding: 8px 56px 8px 12px; border-bottom: 1px solid var(--c-line); }
+.wbk-pd-spec > div { display: grid; grid-template-columns: 76px 1fr; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--c-line); }
 .wbk-pd-spec > div:nth-child(odd) { border-right: 1px solid var(--c-line); }
 .wbk-pd-spec dt { color: var(--c-ink-3); }
 .wbk-pd-spec dd { margin: 0; }
 .wbk-pd-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .wbk-pd-table th { padding: 7px 12px; background: var(--c-surface-2); color: var(--c-ink-3); font-size: 12px; font-weight: 500; text-align: left; }
 .wbk-pd-table td { padding: 8px 12px; border-top: 1px solid var(--c-line); }
-.wbk-pd-after { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.wbk-pd-after > div { position: relative; padding: 10px 56px 10px 12px; border: 1px solid var(--c-line); border-radius: 8px; font-size: 13px; color: var(--c-ink-2); }
-.wbk-pd-after b { display: block; color: var(--c-ink); }
+/* 售后：和规格参数同样的表格，一行一项（D-75），长说明自然折行，短的不留空 */
+.wbk-pd-after { margin: 0; overflow: hidden; border: 1px solid var(--c-line); border-radius: 8px; font-size: 13px; }
+.wbk-pd-after > div { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; padding: 9px 14px; }
+.wbk-pd-after > div + div { border-top: 1px solid var(--c-line); }
+.wbk-pd-after dt { color: var(--c-ink-3); }
+.wbk-pd-after dd { margin: 0; }
 .wbk-pd-faq { display: grid; gap: 8px; }
-.wbk-pd-faq > div { position: relative; padding: 10px 56px 10px 12px; border-radius: 8px; background: var(--c-surface-2); font-size: 13px; }
+.wbk-pd-faq > div { padding: 10px 14px; border-radius: 8px; background: var(--c-surface-2); font-size: 13px; }
 .wbk-pd-faq b { display: block; margin-bottom: 2px; font-weight: 600; }
 .wbk-pd-faq span { color: var(--c-ink-2); }
-.wbk-pd-use { position: absolute; right: 10px; top: 8px; display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: none; color: var(--c-brand-ink); font-size: 12px; cursor: pointer; }
-.wbk-pd-use:hover { text-decoration: underline; }
-.wbk-pd-use svg { width: 13px; height: 13px; }
 .wbk-pd-foot { display: flex; align-items: center; gap: 8px; width: 100%; }
 .wbk-pd-foot > span { font-size: 12px; color: var(--c-ink-3); }
 .wbk-pd-foot > div { margin-left: auto; display: flex; gap: 8px; }

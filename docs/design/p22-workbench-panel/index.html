@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工作台优惠券与详情</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+* { box-sizing: border-box; } html, body { margin: 0; }
+body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.doc { max-width: 1240px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 24px; } .doc h2 { margin: 48px 0 8px; font-size: 20px; } .doc h2 small { font-size: 13px; font-weight: 400; color: #465163; margin-left: 8px; }
+.lede { margin: 0 0 16px; color: #465163; }
+.cap { margin: 18px 0 8px; font-size: 13px; color: #465163; } .cap b { color: #161c26; }
+.note { font-size: 12px; color: #465163; margin-top: 8px; }
+.t { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d6dce5; border-radius: 10px; overflow: hidden; font-size: 13px; }
+.t th, .t td { text-align: left; padding: 9px 14px; border-bottom: 1px solid #edf0f4; vertical-align: top; } .t th { background: #f6f8fb; color: #465163; font-size: 12px; white-space: nowrap; } .t td:first-child { white-space: nowrap; font-weight: 600; }
+.chg { color: #174aa8; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; } figure { margin: 0; } figcaption { font-size: 12px; color: #465163; margin-top: 6px; }
+.before { width: 100%; display: block; border-radius: 10px; border: 1px solid #d6dce5; }
+.row2 { display: grid; grid-template-columns: 360px 1fr; gap: 24px; align-items: start; }
+
+/* 织 UI 令牌 */
+.s { --line:#e3e7ee; --line-strong:#c8cfda; --hover:#eef2f7; --surface-2:#f8f9fb; --ink:#161c26; --ink-2:#465163; --ink-3:#5e6a7b; --ink-4:#9aa3b0; --brand:#1d5fd1; --brand-soft:#e8effc; --brand-ink:#174aa8; --warn:#9a5200; --warn-wash:#fdf1dc;
+  background: #fff; color: var(--ink); font: 400 14px/22px Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; border: 1px solid #d6dce5; border-radius: 12px; box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); overflow: hidden; }
+.s .ic { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
+
+/* 右栏（宽 336，照现状） */
+.rp { width: 360px; }
+.rp-head { display: flex; align-items: center; gap: 12px; padding: 16px 20px 12px; } .av { width: 44px; height: 44px; border-radius: 50%; background: #c9b8a6; flex: none; }
+.rp-head b { display: block; font-size: 16px; } .rp-head small { font-size: 12px; color: var(--ink-3); } .tag { display: inline-block; padding: 0 6px; margin-right: 6px; border-radius: 4px; background: var(--hover); font-size: 12px; color: var(--ink-2); }
+.tabs { display: flex; gap: 22px; padding: 0 20px; border-bottom: 1px solid var(--line); } .tabs span { padding: 10px 0; font-size: 15px; color: var(--ink-2); border-bottom: 2px solid transparent; margin-bottom: -1px; } .tabs span.on { color: var(--ink); font-weight: 700; border-color: var(--brand); } .tabs i { font-style: normal; color: var(--ink-4); font-size: 13px; margin-left: 4px; }
+.list { display: grid; gap: 10px; padding: 14px 20px 20px; }
+/* 新：票面优惠券 */
+.cp { display: grid; grid-template-columns: 78px minmax(0, 1fr); border: 1px solid var(--line); border-radius: 10px; }
+.cp-face { display: grid; place-content: center; text-align: center; gap: 0; padding: 10px 4px; border-right: 2px dashed #f0d7b3; border-radius: 9px 0 0 9px; background: var(--warn-wash); color: #b45f06; }
+.cp-face b { font-size: 20px; line-height: 26px; } .cp-face small { font-size: 11px; line-height: 16px; }
+.cp-body { min-width: 0; padding: 10px 12px; }
+.cp-body > b { display: block; overflow: hidden; font-size: 14px; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
+.cp-body > p { margin: 2px 0 0; overflow: hidden; font-size: 12px; line-height: 18px; color: var(--ink-3); text-overflow: ellipsis; white-space: nowrap; }
+.cp-ft { display: flex; align-items: center; margin-top: 6px; font-size: 12px; color: var(--ink-3); }
+.cp-ft .btn { margin-left: auto; }
+.btn { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; font-size: 12px; color: var(--ink); }
+.btn.off { color: var(--ink-4); background: var(--surface-2); }
+
+/* 抽屉里的售后、常见问题（宽 720 的抽屉内容区） */
+.pd { padding: 20px 24px 24px; }
+.pd h5 { margin: 0 0 10px; font-size: 15px; } .pd h5 span { margin-left: 8px; font-size: 12px; font-weight: 400; color: var(--ink-3); }
+.pd section + section { margin-top: 22px; }
+.kv { margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+.kv > div { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; padding: 9px 14px; } .kv > div + div { border-top: 1px solid var(--line); }
+.kv dt { color: var(--ink-3); } .kv dd { margin: 0; color: var(--ink); }
+.spec { margin: 0; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+.spec > div { display: grid; grid-template-columns: 76px 1fr; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); } .spec > div:nth-child(odd) { border-right: 1px solid var(--line); } .spec > div:nth-last-child(-n + 2) { border-bottom: 0; }
+.spec dt { color: var(--ink-3); } .spec dd { margin: 0; }
+.faq { display: grid; gap: 8px; } .faq > div { padding: 10px 14px; border-radius: 8px; background: var(--surface-2); font-size: 13px; } .faq b { display: block; margin-bottom: 2px; } .faq span { color: var(--ink-2); }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>客服工作台：优惠券卡片 · 商品详情</h1>
+  <p class="lede">只改右栏“优惠券”页签的卡片，和商品详情抽屉里的“引用”“售后”两处；其他不动，不改接口。</p>
+
+  <h2>一、问题</h2>
+  <table class="t">
+    <tr><th>#</th><th>现在</th><th>问题</th><th>改法</th></tr>
+    <tr><td>1</td><td>优惠券卡片：左边一个图标块，右边三行字，“发送”单独占第四行</td><td>按钮孤零零一行，卡片被拉高；图标块不传达任何信息，面额和门槛要读完一行小字才知道</td><td class="chg">照店铺后台的优惠券票面（D-66）：左边票面写面额和门槛（$5 / 满 $30 可用），右边名称、适用范围，最后一行“有效期 7 天”和“发送”放同一行，按钮靠右</td></tr>
+    <tr><td>2</td><td>商品详情每条参数、售后、问答右上角都有“引用”</td><td>真实客服平台没有这个功能；满屏蓝字“引用”很吵，还给每行右边留了一大块空白</td><td class="chg">全部去掉，参数和问答的文字占满整行</td></tr>
+    <tr><td>3</td><td>售后：退换货、保修两个框左右并排</td><td>退换货说明长、折成好几行，保修只有“12 个月”，右边空一大片</td><td class="chg">改成和“规格参数”一样的两列表格，一行一项：退换货 | 说明；保修 | 12 个月。长短都不浪费地方</td></tr>
+  </table>
+
+  <h2>二、改前</h2>
+  <div class="pair">
+    <figure><img class="before" src="assets/before-coupons.png" alt=""><figcaption>右栏 · 优惠券</figcaption></figure>
+    <figure><img class="before" src="assets/before-drawer.png" alt=""><figcaption>商品详情 · 售后、常见问题</figcaption></figure>
+  </div>
+
+  <h2>三、改后</h2>
+  <div class="row2">
+    <div>
+      <p class="cap"><b>右栏 · 优惠券。</b>票面一眼看到面额和门槛；“发送”和有效期同一行。会话结束后“发送”变灰。</p>
+      <div class="s rp">
+        <div class="rp-head"><span class="av"></span><div><b>Florian Weber</b><small><span class="tag">普通客户</span>德国</small></div></div>
+        <div class="tabs"><span>订单<i>4</i></span><span>商品</span><span class="on">优惠券<i>4</i></span></div>
+        <div class="list">
+          <div class="cp"><div class="cp-face"><b>$5</b><small>满 $30 可用</small></div><div class="cp-body"><b>New Customer $5 Off</b><p>全店商品 · 仅潜在意向客</p><div class="cp-ft">有效期 7 天<span class="btn"><i data-lucide="send" class="ic"></i>发送</span></div></div></div>
+          <div class="cp"><div class="cp-face"><b>9 折</b><small>无门槛</small></div><div class="cp-body"><b>10% Off Storewide</b><p>全店商品 · 不限客户</p><div class="cp-ft">有效期 3 天<span class="btn"><i data-lucide="send" class="ic"></i>发送</span></div></div></div>
+          <div class="cp"><div class="cp-face"><b>免运费</b><small>满 $20 可用</small></div><div class="cp-body"><b>Free Shipping</b><p>全店商品 · 不限客户</p><div class="cp-ft">有效期 15 天<span class="btn"><i data-lucide="send" class="ic"></i>发送</span></div></div></div>
+          <div class="cp"><div class="cp-face"><b>$8</b><small>满 $50 可用</small></div><div class="cp-body"><b>Loyal Buyer $8 Off</b><p>指定 2 个商品 · 仅大订单客户、粉丝</p><div class="cp-ft">有效期 30 天<span class="btn off"><i data-lucide="send" class="ic"></i>发送</span></div></div></div>
+        </div>
+      </div>
+      <p class="note">最后一张是会话结束后的样子（按钮变灰）。面额、门槛用店铺后台优惠券同一套数据（face），不用新接口。</p>
+    </div>
+    <div>
+      <p class="cap"><b>商品详情 · 去掉“引用”，售后改成表格。</b>参数、售后、问答都不再有右上角的蓝字。</p>
+      <div class="s"><div class="pd">
+        <section><h5>规格参数<span>6 项</span></h5>
+          <dl class="spec">
+            <div><dt>长度</dt><dd>10 m，100 颗灯珠</dd></div><div><dt>颜色</dt><dd>RGB 多彩，16 种模式</dd></div>
+            <div><dt>防水等级</dt><dd>灯串 IP65，适配器不防水</dd></div><div><dt>控制方式</dt><dd>App（蓝牙）+ 线控 3 键</dd></div>
+            <div><dt>包装清单</dt><dd>灯串、电源适配器、线控、固定卡扣 ×8</dd></div><div><dt>电源</dt><dd>100–240V 宽电压</dd></div>
+          </dl></section>
+        <section><h5>售后</h5>
+          <dl class="kv">
+            <div><dt>退换货</dt><dd>签收后 30 天内可退换，商品需保持未使用且包装完好；运输破损请在签收 48 小时内提供照片，店铺免费补发。</dd></div>
+            <div><dt>保修</dt><dd>12 个月</dd></div>
+          </dl></section>
+        <section><h5>常见问题<span>3</span></h5>
+          <div class="faq">
+            <div><b>欧洲 230V 能用吗？</b><span>可以，适配器支持 100–240V 宽电压，下单时选择 EU Plug 即为欧规插头。</span></div>
+            <div><b>可以剪短吗？</b><span>不建议剪断，剪断后灯串无法使用且不在保修范围内。</span></div>
+            <div><b>下雨天放在室外可以吗？</b><span>灯串为 IP65 防水，可放在室外；电源适配器不防水，需放在室内或做好遮挡。</span></div>
+          </div></section>
+      </div></div>
+    </div>
+  </div>
+
+  <h2>四、改动范围</h2>
+  <table class="t">
+    <tr><th>项</th><th>说明</th></tr>
+    <tr><td>改</td><td>LiveWorkbench.tsx 优惠券页签的卡片；ProductDrawer.tsx 去掉“引用”（连同 onQuote / canFill 参数）、售后改表格；student-workbench.css</td></tr>
+    <tr><td>不改</td><td>聊天里发出去的优惠券卡片、商品卡、订单卡；接口和数据</td></tr>
+  </table>
+</div>
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>if (window.lucide) lucide.createIcons();</script>
+</body>
+</html>

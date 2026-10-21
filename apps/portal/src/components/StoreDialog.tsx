@@ -103,10 +103,8 @@ export function StoreDialog({ session, onClose }: { session: Session; onClose: (
         <ProductDrawer
           product={viewing}
           canSend={false}
-          canFill={false}
           browseOnly
           onClose={() => setViewing(null)}
-          onQuote={() => undefined}
           onSend={() => undefined}
         />
       ) : null}

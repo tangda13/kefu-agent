@@ -1,29 +1,18 @@
 import { CATEGORY_SEP } from "@cecs/contracts";
-import { CornerDownLeft, Send, ShoppingCart } from "lucide-react";
+import { Send, ShoppingCart } from "lucide-react";
 import { useMemo, useState } from "react";
 import { assetUrl, type StoreProduct } from "../../../api/client";
-import { Button, Drawer, toast } from "../../../ui";
+import { Button, Drawer } from "../../../ui";
 
 /* 商品详情抽屉（D-32）：主图 + 缩略图、价格、款式、卖点、参数、物流、售后、常见问题。
-   每条参数 / 问答右上角“引用”：把这句填进输入框。 */
+   每条后面的“引用”已去掉（D-75：真实客服平台没有这个功能）；售后和规格参数同样是表格，一行一项 */
 
-function Quote({ onClick, hidden }: { onClick: () => void; hidden?: boolean }) {
-  if (hidden) return null;
-  return (
-    <button type="button" className="wbk-pd-use" onClick={onClick} title="把这句填进输入框">
-      <CornerDownLeft size={13} />引用
-    </button>
-  );
-}
-
-export function ProductDrawer({ product, canSend, canFill, onClose, onQuote, onSend, browseOnly }: {
+export function ProductDrawer({ product, canSend, onClose, onSend, browseOnly }: {
   product: StoreProduct;
   canSend: boolean;
-  canFill: boolean;
   onClose: () => void;
-  onQuote: (text: string) => void;
   onSend: (type: "product" | "invite") => void;
-  /** 只看资料（侧栏店铺弹窗里打开）：不显示“引用”和发送按钮 */
+  /** 只看资料（侧栏店铺弹窗里打开）：不显示发送按钮 */
   browseOnly?: boolean;
 }) {
   const details = product.details ?? {};
@@ -39,15 +28,6 @@ export function ProductDrawer({ product, canSend, canFill, onClose, onQuote, onS
   const sku = (details.skus ?? []).find((item) => options.every((option) => item.values[option.name] === picked[option.name]));
   const price = sku?.price ?? product.price;
   const stock = sku?.stock ?? product.stock;
-
-  const quote = (text: string) => {
-    if (!canFill) {
-      toast.error("这场接待已经结束，不能再填入。");
-      return;
-    }
-    onQuote(text);
-    toast.ok("已填入输入框");
-  };
 
   const specs = (details.specs ?? []).filter((row) => row.name.trim() && row.value.trim());
   const methods = details.shipping?.methods ?? [];
@@ -115,7 +95,6 @@ export function ProductDrawer({ product, canSend, canFill, onClose, onQuote, onS
                 <div key={row.name}>
                   <dt>{row.name}</dt>
                   <dd>{row.value}</dd>
-                  <Quote hidden={browseOnly} onClick={() => quote(`${row.name}: ${row.value}`)} />
                 </div>
               ))}
             </dl>
@@ -154,10 +133,10 @@ export function ProductDrawer({ product, canSend, canFill, onClose, onQuote, onS
         {after && (after.returnPolicy || after.warranty) ? (
           <section>
             <h5>售后</h5>
-            <div className="wbk-pd-after">
-              {after.returnPolicy ? <div><b>退换货</b>{after.returnPolicy}<Quote hidden={browseOnly} onClick={() => quote(after.returnPolicy!)} /></div> : null}
-              {after.warranty ? <div><b>保修</b>{after.warranty}<Quote hidden={browseOnly} onClick={() => quote(after.warranty!)} /></div> : null}
-            </div>
+            <dl className="wbk-pd-after">
+              {after.returnPolicy ? <div><dt>退换货</dt><dd>{after.returnPolicy}</dd></div> : null}
+              {after.warranty ? <div><dt>保修</dt><dd>{after.warranty}</dd></div> : null}
+            </dl>
           </section>
         ) : null}
 
@@ -169,7 +148,6 @@ export function ProductDrawer({ product, canSend, canFill, onClose, onQuote, onS
                 <div key={item.q}>
                   <b>{item.q}</b>
                   <span>{item.a}</span>
-                  <Quote hidden={browseOnly} onClick={() => quote(item.a)} />
                 </div>
               ))}
             </div>
