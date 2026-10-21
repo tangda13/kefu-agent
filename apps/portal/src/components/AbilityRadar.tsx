@@ -59,26 +59,39 @@ const TIP_W = 300;
 
 const AB = { h: 340, gap: 16, labelW: 96, legendW: 92, maxR: 112, minR: 56 };
 
-function radarLayout(w: number) {
+function radarLayout(w: number, legendW: number) {
   const cy = AB.h / 2;
   for (let r = AB.maxR; r > AB.minR; r -= 2) {
     const reach = r + AB.gap + AB.labelW;
     // 右上那个顶点的标签不能压到图例
-    const cx = Math.min(w / 2, w - AB.legendW - AB.labelW - Math.SQRT1_2 * (r + AB.gap));
+    const cx = Math.min(w / 2, w - legendW - AB.labelW - Math.SQRT1_2 * (r + AB.gap));
     if (cx - reach >= 0 && cx + reach <= w) return { cx, cy, r };
   }
   return { cx: w / 2, cy, r: AB.minR };
 }
 
-export function AbilityRadar({ values, base, valueLabel = "近期平均" }: {
+/** 雷达图例：bare 模式下雷达不自带图例，由外面放到卡片标题行 */
+export function RadarLegend({ valueLabel = "近期平均", inline = false }: { valueLabel?: string; inline?: boolean }) {
+  return (
+    <div className={inline ? "ab-radar-legend is-inline" : "ab-radar-legend"}>
+      <span><i />{valueLabel}</span>
+      <span><em />训前测评</span>
+      <span><em className="is-pass" />60 分线</span>
+    </div>
+  );
+}
+
+export function AbilityRadar({ values, base, valueLabel = "近期平均", bare = false }: {
   values: Record<string, number> | null;
   base: Record<string, number> | null;
   /** 实线的名字：学生端“近期平均”，教师端“全班平均” */
   valueLabel?: string;
+  /** 只画形状和名称：不写每项分数、不带图例（学生端我的记录，分数在旁边的八项明细里，D-74） */
+  bare?: boolean;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const [boxRef, box] = useBoxSize<HTMLDivElement>({ w: 600, h: AB.h });
-  const { cx, cy, r } = radarLayout(box.w);
+  const { cx, cy, r } = radarLayout(box.w, bare ? 0 : AB.legendW);
   const count = DIMS.length;
   const point = (index: number, value: number, radius: number = r) => {
     const angle = (Math.PI * 2 * index) / count - Math.PI / 2;
@@ -105,11 +118,7 @@ export function AbilityRadar({ values, base, valueLabel = "近期平均" }: {
   const hd = hv != null && hb != null ? hv - hb : null;
   return (
     <div ref={boxRef} className="ab-radar" onMouseLeave={() => setHover(null)}>
-      <div className="ab-radar-legend">
-        <span><i />{valueLabel}</span>
-        <span><em />训前测评</span>
-        <span><em className="is-pass" />60 分线</span>
-      </div>
+      {bare ? null : <RadarLegend valueLabel={valueLabel} />}
       <svg width={box.w} height={AB.h} viewBox={`0 0 ${box.w} ${AB.h}`} role="img" aria-label="能力雷达图">
         <defs>
           <linearGradient id="abRadarFill" x1="0" y1="0" x2="0" y2="1">
@@ -153,7 +162,8 @@ export function AbilityRadar({ values, base, valueLabel = "近期平均" }: {
           const dy = Math.sin(angle);
           const at = point(i, 100, r + AB.gap);
           const textAnchor = Math.abs(dx) < 0.3 ? "middle" : dx > 0 ? "start" : "end";
-          const y = at.y + (dy > 0.3 ? 12 : dy < -0.3 ? -18 : -6);
+          // 两行（名称 + 分数）时名称整体往外让一行；bare 只有名称一行
+          const y = at.y + (dy > 0.3 ? 12 : dy < -0.3 ? (bare ? -4 : -18) : bare ? 5 : -6);
           const v = valueOf(dim.id);
           const b = baseOf(dim.id);
           const d = v != null && b != null ? v - b : null;
@@ -162,10 +172,12 @@ export function AbilityRadar({ values, base, valueLabel = "近期平均" }: {
             <g key={dim.id} className="ab-radar-hit" onMouseEnter={() => setHover(i)}>
               <circle cx={hit.x} cy={hit.y} r={14} fill="transparent" />
               <text x={at.x} y={y} textAnchor={textAnchor} className="ab-radar-name">{dim.label}</text>
-              <text x={at.x} y={y + 18} textAnchor={textAnchor}>
-                <tspan className={v == null ? "ab-radar-val is-none" : v < 60 ? "ab-radar-val is-lo" : "ab-radar-val"}>{v ?? "—"}</tspan>
-                {d != null ? <tspan dx={6} className={d < 0 ? "ab-radar-dl is-down" : "ab-radar-dl"}>{d >= 0 ? "↑" : "↓"}{Math.abs(d)} 较训前</tspan> : null}
-              </text>
+              {bare ? null : (
+                <text x={at.x} y={y + 18} textAnchor={textAnchor}>
+                  <tspan className={v == null ? "ab-radar-val is-none" : v < 60 ? "ab-radar-val is-lo" : "ab-radar-val"}>{v ?? "—"}</tspan>
+                  {d != null ? <tspan dx={6} className={d < 0 ? "ab-radar-dl is-down" : "ab-radar-dl"}>{d >= 0 ? "↑" : "↓"}{Math.abs(d)} 较训前</tspan> : null}
+                </text>
+              )}
             </g>
           );
         })}

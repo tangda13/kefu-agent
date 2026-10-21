@@ -32,15 +32,8 @@
 .sl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .sl-chips span { padding: 2px 8px; border-radius: var(--r-xs); background: var(--c-surface-2); box-shadow: inset 0 0 0 1px var(--c-line); font-size: var(--fs-caption); color: var(--c-ink-2); }
 
-/* 我的记录：第二行两块 */
-.sl-two { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 16px; }
-.sl-two > .board { margin-top: 0; }
 /* 能力雷达本体在 ui.css（ab-radar，和教师端考核报表共用）；最弱两项的建议在下方 */
-.sl-radar-weak { display: grid; gap: 4px; margin: 4px 24px 16px; padding-top: 10px; border-top: 1px solid var(--c-line); font-size: var(--fs-caption); color: var(--c-ink-3); }
-.sl-radar-weak b { margin-right: 8px; font-weight: 600; color: var(--c-danger); }
-.sl-hint.is-below { position: static; transform: none; margin: 4px 24px 16px; padding: 0; border: 0; box-shadow: none; background: none; }
-/* 左右两块等高（网格拉伸）：卡片竖排，成绩走势占满剩余高度，按实际像素画 */
-.sl-two > .board { display: flex; flex-direction: column; }
+/* 成绩走势按实际像素画 */
 .sl-trend { display: flex; flex: 1; min-height: 260px; padding: 16px 20px 16px 16px; }
 .sl-trend-box { position: relative; flex: 1; min-width: 0; }
 .sl-trend-svg { position: absolute; inset: 0; display: block; overflow: visible; }
@@ -112,6 +105,7 @@
 
 /* 进行中：展开的第一条 */
 .th3-cur { display: grid; gap: 10px; padding: 22px 24px 20px; border-bottom: 1px solid var(--c-line); }
+.th3-cur:last-child { border-bottom: 0; }
 .th3-row1 { display: flex; align-items: center; gap: 8px; }
 .th3-stage { font-size: var(--fs-caption); color: var(--c-ink-3); }
 .th3-row1 h4 { margin: 0 0 0 4px; font-size: 18px; font-weight: 700; }
@@ -229,8 +223,8 @@
 /* 参数核对 · 学生端（D-52 / D-53，设计稿 docs/design/p15-params-student） */
 /* 任务大厅：四张卡和下面两栏共用一套列宽，第四列和“自由练习”同宽、竖线对齐 */
 .kpi-cards.sl-hall-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)) 328px; }
-/* 我的记录：数字和单位、小字都不换行 */
-.sl-record-kpis .kpi-card-value, .sl-record-kpis .kpi-card-sub { white-space: nowrap; }
+/* 我的记录：数字和单位不换行；小字窄屏（1280）时允许折行，免得压到右边的小图 */
+.sl-record-kpis .kpi-card-value { white-space: nowrap; }
 .sl-resp { width: 132px; height: 44px; }
 .sl-stars { width: 112px; height: 60px; }
 .sl-star-mark { margin-right: 2px; color: #f2b01e; }
@@ -255,3 +249,59 @@
 .th3-steps li.done span svg { display: block; }
 .th3-s3 .no.is-icon { background: var(--c-surface); box-shadow: inset 0 0 0 1.5px var(--c-brand); color: var(--c-brand); }
 .th3-s3.cur .no.is-icon { background: var(--c-surface); color: var(--c-brand); }
+
+/* 学习区两张卡（D-74，2026-10-21，设计稿 docs/design/p20-student-learn） */
+/* 任务大厅上卡：四个数字排一条，竖线分隔，数字放大一级 */
+.kpi-cards.sl-strip { gap: 0; padding: 22px 0 20px; border: 1px solid var(--c-line); border-radius: var(--r-lg); background: var(--c-surface); box-shadow: var(--sh-board); }
+.sl-strip .kpi-card { min-height: 96px; padding: 0 24px; border: 0; border-left: 1px solid var(--c-line); border-radius: 0; background: none; box-shadow: none; }
+.sl-strip .kpi-card:first-child { border-left: 0; }
+.sl-strip .kpi-card-value b { font-size: 34px; line-height: 44px; }
+/* 任务大厅下卡：任务和自由练习同一张卡，中间竖线和上卡第三、四个数字之间的竖线对齐（列宽同 .sl-hall-kpis） */
+.th3-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) 328px; gap: 0; border: 1px solid var(--c-line); border-radius: var(--r-lg); background: var(--c-surface); box-shadow: var(--sh-board); }
+.th3-grid > .th3-main { grid-column: span 3; border: 0; border-radius: 0; background: none; }
+.th3-grid > .th3-side { align-self: stretch; padding: 22px 24px 24px; border: 0; border-left: 1px solid var(--c-line); border-radius: 0; background: none; }
+.th3-row1 h4 { font-size: 22px; }
+/* 学习区：任务大厅、我的记录顶部都是数字条（D-74，我的记录第三版设计稿 docs/design/p21-student-records） */
+/* 我的记录中卡“能力雷达”：标题行带图例和时间范围；下面一句结论；左边雷达（只画形状和名称），右边八项明细 */
+.sl-ab .board-head, .sl-scores .board-head { border-bottom: 0; }
+.sl-ab-sum { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 0; margin: 0 20px; padding: 0 0 14px; border-bottom: 1px solid var(--c-line); font-size: var(--fs-body); color: var(--c-ink-2); }
+.sl-ab-sum > span + span { margin-left: 14px; padding-left: 14px; border-left: 1px solid var(--c-line); }
+.sl-ab-sum b { font-weight: 600; color: var(--c-ink); }
+.sl-ab-sum em { font-style: normal; font-weight: 700; } .sl-ab-sum em.is-up { color: var(--c-ok); } .sl-ab-sum em.is-lo { color: var(--c-danger); }
+.sl-ab-body { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr); gap: 32px; align-items: center; padding: 12px 24px 22px 4px; }
+.sl-ab-body .ab-radar { margin: 0; }
+.sl-ab-list { display: grid; }
+.sl-ab-row { display: grid; grid-template-columns: 112px minmax(0, 1fr) 36px 64px; gap: 16px; align-items: center; height: 36px; }
+.sl-ab-row.is-head { height: 24px; font-size: var(--fs-caption); color: var(--c-ink-3); }
+.sl-ab-row.is-head span:nth-child(n + 3) { text-align: right; }
+.sl-ab-nm { font-size: var(--fs-body); color: var(--c-ink); cursor: default; }
+.sl-ab-row.is-weak .sl-ab-nm { font-weight: 600; color: var(--c-danger); }
+.sl-ab-bar { position: relative; height: 8px; border-radius: 4px; background: var(--c-surface-hover); }
+.sl-ab-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--c-brand); }
+.sl-ab-bar i.is-lo { background: var(--c-danger); }
+/* 60 分线（红色虚线）和训前位置（深色短竖线） */
+.sl-ab-bar em.is-pass { position: absolute; left: 60%; top: -4px; bottom: -4px; border-left: 1.5px dashed #e0a39d; }
+.sl-ab-bar em.is-base { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--c-ink-2); }
+.sl-ab-sc { font-size: 15px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; } .sl-ab-sc.is-lo { color: var(--c-danger); }
+.sl-ab-dl { font-size: var(--fs-small); font-weight: 600; text-align: right; color: var(--c-ok); white-space: nowrap; }
+.sl-ab-dl.is-down { color: var(--c-danger); } .sl-ab-dl.is-na { font-weight: 400; color: var(--c-ink-3); }
+.sl-ab-tip { margin: -4px 0 8px 128px; padding-left: 10px; border-left: 2px solid #f0b9b4; font-size: var(--fs-caption); line-height: 18px; color: var(--c-ink-3); }
+/* 我的记录下卡“成绩”：上面走势（只画任务接待），下面记录；筛选标签只管记录 */
+.sl-scores-trend { padding: 0 20px 4px; }
+.sl-scores-cap { display: inline-flex; align-items: center; font-size: var(--fs-caption); color: var(--c-ink-3); }
+.sl-scores .sl-trend { flex: none; height: 210px; min-height: 0; padding: 8px 0 12px; }
+/* 窄屏（机房常见 1366、最小 1280）：数字条收窄内边距、小图缩一号，小字尽量一行放下 */
+@media (max-width: 1439px) {
+  .sl-strip .kpi-card { padding: 0 18px; column-gap: 8px; }
+  .sl-strip .sl-resp { width: 104px; }
+  .sl-strip .sl-stars { width: 96px; }
+  .sl-strip .kpi-week { width: 108px; }
+  .sl-strip .kpi-ring { width: 56px; height: 56px; }
+  /* 任务大厅前三格更窄（第四格固定 328）：仪表、名次柱再缩一号，数字和“较训前”不折行 */
+  .sl-strip .kpi-gauge { width: 84px; height: 54px; }
+  .sl-strip .sl-rank { width: 76px; height: 44px; }
+  .sl-hall-kpis .kpi-card-value, .sl-hall-kpis .kpi-card-sub { white-space: nowrap; }
+}
+@media (max-width: 1365px) {
+  .sl-strip .kpi-card-value b { font-size: 30px; line-height: 40px; }
+}

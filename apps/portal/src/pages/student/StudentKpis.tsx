@@ -4,9 +4,9 @@ import { fetchStudentSummary, type Session, type StudentSummary } from "../../ap
 import { KpiCard, RateRing, ScoreGauge, WeekBars } from "../teacher/widgets";
 import "../../styles/student-learn.css";
 
-/* 学生学习区的两排关键数字（设计稿 docs/design/p15-params-student）：
-   - 任务大厅（D-52，参数原文四项）：已完成任务、平均分、班级排名、累计对话
-   - 我的记录（D-53）：本周接待、达标率、平均响应时长、满意率 */
+/* 学生学习区的两组关键数字（设计稿 docs/design/p15-params-student）：
+   - 任务大厅（D-52，参数原文四项）：已完成任务、平均分、班级排名、累计对话——一张卡里排一条，竖线分隔（D-74）
+   - 我的记录（D-53）：本周接待、达标率、平均响应时长、满意率——同样一张卡排一条，四格等宽（D-74） */
 
 /** 变化胶囊：正数绿色上箭头，负数红色下箭头 */
 function DeltaPill({ value, label }: { value: number; label: string }) {
@@ -100,7 +100,7 @@ export function HallKpis({ session }: { session?: Session | null }) {
   const convo = summary?.conversations;
   const taskConvo = convo ? convo.total - convo.practice : 0;
   return (
-    <div className="kpi-cards sl-kpis sl-hall-kpis">
+    <div className="kpi-cards sl-kpis sl-hall-kpis sl-strip">
       <KpiCard
         label="已完成任务"
         help="老师下发给你的任务里，已经完成的个数。"
@@ -132,7 +132,7 @@ export function HallKpis({ session }: { session?: Session | null }) {
   );
 }
 
-/** 我的记录四张卡（D-53）：本周接待、达标率、平均响应时长、满意率 */
+/** 我的记录四项（D-53）：本周接待、达标率、平均响应时长、满意率 */
 export function RecordKpis({ session }: { session?: Session | null }) {
   const summary = useSummary(session);
   const pass = summary?.pass;
@@ -144,7 +144,7 @@ export function RecordKpis({ session }: { session?: Session | null }) {
   const avg = response?.avgSeconds != null ? durationText(response.avgSeconds) : null;
   const rating = summary?.rating;
   return (
-    <div className="kpi-cards sl-kpis sl-record-kpis">
+    <div className="kpi-cards sl-kpis sl-record-kpis sl-strip">
       <KpiCard
         label="本周接待"
         help="本周（周一起）接待的买家次数，含自由练习；柱子是每天的次数，蓝色是今天。"

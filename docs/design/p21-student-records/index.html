@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>我的记录第三版</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+* { box-sizing: border-box; } html, body { margin: 0; }
+body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 24px; } .doc h2 { margin: 52px 0 8px; font-size: 20px; } .doc h2 small { font-size: 13px; font-weight: 400; color: #465163; margin-left: 8px; }
+.doc h3.sub { margin: 28px 0 6px; font-size: 16px; }
+.lede { margin: 0 0 16px; color: #465163; max-width: 1120px; }
+.note { font-size: 12px; color: #465163; margin-top: 8px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } figure { margin: 0; } figcaption { font-size: 12px; color: #465163; margin-top: 6px; }
+.before { width: 100%; display: block; border-radius: 10px; border: 1px solid #d6dce5; }
+.frame { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid #d6dce5; box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); background: #f4f6f9; margin-top: 8px; }
+.screen { position: absolute; top: 0; left: 0; width: 1440px; transform-origin: 0 0; overflow: hidden; }
+.t { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d6dce5; border-radius: 10px; overflow: hidden; font-size: 13px; }
+.t th, .t td { text-align: left; padding: 9px 14px; border-bottom: 1px solid #edf0f4; vertical-align: top; } .t th { background: #f6f8fb; color: #465163; font-size: 12px; white-space: nowrap; } .t td:first-child { white-space: nowrap; font-weight: 600; }
+.chg { color: #174aa8; }
+.opt { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 12px; }
+.opt div { background: #fff; border: 1px solid #d6dce5; border-radius: 10px; padding: 14px 16px; font-size: 13px; color: #465163; }
+.opt b { display: block; font-size: 15px; color: #161c26; margin-bottom: 4px; } .opt .rec { border-color: #1d5fd1; box-shadow: 0 0 0 1px #1d5fd1; } .opt .rec b::after { content: "推荐"; margin-left: 8px; padding: 1px 8px; border-radius: 4px; background: #e8effc; color: #174aa8; font-size: 12px; font-weight: 600; }
+.cap { margin: 22px 0 0; font-size: 13px; color: #465163; } .cap b { color: #161c26; }
+
+/* 织 UI 令牌 */
+.s { --canvas:#f4f6f9; --line:#e3e7ee; --hover:#eef2f7; --ink:#161c26; --ink-2:#465163; --ink-3:#5e6a7b; --ink-4:#9aa3b0; --brand:#1d5fd1; --brand-soft:#e8effc; --brand-ink:#174aa8; --ok:#1a7445; --ok-wash:#e3f4ea; --bad:#b8302a; --bad-wash:#fbe8e6; --warn:#a3640b; --warn-wash:#fdf1dc;
+  background: var(--canvas); color: var(--ink); font: 400 14px/22px Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.s svg.ic { width: 18px; height: 18px; stroke-width: 1.75; flex: none; }
+.num { font-variant-numeric: tabular-nums; }
+.app { display: grid; grid-template-columns: 232px 1fr; grid-template-rows: minmax(0, 1fr); height: 100%; } .app > .main { overflow: hidden; }
+.side { background: #fff; border-right: 1px solid var(--line); padding: 14px 12px; display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 18px; font-weight: 700; font-size: 14px; }
+.mark { display: inline-flex; width: 26px; height: 26px; border-radius: 6px; background: var(--brand); color: #fff; align-items: center; justify-content: center; } .mark svg { width: 16px !important; height: 16px !important; }
+.nav { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 6px; color: var(--ink-2); } .nav svg { color: var(--ink-3); } .nav.on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; } .nav.on svg { color: var(--brand-ink); }
+.nav .badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--hover); color: var(--ink-2); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.navlabel { display: flex; align-items: center; gap: 8px; margin: 16px 12px 6px; font-size: 13px; color: var(--ink-2); } .navlabel .shop { width: 20px; height: 20px; border-radius: 5px; background: #1c2230; color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.side-foot { margin-top: auto; border-top: 1px solid var(--line); padding-top: 8px; }
+.main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+.head { display: flex; align-items: center; gap: 16px; height: 56px; flex: none; padding: 0 40px; background: #fff; border-bottom: 1px solid var(--line); } .head h1 { margin: 0; font-size: 20px; }
+.head .right { margin-left: auto; display: flex; gap: 12px; align-items: center; color: var(--ink-2); }
+.av { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: #eef2f7; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--brand-ink); }
+.body { padding: 28px 40px; flex: 1; min-height: 0; } .body.paper { background: #fff; padding-top: 32px; }
+.help { display: inline-flex; color: var(--ink-4); } .help svg { width: 15px !important; height: 15px !important; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 18px; border-radius: 6px; font-size: 14px; white-space: nowrap; } .btn svg { width: 16px !important; height: 16px !important; }
+.btn.p { background: var(--brand); color: #fff; font-weight: 600; } .btn.g { color: var(--ink-2); } .btn.o { border: 1px solid #c8cfda; background: #fff; } .btn.s { height: 30px; padding: 0 12px; font-size: 13px; border: 1px solid #c8cfda; background: #fff; }
+.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 4px; font-size: 12px; background: var(--hover); color: var(--ink-2); } .tag.brand { background: var(--brand-soft); color: var(--brand-ink); }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.pill { display: inline-flex; gap: 2px; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 12px; font-weight: 600; align-items: center; background: var(--ok-wash); color: var(--ok); white-space: nowrap; margin-right: 4px; }
+.dash { color: #c3cad5; }
+
+/* 共用：数字、任务、练习、雷达、成绩行 */
+.fig { position: relative; }
+.fig .lb { display: flex; gap: 4px; align-items: center; font-size: 13px; color: var(--ink-2); }
+.fig .v b { font-weight: 700; } .fig .v small { margin-left: 4px; color: var(--ink-3); font-size: 13px; }
+.fig .sub { font-size: 12px; color: var(--ink-3); } .fig .viz { position: absolute; }
+.kbar { height: 6px; border-radius: 3px; background: #edf0f4; margin-top: 10px; overflow: hidden; } .kbar i { display: block; height: 100%; background: var(--ok); border-radius: 3px; } .kbar.empty { background: repeating-linear-gradient(45deg, #edf0f4 0 6px, #f6f8fb 6px 12px); }
+.tabs { display: flex; gap: 28px; height: 52px; border-bottom: 1px solid var(--line); } .tab { display: flex; align-items: center; font-size: 15px; color: var(--ink-2); border-bottom: 2px solid transparent; margin-bottom: -1px; } .tab.on { color: var(--ink); font-weight: 700; border-color: var(--brand); } .tab i { font-style: normal; margin-left: 6px; color: var(--ink-4); font-size: 13px; font-weight: 400; }
+.r1 { display: flex; align-items: center; gap: 8px; } .stg { font-size: 13px; color: var(--ink-3); }
+.due { font-size: 13px; color: var(--ink-3); white-space: nowrap; } .due.warn { color: var(--warn); font-weight: 600; }
+.meta { margin-top: 6px; font-size: 13px; color: var(--ink-3); }
+.steps { list-style: none; margin: 16px 0 20px; padding: 0; display: grid; gap: 10px; } .steps li { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+.steps .no { width: 22px; height: 22px; border-radius: 50%; background: #e3e7ee; color: var(--ink-2); font-size: 12px; display: grid; place-items: center; } .steps li.done .no { background: var(--ok); color: #fff; } .steps li.done .no svg { width: 13px !important; height: 13px !important; } .steps li.next .no { background: var(--brand); color: #fff; }
+.steps svg.k { width: 16px !important; height: 16px !important; color: var(--ink-3); } .steps em { font-style: normal; font-size: 13px; font-weight: 400; color: var(--ink-3); } .steps li.done em { color: var(--ok); } .steps li.next em { color: var(--brand-ink); }
+.acts { display: flex; align-items: center; gap: 12px; } .acts .note { margin-left: auto; font-size: 13px; color: var(--ink-3); }
+.tr { display: grid; grid-template-columns: 10px minmax(0, 1fr) 110px 110px 48px; gap: 12px; align-items: center; padding: 12px 14px; margin: 0 -14px; border-radius: 8px; } .tr.hv { background: #f6f8fb; }
+.tr b { display: block; font-size: 15px; } .tr small { font-size: 13px; color: var(--ink-3); } .tr .p { font-size: 14px; color: var(--ink-2); } .go { color: var(--brand-ink); font-weight: 600; text-align: right; }
+.radio { display: grid; gap: 2px; margin: 14px 0; } .ri { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; border-radius: 8px; font-size: 14px; } .ri.on { background: var(--hover); font-weight: 700; } .ri .rd { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #b9c1cd; } .ri.on .rd { border: 5px solid var(--brand); }
+.sel { height: 38px; border: 1px solid #c8cfda; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; margin-bottom: 12px; font-size: 14px; } .wide { width: 100%; }
+.rd .ring { fill: none; stroke: #edf0f4; } .rd .ring.outer { stroke: #e3e7ee; } .rd .ring.pass { stroke: #e8b4ae; stroke-dasharray: 3 3; } .rd .axis { stroke: #edf0f4; }
+.rd .avg { stroke: #1d5fd1; stroke-width: 2; stroke-linejoin: round; } .rd .base { fill: none; stroke: #6b7686; stroke-width: 1.5; stroke-dasharray: 5 4; stroke-linejoin: round; }
+.rd .dot { fill: #fff; stroke: #1d5fd1; stroke-width: 2; } .rd .dot.lo { stroke: #b8302a; }
+.rd .lb { font-size: 13px; font-weight: 600; fill: #161c26; } .rd .val { font-size: 13px; font-weight: 700; fill: #161c26; } .rd .val.lo { fill: #b8302a; } .rd .val.none { fill: #c3cad5; } .rd .dl { font-size: 12px; font-weight: 600; fill: #1a7445; } .rd .dl.down { fill: #b8302a; }
+.lgd { display: flex; gap: 14px; font-size: 12px; color: var(--ink-3); } .lgd span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.lgd i { width: 14px; height: 8px; border-radius: 2px; background: rgba(29,95,209,.22); border: 1.5px solid var(--brand); } .lgd em { width: 14px; height: 0; border-top: 1.5px dashed #6b7686; } .lgd em.pass { border-top-color: #e8b4ae; }
+.seg { display: flex; padding: 3px; border-radius: 8px; background: #f8f9fb; box-shadow: inset 0 0 0 1px var(--line); } .seg span { padding: 1px 12px; border-radius: 6px; font-size: 13px; color: var(--ink-2); } .seg .on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.chips { display: flex; gap: 8px; } .chips span { padding: 1px 12px; border-radius: 14px; border: 1px solid #c8cfda; font-size: 13px; color: var(--ink-2); } .chips .on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.tips { display: grid; gap: 4px; font-size: 12px; color: var(--ink-3); } .tips b { color: var(--bad); font-weight: 600; margin-right: 6px; }
+.rrow { display: grid; grid-template-columns: 56px minmax(0, 1fr) 140px minmax(0, 1fr) 72px; gap: 20px; align-items: center; padding: 12px 14px; margin: 0 -14px; border-radius: 8px; }
+.rrow .nm b { font-size: 15px; } .rrow .nm div { font-size: 13px; color: var(--ink-3); } .rrow .nm .tag { margin-left: 8px; vertical-align: 2px; }
+.sc { width: 56px; height: 48px; border-radius: 8px; display: grid; place-items: center; line-height: 1; font-size: 20px; font-weight: 700; } .sc small { font-size: 11px; font-weight: 400; } .sc.hi { background: var(--ok-wash); color: var(--ok); } .sc.mid { background: var(--hover); color: var(--ink); } .sc.pr { background: var(--hover); color: var(--ink-3); font-size: 14px; }
+.mini { display: flex; gap: 4px; align-items: flex-end; height: 36px; } .mini i { flex: 1; background: #bfd2f3; border-radius: 2px; } .mini i.lo { background: #f0b9b4; } .mini i.na { height: 3px !important; background: #e3e7ee; }
+.ai { font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ai b { font-size: 11px; padding: 0 4px; border: 1px solid #c8cfda; border-radius: 4px; margin-right: 6px; font-weight: 400; color: var(--ink-3); }
+
+/* ===== A 一张纸 ===== */
+.a-rib { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 328px; padding-bottom: 24px; border-bottom: 1px solid var(--line); } .a-rib.eq { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.a-rib .fig { min-height: 96px; padding: 0 24px; border-left: 1px solid var(--line); } .a-rib .fig:first-child { padding-left: 0; border-left: 0; }
+.a-rib .fig .v b { font-size: 34px; line-height: 50px; } .a-rib .fig .viz { right: 24px; top: 14px; }
+.a-main { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 328px; }
+.a-tasks { grid-column: span 3; padding: 8px 40px 0 0; }
+.a-rail { border-left: 1px solid var(--line); padding: 26px 0 0 28px; } .a-rail h3 { margin: 0; font-size: 16px; } .a-rail p { margin: 2px 0 0; font-size: 13px; color: var(--ink-3); }
+.a-cur { padding: 26px 0 22px; } .a-cur h4 { margin: 0 0 0 4px; font-size: 22px; } .a-cur .due { margin-left: auto; }
+.a-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.a-two > section { padding: 4px 0 24px; } .a-two > section + section { border-left: 1px solid var(--line); padding-left: 28px; } .a-two > section:first-child { padding-right: 28px; }
+.sh { display: flex; align-items: center; gap: 10px; height: 60px; } .sh h3 { margin: 0; font-size: 16px; } .sh .n { color: var(--ink-3); font-size: 13px; } .sh .ex { margin-left: auto; display: flex; gap: 12px; align-items: center; }
+
+/* ===== B 焦点首屏 ===== */
+.b-hero { display: grid; grid-template-columns: minmax(0, 1fr) 440px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+.b-l { padding: 28px 36px 28px; }
+.b-greet { font-size: 26px; font-weight: 700; line-height: 34px; } .b-greet small { margin-left: 12px; font-size: 14px; font-weight: 400; color: var(--ink-3); }
+.b-focus { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); } .b-focus .lbl { font-size: 13px; color: var(--ink-3); margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
+.b-focus h4 { margin: 0 0 0 4px; font-size: 24px; } .b-focus .due { margin-left: auto; }
+.b-r { border-left: 1px solid var(--line); display: grid; grid-template-rows: auto repeat(4, 1fr); }
+.b-r > h5 { margin: 0; padding: 22px 28px 2px; font-size: 13px; font-weight: 600; color: var(--ink-3); }
+.b-r .fig { padding: 12px 28px 14px; } .b-r .fig + .fig { border-top: 1px solid var(--line); }
+.b-r .fig .v b { font-size: 28px; line-height: 40px; } .b-r .fig .viz { right: 28px; top: 50%; transform: translateY(-50%); }
+/* 任务大厅的四个小图窄，排 2×2，和左边一样高 */
+.b-r.g2 { grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr 1fr; } .b-r.g2 > h5 { grid-column: 1 / -1; padding-left: 24px; }
+.b-r.g2 .fig { padding: 14px 24px 18px; border-top: 0; } .b-r.g2 .fig:nth-of-type(odd) { border-right: 1px solid var(--line); } .b-r.g2 .fig:nth-of-type(1), .b-r.g2 .fig:nth-of-type(2) { border-bottom: 1px solid var(--line); }
+.b-r.g2 .fig .v b { font-size: 30px; line-height: 44px; } .b-r.g2 .fig .viz { right: 18px; top: 18px; transform: none; }
+.b-board { margin-top: 16px; display: grid; grid-template-columns: minmax(0, 1fr) 328px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+.b-board .lst { padding: 0 32px 16px; } .b-board .rail { border-left: 1px solid var(--line); padding: 20px 24px; } .b-board .rail h3 { margin: 0; font-size: 16px; } .b-board .rail p { margin: 2px 0 0; font-size: 13px; color: var(--ink-3); }
+.b-rows { padding-top: 10px; }
+.b-radar { padding: 6px 28px 20px 28px; position: relative; } .b-radar .lgd { position: absolute; top: 18px; right: 28px; flex-direction: column; gap: 4px; }
+.b-hero.rec { grid-template-columns: minmax(0, 1fr) 440px; }
+.b-score { margin-top: 16px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 0 32px 14px; }
+.b-score .trend { height: 190px; margin: 0 0 6px; } .b-score .trend svg { width: 100%; height: 100%; }
+
+/* ===== C 一体面板 ===== */
+.c-one { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 328px; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.c-one.eq { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.c-one > * { background: #fff; }
+.c-one .fig { padding: 18px 22px; min-height: 116px; } .c-one .fig .v b { font-size: 30px; line-height: 44px; } .c-one .fig .viz { right: 20px; top: 20px; }
+.c-tasks { grid-column: span 3; padding: 0 28px 16px; } .c-rail { padding: 20px 24px; } .c-rail h3 { margin: 0; font-size: 16px; } .c-rail p { margin: 2px 0 0; font-size: 13px; color: var(--ink-3); }
+.c-span2 { grid-column: span 2; padding: 0 24px 18px; position: relative; } .c-span4 { grid-column: 1 / -1; padding: 0 28px 14px; }
+
+/* ===== 任务大厅：上下两张卡（定稿） ===== */
+.h-top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 328px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 22px 0 20px; }
+.h-top .fig { min-height: 96px; padding: 0 28px; border-left: 1px solid var(--line); } .h-top .fig:first-child { border-left: 0; }
+.h-top .fig .v b { font-size: 34px; line-height: 50px; } .h-top .fig .viz { right: 28px; top: 8px; }
+.h-bot { margin-top: 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 328px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+.h-tasks { grid-column: span 3; padding: 0 28px 18px; }
+.h-rail { border-left: 1px solid var(--line); padding: 22px 28px 24px; } .h-rail h3 { margin: 0; font-size: 16px; } .h-rail p { margin: 2px 0 0; font-size: 13px; color: var(--ink-3); }
+.cap2 { display: flex; align-items: center; gap: 4px; margin: 2px 0 0; font-size: 12px; color: var(--ink-3); }
+.mark-new { outline: 2px dashed #6e9be8; outline-offset: 4px; border-radius: 12px; }
+
+/* ===== 我的记录第三版 ===== */
+.h-top.eq { grid-template-columns: repeat(4, minmax(0, 1fr)); } .h-top.eq .fig .viz { top: 26px; }
+.ab-card { margin-top: 16px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 0 32px 24px; }
+.ab-sum { display: flex; align-items: center; gap: 14px; padding: 2px 0 16px; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--ink-2); }
+.ab-sum b { color: var(--ink); } .ab-sum i { width: 1px; height: 14px; background: var(--line); } .ab-sum em { font-style: normal; font-weight: 700; } .ab-sum em.up { color: var(--ok); } .ab-sum em.lo { color: var(--bad); }
+.ab-body { display: grid; grid-template-columns: 470px minmax(0, 1fr); gap: 40px; align-items: center; padding-top: 16px; }
+.ab-radar { position: relative; height: 360px; } .ab-lgd { position: absolute; left: 0; top: 0; }
+.ab-head { display: grid; grid-template-columns: 116px minmax(0, 1fr) 40px 64px; gap: 16px; padding-bottom: 6px; font-size: 12px; color: var(--ink-3); } .ab-head span:nth-child(3), .ab-head span:nth-child(4) { text-align: right; }
+.ab-row { display: grid; grid-template-columns: 116px minmax(0, 1fr) 40px 64px; gap: 16px; align-items: center; height: 36px; }
+.ab-row .nm { font-size: 14px; color: var(--ink); } .ab-row.weak .nm { color: var(--bad); font-weight: 600; }
+.ab-bar { position: relative; height: 8px; border-radius: 4px; background: #edf0f4; }
+.ab-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--brand); } .ab-bar i.lo { background: var(--bad); }
+.ab-bar em.pass { position: absolute; left: 60%; top: -4px; bottom: -4px; border-left: 1.5px dashed #e0a39d; }
+.ab-bar em.base { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: #465163; border-radius: 1px; }
+.ab-row .sc { text-align: right; font-size: 15px; } .ab-row .sc.lo { color: var(--bad); }
+.ab-row .dl { text-align: right; font-size: 13px; font-weight: 600; color: var(--ok); } .ab-row .dl.down { color: var(--bad); } .ab-row .dl.na { color: var(--ink-4); font-weight: 400; }
+.ab-tip { margin: -4px 0 8px 132px; padding-left: 10px; border-left: 2px solid #f0b9b4; font-size: 12px; color: var(--ink-3); }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>我的记录 · 第三版</h1>
+  <p class="lede">按 2026-10-21 的调整：顶部数字条（同任务大厅）→ 能力雷达独占一张卡 → 成绩（走势 + 记录）。数据、图表、功能不变，不改接口；任务大厅不动。</p>
+
+  <h2>一、能力雷达独占一张卡，怎么排</h2>
+  <p class="lede">雷达自己只要 460 宽左右，整宽 1120 的卡里只放雷达，两边会空出一大片。补的东西要是雷达自己的内容，而不是别的数字：</p>
+  <table class="t">
+    <tr><th>位置</th><th>放什么</th><th>为什么</th></tr>
+    <tr><td>卡片第一行</td><td class="chg">一句结论：高于训前几项 · 进步最大哪项 · 最该练哪项（低于 60 标红）</td><td>先看结论再看图；学生不用自己在图上找。只用雷达已有的数（八项平均、训前测评），跟着“全部 / 近 7 天 / 近 30 天”一起变</td></tr>
+    <tr><td>左边</td><td class="chg">雷达只画形状和名称，不在图上写分数</td><td>看整体形状：哪边鼓、哪边凹、和训前虚线比往外长了多少</td></tr>
+    <tr><td>右边</td><td class="chg">八项明细：名称 · 横条（刻 60 分线，灰色短竖线是训前）· 分数 · 较训前</td><td>雷达上数字挤、对不齐，横条好比较；顺序和雷达一样，从正上方顺时针，眼睛能对上。低于 60 的分数和横条标红</td></tr>
+    <tr><td>最弱两项</td><td class="chg">名称标红，下面一行写建议（原来在雷达下面那两行）</td><td>建议就挨着对应的那一项，不用来回找</td></tr>
+  </table>
+  <p class="note">鼠标移到明细的某一项上，显示这一项的定义（和现在雷达悬停的内容一样）。一个分数只出现一次：图上不再写分数，分数都在右边。</p>
+
+  <h2>二、改后 <small>数据是编的，只看版式</small></h2>
+  <p class="cap"><b>三张卡：</b>数字条 → 能力雷达（结论 + 雷达 + 八项明细）→ 成绩（走势 + 记录）。</p>
+  <div class="frame" data-h="1420"><div class="screen s" data-tpl="records"></div></div>
+
+  <h2>三、没有数据时</h2>
+  <p class="cap">数字条灰色“—”；雷达只画训前虚线（做过测评时），结论一行换成“完成第一次接待后，这里写出你的进步和短板”；明细只有训前的灰色竖线，分数“—”；成绩卡画走势骨架和一句话。</p>
+  <div class="frame" data-h="1060"><div class="screen s" data-tpl="recordsEmpty"></div></div>
+
+  <h2>四、改动范围</h2>
+  <table class="t">
+    <tr><th>项</th><th>说明</th></tr>
+    <tr><td>改</td><td>LiveRecords.tsx（三张卡、八项明细、结论一行）、StudentKpis.tsx（我的记录改用数字条）、AbilityRadar.tsx（加“只画形状和名称”的开关，教师端考核报表不受影响）、student-learn.css</td></tr>
+    <tr><td>规范</td><td>DESIGN.md 5.4 我的记录一条改写；D-74 里我的记录部分改为本版</td></tr>
+    <tr><td>不改</td><td>任务大厅、数据口径、走势图、成绩记录、接口</td></tr>
+  </table>
+</div>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const I = (n, c = "") => `<i data-lucide="${n}" class="ic ${c}"></i>`;
+const H = `<span class="help">${I("circle-help")}</span>`;
+const STAGE = { pre: ["售前沟通", "#0a7a70"], in: ["售中处理", "#1d5fd1"], after: ["售后处理", "#a3640b"], care: ["客户分层维护", "#7a4fd1"] };
+
+function shell({ nav, title, body, paper = false }) {
+  const learn = [["tasks", "layout-dashboard", "任务大厅"], ["records", "graduation-cap", "我的记录"]];
+  const shop = [["workbench", "message-square-more", "客服工作台"], ["orders", "package-search", "订单"], ["reviews", "star", "评价"], ["mail", "mail", "邮件", `<span class="badge">46</span>`]];
+  const items = (list) => list.map(([id, ic, label, extra = ""]) => `<div class="nav${id === nav ? " on" : ""}">${I(ic)}${label}${extra}</div>`).join("");
+  return `<div class="app"><nav class="side"><div class="brand"><span class="mark">${I("headset")}</span>跨境电商客服AI实训平台</div>${items(learn)}
+    <div class="navlabel"><span class="shop">A</span>店铺后台 · Aurora Mart</div>${items(shop)}
+    <div class="side-foot"><div class="nav">${I("book-open-check")}使用帮助</div><div class="nav">${I("panel-left-close")}收起侧栏</div></div></nav>
+    <div class="main"><header class="head"><h1>${title}</h1><div class="right">${I("bell")}<span class="av">张</span>张三 ${I("chevron-down")}</div></header>
+    <div class="body${paper ? " paper" : ""}">${body}</div></div></div>`;
+}
+
+/* ---------- 小图（同 p15） ---------- */
+function gauge(v, small = false) {
+  const cx = 65, cy = 68, r = 53, mark = 60;
+  const pt = (f, rr = r) => { const a = Math.PI * (1 - f); return [cx + rr * Math.cos(a), cy - rr * Math.sin(a)]; };
+  const [t1x, t1y] = pt(mark / 100, 43), [t2x, t2y] = pt(mark / 100, 63);
+  let s = `<svg width="${small ? 100 : 120}" height="${small ? 66 : 80}" viewBox="0 -10 130 86"><path d="M12 68 A53 53 0 0 1 118 68" fill="none" stroke="#edf0f4" stroke-width="10" stroke-linecap="round"/>`;
+  if (v != null) { const [x, y] = pt(v / 100); s += `<path d="M12 68 A53 53 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)}" fill="none" stroke="#1d5fd1" stroke-width="10" stroke-linecap="round"/>`; }
+  return s + `<line x1="${t1x.toFixed(1)}" y1="${t1y.toFixed(1)}" x2="${t2x.toFixed(1)}" y2="${t2y.toFixed(1)}" stroke="#465163" stroke-width="1.5"/><text x="${t2x.toFixed(1)}" y="${(t2y - 3).toFixed(1)}" font-size="9" fill="#9aa3b0" text-anchor="middle">60</text></svg>`;
+}
+const rankBars = (pos, total, w = 92) => {
+  const n = 9, hit = pos == null ? -1 : Math.min(n - 1, Math.floor((1 - pos / total) * n));
+  return `<svg width="${w}" height="${Math.round(w * 0.56)}" viewBox="0 0 92 52">${Array.from({ length: n }, (_, i) => { const h = 10 + i * 4.5; return `<rect x="${i * 10 + 1}" y="${50 - h}" width="7" height="${h}" rx="1.5" fill="${i === hit ? "#1d5fd1" : "#e6ebf2"}"/>`; }).join("")}</svg>`;
+};
+const ring = (p, c, size = 70) => `<svg width="${size}" height="${size}" viewBox="0 0 74 74"><circle cx="37" cy="37" r="30" fill="none" stroke="#edf0f4" stroke-width="8"/>${p == null ? "" : `<circle cx="37" cy="37" r="30" fill="none" stroke="${c}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(188.5 * p).toFixed(1)} 188.5" transform="rotate(-90 37 37)"/>`}</svg>`;
+const weekBars = (arr, today) => {
+  const max = Math.max(1, ...arr);
+  return `<svg width="126" height="58" viewBox="0 0 126 58">${arr.map((n, i) => { const h = n ? 6 + Math.round((n / max) * 30) : 2; return `<rect x="${i * 18 + 2}" y="${40 - h}" width="11" height="${h}" rx="2" fill="${i === today ? "#1d5fd1" : n ? "#bfd2f3" : "#e3e7ee"}"/><text x="${i * 18 + 7.5}" y="55" font-size="10" fill="${i === today ? "#174aa8" : "#9aa3b0"}" text-anchor="middle">${"一二三四五六日"[i]}</text>`; }).join("")}</svg>`;
+};
+const respBar = (avg) => {
+  const W = 120, max = 180, x = (sec) => Math.min(W, (sec / max) * W);
+  return `<svg width="${W}" height="44" viewBox="0 0 ${W} 44"><rect x="0" y="16" width="${x(45) - 1}" height="8" rx="2" fill="#cfe9da"/><rect x="${x(45) + 1}" y="16" width="${x(120) - x(45) - 2}" height="8" fill="#f6e3c3"/><rect x="${x(120) + 1}" y="16" width="${W - x(120) - 1}" height="8" rx="2" fill="#f5d2cf"/>${avg == null ? "" : `<path d="M${x(avg).toFixed(1)} 13 l-5 -8 h10 z" fill="#161c26"/>`}<text x="${x(45)}" y="38" font-size="10" fill="#9aa3b0" text-anchor="middle">45 秒</text><text x="${x(120)}" y="38" font-size="10" fill="#9aa3b0" text-anchor="middle">2 分</text></svg>`;
+};
+const starHist = (counts) => {
+  const max = Math.max(1, ...(counts ?? [0]));
+  return `<svg width="120" height="60" viewBox="0 0 128 60">${[5, 4, 3, 2, 1].map((star, i) => {
+    const n = counts ? counts[i] : 0, y = i * 12, w = counts ? Math.round((n / max) * 84) : 0;
+    return `<text x="0" y="${y + 9}" font-size="10" fill="#5e6a7b">${star}</text><text x="8" y="${y + 9}" font-size="9" fill="#f2b01e">★</text><rect x="20" y="${y + 2}" width="84" height="7" rx="2" fill="#edf0f4"/>${w ? `<rect x="20" y="${y + 2}" width="${w}" height="7" rx="2" fill="${star >= 4 ? "#1d5fd1" : "#c3cad5"}"/>` : ""}${counts ? `<text x="110" y="${y + 9}" font-size="10" fill="#9aa3b0">${n}</text>` : ""}`;
+  }).join("")}</svg>`;
+};
+const fig = ({ label, value, sub = "", viz = "" }) => `<div class="fig"><div class="lb">${label}${H}</div><div class="v num">${value}</div><div class="sub">${sub}</div>${viz ? `<div class="viz">${viz}</div>` : ""}</div>`;
+const D = `<b class="dash">—</b>`;
+
+/* ---------- 数据 ---------- */
+const hallFigs = (empty, small = false) => [
+  fig({ label: "已完成任务", value: empty ? D : `<b>3</b><small>/ 7</small>`, sub: `<div class="kbar${empty ? " empty" : ""}"><i style="width:${empty ? 0 : 43}%"></i></div>` }),
+  fig({ label: "平均分", value: empty ? D : `<b>72</b><small>/ 100</small>`, sub: empty ? "" : `<span class="pill">↑9</span>较训前`, viz: gauge(empty ? null : 72, true) }),
+  fig({ label: "班级排名", value: empty ? `${D}<small>/ 45</small>` : `<b>第 5</b><small>/ 45</small>`, sub: empty ? "" : `<span class="pill">↑2</span>较上周`, viz: rankBars(empty ? null : 5, 45, small ? 76 : 92) }),
+  fig({ label: "累计对话", value: `<b${empty ? ' class="dash"' : ""}>${empty ? 0 : 38}</b><small>次</small>`, sub: empty ? "" : (small ? "共 412 轮" : "共 412 轮 · 其中练习 9 次"), viz: ring(empty ? null : 0.76, "#0a7a70", small ? 58 : 70) }),
+];
+const recFigs = (empty, small = false) => [
+  fig({ label: "本周接待", value: `<b${empty ? ' class="dash"' : ""}>${empty ? 0 : 7}</b><small>次</small>`, sub: empty ? "" : "其中练习 2 次", viz: weekBars(empty ? [0, 0, 0, 0, 0, 0, 0] : [1, 0, 3, 2, 1, 0, 0], 4) }),
+  fig({ label: "达标率", value: empty ? D : `<b>75%</b>`, sub: empty ? "" : "12 次任务接待 9 次达标", viz: ring(empty ? null : 0.75, "#1a7445", small ? 58 : 70) }),
+  fig({ label: "平均响应时长", value: empty ? D : `<b>38</b><small>秒</small>`, sub: empty ? "" : "首次响应平均 25 秒", viz: respBar(empty ? null : 38) }),
+  fig({ label: "满意率", value: empty ? D : `<b>68%</b>`, sub: empty ? "" : `<span style="color:#f2b01e">★</span> 3.9 · 25 次评价`, viz: starHist(empty ? null : [6, 11, 5, 2, 1]) }),
+];
+const tabs = (on, [a, b, c]) => `<div class="tabs">${[["todo", "待办", a], ["doing", "进行中", b], ["done", "已完成", c]].map(([id, l, n]) => `<span class="tab${id === on ? " on" : ""}">${l}<i>${n}</i></span>`).join("")}</div>`;
+const step = (i, name, kind, state, text) => `<li class="${state}"><span class="no">${state === "done" ? I("check") : i}</span>${I(kind === "mail" ? "mail" : "message-circle", "k")}${name}<em>${text}</em></li>`;
+const curBody = () => `<div class="meta">每次接待限时 20 分钟 · 文字 + 语音 · 达标线 60 · 王老师 10 月 17 日下发</div>
+  <ol class="steps">${step(1, "新品咨询与卖点介绍", "chat", "done", "已接待")}${step(2, "新品推广邮件", "mail", "next", "未开始")}</ol>
+  <div class="acts"><span class="btn p">${I("pen-line")}写邮件</span><span class="btn g">任务要求</span><span class="note">收件人和模板已经备好</span></div>`;
+const curHead = (tag = "h4") => `<div class="r1"><i class="dot" style="background:${STAGE.pre[1]}"></i><span class="stg">${STAGE.pre[0]}</span><${tag}>新品上市推广</${tag}><span class="due warn">还剩 2 天</span></div>`;
+const trow = ({ stage, name, meta, prog, due, tone = "", go, hv }) => `<div class="tr${hv ? " hv" : ""}"><i class="dot" style="background:${STAGE[stage][1]}"></i><div><b>${name}</b><small>${meta}</small></div><span class="p num">${prog}</span><span class="due ${tone}">${due}</span><span class="go">${go}</span></div>`;
+const otherRow = (hv) => trow({ stage: "after", name: "售后差评挽回演练", meta: "售后处理 · 1 个场景 · 不限时 · 文字 + 语音", prog: "0 / 1 场景", due: "还剩 5 天", go: "继续", hv });
+const practiceInner = () => `<h3>自由练习</h3><p>不计成绩，场景随便挑。</p><div class="radio">${[["全部随机", null, true], ["售前沟通", "pre"], ["售中处理", "in"], ["售后处理", "after"], ["客户分层维护", "care"]].map(([l, s, on]) => `<div class="ri${on ? " on" : ""}"><i class="rd"></i>${s ? `<i class="dot" style="background:${STAGE[s][1]}"></i>` : ""}${l}</div>`).join("")}</div><div class="sel">场景：全部随机 ${I("chevron-down")}</div><span class="btn o wide">开始练习</span>`;
+
+const DIMS = ["服务话术规范", "客户沟通有效性", "客户情绪安抚", "订单问题解决", "商品信息准确性", "消息响应时效", "语法准确性", "沟通用语合规"];
+const NOW = [71, 66, 62, 58, 74, 69, 77, 86];
+const BASE = [62, 60, 55, 40, null, null, 58, 64];
+function radar({ w, h, R, now, base, id }) {
+  const cx = w / 2, cy = h / 2, n = DIMS.length;
+  const pt = (i, v, r = R) => { const a = -Math.PI / 2 + (i * 2 * Math.PI) / n; const k = (r * v) / 100; return [cx + k * Math.cos(a), cy + k * Math.sin(a)]; };
+  let s = `<svg class="rd" viewBox="0 0 ${w} ${h}" style="width:100%;height:100%"><defs><linearGradient id="g${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(29,95,209,.26)"/><stop offset="1" stop-color="rgba(29,95,209,.06)"/></linearGradient></defs>`;
+  [20, 40, 80, 100].forEach((v) => (s += `<circle cx="${cx}" cy="${cy}" r="${(R * v) / 100}" class="ring${v === 100 ? " outer" : ""}"/>`));
+  s += `<circle cx="${cx}" cy="${cy}" r="${R * 0.6}" class="ring pass"/>`;
+  DIMS.forEach((_, i) => { const [x, y] = pt(i, 100); s += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" class="axis"/>`; });
+  if (base) base.forEach((v, i) => { const u = base[(i + 1) % n]; if (v == null || u == null) return; const [x1, y1] = pt(i, v), [x2, y2] = pt((i + 1) % n, u); s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="base"/>`; });
+  if (now) {
+    s += `<polygon points="${now.map((v, i) => pt(i, v).join(",")).join(" ")}" class="avg" fill="url(#g${id})"/>`;
+    now.forEach((v, i) => { const [x, y] = pt(i, v); s += `<circle cx="${x}" cy="${y}" r="3.5" class="dot${v < 60 ? " lo" : ""}"/>`; });
+  }
+  DIMS.forEach((name, i) => {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / n, dx = Math.cos(a), dy = Math.sin(a);
+    const [x, y] = pt(i, 100, R + 14); const anc = Math.abs(dx) < 0.3 ? "middle" : dx > 0 ? "start" : "end";
+    const yy = y + (dy > 0.3 ? 12 : dy < -0.3 ? -16 : -4);
+    s += `<text x="${x}" y="${yy}" text-anchor="${anc}" class="lb">${name}</text>`;
+    const v = now ? now[i] : null, b = base ? base[i] : null, d = v != null && b != null ? v - b : null;
+    s += `<text x="${x}" y="${yy + 18}" text-anchor="${anc}"><tspan class="val${v == null ? " none" : v < 60 ? " lo" : ""}">${v ?? "—"}</tspan>${d == null ? "" : `<tspan class="dl${d < 0 ? " down" : ""}" dx="6">${d >= 0 ? "↑" : "↓"}${Math.abs(d)} 较训前</tspan>`}</text>`;
+  });
+  return s + `</svg>`;
+}
+const legend = `<div class="lgd"><span><i></i>近期平均</span><span><em></em>训前测评</span><span><em class="pass"></em>60 分线</span></div>`;
+const radarTips = `<div class="tips"><div><b>订单问题解决</b>给出能执行的方案（补发 / 退款 / 折扣），写清时限和步骤</div><div><b>客户情绪安抚</b>买家不满时先共情再给方案</div></div>`;
+function trendSvg({ w, h, empty = false, pad = 40 }) {
+  const vals = [58, 66, 62, 71, 80, 76, 83], Y = (v) => h - 30 - ((v - 30) / 70) * (h - 50), X = (i) => pad + 20 + (i * (w - pad - 60)) / (vals.length - 1);
+  let s = `<svg viewBox="0 0 ${w} ${h}">`;
+  [100, 80, 60, 40].forEach((v) => (s += `<line x1="${pad}" x2="${w - 10}" y1="${Y(v)}" y2="${Y(v)}" stroke="#edf0f4"/><text x="4" y="${Y(v) + 4}" font-size="12" fill="#9aa3b0">${v}</text>`));
+  s += `<line x1="${pad}" x2="${w - 10}" y1="${Y(60)}" y2="${Y(60)}" stroke="#161c26" stroke-dasharray="4 4"/><text x="${w - 10}" y="${Y(60) - 6}" text-anchor="end" font-size="12" fill="#465163">达标线 60</text>`;
+  if (!empty) {
+    s += `<polyline points="${vals.map((v, i) => `${X(i)},${Y(v)}`).join(" ")}" fill="none" stroke="#1d5fd1" stroke-width="2"/>`;
+    vals.forEach((v, i) => (s += `<circle cx="${X(i)}" cy="${Y(v)}" r="5" fill="#fff" stroke="${v < 60 ? "#b8302a" : "#1d5fd1"}" stroke-width="2"/><text x="${X(i)}" y="${h - 6}" text-anchor="middle" font-size="12" fill="#9aa3b0">10/${12 + i}</text>`));
+  } else {
+    s += `<polyline points="${X(0)},${Y(60)} ${X(6)},${Y(60)}" fill="none" stroke="#dfe4ea" stroke-width="2" stroke-dasharray="4 4"/>`;
+  }
+  return s + `</svg>`;
+}
+const mini = (vals) => `<div class="mini">${vals.map((v) => (v == null ? `<i class="na"></i>` : `<i class="${v < 60 ? "lo" : ""}" style="height:${v * 0.36}px"></i>`)).join("")}</div>`;
+const recRow = ({ sc, tone, name, tag = "", l2, vals, ai, practice: pr }) => `<div class="rrow"><div class="sc ${tone} num">${pr ? "练习" : `${sc}<small>分</small>`}</div><div class="nm"><b>${name}</b>${tag}<div>${l2}</div></div>${mini(vals)}<div class="ai"><b>AI</b>${ai}</div><span class="btn s">复盘</span></div>`;
+const recRows = () => recRow({ sc: 80, tone: "hi", name: "售中物流同步演练", l2: "清关延误安抚 · Diego Fernandez · 今天 10:42", vals: [82, 78, 75, 80, 72, 88, 85, 100], ai: "能主动给出物流节点和预计时间，安抚到位；开场确认订单号稍慢…" })
+  + recRow({ sc: 76, tone: "mid", name: "新品上市推广", tag: `<span class="tag brand">邮件</span>`, l2: "新品推广邮件 · 发给 Emma Schneider · 10 月 18 日", vals: [78, 72, null, 70, 80, null, 74, 100], ai: "主题清楚、卖点具体，优惠信息和截止时间写得明确；正文第二段偏长…" })
+  + recRow({ practice: true, tone: "pr", name: "自由练习", l2: "物流查询 · Sakura Sato · 10 月 17 日", vals: [64, 60, 58, 55, 66, 52, 70, 90], ai: "回复礼貌，但没有先查订单状态就承诺了到货时间…" });
+const recChips = `<div class="chips"><span class="on">全部</span><span>任务 12</span><span>练习 2</span><span>有老师评语 3</span></div>`;
+const rangeSeg = `<div class="seg"><span class="on">全部</span><span>近 7 天</span><span>近 30 天</span></div>`;
+
+/* ---------- 我的记录第三版：数字条 + 能力雷达（独占）+ 成绩 ---------- */
+function bareRadar({ w, h, R, now, base, id }) {
+  /* 只画形状和名称，分数放到右边明细 */
+  const svg = radar({ w, h, R, now, base, id });
+  return svg.replace(/<text x="[^"]+" y="[^"]+" text-anchor="[^"]+"><tspan[\s\S]*?<\/text>/g, "");
+}
+const strip = (empty) => `<section class="h-top eq">${recFigs(empty).join("")}</section>`;
+const WEAK = new Set([3, 2]);
+const TIPS = { 3: "给出能执行的方案（补发 / 退款 / 折扣），写清时限和步骤", 2: "买家不满时先共情再给方案：I completely understand… 再说明处理措施" };
+const abRow = (i, empty) => {
+  const v = empty ? null : NOW[i], b = BASE[i], d = v != null && b != null ? v - b : null, weak = !empty && WEAK.has(i);
+  return `<div class="ab-row${weak ? " weak" : ""}"><span class="nm">${DIMS[i]}</span>
+    <span class="ab-bar">${v != null ? `<i class="${v < 60 ? "lo" : ""}" style="width:${v}%"></i>` : ""}<em class="pass"></em>${b != null ? `<em class="base" style="left:${b}%"></em>` : ""}</span>
+    <b class="sc${v != null && v < 60 ? " lo" : ""}">${v ?? "—"}</b>
+    <span class="dl${d == null ? " na" : d < 0 ? " down" : ""}">${d == null ? (empty && b != null ? `训前 ${b}` : "—") : `${d >= 0 ? "↑" : "↓"}${Math.abs(d)}`}</span></div>
+    ${weak ? `<div class="ab-tip">${TIPS[i]}</div>` : ""}`;
+};
+const abCard = (empty) => `<section class="ab-card">
+  <div class="sh"><h3>能力雷达</h3><span class="n">${empty ? "训前测评 54 分" : "12 次接待的平均"}</span><div class="ex">${legend}${empty ? "" : rangeSeg}</div></div>
+  <div class="ab-sum">${empty ? `<span>完成第一次接待后，这里写出你的进步和短板</span>` : `<span>高于训前 <b>6</b> 项</span><i></i><span>进步最大 <b>沟通用语合规</b> <em class="up">↑22</em></span><i></i><span>最该练 <b>订单问题解决</b> <em class="lo">58 分</em></span>`}</div>
+  <div class="ab-body">
+    <div class="ab-radar">${bareRadar({ w: 470, h: 360, R: 118, now: empty ? null : NOW, base: BASE, id: empty ? "e" : "n" })}</div>
+    <div class="ab-list"><div class="ab-head"><span>八项能力</span><span></span><span>分数</span><span>较训前</span></div>${DIMS.map((_, i) => abRow(i, empty)).join("")}</div>
+  </div>
+</section>`;
+const scoreCard = (empty) => `<section class="b-score"><div class="sh"><h3>成绩</h3><span class="n">${empty ? "0 次" : "14 次"}</span>${empty ? "" : `<div class="ex">${recChips}</div>`}</div>
+  <div class="cap2">任务接待 ${H}</div><div class="trend">${trendSvg({ w: 1060, h: 190, empty })}</div>
+  ${empty ? `<p style="margin:0 0 8px;color:#5e6a7b;font-size:13px">每次任务接待出分后，在这里连成线，下面列出每一次的成绩和复盘。</p>` : recRows()}</section>`;
+const records = () => shell({ nav: "records", title: "我的记录", body: `${strip(false)}${abCard(false)}${scoreCard(false)}` });
+const recordsEmpty = () => shell({ nav: "records", title: "我的记录", body: `${strip(true)}${abCard(true)}${scoreCard(true)}` });
+
+const TPL = { records, recordsEmpty };
+document.querySelectorAll("[data-tpl]").forEach((el) => { el.innerHTML = TPL[el.dataset.tpl](); });
+if (window.lucide) lucide.createIcons();
+function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const h = +(f.dataset.h || 900); s.style.height = `${h}px`; const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${h * k}px`; }); }
+fit(); addEventListener("resize", fit);
+</script>
+</body>
+</html>

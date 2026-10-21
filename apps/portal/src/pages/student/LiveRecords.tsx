@@ -1,9 +1,9 @@
-import { ChartLine, MessageSquareDashed, ShieldAlert, ShieldCheck, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ChartLine, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ASSESSMENT_DIMENSIONS, type ReceptionStats } from "@cecs/contracts";
 import { BuyerAvatar } from "../../components/BuyerAvatar";
-import { AbilityRadar, DIM_TIPS, useBoxSize } from "../../components/AbilityRadar";
+import { AbilityRadar, DIM_DEFINITIONS, DIM_TIPS, RadarLegend, useBoxSize } from "../../components/AbilityRadar";
 import {
   ApiError,
   apiGet,
@@ -15,7 +15,7 @@ import {
   type ConversationMessage,
   type Session,
 } from "../../api/client";
-import { Bench, Board, Button, FilterChips, HelpTip, Segmented } from "../../ui";
+import { Bench, Board, Button, FilterChips, HelpTip, Segmented, Tip } from "../../ui";
 import { RecordKpis } from "./StudentKpis";
 import { MessageBody, ServiceRatingLine, isCardKind, mediaUrl } from "./workbench/shared";
 import "../../styles/student-workbench.css";
@@ -395,7 +395,7 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
     return out;
   }, [scoped]);
 
-  /* 最弱的两项（低于 75 才给建议），显示在雷达下方 */
+  /* 最弱的两项（低于 75 才给建议）：八项明细里名称标红，下面一行写建议 */
   const weakDims = useMemo(() => {
     if (!scoped.length) return [];
     return DIMS
@@ -418,48 +418,72 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
     : baseline ? `训前测评 ${baseline.total} 分` : "";
   const noData = scoped.length === 0;
 
+  /* 八项明细与结论一行：只用雷达已有的八项平均和训前测评，跟着时间范围变 */
+  const dimRows = DIMS.map((dim) => ({ dim, v: noData ? null : scopedAverage[dim.id] ?? null, b: baseline?.scores?.[dim.id] ?? null }));
+  const compared = dimRows.filter((row) => row.v != null && row.b != null);
+  const higherCount = compared.filter((row) => row.v! > row.b!).length;
+  const bestGain = compared.reduce<(typeof compared)[number] | null>((top, row) => (row.v! - row.b! > 0 && (!top || row.v! - row.b! > top.v! - top.b!) ? row : top), null);
+  const weakest = dimRows.reduce<(typeof dimRows)[number] | null>((low, row) => (row.v != null && (!low || row.v < low.v!) ? row : low), null);
+
   return (
     <Bench className="sl-page">
       {error ? <p className="sl-form-error" role="alert">{error}</p> : null}
+      {/* 三张卡（D-74，设计稿 docs/design/p21-student-records）：数字条 → 能力雷达（结论 + 雷达 + 八项明细）→ 成绩（走势 + 记录） */}
       <RecordKpis session={session} />
 
-      <div className="sl-two">
-        <Board
-          className="sl-rel"
-          title="能力雷达"
-          count={abilityCount || undefined}
-          extra={scoredRecords.length ? <Segmented<RangeKey> items={RANGE_OPTIONS} value={range} onChange={setRange} /> : undefined}
-        >
-          <AbilityRadar values={noData ? null : scopedAverage} base={baseline?.scores ?? null} />
+      <section className="board sl-ab">
+        <header className="board-head">
+          <h3>能力雷达<HelpTip>蓝色是接待成绩的平均，灰色虚线是训前测评，两者对比就是你的进步；低于 60 分的标红。鼠标停在某一项上可以看这一项的定义。</HelpTip></h3>
+          {abilityCount ? <span className="board-count">{abilityCount}</span> : null}
+          <div className="board-extra">
+            <RadarLegend inline />
+            {scoredRecords.length ? <Segmented<RangeKey> items={RANGE_OPTIONS} value={range} onChange={setRange} /> : null}
+          </div>
+        </header>
+        <p className="sl-ab-sum">
           {noData ? (
-            <div className="sl-hint is-below">
-              <MessageSquareDashed size={18} aria-hidden="true" />
-              {scoredRecords.length ? "这段时间没有任务接待，换个时间范围看看" : "完成第一次接待后，这里出现你的能力雷达"}
-              <HelpTip>蓝色是接待成绩的平均，灰色虚线是训前测评，两者对比就是你的进步；低于 60 分的标红。鼠标停在某一项上可以看评分口径和建议。</HelpTip>
-            </div>
-          ) : weakDims.length ? (
-            <div className="sl-radar-weak">
-              {weakDims.map((dim) => <div key={dim.id}><b>{dim.label}</b>{DIM_TIPS[dim.id]}</div>)}
-            </div>
-          ) : null}
-        </Board>
-
-        <Board
-          className="sl-rel"
-          title="成绩走势"
-          count="任务接待"
-          extra={<HelpTip>每个点是一次任务接待的综合分，虚线是达标线，低于达标线的点标红。点一个点可以打开那次复盘。</HelpTip>}
-        >
-          <div className="sl-trend"><TrendChart chrono={chrono} passLine={passLine} onPick={setActive} /></div>
-          {chrono.length === 0 ? (
-            <div className="sl-hint is-low"><ChartLine size={18} aria-hidden="true" />每次任务接待出分后连成线</div>
-          ) : null}
-        </Board>
-      </div>
+            <span>{scoredRecords.length ? "这段时间没有任务接待，换个时间范围看看" : "完成第一次接待后，这里写出你的进步和短板"}</span>
+          ) : (
+            <>
+              {compared.length ? <span>高于训前 <b>{higherCount}</b> 项</span> : null}
+              {bestGain ? <span>进步最大 <b>{bestGain.dim.label}</b> <em className="is-up">↑{bestGain.v! - bestGain.b!}</em></span> : null}
+              {weakest ? <span>最该练 <b>{weakest.dim.label}</b> <em className={weakest.v! < 60 ? "is-lo" : undefined}>{weakest.v} 分</em></span> : null}
+            </>
+          )}
+        </p>
+        <div className="sl-ab-body">
+          <AbilityRadar values={noData ? null : scopedAverage} base={baseline?.scores ?? null} bare />
+          <div className="sl-ab-list">
+            <div className="sl-ab-row is-head"><span>八项能力</span><span /><span>分数</span><span>较训前</span></div>
+            {dimRows.map(({ dim, v, b }) => {
+              const d = v != null && b != null ? v - b : null;
+              const weak = weakDims.some((item) => item.id === dim.id);
+              return (
+                <Fragment key={dim.id}>
+                  <div className={weak ? "sl-ab-row is-weak" : "sl-ab-row"}>
+                    <Tip label={DIM_DEFINITIONS[dim.id]} wrap><span className="sl-ab-nm">{dim.label}</span></Tip>
+                    <span className="sl-ab-bar">
+                      {v != null ? <i className={v < 60 ? "is-lo" : undefined} style={{ width: `${v}%` }} /> : null}
+                      <em className="is-pass" />
+                      {b != null ? <em className="is-base" style={{ left: `${b}%` }} /> : null}
+                    </span>
+                    <b className={v != null && v < 60 ? "sl-ab-sc is-lo" : "sl-ab-sc"}>{v ?? "—"}</b>
+                    <span className={d == null ? "sl-ab-dl is-na" : d < 0 ? "sl-ab-dl is-down" : "sl-ab-dl"}>
+                      {d != null ? `${d >= 0 ? "↑" : "↓"}${Math.abs(d)}` : v == null && b != null ? `训前 ${b}` : "—"}
+                    </span>
+                  </div>
+                  {weak ? <p className="sl-ab-tip">{DIM_TIPS[dim.id]}</p> : null}
+                </Fragment>
+              );
+            })}
+          </div>
+        </div>
+      </section>
 
       <Board
-        title="成绩记录"
-        count={records.length}
+        className="sl-scores"
+        title="成绩"
+        count={`${records.length} 次`}
         extra={
           records.length ? (
             <FilterChips<ListFilter>
@@ -475,6 +499,14 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
           ) : undefined
         }
       >
+        {/* 走势只画任务接待；上面的筛选只管下面的记录 */}
+        <div className="sl-scores-trend sl-rel">
+          <span className="sl-scores-cap">任务接待<HelpTip>每个点是一次任务接待的综合分，虚线是达标线，低于达标线的点标红。点一个点可以打开那次复盘。</HelpTip></span>
+          <div className="sl-trend"><TrendChart chrono={chrono} passLine={passLine} onPick={setActive} /></div>
+          {chrono.length === 0 ? (
+            <div className="sl-hint is-low"><ChartLine size={18} aria-hidden="true" />每次任务接待出分后连成线</div>
+          ) : null}
+        </div>
         {records.length === 0 ? (
           <div className="sl-empty-line">
             <div>

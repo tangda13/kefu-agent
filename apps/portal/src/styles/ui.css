@@ -1766,6 +1766,7 @@
 .ab-radar-legend i { width: 14px; height: 8px; border-radius: 2px; background: rgba(29, 95, 209, 0.22); box-shadow: inset 0 0 0 1.5px var(--c-brand); }
 .ab-radar-legend em { width: 14px; border-top: 1.5px dashed #6b7686; }
 .ab-radar-legend em.is-pass { border-top-color: #e8b4ae; }
+.ab-radar-legend.is-inline { position: static; display: flex; gap: 14px; margin-right: 6px; white-space: nowrap; }
 .ab-radar-ring { fill: none; stroke: #edf0f4; }
 .ab-radar-ring.is-outer { stroke: var(--c-line); }
 .ab-radar-ring.is-pass { stroke: #e8b4ae; stroke-dasharray: 3 3; }
