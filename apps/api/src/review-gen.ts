@@ -1,6 +1,7 @@
 import { NEGATIVE_REVIEW_POOL, POSITIVE_REVIEW_POOL, starsFromSatisfaction } from "@cecs/domain";
 import type { Db } from "./db";
 import type { LlmGateway } from "./llm/gateway";
+import { once } from "./inflight";
 import { buildBuyerReviewMessages, buyerReviewSchema } from "./prompts/assist";
 import type { SessionState } from "./director";
 
@@ -20,13 +21,16 @@ interface LogLike {
  * - 主订单已有中差评（≤3星）且服务挽回成功（满意度≥70）→ 买家修改评价（升星 + 新内容，保留原评价）；
  * - 其余情况不动。fire-and-forget 调用，失败仅记日志。
  */
-export async function generateBuyerReview(
-  db: Db,
-  gateway: LlmGateway,
-  conversationId: string,
-  log: LogLike,
-): Promise<void> {
-  if (!gateway.isConfigured("assist")) return;
+export function generateBuyerReview(db: Db, gateway: LlmGateway, conversationId: string, log: LogLike): Promise<void> {
+  if (!gateway.isConfigured("assist")) return Promise.resolve();
+  // 跑完（写了评价或判断不用写）记 review_done_at；中途 API 重启就留给定时补漏（L1）
+  return once(`review:${conversationId}`, async () => {
+    await writeBuyerReview(db, gateway, conversationId, log);
+    await db.query("update conversations set review_done_at = now() where id = $1", [conversationId]);
+  });
+}
+
+async function writeBuyerReview(db: Db, gateway: LlmGateway, conversationId: string, log: LogLike): Promise<void> {
   const result = await db.query(
     `select o.id as order_id, o.payload, o.order_no, c.persona, c.state
      from conversations c

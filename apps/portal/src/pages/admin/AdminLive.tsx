@@ -36,6 +36,7 @@ export function AdminSystem({ session, onNavigate }: { session: Session; onNavig
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
   const [backingUp, setBackingUp] = useState(false);
   const [retesting, setRetesting] = useState<string | null>(null);
+  const [rescoring, setRescoring] = useState(false);
   const load = useCallback(() => {
     fetchAdminSystem(session)
       .then((next) => {
@@ -58,6 +59,20 @@ export function AdminSystem({ session, onNavigate }: { session: Session; onNavig
       toast.error(errorText(cause));
     } finally {
       setRetesting(null);
+    }
+  }
+
+  /** 告警里的“重新评分”：评分失败的接待在后台逐个重评，提醒随之消失 */
+  async function rescore() {
+    setRescoring(true);
+    try {
+      const result = await apiPost<{ count: number }>("/v1/admin/assessments/retry", session);
+      toast.ok(`已开始重新评分 ${result.count} 次接待`);
+      load();
+    } catch (cause) {
+      toast.error(errorText(cause));
+    } finally {
+      setRescoring(false);
     }
   }
 
@@ -113,7 +128,9 @@ export function AdminSystem({ session, onNavigate }: { session: Session; onNavig
                 ) : onNavigate && alert.page !== "system" ? (
                   <>
                     {alert.action?.kind === "test-profile" ? (
-                      <Button size="sm" loading={retesting === alert.action.profileId} onClick={() => void retest(alert.action!.profileId)}>重新测试</Button>
+                      <Button size="sm" loading={retesting === alert.action.profileId} onClick={() => void retest((alert.action as { profileId: string }).profileId)}>重新测试</Button>
+                    ) : alert.action?.kind === "retry-assessments" ? (
+                      <Button size="sm" loading={rescoring} onClick={() => void rescore()}>重新评分</Button>
                     ) : null}
                     <Button size="sm" variant={alert.action ? "ghost" : undefined} onClick={() => { openProvidersTab(alert.tab); onNavigate(alert.page); }}>去处理</Button>
                   </>
@@ -160,7 +177,7 @@ interface AcceptanceReport {
     recentFailures: Array<{ at: string; model: string; outcome: string }>;
   };
   voice: Record<string, { total: number; avgMs: number; maxMs: number; within5sRate: number | null }>;
-  run?: { running: boolean; done: number; total: number } | null;
+  run?: { running: boolean; done: number; total: number; interrupted?: boolean } | null;
 }
 
 /** 参数 2.1.3 / 2.1.4 的性能红线：进度条 + 要求线 */
@@ -215,6 +232,7 @@ function AcceptanceSection({ session }: { session: Session }) {
       actions={
         <>
           <Button size="sm" variant="ghost" icon={Download} onClick={() => void downloadWithAuth(session, "/v1/admin/acceptance.csv", `验收明细-${new Date().toISOString().slice(0, 10)}.csv`).catch((cause) => toast.error(errorText(cause)))}>导出明细</Button>
+          {report?.run?.interrupted ? <Tag tone="warn">上次中断 {report.run.done}/{report.run.total}</Tag> : null}
           {report?.run?.running ? <Tag tone="accent">验收中 {report.run.done}/{report.run.total}</Tag> : <Button size="sm" icon={Play} onClick={() => void run()}>运行 100 次验收</Button>}
         </>
       }

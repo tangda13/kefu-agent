@@ -7,7 +7,7 @@ import { once } from "./inflight";
 import { loadBuyerOrders } from "./buyer-orders";
 import { assessConversation } from "./assessment";
 import { generateBuyerReview } from "./review-gen";
-import type { SessionState } from "./director";
+import { updateSessionState, type SessionState } from "./director";
 import { rateService } from "./service-rating";
 import { endFollowUp, followUpActive } from "./tool-followup";
 
@@ -55,7 +55,7 @@ export async function sweepBuyerPatience(db: Db, gateway: LlmGateway, log: LogLi
     const action = patienceAction(waitedMinutes, count, factor);
     if (!action) continue;
     const ok = await once(`nudge:${row.id}`, () =>
-      runNudge(db, gateway, row, state, { baseAt, count, waitedMinutes, leaving: action === "leave" }, log),
+      runNudge(db, gateway, row, { baseAt, count, waitedMinutes, leaving: action === "leave" }, log),
     ).catch((error) => {
       log.error(error, "buyer nudge failed");
       return false;
@@ -69,7 +69,6 @@ async function runNudge(
   db: Db,
   gateway: LlmGateway,
   row: Record<string, any>,
-  state: SessionState,
   step: { baseAt: string; count: number; waitedMinutes: number; leaving: boolean },
   log: LogLike,
 ): Promise<boolean> {
@@ -148,14 +147,15 @@ async function runNudge(
     }
     return true;
   }
-  // 催促：记录进度，满意度下降（第 2 次起情绪转为不满）
-  const satisfaction = Math.max(0, (state.satisfaction ?? 60) - (SATISFACTION_DROP[step.count] ?? 10));
-  const patch: Record<string, unknown> = {
-    nudge: { baseAt: step.baseAt, count: nextCount, lastMessageId: saved.rows[0].id } satisfies NudgeState,
-    satisfaction,
-    satisfactions: [...(state.satisfactions ?? []), satisfaction].slice(-50),
-  };
-  if (nextCount >= 2) patch.emotion = "不满";
-  await db.query("update conversations set state = state || $1::jsonb where id = $2", [JSON.stringify(patch), row.id]);
+  // 催促：记录进度，满意度下降（第 2 次起情绪转为不满）；按最新 state 算，不覆盖观察员刚写的（L2）
+  await updateSessionState(db, row.id, (current) => {
+    const satisfaction = Math.max(0, (current.satisfaction ?? 60) - (SATISFACTION_DROP[step.count] ?? 10));
+    return {
+      nudge: { baseAt: step.baseAt, count: nextCount, lastMessageId: saved.rows[0].id } satisfies NudgeState,
+      satisfaction,
+      satisfactions: [...(current.satisfactions ?? []), satisfaction].slice(-50),
+      ...(nextCount >= 2 ? { emotion: "不满" } : {}),
+    };
+  });
   return true;
 }

@@ -284,6 +284,25 @@ describe("模型网关：路由、备用切换、计量、结构化输出", () =
     expect(usage.some((row) => row[10] === true)).toBe(true);
   });
 
+  it("L3：熔断按档案 + 用途分开计，评分连续出错不会把买家对话也切到备用；重新测试通过清掉所有用途的熔断", async () => {
+    behaviors.set("/a", [{ kind: "status", code: 500, body: "upstream down" }]);
+    behaviors.set("/b", [{ kind: "sse", chunks: ["fallback ok"] }]);
+    const route = { profileId: "1", fallbackProfileId: "2", temperature: 0.5, maxTokens: 400 };
+    const { db } = fakeDb([profileRow("1", "/a", { is_default: true }), profileRow("2", "/b")], { routes: { dialogue: route, assessment: route } });
+    const gateway = new LlmGateway(db, sealer, log);
+    await gateway.reload();
+    const primaryHits = () => captured.filter((item) => item.route === "/a").length;
+    for (let i = 0; i < 4; i += 1) await gateway.complete("assessment", [{ role: "user", content: "x" }]);
+    // 评分：前 3 次先打主档案，第 4 次已熔断直接走备用
+    expect(primaryHits()).toBe(3);
+    // 买家对话没有受牵连，照样先打主档案
+    await gateway.complete("dialogue", [{ role: "user", content: "hi" }]);
+    expect(primaryHits()).toBe(4);
+    gateway.markHealthy("1");
+    await gateway.complete("assessment", [{ role: "user", content: "x" }]);
+    expect(primaryHits()).toBe(5);
+  });
+
   it("结构化输出：不合格时带着错误重试一次，第二次合格即返回", async () => {
     behaviors.set("/a", [
       { kind: "sse", chunks: ["Sure! here you go"] },

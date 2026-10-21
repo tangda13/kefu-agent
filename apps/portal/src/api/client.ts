@@ -1293,8 +1293,8 @@ export interface AdminAlert {
   page: "providers" | "backup" | "system";
   /** “AI 与语音服务”里要打开的页签 */
   tab?: "models" | "voice" | "usage";
-  /** 告警里能直接做的事：重新测试出错的模型（通过后提醒自动消失） */
-  action?: { kind: "test-profile"; profileId: string };
+  /** 告警里能直接做的事：重新测试出错的模型（通过后提醒自动消失）；评分失败的接待重新评分 */
+  action?: { kind: "test-profile"; profileId: string } | { kind: "retry-assessments" };
 }
 
 export interface AdminSystemOverview {

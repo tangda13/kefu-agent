@@ -2,6 +2,7 @@ import { AI_ASSESSMENT_DIMENSIONS, ASSESSMENT_DIMENSIONS, type BusinessStage, ty
 import { computeResponsiveness, forbiddenTerms as builtinForbiddenTerms } from "@cecs/domain";
 import type { Db } from "./db";
 import type { LlmGateway } from "./llm/gateway";
+import { once } from "./inflight";
 import type { SessionState } from "./director";
 import {
   ASSESSMENT_CHUNK_SIZE,
@@ -56,13 +57,30 @@ async function condenseTranscript(gateway: LlmGateway, transcript: string, conve
   return { text: `${summaries.join("\n")}\n【最后一段原文】\n${tail}`, summarized: true };
 }
 
-/** 会话关闭后异步执行自动评分（失败不影响关闭流程）：七项由模型打分，消息响应时效由系统计算（D-46） */
-export async function assessConversation(
-  db: Db,
-  gateway: LlmGateway,
-  conversationId: string,
-): Promise<void> {
-  if (!gateway.isConfigured("assessment")) return;
+/** 评分失败后在进程内再试的等待时间（L1）；还不行留给定时补漏（lifecycle.sweepBackgroundJobs） */
+const RETRY_DELAYS_MS = process.env.NODE_ENV === "test" ? [0, 0] : [5_000, 20_000];
+
+/**
+ * 会话关闭后异步执行自动评分（失败不影响关闭流程）：七项由模型打分，消息响应时效由系统计算（D-46）。
+ * 同一会话同时只跑一次（关闭和补漏撞上时等前一个）；每跑一次 assess_attempts + 1，模型出错退避重试 2 次。
+ */
+export function assessConversation(db: Db, gateway: LlmGateway, conversationId: string): Promise<void> {
+  if (!gateway.isConfigured("assessment")) return Promise.resolve();
+  return once(`assess:${conversationId}`, async () => {
+    await db.query("update conversations set assess_attempts = assess_attempts + 1 where id = $1", [conversationId]);
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await assessOnce(db, gateway, conversationId);
+        return;
+      } catch (error) {
+        if (attempt >= RETRY_DELAYS_MS.length) throw error;
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+      }
+    }
+  });
+}
+
+async function assessOnce(db: Db, gateway: LlmGateway, conversationId: string): Promise<void> {
   const existing = await db.query(
     "select 1 from assessments where conversation_id = $1",
     [conversationId],

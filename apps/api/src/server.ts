@@ -171,6 +171,26 @@ export async function buildServer(options: BuildServerOptions = {}) {
       sweepBuyerPatience(db, gateway, app.log).catch((error) => app.log.error(error, "buyer patience sweep failed"));
     }, 30 * 1000);
     app.addHook("onClose", async () => clearInterval(patience));
+    // L1 后台任务补漏：启动 30 秒后先补一次（接上重启前丢掉的评分、买家留评），之后每 3 分钟一次，上一轮没跑完就跳过
+    const { sweepBackgroundJobs } = await import("./lifecycle");
+    let sweeping = false;
+    const backfill = () => {
+      if (sweeping) return;
+      sweeping = true;
+      sweepBackgroundJobs(db, gateway, app.log)
+        .then((done) => { if (done.assessed || done.reviewed) app.log.info(done, "background jobs backfilled"); })
+        .catch((error) => app.log.error(error, "background backfill failed"))
+        .finally(() => { sweeping = false; });
+    };
+    const firstBackfill = setTimeout(backfill, 30 * 1000);
+    const backfiller = setInterval(backfill, 3 * 60 * 1000);
+    app.addHook("onClose", async () => {
+      clearTimeout(firstBackfill);
+      clearInterval(backfiller);
+    });
+    // L4：上次没跑完的验收测试标成“已中断”
+    const { closeInterruptedAcceptance } = await import("./acceptance");
+    if (await closeInterruptedAcceptance(db)) app.log.warn("acceptance run was interrupted by restart");
   }
 
   // 定时备份调度：每 10 分钟检查一次（到达设定小时且当日未备份则执行）

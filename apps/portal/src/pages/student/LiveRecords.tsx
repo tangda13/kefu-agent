@@ -50,8 +50,20 @@ interface AssessmentRecord {
   createdAt: string;
 }
 
+/** 已结束、还没出分的任务接待（L1）：failed = 自动评分试满次数仍失败，等管理员重新评分 */
+interface PendingRecord {
+  conversationId: string;
+  taskName: string | null;
+  scenarioName: string;
+  buyerName: string;
+  channel: "chat" | "mail";
+  closedAt: string;
+  failed: boolean;
+}
+
 interface AssessmentData {
   records: AssessmentRecord[];
+  pending: PendingRecord[];
   radar: Record<string, number>;
   average: number | null;
 }
@@ -374,6 +386,16 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
   }, [active]);
 
   const records = data?.records ?? [];
+  const pending = data?.pending ?? [];
+  // 有接待在评分：每 10 秒取一次，出分后自动换成成绩
+  const scoringNow = pending.some((item) => !item.failed);
+  useEffect(() => {
+    if (!scoringNow) return;
+    const timer = window.setInterval(() => {
+      apiGet<AssessmentData>("/v1/student/assessments", session).then(setData).catch(() => undefined);
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [scoringNow, session]);
   const radar = data?.radar ?? {};
   /* 计分口径：自由练习只在记录里展示，走势和能力雷达只统计任务接待 */
   const scoredRecords = useMemo(() => records.filter((record) => !record.practice), [records]);
@@ -412,6 +434,7 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
   const visibleRecords = records.filter((record) =>
     filter === "task" ? !record.practice : filter === "practice" ? !!record.practice : filter === "teacher" ? !!record.teacherComment : true,
   );
+  const visiblePending = filter === "all" || filter === "task" ? pending : [];
 
   const abilityCount = scoped.length
     ? `${scoped.length} 次接待的平均`
@@ -507,7 +530,7 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
             <div className="sl-hint is-low"><ChartLine size={18} aria-hidden="true" />每次任务接待出分后连成线</div>
           ) : null}
         </div>
-        {records.length === 0 ? (
+        {records.length === 0 && pending.length === 0 ? (
           <div className="sl-empty-line">
             <div>
               <b>还没有记录</b>
@@ -515,10 +538,20 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
             </div>
             {onOpenHall ? <Button className="sl-empty-act" onClick={onOpenHall}>去任务大厅</Button> : null}
           </div>
-        ) : visibleRecords.length === 0 ? (
+        ) : visibleRecords.length === 0 && visiblePending.length === 0 ? (
           <p className="sl-quiet">这一类下面还没有记录。</p>
         ) : (
-          visibleRecords.map((record) => (
+          <>
+          {visiblePending.map((item) => (
+            <div key={item.conversationId} className="sl-rr is-wait">
+              <span className="sl-sc is-wait">{item.failed ? "暂未评分" : "评分中"}</span>
+              <div className="sl-rr-name">
+                <b>{item.taskName ?? "自由练习"}{item.channel === "mail" ? <span className="sl-tag is-mail">邮件</span> : null}</b>
+                <div className="sl-rr-m2">{item.scenarioName} · {item.channel === "mail" ? `发给 ${item.buyerName}` : item.buyerName} · {rowTime(item.closedAt)}</div>
+              </div>
+            </div>
+          ))}
+          {visibleRecords.map((record) => (
             <div key={record.id} data-task={record.taskId ?? undefined}
               className={["sl-rr", record.practice ? "is-practice" : "", flashTask && record.taskId === flashTask ? "is-flash" : ""].filter(Boolean).join(" ")}
               onClick={() => setActive(record)}>
@@ -545,7 +578,8 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
               </div>
               <Button size="sm" onClick={(event) => { event.stopPropagation(); setActive(record); }}>复盘</Button>
             </div>
-          ))
+          ))}
+          </>
         )}
       </Board>
 

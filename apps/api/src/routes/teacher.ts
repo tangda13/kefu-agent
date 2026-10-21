@@ -6,6 +6,7 @@ import type { AuthGuard } from "../auth-context";
 import { writeAudit } from "../auth-context";
 import { weightedTotal } from "../assessment";
 import { loadReceptionStats } from "../reception-stats";
+import { MAX_ASSESS_ATTEMPTS, SCORE_DUE_SQL } from "../lifecycle";
 
 /** 实时监控：买家满意度低于这条线就算需介入（D-64） */
 const UNHAPPY_SATISFACTION = 40;
@@ -509,6 +510,7 @@ export function registerTeacherRoutes(
          where c.status = 'closed' and c.task_id is not null
            and not exists (select 1 from assessments a where a.conversation_id = c.id)
            and c.closed_reason in ('abandoned', 'task_closed')
+           and not (${SCORE_DUE_SQL})
            and c.student_id in (${scopedStudentsSql(isAdmin)})
          order by closed_at desc limit 100`,
         isAdmin ? [] : [user.sub],
@@ -521,6 +523,37 @@ export function registerTeacherRoutes(
         reason: row.closed_reason,
         turns: Number(row.turns),
         closedAt: row.closed_at,
+      }));
+    },
+  );
+
+  // L1：已结束、还没出分的任务接待（7 天内）：回放列表顶上显示“评分中”，试满次数仍失败的显示“暂未评分”
+  app.get(
+    "/v1/teacher/pending-scores",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request) => {
+      const user = request.user!;
+      const isAdmin = user.role === "admin";
+      const result = await db.query(
+        `select c.id, c.persona, c.channel, c.closed_at, c.assess_attempts, u.display_name as student_name, s.name as scenario_name, t.name as task_name
+         from conversations c
+         join users u on u.id = c.student_id
+         left join scenarios s on s.id = c.scenario_id
+         left join tasks t on t.id = c.task_id
+         where ${SCORE_DUE_SQL} and c.closed_at > now() - interval '7 days'
+           and c.student_id in (${scopedStudentsSql(isAdmin)})
+         order by c.closed_at desc limit 100`,
+        isAdmin ? [] : [user.sub],
+      );
+      return result.rows.map((row) => ({
+        conversationId: row.id,
+        studentName: row.student_name,
+        scenarioName: row.scenario_name ?? "通用会话",
+        taskName: row.task_name ?? null,
+        buyerName: (row.persona as { name?: string } | null)?.name ?? "-",
+        channel: (row.channel ?? "chat") as "chat" | "mail",
+        closedAt: row.closed_at,
+        failed: Number(row.assess_attempts) >= MAX_ASSESS_ATTEMPTS,
       }));
     },
   );

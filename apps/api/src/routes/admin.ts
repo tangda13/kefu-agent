@@ -85,6 +85,14 @@ export function registerAdminRoutes(
   // 顶栏常驻提醒（E5）：只返回需要处理的告警，管理端定时拉取
   app.get("/v1/admin/alerts", { preHandler: adminOnly }, async () => collectAlerts(db, voice));
 
+  // L1：自动评分试满次数仍失败的接待，管理员确认模型正常后一键重新评分（后台逐个跑）
+  app.post("/v1/admin/assessments/retry", { preHandler: adminOnly }, async (request) => {
+    const { retryFailedAssessments } = await import("../lifecycle");
+    const count = await retryFailedAssessments(db, gateway, request.log);
+    await writeAudit(db, request.user!.sub, "admin.assessments_retry", undefined, { count });
+    return { count };
+  });
+
   app.get("/v1/admin/providers", { preHandler: adminOnly }, async () => {
     const { profile, usage, quota } = await computeUsage(db, voice);
     return {

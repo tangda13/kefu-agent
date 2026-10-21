@@ -1166,9 +1166,193 @@ describe("实训对话走模型网关（J1/J4/J5/J6 + B2）", () => {
     const metric = (await db.query("select provider, model, outcome, first_char_at >= received_at as ordered from conversation_metrics where conversation_id = $1", [conversationId])).rows;
     expect(metric).toHaveLength(3);
     expect(metric.every((row) => row.provider === "对话测试" && row.model === "fake-model" && row.outcome === "success" && row.ordered)).toBe(true);
-    await waitFor(async () => (await db.query("select state from conversations where id = $1", [conversationId])).rows[0].state.studentTurns === 2);
+    // 学生发言计数在评估前就原子加 1（L2），等观察员第二次写完再数调用
+    await waitFor(async () => (await db.query("select state from conversations where id = $1", [conversationId])).rows[0].state.turnCount === 2);
+    expect((await db.query("select state from conversations where id = $1", [conversationId])).rows[0].state.studentTurns).toBe(2);
     const usage = (await db.query("select purpose, count(*)::int as n from llm_usage where conversation_id = $1 group by purpose order by purpose", [conversationId])).rows;
     expect(usage).toEqual([{ purpose: "dialogue", n: 3 }, { purpose: "director", n: 2 }]);
+  });
+});
+
+describe("后台任务可靠性（L1 / L2 / L4）", () => {
+  // 假网关：按用途返回结果，记调用次数；不碰真实模型
+  const info = { profileId: null, profileName: "假模型", model: "fake", fallback: false };
+  const scored = {
+    scores: { professionalism: 80, effectiveness: 78, empathy: 76, resolution: 74, knowledge: 72, grammar: 85, compliance: 90 },
+    comment: "整体不错",
+    suggestions: ["先确认订单号"],
+  };
+  function fakeGateway(handler: (purpose: string) => Promise<unknown>) {
+    const calls: string[] = [];
+    const gateway = {
+      isConfigured: () => true,
+      directorEveryNTurns: 1,
+      complete: async (purpose: string) => {
+        calls.push(purpose);
+        return { text: "ok", info };
+      },
+      completeJson: async (purpose: string) => {
+        calls.push(purpose);
+        return { data: await handler(purpose), info };
+      },
+    };
+    return { gateway: gateway as unknown as import("./llm/gateway").LlmGateway, calls };
+  }
+  const quietLog = { error: () => undefined, info: () => undefined, warn: () => undefined };
+  let studentId = "";
+  let taskId = "";
+  let student: Session;
+  let admin: Session;
+
+  beforeAll(async () => {
+    const { hashPassword } = await import("./security");
+    await db.query(
+      `insert into users (username, display_name, role, password_hash, must_change_password)
+       values ('s-bg', '补漏测试学生', 'student', $1, false) on conflict do nothing`,
+      [await hashPassword("Student#Bg01")],
+    );
+    studentId = (await db.query("select id from users where username = 's-bg'")).rows[0].id;
+    taskId = (await db.query("select id from tasks order by created_at limit 1")).rows[0].id;
+    student = await login("s-bg", "Student#Bg01");
+    admin = await login("admin", "Admin#Prod9");
+  });
+
+  /** 一次已经结束 10 分钟的任务接待：学生说了 2 轮 */
+  async function closedTaskConversation(reason = "student_ended", state: Record<string, unknown> = {}): Promise<string> {
+    const created = await db.query(
+      `insert into conversations (student_id, task_id, scenario_id, persona, state, status, closed_reason, closed_at, created_at)
+       values ($1, $2, 'AFTER-001', '{"name":"Emma"}', $3, 'closed', $4, now() - interval '10 minutes', now() - interval '20 minutes') returning id`,
+      [studentId, taskId, JSON.stringify(state), reason],
+    );
+    const id = created.rows[0].id as string;
+    const lines = [["buyer", "My mat arrived torn."], ["student", "Sorry! Could you share a photo?"], ["buyer", "Sure, here."], ["student", "We will send a replacement."]];
+    for (const [index, [sender, content]] of lines.entries()) {
+      await db.query(
+        `insert into conversation_messages (conversation_id, sender, content, created_at)
+         values ($1, $2, $3, now() - interval '19 minutes' + make_interval(secs => $4))`,
+        [id, sender, content, index * 30],
+      );
+    }
+    return id;
+  }
+  const attempts = async (id: string) => Number((await db.query("select assess_attempts from conversations where id = $1", [id])).rows[0].assess_attempts);
+  const hasScore = async (id: string) => Boolean((await db.query("select 1 from assessments where conversation_id = $1", [id])).rowCount);
+
+  it("L1：评分出错退避重试；补漏捡回没出分的接待，试满 3 次进告警，管理员一键重新评分", async () => {
+    const { assessConversation } = await import("./assessment");
+    const { sweepBackgroundJobs } = await import("./lifecycle");
+    const id = await closedTaskConversation();
+    let fail = true;
+    const { gateway, calls } = fakeGateway(async () => {
+      if (fail) throw new Error("upstream down");
+      return scored;
+    });
+
+    // 一次评分 = 首次 + 进程内重试 2 次
+    await expect(assessConversation(db, gateway, id)).rejects.toThrow("upstream down");
+    expect(calls).toHaveLength(3);
+    expect(await attempts(id)).toBe(1);
+
+    // 没出分时学生、教师看到“评分中”
+    const records = (await app.inject({ method: "GET", url: "/v1/student/assessments", headers: auth(student) })).json();
+    expect(records.pending).toEqual([expect.objectContaining({ conversationId: id, buyerName: "Emma", failed: false })]);
+    const teacherPending = (await app.inject({ method: "GET", url: "/v1/teacher/pending-scores", headers: auth(admin) })).json();
+    expect(teacherPending.find((row: { conversationId: string }) => row.conversationId === id)).toMatchObject({ failed: false });
+
+    // 补漏再跑两轮仍失败；试满 3 次后不再自动补
+    await sweepBackgroundJobs(db, gateway, quietLog);
+    await sweepBackgroundJobs(db, gateway, quietLog);
+    expect(await attempts(id)).toBe(3);
+    calls.length = 0;
+    await sweepBackgroundJobs(db, gateway, quietLog);
+    expect(calls).toHaveLength(0);
+
+    // 进系统总览告警，带“重新评分”；学生那边显示暂未评分
+    const alerts = (await app.inject({ method: "GET", url: "/v1/admin/alerts", headers: auth(admin) })).json() as Array<{ title: string; action?: { kind: string } }>;
+    expect(alerts.find((item) => item.action?.kind === "retry-assessments")?.title).toBe("1 次接待自动评分失败");
+    const failedRecords = (await app.inject({ method: "GET", url: "/v1/student/assessments", headers: auth(student) })).json();
+    expect(failedRecords.pending[0]).toMatchObject({ conversationId: id, failed: true });
+
+    // 管理员重新评分：次数清零、告警消失
+    const retried = await app.inject({ method: "POST", url: "/v1/admin/assessments/retry", headers: auth(admin) });
+    expect(retried.json()).toEqual({ count: 1 });
+    const afterRetry = (await app.inject({ method: "GET", url: "/v1/admin/alerts", headers: auth(admin) })).json() as Array<{ action?: { kind: string } }>;
+    expect(afterRetry.some((item) => item.action?.kind === "retry-assessments")).toBe(false);
+
+    // 模型恢复后评分写入（后台那次重评用的是测试服务器的网关，可能还在跑，等它结束再评）
+    fail = false;
+    for (let i = 0; i < 40 && !(await hasScore(id)); i += 1) {
+      await assessConversation(db, gateway, id).catch(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    }
+    expect(await hasScore(id)).toBe(true);
+    const done = (await app.inject({ method: "GET", url: "/v1/student/assessments", headers: auth(student) })).json();
+    expect(done.pending).toEqual([]);
+    expect(done.records.find((row: { conversationId: string }) => row.conversationId === id)).toBeDefined();
+  });
+
+  it("L1：买家留评补漏——学生结束后没写成的评价补上，跑完记下不再重复", async () => {
+    const { sweepBackgroundJobs } = await import("./lifecycle");
+    const id = await closedTaskConversation("buyer_left", { satisfaction: 90 });
+    await db.query(
+      `insert into orders (conversation_id, student_id, order_no, status, product_name, total_amount, payload, is_primary)
+       values ($1, $2, 'PO-BG-1', 'delivered', 'Yoga Mat', 29.9, '{"status":"delivered","productName":"Yoga Mat"}', true)`,
+      [id, studentId],
+    );
+    const { gateway, calls } = fakeGateway(async (purpose) => (purpose === "assist" ? { content: "Great service, fast replacement!" } : scored));
+    await sweepBackgroundJobs(db, gateway, quietLog);
+    const order = (await db.query("select payload from orders where conversation_id = $1", [id])).rows[0].payload;
+    expect(order.review).toMatchObject({ rating: 5, content: "Great service, fast replacement!" });
+    expect((await db.query("select review_done_at from conversations where id = $1", [id])).rows[0].review_done_at).not.toBeNull();
+    expect(await hasScore(id)).toBe(true);
+
+    calls.length = 0;
+    await sweepBackgroundJobs(db, gateway, quietLog);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("L2：同一会话的观察员串行，学生发言计数不丢；评估期间催促写进去的满意度不被覆盖", async () => {
+    const { runDirector, updateSessionState } = await import("./director");
+    const created = await db.query(
+      `insert into conversations (student_id, scenario_id, persona, state, status)
+       values ($1, 'AFTER-001', '{"name":"Emma"}', '{"satisfactions":[60]}', 'active') returning id`,
+      [studentId],
+    );
+    const id = created.rows[0].id as string;
+    await db.query("insert into conversation_messages (conversation_id, sender, content) values ($1, 'buyer', 'Hi'), ($1, 'student', 'Hello!')", [id]);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let running = 0;
+    let maxRunning = 0;
+    const { gateway, calls } = fakeGateway(async () => {
+      running += 1;
+      maxRunning = Math.max(maxRunning, running);
+      await gate;
+      running -= 1;
+      return { turnScore: 80, satisfaction: 75, emotion: "平静", stage: "方案协商" };
+    });
+
+    // 学生连发两条：第二轮到的时候第一次还没评完
+    const first = runDirector(db, gateway, id);
+    const second = runDirector(db, gateway, id);
+    for (let i = 0; i < 40 && calls.length === 0; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+    // 评估期间催促写了一个满意度点
+    await updateSessionState(db, id, (current) => ({ satisfactions: [...(current.satisfactions ?? []), 40] }));
+    release();
+    await Promise.all([first, second]);
+
+    expect(calls).toEqual(["director", "director"]);
+    expect(maxRunning).toBe(1);
+    const state = (await db.query("select state from conversations where id = $1", [id])).rows[0].state;
+    expect(state).toMatchObject({ studentTurns: 2, turnCount: 2, satisfaction: 75, satisfactions: [60, 40, 75, 75] });
+  });
+
+  it("L4：API 重启时停在“运行中”的验收标成已中断，可以重新运行", async () => {
+    const { closeInterruptedAcceptance, getAcceptanceRunState } = await import("./acceptance");
+    const { setSetting } = await import("./settings");
+    await setSetting(db, "acceptance_run", { running: true, done: 37, total: 100, startedAt: new Date().toISOString() });
+    expect(await closeInterruptedAcceptance(db)).toBe(true);
+    expect(await getAcceptanceRunState(db)).toMatchObject({ running: false, interrupted: true, done: 37, total: 100 });
+    expect(await closeInterruptedAcceptance(db)).toBe(false);
   });
 });
 

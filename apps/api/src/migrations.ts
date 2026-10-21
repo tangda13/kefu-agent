@@ -688,4 +688,14 @@ on conflict (id) do nothing;
 create unique index if not exists users_username_lower_key on users (lower(username));
 `,
   },
+  {
+    /* L1 后台任务补漏：assess_attempts = 自动评分跑过几次（每次含进程内重试），定时补漏只补不到 3 次的；
+       review_done_at = 买家留评跑完（写了评价或判断不用写）。老会话一律算跑完，补漏只管上线之后结束的 */
+    id: "042_background_retry",
+    sql: `
+alter table conversations add column if not exists assess_attempts smallint not null default 0;
+alter table conversations add column if not exists review_done_at timestamptz;
+update conversations set review_done_at = coalesce(closed_at, now()) where status = 'closed' and review_done_at is null;
+`,
+  },
 ];

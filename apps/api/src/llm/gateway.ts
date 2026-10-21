@@ -49,6 +49,7 @@ async function* streamWithTemperatureFallback(
 /** 主档案连续失败多少次后熔断、熔断多久（期间直接走备用档案） */
 const FAILOVER_THRESHOLD = 3;
 const FAILOVER_COOLDOWN_MS = 5 * 60_000;
+const healthKey = (profileId: string, purpose: LlmPurpose) => `${profileId}:${purpose}`;
 
 export interface CallOptions {
   signal?: AbortSignal;
@@ -145,6 +146,7 @@ export class LlmGateway {
   private profiles = new Map<string, ResolvedProfile>();
   private defaultId: string | null = null;
   private routing: LlmRoutingSettings = defaultRouting();
+  /** 熔断按“档案 + 用途”分开计（L3）：评分连续出错不会把买家对话也切到备用。键见 healthKey */
   private health = new Map<string, { failures: number; openUntil: number }>();
   /** 只接受默认 temperature 的档案（键：档案 id + 模型名，换了模型重新判断） */
   private defaultTemperatureOnly = new Set<string>();
@@ -201,7 +203,7 @@ export class LlmGateway {
     if (primary) list.push({ ...primary, isFallback: false });
     if (fallback && fallback.id !== primary?.id) list.push({ ...fallback, isFallback: true });
     // 主档案熔断中：备用优先
-    if (list.length === 2 && (this.health.get(list[0]!.id)?.openUntil ?? 0) > Date.now()) list.reverse();
+    if (list.length === 2 && (this.health.get(healthKey(list[0]!.id, purpose))?.openUntil ?? 0) > Date.now()) list.reverse();
     return list;
   }
 
@@ -255,7 +257,7 @@ export class LlmGateway {
           }
         }
         options.onInfo?.(infoOf(profile));
-        this.markSuccess(profile.id);
+        this.markSuccess(profile.id, purpose);
         await this.recordUsage(profile, purpose, "success", usage, ttft, startedAt, options.conversationId);
         return;
       } catch (error) {
@@ -300,7 +302,7 @@ export class LlmGateway {
           }
         }
         if (!text.trim()) throw new LlmCallError("LLM_EMPTY_COMPLETION");
-        this.markSuccess(profile.id);
+        this.markSuccess(profile.id, purpose);
         await this.recordUsage(profile, purpose, "success", usage, ttft, startedAt, options.conversationId);
         return { text: text.trim(), info: infoOf(profile) };
       } catch (error) {
@@ -358,17 +360,18 @@ export class LlmGateway {
     throw new LlmParseError(`LLM_OUTPUT_INVALID: ${lastProblem}`, lastRaw);
   }
 
-  private markSuccess(profileId: string): void {
-    this.health.delete(profileId);
+  private markSuccess(profileId: string, purpose: LlmPurpose): void {
+    this.health.delete(healthKey(profileId, purpose));
   }
 
-  /** 管理员重新测试通过：清掉这个档案的失败计数和熔断，下一次调用直接回到主档案 */
+  /** 管理员重新测试通过：清掉这个档案在各用途上的失败计数和熔断，下一次调用直接回到主档案 */
   markHealthy(profileId: string): void {
-    this.health.delete(profileId);
+    for (const purpose of LLM_PURPOSES) this.health.delete(healthKey(profileId, purpose));
   }
 
   private async markFailure(profile: ResolvedProfile, purpose: LlmPurpose): Promise<void> {
-    const state = this.health.get(profile.id) ?? { failures: 0, openUntil: 0 };
+    const key = healthKey(profile.id, purpose);
+    const state = this.health.get(key) ?? { failures: 0, openUntil: 0 };
     state.failures += 1;
     if (state.failures >= FAILOVER_THRESHOLD && state.openUntil < Date.now()) {
       state.openUntil = Date.now() + FAILOVER_COOLDOWN_MS;
@@ -381,7 +384,7 @@ export class LlmGateway {
         cooldownMinutes: FAILOVER_COOLDOWN_MS / 60_000,
       }).catch((error) => this.log.error(error, "write failover audit failed"));
     }
-    this.health.set(profile.id, state);
+    this.health.set(key, state);
   }
 
   private async recordUsage(

@@ -785,6 +785,8 @@
 .rv-score.is-bad b { color: var(--c-danger); }
 .rv-score.is-good { background: var(--c-ok-wash); }
 .rv-score.is-good b { color: var(--c-ok); }
+.rv-score.is-wait small { margin-top: 0; font-size: var(--fs-caption); font-weight: 500; }
+.rv-row.is-wait { cursor: default; }
 .rv-main { display: grid; gap: 4px; min-width: 0; }
 .rv-who { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rv-who > span:last-child { overflow: hidden; font-size: var(--fs-small); color: var(--c-ink-3); white-space: nowrap; text-overflow: ellipsis; }

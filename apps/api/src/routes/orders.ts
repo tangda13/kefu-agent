@@ -7,6 +7,7 @@ import type { LlmGateway } from "../llm/gateway";
 import { buildReviewReplyMessages, buildSuggestionMessages, reviewReplySchema, suggestionsSchema } from "../prompts/assist";
 import { loadStoreProfile } from "./store";
 import { loadReceptionStats } from "../reception-stats";
+import { MAX_ASSESS_ATTEMPTS, SCORE_DUE_SQL } from "../lifecycle";
 
 const SUGGESTION_TYPES = {
   payment_reminder: "礼貌催付：提醒买家完成付款，说明库存保留时间，不施压",
@@ -135,7 +136,24 @@ export function registerOrderRoutes(
           .filter((value): value is number => value != null && Number.isFinite(Number(value)));
         if (values.length) radar[dim.id] = Math.round(values.reduce((sum, value) => sum + Number(value), 0) / values.length);
       }
-      return { records, radar, average: scored.length ? Math.round(scored.reduce((s, r) => s + r.total, 0) / scored.length) : null };
+      /* L1：已结束、还没出分的任务接待（7 天内），列表里显示“评分中”，试满次数仍失败的显示“暂未评分” */
+      const due = await db.query(
+        `select c.id, c.persona, c.channel, c.closed_at, c.assess_attempts, s.name as scenario_name, t.name as task_name
+         from conversations c left join scenarios s on s.id = c.scenario_id left join tasks t on t.id = c.task_id
+         where c.student_id = $1 and ${SCORE_DUE_SQL} and c.closed_at > now() - interval '7 days'
+         order by c.closed_at desc`,
+        [user.sub],
+      );
+      const pending = due.rows.map((row) => ({
+        conversationId: row.id as string,
+        taskName: row.task_name ?? null,
+        scenarioName: row.scenario_name ?? "通用会话",
+        buyerName: (row.persona as { name?: string } | null)?.name ?? "-",
+        channel: (row.channel ?? "chat") as "chat" | "mail",
+        closedAt: row.closed_at,
+        failed: Number(row.assess_attempts) >= MAX_ASSESS_ATTEMPTS,
+      }));
+      return { records, pending, radar, average: scored.length ? Math.round(scored.reduce((s, r) => s + r.total, 0) / scored.length) : null };
     },
   );
 

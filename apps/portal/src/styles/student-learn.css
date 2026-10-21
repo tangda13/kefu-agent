@@ -21,6 +21,9 @@
 .sl-sc.is-lo { background: var(--c-danger-wash); color: var(--c-danger); }
 .sl-sc.is-mid { background: var(--c-surface-2); color: var(--c-ink); box-shadow: inset 0 0 0 1px var(--c-line); }
 .sl-sc.is-practice { background: var(--c-surface-2); color: var(--c-ink-3); box-shadow: inset 0 0 0 1px var(--c-line); font-size: var(--fs-small); font-weight: 600; }
+.sl-sc.is-wait { background: var(--c-surface-2); color: var(--c-ink-3); font-size: var(--fs-caption); font-weight: 500; }
+.sl-rr.is-wait { cursor: default; }
+.sl-rr.is-wait:hover { background: transparent; }
 
 /* 任务要求抽屉 */
 .sl-detail { display: grid; gap: 14px; margin: 0; }

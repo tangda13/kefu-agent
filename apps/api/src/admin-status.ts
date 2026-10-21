@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Db } from "./db";
 import type { LlmGateway } from "./llm/gateway";
 import { getSetting, type QuotaSettings } from "./settings";
+import { SCORE_FAILED_SQL } from "./lifecycle";
 import type { VoiceService } from "./voice/service";
 
 /* 管理端系统总览（E4）与额度提醒（E5）：服务状态实时检测、告警逐条列出，系统总览和顶栏提醒共用。 */
@@ -44,8 +45,8 @@ export interface AlertItem {
   page: "providers" | "backup" | "system";
   /** “AI 与语音服务”里要打开的页签 */
   tab?: "models" | "voice" | "usage";
-  /** 告警里能直接做的事：重新测试出错的模型（通过后提醒自动消失） */
-  action?: { kind: "test-profile"; profileId: string };
+  /** 告警里能直接做的事：重新测试出错的模型（通过后提醒自动消失）；评分失败的接待重新评分（L1） */
+  action?: { kind: "test-profile"; profileId: string } | { kind: "retry-assessments" };
 }
 
 /**
@@ -182,6 +183,18 @@ export async function collectAlerts(db: Db, voice: VoiceService): Promise<AlertI
       page: "providers",
       tab: "models",
       action: { kind: "test-profile", profileId: String(row.profile_id) },
+    });
+  }
+  // L1：自动评分试满次数仍失败的任务接待（学生那边一直显示“暂未评分”）
+  const scoreFailed = Number((await db.query(`select count(*) as n from conversations c where ${SCORE_FAILED_SQL}`)).rows[0].n);
+  if (scoreFailed > 0) {
+    alerts.push({
+      level: "warn",
+      title: `${scoreFailed} 次接待自动评分失败`,
+      detail: "评分模型多次出错，这几次任务接待还没有成绩。确认「AI 与语音服务」里评分用的模型正常后，点“重新评分”。",
+      page: "providers",
+      tab: "models",
+      action: { kind: "retry-assessments" },
     });
   }
   const ttsFailed = Number(f.tts_failed);

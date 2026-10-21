@@ -12,6 +12,8 @@ export interface AcceptanceRunState {
   startedAt?: string;
   finishedAt?: string;
   error?: string;
+  /** API 重启时还没跑完（L4）：停在 done/total，可以重新运行 */
+  interrupted?: boolean;
 }
 
 const TTFT_MS = "extract(epoch from (first_char_at - received_at)) * 1000";
@@ -219,4 +221,12 @@ export async function runAcceptanceTest(db: Db, gateway: LlmGateway, samples: nu
 
 export async function getAcceptanceRunState(db: Db): Promise<AcceptanceRunState | null> {
   return getSetting<AcceptanceRunState>(db, "acceptance_run");
+}
+
+/** API 启动时调用（L4）：上次没跑完的验收进程已经没了，标成“已中断”，否则会一直显示运行中、也不能重新运行 */
+export async function closeInterruptedAcceptance(db: Db): Promise<boolean> {
+  const state = await getAcceptanceRunState(db);
+  if (!state?.running) return false;
+  await setSetting(db, "acceptance_run", { ...state, running: false, interrupted: true, finishedAt: new Date().toISOString() });
+  return true;
 }

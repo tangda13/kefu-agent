@@ -528,12 +528,16 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
 // ---------- 回放与评分 ----------
 
 interface UnfinishedItem { conversationId: string; studentName: string; scenarioName: string; taskName: string | null; reason: string; turns: number; closedAt: string }
+/** 已结束、还没出分的任务接待（L1）：failed = 自动评分试满次数仍失败，等管理员重新评分 */
+interface ScoringItem { conversationId: string; studentName: string; scenarioName: string; taskName: string | null; buyerName: string; closedAt: string; failed: boolean }
 
 function Replay({ session, rows, reload }: { session: Session; rows: TeacherAssessment[]; reload: () => Promise<unknown> }) {
   // D-36：中途放弃、学生不足 3 轮的接待不评分，收在列表底部
   const [unfinished, setUnfinished] = useState<UnfinishedItem[]>([]);
   const [showUnfinished, setShowUnfinished] = useState(false);
   useEffect(() => { apiGet<UnfinishedItem[]>("/v1/teacher/unfinished", session).then(setUnfinished).catch(() => undefined); }, [session, rows]);
+  const [scoring, setScoring] = useState<ScoringItem[]>([]);
+  useEffect(() => { apiGet<ScoringItem[]>("/v1/teacher/pending-scores", session).then(setScoring).catch(() => undefined); }, [session, rows]);
   const [keyword, setKeyword] = useState(takeReplaySearch);
   const [filter, setFilter] = useState<"pending" | "low" | "reviewed" | "all">(() => (keyword ? "all" : "pending"));
   const [reviewing, setReviewing] = useState<TeacherAssessment | null>(null);
@@ -548,6 +552,10 @@ function Replay({ session, rows, reload }: { session: Session; rows: TeacherAsse
     });
   }, [rows, keyword, filter]);
   const reviewedCount = rows.filter((row) => row.reviewedAt).length;
+  // 还在评分的排在最前，只在“待复核”“全部”里出现
+  const scoringVisible = filter === "pending" || filter === "all"
+    ? scoring.filter((item) => !keyword.trim() || `${item.studentName} ${item.scenarioName} ${item.buyerName} ${item.taskName ?? ""}`.toLowerCase().includes(keyword.trim().toLowerCase()))
+    : [];
 
   /* 评分报表导出（D-64，参数“支持人工复核与报表导出”）：按当前筛选导出，单次的“导出回放”照旧 */
   function exportExcel() {
@@ -593,11 +601,22 @@ function Replay({ session, rows, reload }: { session: Session; rows: TeacherAsse
         <SearchBox value={keyword} onChange={setKeyword} placeholder="搜索学生、任务或场景" />
       </Toolbar>
       <Board>
-        {visible.length === 0 ? (
+        {visible.length === 0 && scoringVisible.length === 0 ? (
           <p className="board-quiet">{rows.length === 0 ? "还没有评分。学生结束一次接待后，AI 会自动评分并出现在这里。" : filter === "pending" ? "都复核过了" : "没有符合条件的记录"}</p>
         ) : (
           <>
             <div className="rv-row is-head"><span>总分</span><span>学生 · 评语</span><span>各项能力</span><span>时间</span><span /></div>
+            {scoringVisible.map((item) => (
+              <div key={item.conversationId} className="rv-row is-wait">
+                <span className="rv-score is-wait"><small>{item.failed ? "暂未评分" : "评分中"}</small></span>
+                <span className="rv-main">
+                  <span className="rv-who"><b>{item.studentName}</b><span>{item.taskName ? `${item.taskName} · ` : ""}{item.scenarioName} · 买家 {item.buyerName}</span></span>
+                </span>
+                <span className="rv-dims" />
+                <span className="rv-time">{when(item.closedAt)}</span>
+                <span className="rv-op" />
+              </div>
+            ))}
             {visible.map((row) => {
               const band = row.total < 60 ? "is-bad" : row.total >= 80 ? "is-good" : "";
               return (

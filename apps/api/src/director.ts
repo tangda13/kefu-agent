@@ -56,11 +56,70 @@ export async function directTurn(
 }
 
 /**
+ * 按字段合并写 conversations.state（L2）：在行锁里读最新的 state 再算补丁，观察员、催促各写各的字段，
+ * 走势数组按最新的值追加，谁也不会把别人刚写进去的覆盖掉。remove 是要顺手删掉的旧字段。
+ */
+export async function updateSessionState(
+  db: Db,
+  conversationId: string,
+  build: (current: SessionState) => Record<string, unknown>,
+  remove: readonly string[] = [],
+): Promise<void> {
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    const result = await client.query("select state from conversations where id = $1 for update", [conversationId]);
+    if (result.rowCount) {
+      const patch = build((result.rows[0].state ?? {}) as SessionState);
+      await client.query(
+        "update conversations set state = (coalesce(state, '{}'::jsonb) || $1::jsonb) - $3::text[] where id = $2",
+        [JSON.stringify(patch), conversationId, [...remove]],
+      );
+    }
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** 正在评估的会话 → 评估期间学生又说了话（跑完按最新对话再评一次） */
+const observing = new Map<string, boolean>();
+
+/**
  * 每轮买家回复后异步运行（不阻塞学生）。按管理端设置每 N 轮学生发言运行一次（J6），
  * 可单独指定便宜快速的模型。输出不合格时保留上一轮状态（降级），不影响对话。
+ * 同一会话串行（L2）：上一次还没评完就不再并发，记一笔，评完按最新对话补评一次（中间几轮合并成一次）。
  */
 export async function runDirector(db: Db, gateway: LlmGateway, conversationId: string): Promise<void> {
   if (!gateway.isConfigured("director")) return;
+  // 学生发言计数原子自增：学生回得快、几轮同时到，也不会算少
+  const counted = await db.query<{ turns: number }>(
+    `update conversations
+     set state = coalesce(state, '{}'::jsonb) || jsonb_build_object('studentTurns', coalesce((state->>'studentTurns')::int, 0) + 1)
+     where id = $1 and status = 'active' returning (state->>'studentTurns')::int as turns`,
+    [conversationId],
+  );
+  if (!counted.rowCount) return;
+  const every = gateway.directorEveryNTurns;
+  if (every > 1 && counted.rows[0]!.turns % every !== 0) return;
+  if (observing.has(conversationId)) {
+    observing.set(conversationId, true);
+    return;
+  }
+  try {
+    do {
+      observing.set(conversationId, false);
+      await observe(db, gateway, conversationId);
+    } while (observing.get(conversationId));
+  } finally {
+    observing.delete(conversationId);
+  }
+}
+
+async function observe(db: Db, gateway: LlmGateway, conversationId: string): Promise<void> {
   const conversationResult = await db.query(
     `select c.persona, c.state, s.name as scenario_name, s.objective, s.script
      from conversations c left join scenarios s on s.id = c.scenario_id
@@ -70,15 +129,6 @@ export async function runDirector(db: Db, gateway: LlmGateway, conversationId: s
   const conversation = conversationResult.rows[0];
   if (!conversation) return;
   const state = (conversation.state ?? {}) as SessionState;
-  const studentTurns = (state.studentTurns ?? 0) + 1;
-  const every = gateway.directorEveryNTurns;
-  if (every > 1 && studentTurns % every !== 0) {
-    await db.query("update conversations set state = state || $1::jsonb where id = $2", [
-      JSON.stringify({ studentTurns }),
-      conversationId,
-    ]);
-    return;
-  }
   const messagesResult = await db.query(
     `select sender, content from conversation_messages
      where conversation_id = $1 order by created_at desc, id desc limit 300`,
@@ -99,16 +149,21 @@ export async function runDirector(db: Db, gateway: LlmGateway, conversationId: s
     },
     state,
     conversationId,
-  ).catch(async (error) => {
-    // 降级：保留旧状态，只推进计数
-    await db.query("update conversations set state = state || $1::jsonb where id = $2", [
-      JSON.stringify({ studentTurns }),
-      conversationId,
-    ]);
-    throw error;
-  });
-  await db.query("update conversations set state = $1 where id = $2", [
-    JSON.stringify({ ...next, studentTurns }),
+  );
+  // 只写观察员自己的字段；走势按最新 state 追加，评估期间催促写进去的满意度点不会丢
+  await updateSessionState(
+    db,
     conversationId,
-  ]);
+    (current) => ({
+      emotion: next.emotion,
+      stage: next.stage,
+      satisfaction: next.satisfaction,
+      liveScore: next.liveScore,
+      scores: [...(current.scores ?? []), next.liveScore].slice(-50),
+      satisfactions: [...(current.satisfactions ?? []), next.satisfaction].slice(-50),
+      turnCount: (current.turnCount ?? 0) + 1,
+      updatedAt: next.updatedAt,
+    }),
+    LEGACY_KEYS,
+  );
 }
