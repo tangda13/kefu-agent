@@ -23,9 +23,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-}
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      # 定时备份的“每天几点”按北京时间（镜像里也设了，这里写明）
+      TZ: Asia/Shanghai
       DATABASE_URL: postgres://cecs:${POSTGRES_PASSWORD:-cecs_dev_2026}@db:5432/cecs
       JWT_SECRET: ${JWT_SECRET:?请在 .env 设置 JWT_SECRET（长随机串）}
       ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-Admin#2026}
@@ -49,11 +54,15 @@ services:
         condition: service_healthy
     volumes:
       - cecs_uploads:/app/apps/api/uploads
+      # 备份文件单独一个卷：重建、更新 api 容器不会丢
+      - cecs_backups:/app/apps/api/backups
 
   web:
     build:
       context: .
       dockerfile: Dockerfile.web
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
     restart: unless-stopped
     ports:
       - "8081:80"
@@ -63,3 +72,4 @@ services:
 volumes:
   cecs_pg_data:
   cecs_uploads:
+  cecs_backups:

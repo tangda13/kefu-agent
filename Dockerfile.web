@@ -1,5 +1,8 @@
 # 跨境电商客服 AI 实训智能体 —— 前端构建 + nginx 托管（同域反代 /v1 /uploads 到 api）
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
+# 换国内 npm 源见 Dockerfile.api 同名参数
+ARG NPM_REGISTRY=https://registry.npmjs.org
+ENV COREPACK_NPM_REGISTRY=$NPM_REGISTRY
 RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
 WORKDIR /app
 
@@ -7,7 +10,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/portal/package.json apps/portal/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/domain/package.json packages/domain/
-RUN pnpm install --frozen-lockfile --filter @cecs/portal...
+RUN pnpm install --frozen-lockfile --registry="$NPM_REGISTRY" --filter @cecs/portal...
 
 COPY apps/portal apps/portal
 COPY packages/contracts packages/contracts

@@ -1,6 +1,15 @@
 # 跨境电商客服 AI 实训智能体 —— 后端 API（Fastify + tsx 运行时转译）
-FROM node:22-alpine
-RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
+# 和本机开发、测试用的 Node 大版本一致（24）
+FROM node:24-alpine
+# 国内服务器直连 npm、Alpine 官方源很慢：在 .env 里设 NPM_REGISTRY / ALPINE_MIRROR 换国内源（见 DEPLOY.md），不设就用官方源
+ARG NPM_REGISTRY=https://registry.npmjs.org
+ARG ALPINE_MIRROR=
+ENV COREPACK_NPM_REGISTRY=$NPM_REGISTRY
+# pg_dump：管理端手动 / 定时备份要用，版本和 db 容器一致（PostgreSQL 16）；tzdata：定时备份按北京时间
+RUN if [ -n "$ALPINE_MIRROR" ]; then sed -i "s#https://dl-cdn.alpinelinux.org#$ALPINE_MIRROR#g" /etc/apk/repositories; fi \
+  && apk add --no-cache postgresql16-client tzdata \
+  && corepack enable && corepack prepare pnpm@11.7.0 --activate
+ENV TZ=Asia/Shanghai
 WORKDIR /app
 
 # 依赖清单先行，利用 Docker 层缓存（只装 api 子图，不拉 electron/react）
@@ -10,7 +19,7 @@ COPY apps/portal/package.json apps/portal/
 COPY apps/desktop/package.json apps/desktop/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/domain/package.json packages/domain/
-RUN pnpm install --frozen-lockfile --filter @cecs/api...
+RUN pnpm install --frozen-lockfile --registry="$NPM_REGISTRY" --filter @cecs/api...
 
 # 复制源码（contracts/domain 为源码 exports，运行时由 tsx 转译）
 COPY apps/api apps/api

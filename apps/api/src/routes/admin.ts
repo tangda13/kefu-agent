@@ -31,7 +31,9 @@ export async function performBackup(db: Db): Promise<{ fileName: string; size: n
       maxBuffer: 256 * 1024 * 1024,
     });
     fs.writeFileSync(target, stdout);
-  } catch {
+  } catch (error) {
+    // 本机开发没装 pg_dump 才借用开发库容器里的；装了却失败（版本不符、连不上）照实报错，别被兜底盖住
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     const { stdout } = await execFileAsync(
       "docker",
       ["exec", "cecs-pg", "pg_dump", "-U", url.username, url.pathname.slice(1)],
