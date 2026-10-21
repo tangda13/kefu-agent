@@ -363,14 +363,22 @@ export function MoreMenu({ items, label = "更多操作", trigger, triggerClassN
 
 // ---------- 浮层 ----------
 
+/** Esc 只关最上面一层：弹窗里再开弹窗（如选择商品、选类目）时，不连带关掉下面的 */
+const escapeLayers: Array<{ current: () => void }> = [];
 function useEscape(onClose: () => void) {
+  const layer = useRef(onClose);
+  layer.current = onClose;
   useEffect(() => {
+    escapeLayers.push(layer);
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && escapeLayers[escapeLayers.length - 1] === layer) layer.current();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      escapeLayers.splice(escapeLayers.indexOf(layer), 1);
+    };
+  }, []);
 }
 
 export function Dialog({ title, width = 480, onClose, footer, children }: { title: ReactNode; width?: 480 | 640 | 760 | 900 | 1000; onClose: () => void; footer?: ReactNode; children: ReactNode }) {

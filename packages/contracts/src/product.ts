@@ -97,7 +97,7 @@ export interface ProductDetails {
 
 /** 完整度的 8 组，顺序同发布商品的流程（D-65）：图片 → 基本信息 → 类目属性 → 规格 → 尺码表（只有服饰鞋类）→ 描述 → 物流 → 售后 */
 export const PRODUCT_DETAIL_GROUPS = [
-  { key: "images", label: "图片" },
+  { key: "images", label: "主图" },
   { key: "basic", label: "基本信息" },
   { key: "specs", label: "类目属性" },
   { key: "skus", label: "规格与库存" },

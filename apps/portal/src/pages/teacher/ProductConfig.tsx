@@ -12,7 +12,7 @@ import {
   type LibraryItem, type ProductDraft, type Session, type StoreProduct,
 } from "../../api/client";
 import {
-  Bench, Board, Button, Confirm, DataTable, Dialog, Drawer, Field, FilterChips, HelpTip, Input, MoreMenu, SearchBox, Segmented, Select, Switch, Textarea, Toolbar, toast,
+  Bench, Board, Button, Confirm, DataTable, Dialog, Drawer, Field, FilterChips, HelpTip, Input, MoreMenu, SearchBox, Select, Switch, Textarea, Toolbar, toast,
 } from "../../ui";
 import { StoreCard } from "./StoreProfile";
 import { CategoryPicker } from "./CategoryPicker";
@@ -21,7 +21,8 @@ import { CategoryPicker } from "./CategoryPicker";
 
 
 const errorText = (cause: unknown) => (cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
-const MAX_IMAGES = 6;
+/** 主图最多 5 张，第一张是主图（淘宝、1688 发布商品都是 5 张主图） */
+const MAX_IMAGES = 5;
 const GROUP_COUNT = PRODUCT_DETAIL_GROUPS.length;
 const filledCount = (product: StoreProduct) => Object.values(productCompleteness(product)).filter(Boolean).length;
 
@@ -137,7 +138,7 @@ export function ProductTab({ session, products, loading, reload }: { session: Se
         <CollectDialog
           session={session}
           mode={adding}
-          onMode={(mode) => (mode === "library" ? (setAdding(null), setLibrary(true)) : setAdding(mode))}
+          onMode={setAdding}
           onClose={() => setAdding(null)}
           onDraft={(seed) => { setAdding(null); setEditor(seed); }}
         />
@@ -193,7 +194,7 @@ type StepState = "wait" | "run" | "done";
 function CollectDialog({ session, mode, onMode, onClose, onDraft }: {
   session: Session;
   mode: "link" | "text";
-  onMode: (mode: "link" | "text" | "library") => void;
+  onMode: (mode: "link" | "text") => void;
   onClose: () => void;
   onDraft: (seed: EditorSeed) => void;
 }) {
@@ -263,16 +264,7 @@ function CollectDialog({ session, mode, onMode, onClose, onDraft }: {
 
   return (
     <Dialog
-      title={
-        <span className="gd-collect-title">
-          添加商品
-          <Segmented
-            items={[{ id: "link" as const, label: "粘贴链接" }, { id: "text" as const, label: "粘贴文字" }, { id: "library" as const, label: "商品库" }]}
-            value={mode}
-            onChange={(next) => { if (!busy) onMode(next); }}
-          />
-        </span>
-      }
+      title={mode === "link" ? "粘贴商品链接" : "粘贴详情页文字"}
       width={760}
       onClose={onClose}
     >
@@ -285,7 +277,7 @@ function CollectDialog({ session, mode, onMode, onClose, onDraft }: {
               <Button variant="primary" loading={busy} disabled={!canCapture} onClick={() => void startLink()}>{busy ? "读取中" : "开始读取"}</Button>
             </div>
             {!canCapture ? (
-              <p className="gd-collect-warn"><CircleAlert size={15} />链接采集只能在电脑客户端里用。浏览器里请改用「粘贴文字」。</p>
+              <p className="gd-collect-warn"><CircleAlert size={15} />链接采集只能在电脑客户端里用。<button type="button" onClick={() => onMode("text")}>改为粘贴详情页文字</button></p>
             ) : null}
             <div className="gd-steps">
               {step(steps[0]!, "打开页面", steps[0] === "run" ? "会弹出一个窗口，读完自动关闭" : undefined)}
@@ -307,7 +299,7 @@ function CollectDialog({ session, mode, onMode, onClose, onDraft }: {
         {note.error ? (
           <p className="gd-collect-error">
             <CircleAlert size={15} />{note.error}
-            {mode === "link" ? <button type="button" onClick={() => onMode("text")}>改用粘贴文字</button> : null}
+            {mode === "link" ? <button type="button" onClick={() => onMode("text")}>改为粘贴详情页文字</button> : null}
           </p>
         ) : null}
         <p className="gd-collect-note"><Info size={14} />{mode === "link" ? "页面要求验证时，读取窗口会停下来，手动点一下即可继续。" : ""}采集的图片和文字仅限校内教学使用。</p>
@@ -701,7 +693,7 @@ function ProductEditor({ session, seed, recent, onClose, onSaved }: { session: S
           ) : null}
 
           <section data-group="images" className="pe-sec">
-            <h4>图片<span>{images.length} 张，第一张是主图</span></h4>
+            <h4>主图<span>{images.length} / {MAX_IMAGES}</span><HelpTip>第一张是主图，买家先看到它。鼠标移到图上可以设为主图或删除</HelpTip></h4>
             <div className="pe-thumbs">
               {images.map((item, index) => (
                 <div key={item.kind === "saved" ? item.url : item.preview} className="pe-thumb">
@@ -713,9 +705,11 @@ function ProductEditor({ session, seed, recent, onClose, onSaved }: { session: S
                   </span>
                 </div>
               ))}
-              {images.length < MAX_IMAGES ? (
-                <button type="button" className="pe-thumb is-add" onClick={() => fileRef.current?.click()}><Plus size={18} /></button>
-              ) : null}
+              {Array.from({ length: MAX_IMAGES - images.length }, (_, index) => images.length + index).map((slot) => (
+                <button key={`slot-${slot}`} type="button" className="pe-thumb is-add" onClick={() => fileRef.current?.click()}>
+                  <Plus size={18} /><small>{slot === 0 ? "主图" : `图 ${slot + 1}`}</small>
+                </button>
+              ))}
               <input ref={fileRef} type="file" hidden multiple accept="image/png,image/jpeg,image/webp" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
             </div>
           </section>

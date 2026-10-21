@@ -11,7 +11,7 @@ export interface CouponFields {
   /** 买家看到的名字，英文 */
   title: string;
   kind: CouponKind;
-  /** 满减：减多少美元；折扣：减百分之几（10 = 9 折）；免运费不用 */
+  /** 满减：减多少美元；折扣：存成减百分之几（10 = 9 折，教师端按“打几折”填）；免运费不用 */
   amount: number;
   /** 满多少美元可用，0 = 无门槛 */
   threshold: number;
@@ -25,17 +25,18 @@ export interface CouponFields {
 
 const usd = (value: number) => `$${Number.isInteger(value) ? value : value.toFixed(2)}`;
 
-/** 9 折、8.5 折 */
-const discountText = (percentOff: number) => {
-  const rate = Math.round((100 - percentOff) * 10) / 100;
-  return `${Number.isInteger(rate) ? rate : rate.toFixed(1)} 折`;
-};
+/** 打几折 ↔ 减百分之几：9 折 = 减 10%，8.5 折 = 减 15% */
+export const discountRate = (percentOff: number) => Math.round(100 - percentOff) / 10;
+export const percentOffOf = (rate: number) => Math.round((10 - rate) * 10);
 
-/** 规则：满 $30 减 $5 / 全店 9 折 / 满 $20 免运费 */
+/** 9 折、8.5 折 */
+const discountText = (percentOff: number) => `${discountRate(percentOff)} 折`;
+
+/** 规则：满 $30 减 $5 / 打 9 折 / 满 $50 打 8.5 折 / 满 $20 免运费。全店还是指定商品写在适用范围里，这里不重复 */
 export function couponRuleText(coupon: Pick<CouponFields, "kind" | "amount" | "threshold">): string {
   const gate = coupon.threshold > 0 ? `满 ${usd(coupon.threshold)} ` : "";
   if (coupon.kind === "amount") return gate ? `${gate}减 ${usd(coupon.amount)}` : `立减 ${usd(coupon.amount)}`;
-  if (coupon.kind === "percent") return `${gate || "全店 "}${discountText(coupon.amount)}`;
+  if (coupon.kind === "percent") return `${gate}打 ${discountText(coupon.amount)}`;
   return gate ? `${gate}免运费` : "免运费";
 }
 

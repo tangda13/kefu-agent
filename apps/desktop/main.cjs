@@ -37,23 +37,46 @@ ipcMain.handle("cecs:save-pdf", async (event, options = {}) => {
 
 // D-32 商品链接采集：在独立窗口里打开商品页（相当于老师本人在浏览，能过验证、带登录态），
 // 读到商品信息后自动关闭并把页面内容交回页面，由服务端 AI 整理成商品字段。窗口不加载任何预加载脚本。
-/* 在商品页里执行（不能引用外部变量）：读正文、结构化数据和大图地址 */
+/* 在商品页里执行（不能引用外部变量）：读正文、结构化数据和商品图地址。
+ * 图片按可靠程度依次找：og:image → ld+json → 页面脚本里的商品图列表（1688 的 mainImage / offerImgList、
+ * 速卖通的 imagePathList、亚马逊的 hiRes；1688 没有 og:image，图只在这里）→ 页面上显示得够大的图片。
+ * 缩略图地址换成原图（阿里系去掉 _220x220.jpg、.summ.jpg、_.webp 这类后缀，亚马逊去掉 ._AC_US40_ 这类尺寸段） */
 function readProductPage() {
   const text = ((document.body && document.body.innerText) || "").replace(/\n{3,}/g, "\n\n");
   const ld = Array.from(document.querySelectorAll('script[type="application/ld+json"]')).map((el) => el.textContent || "").join("\n").slice(0, 8000);
   const meta = Array.from(document.querySelectorAll('meta[property^="og:"], meta[property^="product:"], meta[name="description"]'))
     .map((el) => `${el.getAttribute("property") || el.getAttribute("name")}: ${el.getAttribute("content")}`).join("\n").slice(0, 3000);
   const images = [];
-  const push = (src) => { if (src && /^https?:/.test(src) && !images.includes(src)) images.push(src); };
+  const upgrade = (src) => {
+    let url = String(src || "").trim().split("\\/").join("/");
+    if (url.startsWith("//")) url = `https:${url}`;
+    if (/alicdn\.com|aliexpress-media\.com/.test(url)) {
+      url = url.replace(/\.(?:\d+x\d+|search|summ)(\.(?:jpe?g|png|webp))$/i, "$1").replace(/(\.(?:jpe?g|png|webp))_[^/?#]*$/i, "$1");
+    }
+    if (/media-amazon\.com|images-amazon\.com/.test(url)) url = url.replace(/\._[^/]*_(\.(?:jpe?g|png))$/i, "$1");
+    return url;
+  };
+  const push = (src) => {
+    const url = upgrade(src);
+    if (/^https?:\/\//.test(url) && !/\.(svg|gif)(\?|$)/i.test(url) && !images.includes(url)) images.push(url);
+  };
   const og = document.querySelector('meta[property="og:image"]');
   if (og) push(og.getAttribute("content"));
   const ldImg = ld.match(/"image"\s*:\s*(\[[^\]]*\]|"[^"]+")/);
   if (ldImg) { try { [].concat(JSON.parse(ldImg[1])).forEach((item) => push(typeof item === "string" ? item : item && item.url)); } catch (e) { /* 忽略 */ } }
+  Array.from(document.scripts).filter((el) => !el.src).forEach((el) => {
+    if (images.length >= 10) return;
+    const body = el.textContent || "";
+    (body.match(/"(?:mainImage|offerImgList|imagePathList|imageList|galleryImages)"\s*:\s*\[[^\]]{0,6000}\]/g) || [])
+      .forEach((list) => (list.match(/https?:(?:\\?\/){2}[^"\s]+?\.(?:jpe?g|png|webp)/gi) || []).forEach(push));
+    (body.match(/"hiRes"\s*:\s*"https?:[^"]+"/g) || []).forEach((item) => push(item.replace(/^"hiRes"\s*:\s*"/, "").replace(/"$/, "")));
+  });
   Array.from(document.images)
-    .filter((img) => img.naturalWidth >= 400 && img.naturalHeight >= 400)
-    .sort((a, b) => b.naturalWidth * b.naturalHeight - a.naturalWidth * a.naturalHeight)
+    .map((img) => ({ img, rect: img.getBoundingClientRect() }))
+    .filter(({ img, rect }) => (img.naturalWidth >= 400 && img.naturalHeight >= 400) || (rect.width >= 240 && rect.height >= 240))
+    .sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height)
     .slice(0, 12)
-    .forEach((img) => push(img.currentSrc || img.src));
+    .forEach(({ img }) => push(img.currentSrc || img.src || img.getAttribute("data-src") || img.getAttribute("data-lazy-src")));
   const blocked = /captcha|unusual traffic|are you a robot|滑动验证|安全验证|验证码|请拖动/i.test(text.slice(0, 3000)) && text.length < 4000;
   const product = /"@type"\s*:\s*"Product"/.test(ld) || /og:type: (product|og:product)/i.test(meta);
   // 往下滚一点，触发懒加载的详情描述
@@ -62,12 +85,13 @@ function readProductPage() {
 }
 const CAPTURE_SCRIPT = `(${readProductPage.toString()})()`;
 
+/** 下载商品图，最多 5 张（主图 5 张）；不要 avif（服务端只收 png / jpg / webp） */
 async function downloadImages(captureSession, urls, referer) {
   const result = [];
   for (const url of urls) {
-    if (result.length >= 6) break;
+    if (result.length >= 5) break;
     try {
-      const response = await captureSession.fetch(url, { headers: { Referer: referer } });
+      const response = await captureSession.fetch(url, { headers: { Referer: referer, Accept: "image/webp,image/jpeg,image/png,*/*;q=0.5" } });
       const type = response.headers.get("content-type") || "";
       if (!response.ok || !/^image\/(png|jpe?g|webp)/.test(type)) continue;
       const buffer = Buffer.from(await response.arrayBuffer());
@@ -106,6 +130,8 @@ ipcMain.handle("cecs:capture-page", async (event, options = {}) => {
   return new Promise((resolve) => {
     let finished = false;
     let busy = false;
+    // 正文够了但一张图都没找到时，再等最多 8 秒让主图加载出来
+    let imageWaitFrom = 0;
     const finish = (value) => {
       if (finished) return;
       finished = true;
@@ -123,6 +149,10 @@ ipcMain.handle("cecs:capture-page", async (event, options = {}) => {
         const data = await win.webContents.executeJavaScript(CAPTURE_SCRIPT, true);
         const waitedLongEnough = Date.now() - startedAt > 20_000 && data.length > 1500;
         if (!data.blocked && (data.product || data.length > 3000 || waitedLongEnough)) {
+          if (!data.images.length) {
+            imageWaitFrom = imageWaitFrom || Date.now();
+            if (Date.now() - imageWaitFrom < 8000) return;
+          }
           const pageUrl = win.webContents.getURL();
           const images = await downloadImages(captureSession, data.images, pageUrl);
           finish({ ok: true, url: pageUrl, title: data.title, text: data.text, structured: data.structured, images });

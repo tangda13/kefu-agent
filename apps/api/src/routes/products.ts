@@ -14,7 +14,8 @@ import { buildProductDraftMessages, productDraftSchema } from "../prompts/catalo
 
 /** 店铺商品（D-32）：详情字段、多图、链接/文字采集、内置商品库、Excel 批量导入 */
 
-const MAX_IMAGES = 6;
+/** 主图最多 5 张（D-65 后续：淘宝、1688 的主图都是 5 张） */
+const MAX_IMAGES = 5;
 
 const str = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : "");
 const num = (value: unknown) => {

@@ -14,6 +14,8 @@ import {
   normalizeCategory,
   couponFace,
   couponRuleText,
+  discountRate,
+  percentOffOf,
   couponScopeText,
 } from "./index";
 
@@ -71,8 +73,10 @@ describe("商品类目树（D-65）", () => {
 describe("店铺优惠券文字（D-66）", () => {
   it("规则、票面、适用范围", () => {
     expect(couponRuleText({ kind: "amount", amount: 5, threshold: 30 })).toBe("满 $30 减 $5");
-    expect(couponRuleText({ kind: "percent", amount: 10, threshold: 0 })).toBe("全店 9 折");
-    expect(couponRuleText({ kind: "percent", amount: 15, threshold: 50 })).toBe("满 $50 8.5 折");
+    expect(couponRuleText({ kind: "percent", amount: 10, threshold: 0 })).toBe("打 9 折");
+    expect(couponRuleText({ kind: "percent", amount: 15, threshold: 50 })).toBe("满 $50 打 8.5 折");
+    expect(percentOffOf(8.5)).toBe(15);
+    expect(discountRate(10)).toBe(9);
     expect(couponRuleText({ kind: "shipping", amount: 0, threshold: 20 })).toBe("满 $20 免运费");
     expect(couponFace({ kind: "amount", amount: 7.5, threshold: 0 })).toEqual({ value: "$7.50", gate: "无门槛" });
     expect(couponScopeText({ productIds: ["A", "B"], customerTypes: ["复购老客", "粉丝客"] })).toBe("指定 2 个商品 · 仅复购老客、粉丝客");

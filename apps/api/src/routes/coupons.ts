@@ -67,7 +67,7 @@ async function parseCoupon(db: Db, body: Record<string, unknown>, partial: boole
     const kind = fields.kind ?? (body.kind as CouponKind | undefined);
     const amount = kind === "shipping" ? 0 : num(body.amount);
     if (kind === "amount" && !(amount > 0 && amount <= 1000)) return { ok: false, message: "满减面额填 0.01–1000 美元。" };
-    if (kind === "percent" && !(Number.isInteger(amount) && amount >= 1 && amount <= 90)) return { ok: false, message: "折扣填 1–90 的整数（10 = 9 折）。" };
+    if (kind === "percent" && !(Number.isInteger(amount) && amount >= 1 && amount <= 90)) return { ok: false, message: "折扣填 1–9.9 折。" };
     if (kind) fields.amount = Math.round(amount * 100) / 100;
   }
   if (!partial || has("threshold")) {
