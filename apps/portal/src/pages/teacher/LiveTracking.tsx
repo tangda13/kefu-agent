@@ -1,4 +1,5 @@
-import { Archive, Clock, Download, Lightbulb, List, Lock, MessagesSquare, MonitorPlay, Send, Target } from "lucide-react";
+import { Archive, Clock, Download, FileSpreadsheet, Lightbulb, List, Lock, MessagesSquare, MonitorPlay, Send, Target } from "lucide-react";
+import * as XLSX from "xlsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ASSESSMENT_DIMENSIONS, type ReceptionStats } from "@cecs/contracts";
 import {
@@ -34,8 +35,11 @@ interface TrackingItem {
   practice: boolean;
   /** 暂离：近 10 分钟无消息，且不在买家等待 30 分钟内的介入窗口 */
   suspended: boolean;
-  /** 需介入：买家等待 3–30 分钟 */
+  /** 需介入（D-64）：买家等待 3–30 分钟，或买家满意度低于 40；学生暂离时不算 */
   alert: boolean;
+  alertReasons?: Array<"waiting" | "unhappy">;
+  /** 任务的单次限时（分钟），没设为 null */
+  timeLimitMinutes?: number | null;
   /** 超过 1 天没有任何消息：收进“已中断”一行，不再提醒 */
   stale?: boolean;
   /* “现场”面板：只给老师看的买家性格、当前情绪、走势和场景剧本 */
@@ -76,6 +80,8 @@ interface TeacherAssessment {
   reviewedAt: string | null;
   practice: boolean;
   weights: Record<string, number>;
+  /** 回放里买家的头像和名字（D-64） */
+  buyer?: BuyerPublicView;
   /** 邮件任务（D-58）：回放里看这封邮件 */
   channel?: "chat" | "mail";
   /** 买家服务评价 1–5 星（D-54） */
@@ -301,10 +307,14 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
 
   const queueItem = (item: TrackingItem) => {
     const waiting = item.lastSender === "buyer";
+    const waitingAlert = item.alertReasons?.includes("waiting") ?? item.alert;
+    const unhappy = item.alertReasons?.includes("unhappy") ?? false;
+    // 需介入的原因写在行上：买家在等写等了多久，买家不满意写满意度
     const wait = item.suspended ? formatIdle(item.idleSeconds)
       : waiting && item.idleSeconds >= 60 ? `等 ${formatIdle(item.idleSeconds)}`
-        : item.idleSeconds < 60 ? "刚刚" : `${formatIdle(item.idleSeconds)}前`;
-    const waitCls = item.alert ? "is-bad" : waiting && item.idleSeconds >= 60 && !item.suspended ? "is-warn" : "";
+        : unhappy ? `满意度 ${item.satisfaction}`
+          : item.idleSeconds < 60 ? "刚刚" : `${formatIdle(item.idleSeconds)}前`;
+    const waitCls = waitingAlert || unhappy ? "is-bad" : waiting && item.idleSeconds >= 60 && !item.suspended ? "is-warn" : "";
     return (
       <button
         key={item.conversationId}
@@ -357,8 +367,10 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
     );
   }
 
-  /* 已用时：开始到最后一条消息（暂离的会话不再累计） */
+  /* 已用时：开始到最后一条消息（暂离的会话不再累计）；任务设了单次限时就写“12 / 30 分钟”，按现在算（到点会自动结束），剩 5 分钟内标橙（D-64） */
   const elapsed = view ? Math.max(1, Math.round((new Date(view.lastAt ?? view.startedAt).getTime() - new Date(view.startedAt).getTime()) / 60000)) : 0;
+  const limit = view?.timeLimitMinutes ?? null;
+  const used = view && limit ? Math.min(limit, Math.max(1, Math.round((Date.now() - new Date(view.startedAt).getTime()) / 60000))) : 0;
   const trend = view?.satisfactionTrend ?? [];
   const emotionTone = view?.emotion ? EMOTION_TONE[view.emotion] ?? "neutral" : "neutral";
 
@@ -367,7 +379,7 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
       <aside className="mon-queue">
         <div className="mon-queue-head"><span className="mon-dot" />{students} 人在接待<span>每 8 秒刷新</span></div>
         <div className="mon-queue-list">
-          {groups.alert.length ? <div className="mon-grp is-bad">需介入<span>{groups.alert.length} · 买家在等回复</span></div> : null}
+          {groups.alert.length ? <div className="mon-grp is-bad">需介入<span>{groups.alert.length} · 买家在等或不满意</span><HelpTip>买家等回复 3 分钟以上，或买家满意度低于 40</HelpTip></div> : null}
           {groups.alert.map(queueItem)}
           {groups.going.length ? <div className="mon-grp">进行中<span>{groups.going.length}</span></div> : null}
           {groups.going.map(queueItem)}
@@ -392,9 +404,10 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
               <span className="mon-conv-state">
                 {view.practice ? <Tag>自由练习，不计成绩</Tag> : null}
                 {closed ? <Tag>已结束</Tag>
-                  : view.alert ? <Tag tone="danger">买家等了 {formatIdle(view.idleSeconds)}</Tag>
+                  : view.alertReasons?.includes("waiting") || (view.alert && !view.alertReasons) ? <Tag tone="danger">买家等了 {formatIdle(view.idleSeconds)}</Tag>
                     : view.suspended ? <Tag>暂离 {formatIdle(view.idleSeconds)}</Tag>
                       : view.lastSender === "buyer" && view.idleSeconds >= 60 ? <Tag tone="warn">买家等了 {formatIdle(view.idleSeconds)}</Tag> : null}
+                {!closed && view.alertReasons?.includes("unhappy") ? <Tag tone="danger">买家满意度 {view.satisfaction}</Tag> : null}
               </span>
             </header>
             {closed ? <div className="console-closed">这个会话已经结束。评分出来后，可以在「回放与评分」里看完整对话并复核。</div> : null}
@@ -463,7 +476,11 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
                 <div><small>实时得分</small><b className={view.liveScore != null && view.liveScore < 60 ? "is-bad" : undefined}>{view.liveScore ?? "—"}</b></div>
                 <div><small>买家满意度</small><b className={view.satisfaction != null && view.satisfaction < 40 ? "is-bad" : view.satisfaction != null && view.satisfaction < 60 ? "is-warn" : undefined}>{view.satisfaction ?? "—"}{view.satisfaction != null ? <span>/ 100</span> : null}</b></div>
                 <div><small>轮次</small><b>{view.studentTurns}</b></div>
-                <div><small>已用时</small><b>{elapsed < 60 ? elapsed : elapsed < 1440 ? Math.floor(elapsed / 60) : Math.floor(elapsed / 1440)}<span>{elapsed < 60 ? "分钟" : elapsed < 1440 ? "小时" : "天"}</span></b></div>
+                {limit ? (
+                  <div><small>已用时</small><b className={limit - used <= 5 ? "is-warn" : undefined}>{used}<span>/ {limit} 分钟</span></b></div>
+                ) : (
+                  <div><small>已用时</small><b>{elapsed < 60 ? elapsed : elapsed < 1440 ? Math.floor(elapsed / 60) : Math.floor(elapsed / 1440)}<span>{elapsed < 60 ? "分钟" : elapsed < 1440 ? "小时" : "天"}</span></b></div>
+                )}
               </div>
               <div className="mon-trend-h">
                 <span>走势</span>
@@ -531,6 +548,28 @@ function Replay({ session, rows, reload }: { session: Session; rows: TeacherAsse
     });
   }, [rows, keyword, filter]);
   const reviewedCount = rows.filter((row) => row.reviewedAt).length;
+
+  /* 评分报表导出（D-64，参数“支持人工复核与报表导出”）：按当前筛选导出，单次的“导出回放”照旧 */
+  function exportExcel() {
+    const label = { pending: "待复核", low: "低于60分", reviewed: "已复核", all: "全部" }[filter];
+    const sheet = visible.map((row) => ({
+      学生: row.studentName,
+      学号: row.username,
+      任务: row.taskName ?? "—",
+      场景: row.scenarioName,
+      买家: row.buyerName,
+      时间: new Date(row.createdAt).toLocaleString("zh-CN"),
+      AI总分: row.aiTotal ?? row.total,
+      复核后总分: row.reviewedAt ? row.total : "—",
+      ...Object.fromEntries(ASSESSMENT_DIMENSIONS.map((dim) => [dim.label, row.scores?.[dim.id] ?? "—"])),
+      AI评语: row.comment || "—",
+      老师评语: row.teacherComment || "—",
+      状态: row.reviewedAt ? "已复核" : "待复核",
+    }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheet), "回放与评分");
+    XLSX.writeFile(workbook, `回放与评分-${label}-${new Date().toLocaleDateString("zh-CN").replace(/\//g, "-")}.xlsx`);
+  }
   const when = (iso: string) => {
     const date = new Date(iso);
     const days = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 86400000);
@@ -540,7 +579,7 @@ function Replay({ session, rows, reload }: { session: Session; rows: TeacherAsse
 
   return (
     <Bench>
-      <Toolbar>
+      <Toolbar actions={<Button variant="ghost" icon={FileSpreadsheet} disabled={!visible.length} onClick={exportExcel}>导出 Excel</Button>}>
         <FilterChips
           items={[
             { id: "pending", label: "待复核", count: rows.length - reviewedCount },
@@ -694,7 +733,7 @@ function ReviewDrawer({ session, item, onClose, onSaved }: { session: Session; i
       <div className="review">
         <div className="review-chat">
           <p className="review-chat-meta">{item.taskName ?? "自由练习"} · 买家 {item.buyerName} · {new Date(item.createdAt).toLocaleString("zh-CN")}</p>
-          {messages === null ? <p className="console-hint">正在读取对话…</p> : messages.length === 0 ? <Empty>这次接待没有消息</Empty> : messages.map((message) => <MessageBubble key={message.id} message={message} studentName={item.studentName} />)}
+          {messages === null ? <p className="console-hint">正在读取对话…</p> : messages.length === 0 ? <Empty>这次接待没有消息</Empty> : messages.map((message) => <MessageBubble key={message.id} message={message} buyer={item.buyer} studentName={item.studentName} />)}
           {messages && messages.length > 0 && item.serviceRating ? (
             <p className="review-rating">买家评价了本次服务 <span aria-label={`${item.serviceRating} 星`}>{"★".repeat(item.serviceRating)}<i>{"★".repeat(5 - item.serviceRating)}</i></span></p>
           ) : null}

@@ -1692,7 +1692,7 @@ describe("参数核对 · 学生端（D-53 关键数字、D-54 服务评价、D-
   });
 });
 
-describe("参数核对 · 教师端（D-59 数据总览、D-60 考核报表、D-63 学生详情）", () => {
+describe("参数核对 · 教师端（D-59 数据总览、D-60 考核报表、D-63 学生详情、D-64 实训跟踪）", () => {
   it("参训人数、任务完成率只算在用的学生；对话总数 = 学生回过话的聊天接待（含练习、不含邮件）；平均分和报表同口径", async () => {
     const { hashPassword } = await import("./security");
     const klass = (await db.query("insert into classes (name) values ('D59测试班') returning id")).rows[0].id as string;
@@ -1777,5 +1777,18 @@ describe("参数核对 · 教师端（D-59 数据总览、D-60 考核报表、D-
     const reportRow = (await app.inject({ method: "GET", url: `/v1/teacher/reports?classId=${klass}`, headers: auth(teacher) })).json().ranking[0];
     expect(reportRow.average).toBe(59);
     expect(rosterRow.averageScore).toBe(reportRow.average);
+
+    // D-64：买家满意度低于 40 也算需介入；带任务限时；回放带买家头像
+    await db.query("update tasks set time_limit_minutes = 30 where id = $1", [task]);
+    const live = (await db.query(
+      `insert into conversations (task_id, student_id, scenario_id, channel, status, state)
+       values ($1, $2, 'AFTER-001', 'chat', 'active', '{"satisfaction": 32}') returning id`,
+      [task, a],
+    )).rows[0].id as string;
+    await db.query("insert into conversation_messages (conversation_id, sender, content) values ($1, 'buyer', 'Broken again'), ($1, 'student', 'Sorry to hear that')", [live]);
+    const tracking = (await app.inject({ method: "GET", url: "/v1/teacher/tracking", headers: auth(teacher) })).json() as Array<Record<string, unknown>>;
+    expect(tracking.find((item) => item.conversationId === live)).toMatchObject({ alert: true, alertReasons: ["unhappy"], satisfaction: 32, timeLimitMinutes: 30 });
+    const reviews = (await app.inject({ method: "GET", url: "/v1/teacher/assessments", headers: auth(teacher) })).json() as Array<{ buyer?: { name?: string; avatarUrl?: string } }>;
+    expect(reviews[0]!.buyer?.avatarUrl).toBeTruthy();
   });
 });

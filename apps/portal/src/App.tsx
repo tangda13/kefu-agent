@@ -177,7 +177,7 @@ export function App() {
     // 切页时刷新：读完邮件、回完评价后角标马上变
   }, [studentLive, session, active]);
 
-  /** 教师端侧栏角标：买家等待超过 3 分钟的会话数，30 秒刷新（D-27） */
+  /** 教师端侧栏角标：需介入的会话数（买家等 3 分钟以上或满意度低于 40，D-64），30 秒刷新（D-27） */
   const [teacherWaiting, setTeacherWaiting] = useState(0);
   const teacherLive = signedIn && !demo && role === "teacher" && session !== null;
   useEffect(() => {

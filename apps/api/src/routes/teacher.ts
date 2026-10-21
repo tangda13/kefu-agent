@@ -7,6 +7,9 @@ import { writeAudit } from "../auth-context";
 import { weightedTotal } from "../assessment";
 import { loadReceptionStats } from "../reception-stats";
 
+/** 实时监控：买家满意度低于这条线就算需介入（D-64） */
+const UNHAPPY_SATISFACTION = 40;
+
 /** 教师授权班级的学生 ID 子查询（管理员不限）；paramIndex 指定教师ID占位序号 */
 function scopedStudentsSql(isAdmin: boolean, paramIndex = 1): string {
   return isAdmin
@@ -203,12 +206,13 @@ export function registerTeacherRoutes(
       const params = isAdmin ? [] : [user.sub];
       const result = await db.query(
         `select c.id, c.persona, c.state, c.created_at, c.task_id, u.display_name as student_name, u.username, u.avatar_url as student_avatar,
-                s.name as scenario_name, s.objective as scenario_objective, s.script as scenario_script,
+                s.name as scenario_name, s.objective as scenario_objective, s.script as scenario_script, t.time_limit_minutes,
                 (select count(*) from conversation_messages m where m.conversation_id = c.id and m.sender = 'student') as student_turns,
                 lm.sender as last_sender, lm.created_at as last_at, lm.content as last_content
          from conversations c
          join users u on u.id = c.student_id
          left join scenarios s on s.id = c.scenario_id
+         left join tasks t on t.id = c.task_id
          left join lateral (
            select sender, content, created_at from conversation_messages m
            where m.conversation_id = c.id and m.sender <> 'teacher' order by m.created_at desc limit 1
@@ -226,6 +230,11 @@ export function registerTeacherRoutes(
         /* 挂起 = 学生已暂离的会话：近 10 分钟无任何消息，且不在"买家等待 30 分钟内"的可介入窗口。
            挂起会话不触发预警（学生不在线，介入无意义），前端折叠分组展示 */
         const suspended = !(idleSeconds < 600 || (row.last_sender === "buyer" && idleSeconds < 1800));
+        const satisfaction = (row.state as { satisfaction?: number } | null)?.satisfaction ?? null;
+        /* 需介入（D-64）：买家等回复 3–30 分钟（学生大概率在线，介入有意义）；或买家满意度跌到 40 以下（学生在回、买家已经很不满）。
+           学生暂离时都不提醒：介入了也没人看 */
+        const waiting = row.last_sender === "buyer" && idleSeconds >= 180 && idleSeconds < 1800;
+        const unhappy = satisfaction != null && satisfaction < UNHAPPY_SATISFACTION && !suspended;
         return {
           conversationId: row.id,
           studentName: row.student_name,
@@ -239,7 +248,7 @@ export function registerTeacherRoutes(
           lastAt: row.last_at ?? row.created_at,
           idleSeconds,
           liveScore: (row.state as { liveScore?: number } | null)?.liveScore ?? null,
-          satisfaction: (row.state as { satisfaction?: number } | null)?.satisfaction ?? null,
+          satisfaction,
           stage: (row.state as { stage?: string } | null)?.stage ?? null,
           /* 实训跟踪“现场”面板：只给老师看的买家性格、当前情绪、走势和场景剧本（学生端永远拿不到） */
           personality: (row.persona as { personality?: string } | null)?.personality ?? null,
@@ -258,8 +267,10 @@ export function registerTeacherRoutes(
           // 自由练习（无任务）会话：可监控可介入，但不参与考核统计
           practice: !row.task_id,
           suspended,
-          // 预警窗口：买家等待 3-30 分钟（学生大概率在线，介入有意义）
-          alert: row.last_sender === "buyer" && idleSeconds >= 180 && idleSeconds < 1800,
+          alert: waiting || unhappy,
+          alertReasons: [...(waiting ? ["waiting"] : []), ...(unhappy ? ["unhappy"] : [])],
+          /* 现场面板“已用时 12 / 30 分钟”（D-64）：任务的单次限时，没设为 null */
+          timeLimitMinutes: row.time_limit_minutes == null ? null : Number(row.time_limit_minutes),
         };
       });
     },
@@ -557,6 +568,8 @@ export function registerTeacherRoutes(
         channel: (row.channel ?? "chat") as "chat" | "mail",
         serviceRating: row.service_rating == null ? null : Number(row.service_rating),
         closedAt: row.closed_at ?? null,
+        /* 回放里买家的头像和名字（D-64，原来没给，头像显示成“?”） */
+        buyer: toStudentPersonaView(ensurePersonaAvatar(row.persona, row.conversation_id) as never),
         /* D-61：和学生复盘同一块“本次接待” */
         reception: reception.get(row.conversation_id as string) ?? null,
         createdAt: row.created_at,
