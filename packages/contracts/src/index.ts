@@ -212,6 +212,26 @@ export interface ConversationMetric {
   outcome: "success" | "timeout" | "error";
 }
 
+/**
+ * 复盘里的“本次接待”（D-61）：学生端我的记录、教师端回放与评分共用。
+ * 和工作台顶栏、我的记录的总数是同一套算法，邮件记录没有这一项。
+ */
+export type ReceptionEndReason = "buyer_left" | "left_waiting" | "student_ended" | "timeout" | "abandoned" | "task_closed";
+
+export interface ReceptionStats {
+  /** 买家服务评价 1–5 星（D-54）；老记录没有为 null */
+  rating: number | null;
+  /** 平均响应秒数（单轮封顶 10 分钟）；没有买家发言为 null */
+  avgReplySec: number | null;
+  /** 3 分钟回复率：买家发言的轮次里 3 分钟内回复的次数 / 计入的次数 */
+  replyWithin: { within: number; counted: number };
+  /** 客服发出的消息条数，和“累计对话”的“共 N 轮”同一口径 */
+  rounds: number;
+  /** 进线到接待结束的秒数（结束后的工具跟进不算） */
+  durationSec: number | null;
+  endReason: ReceptionEndReason | null;
+}
+
 export * from "./llm";
 export * from "./product";
 export * from "./persona";

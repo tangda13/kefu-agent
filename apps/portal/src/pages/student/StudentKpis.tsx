@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchStudentSummary, type Session, type StudentSummary } from "../../api/client";
-import { KpiCard, RateRing, ScoreGauge } from "../teacher/widgets";
+import { KpiCard, RateRing, ScoreGauge, WeekBars } from "../teacher/widgets";
 import "../../styles/student-learn.css";
 
 /* 学生学习区的两排关键数字（设计稿 docs/design/p15-params-student）：
@@ -28,29 +28,6 @@ function RankBars({ position, total }: { position: number | null; total: number 
       {Array.from({ length: bars }, (_, index) => {
         const height = 10 + index * 4.5;
         return <rect key={index} x={index * 10 + 1} y={50 - height} width={7} height={height} rx={1.5} fill={index === hit ? "var(--c-brand)" : "#e6ebf2"} />;
-      })}
-    </svg>
-  );
-}
-
-const WEEK_LABELS = "一二三四五六日";
-
-/** 本周七天柱图：今天高亮，没有接待的日子画一道灰线 */
-function WeekBars({ daily, today }: { daily: number[]; today: number }) {
-  const max = Math.max(1, ...daily);
-  return (
-    <svg className="sl-week" viewBox="0 0 126 58" aria-hidden="true">
-      {daily.map((count, index) => {
-        const height = count ? 6 + Math.round((count / max) * 30) : 2;
-        const isToday = index === today;
-        return (
-          <g key={index}>
-            <rect x={index * 18 + 2} y={40 - height} width={11} height={height} rx={2} fill={isToday ? "var(--c-brand)" : count ? "#bfd2f3" : "#e3e7ee"}>
-              <title>周{WEEK_LABELS[index]} {count} 次</title>
-            </rect>
-            <text x={index * 18 + 7.5} y={55} fontSize={10} textAnchor="middle" fill={isToday ? "var(--c-brand-ink)" : "#9aa3b0"}>{WEEK_LABELS[index]}</text>
-          </g>
-        );
       })}
     </svg>
   );
@@ -146,7 +123,7 @@ export function HallKpis({ session }: { session?: Session | null }) {
       />
       <KpiCard
         label="累计对话"
-        help="你接待过的买家会话总数，圆环是其中任务接待所占的比例，其余是自由练习。"
+        help="你接待过的买家会话总数，圆环是其中任务接待所占的比例，其余是自由练习。“共 N 轮”是你发出的消息条数，每一次的轮数在复盘的“本次接待”里。"
         value={<><b className={convo && convo.total > 0 ? undefined : "is-dash"}>{convo?.total ?? 0}</b><small>次</small></>}
         sub={convo && convo.total > 0 ? `共 ${convo.rounds} 轮 · 其中练习 ${convo.practice} 次` : undefined}
         chart={<RateRing value={convo && convo.total > 0 ? Math.round((taskConvo / convo.total) * 100) : null} color="var(--c-cat-2)" />}
@@ -165,7 +142,6 @@ export function RecordKpis({ session }: { session?: Session | null }) {
   const week = summary?.weekConversations ?? 0;
   const response = summary?.response;
   const avg = response?.avgSeconds != null ? durationText(response.avgSeconds) : null;
-  const first = response?.firstSeconds != null ? durationText(response.firstSeconds) : null;
   const rating = summary?.rating;
   return (
     <div className="kpi-cards sl-kpis sl-record-kpis">
@@ -185,14 +161,14 @@ export function RecordKpis({ session }: { session?: Session | null }) {
       />
       <KpiCard
         label="平均响应时长"
-        help="买家发消息后到你回复的平均等待时间，统计全部接待（含自由练习）。45 秒内最好，超过 2 分钟买家会开始催；一次等了 10 分钟以上的按 10 分钟算（买家这时早已离开）。"
+        help="买家发消息后到你回复的平均等待时间，统计全部接待（含自由练习）。45 秒内最好，超过 2 分钟买家会开始催；一次等了 10 分钟以上的按 10 分钟算（买家这时早已离开）。3 分钟回复率：买家每一轮发言 3 分钟内回复的占比。每一次的数字在复盘的“本次接待”里。"
         value={avg ? <><b>{avg.value}</b><small>{avg.unit}</small></> : null}
-        sub={first ? `首次响应平均 ${first.value} ${first.unit}` : undefined}
+        sub={response?.withinRate != null ? `3 分钟回复率 ${response.withinRate}%` : undefined}
         chart={<ResponseBar seconds={response?.avgSeconds ?? null} />}
       />
       <KpiCard
         label="满意率"
-        help="接待结束时，买家给服务打 4 星或 5 星的次数占比，统计全部接待（含自由练习）。"
+        help="接待结束时，买家给服务打 4 星或 5 星的次数占比，统计全部接待（含自由练习）。每一次的星级在复盘的“本次接待”里。"
         value={rating && rating.rate != null ? <b>{rating.rate}%</b> : null}
         sub={rating && rating.total > 0 ? <><span className="sl-star-mark">★</span>{rating.average} · {rating.total} 次评价</> : undefined}
         chart={<StarHistogram counts={rating && rating.total > 0 ? rating.counts : null} />}

@@ -6,6 +6,7 @@ import type { AuthGuard } from "../auth-context";
 import type { LlmGateway } from "../llm/gateway";
 import { buildReviewReplyMessages, buildSuggestionMessages, reviewReplySchema, suggestionsSchema } from "../prompts/assist";
 import { loadStoreProfile } from "./store";
+import { loadReceptionStats } from "../reception-stats";
 
 const SUGGESTION_TYPES = {
   payment_reminder: "礼貌催付：提醒买家完成付款，说明库存保留时间，不施压",
@@ -98,6 +99,8 @@ export function registerOrderRoutes(
          where a.student_id = $1 order by a.created_at desc limit 50`,
         [user.sub],
       );
+      /* D-61：复盘“本次接待”，和我的记录、工作台顶栏的总数同一套算法 */
+      const reception = await loadReceptionStats(db, result.rows.map((row) => row.conversation_id as string));
       const records = result.rows.map((row) => ({
         id: row.id,
         conversationId: row.conversation_id,
@@ -120,6 +123,7 @@ export function registerOrderRoutes(
         channel: (row.channel ?? "chat") as "chat" | "mail",
         /* D-54：买家给这次服务打的星 */
         serviceRating: row.service_rating == null ? null : Number(row.service_rating),
+        reception: reception.get(row.conversation_id as string) ?? null,
         createdAt: row.created_at,
       }));
       const scored = records.filter((row) => !row.practice);

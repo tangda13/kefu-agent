@@ -3,53 +3,113 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { ASSESSMENT_DIMENSIONS } from "@cecs/contracts";
 import { ApiError, apiGet, fetchClassStudents, fetchClasses, fetchTeacherTasks, type ClassStudent, type ClassSummary, type Session, type TeacherTask } from "../../api/client";
-import { Bench, Board, Button, Callout, DataTable, HelpTip, Select, toast } from "../../ui";
-import { AttentionBoard } from "./AttentionBoard";
-import { ChartEmptyNote, DimensionBars, KpiCard, RateRing, ScoreDistribution, ScoreGauge, SCORE_BUCKETS, takeReportTask } from "./widgets";
+import { AbilityRadar } from "../../components/AbilityRadar";
+import { Bench, Board, Button, Callout, DataTable, FilterChips, HelpTip, Select, toast } from "../../ui";
+import { ChartEmptyNote, openReplayFor, ScoreDistribution, SCORE_BUCKETS, takeReportTask } from "./widgets";
 
+interface RankingEntry {
+  name: string;
+  username: string;
+  tasks: number;
+  sessions: number;
+  average: number;
+  best: number;
+  baseline: number | null;
+  dims: Record<string, number | null>;
+  /** 买家服务评价 4–5 星占比（D-60，只算任务里的聊天接待）；没有评价为 null */
+  satisfaction: { rated: number; rate: number } | null;
+}
 
 interface ReportData {
   distribution: number[];
   radar: Array<{ id: string; label: string; value: number | null }>;
   baselineRadar: Array<{ id: string; label: string; value: number | null }>;
   baselineCount: number;
-  ranking: Array<{
-    name: string;
-    username: string;
-    tasks: number;
-    sessions: number;
-    average: number;
-    best: number;
-    baseline: number | null;
-    dims: Record<string, number | null>;
-  }>;
+  ranking: RankingEntry[];
   assessedCount: number;
   studentCount: number;
 }
 
-const RANK_COLUMNS = (ranking: ReportData["ranking"], byTask: boolean) => [
-  { key: "rank", title: "#", width: 48, render: (row: ReportData["ranking"][number]) => <span className="num muted">{ranking.indexOf(row) + 1}</span> },
-  { key: "name", title: "学生", render: (row: ReportData["ranking"][number]) => <><span className="cell-title">{row.name}</span><span className="cell-meta">{row.username}</span></> },
-  { key: "avg", title: byTask ? "成绩" : "综合成绩", width: 100, align: "right" as const, render: (row: ReportData["ranking"][number]) => <span className={row.average < 60 ? "strong-num is-bad" : "strong-num"}>{row.average}</span> },
+/* D-60：“需要关注的学生”并进成绩排名，名字后面写原因；还没有成绩的学生排在最后 */
+type Reason = "low" | "down" | "none";
+const REASONS: Array<{ id: Reason; label: string; tone: "danger" | "warn" }> = [
+  { id: "low", label: "低于 60 分", tone: "danger" },
+  { id: "down", label: "比训前退步", tone: "danger" },
+  { id: "none", label: "还没有成绩", tone: "warn" },
+];
+
+interface RankRow {
+  key: string;
+  rank: number | null;
+  name: string;
+  username: string;
+  reasons: Reason[];
+  entry: RankingEntry | null;
+  /** 还没有成绩的学生：最近练习、从没登录过 */
+  lastActiveAt: string | null;
+  neverLoggedIn: boolean;
+}
+
+function weakest(dims: Record<string, number | null>): { label: string; value: number } | null {
+  const worst = ASSESSMENT_DIMENSIONS.map((dim) => ({ label: dim.label, value: dims[dim.id] })).filter((dim) => dim.value != null).sort((a, b) => a.value! - b.value!)[0];
+  return worst ? { label: worst.label, value: worst.value! } : null;
+}
+
+function noScoreText(row: RankRow): string {
+  if (row.lastActiveAt) return "练过，还没有评分";
+  return row.neverLoggedIn ? "从没登录过" : "还没练过";
+}
+
+const reasonLabel = (reason: Reason) => REASONS.find((item) => item.id === reason)!.label;
+
+const RANK_COLUMNS = (byTask: boolean, onNavigate?: (page: string) => void) => [
+  { key: "rank", title: "#", width: 48, render: (row: RankRow) => <span className="num muted">{row.rank ?? "—"}</span> },
+  {
+    key: "name", title: "学生",
+    render: (row: RankRow) => (
+      <>
+        <span className="cell-title">{row.name}{row.reasons.map((reason) => <span key={reason} className={`ui-tag is-${REASONS.find((item) => item.id === reason)!.tone} rank-reason`}>{reasonLabel(reason)}</span>)}</span>
+        <span className="cell-meta">{row.username}</span>
+      </>
+    ),
+  },
+  {
+    key: "avg", title: byTask ? "成绩" : "综合成绩", width: 100, align: "right" as const,
+    render: (row: RankRow) => row.entry ? <span className={row.entry.average < 60 ? "strong-num is-bad" : "strong-num"}>{row.entry.average}</span> : <span className="faint">—</span>,
+  },
   {
     key: "gain", title: "较训前", width: 90, align: "right" as const,
-    render: (row: ReportData["ranking"][number]) => {
-      if (row.baseline == null) return <span className="faint">—</span>;
-      const diff = row.average - row.baseline;
+    render: (row: RankRow) => {
+      if (!row.entry || row.entry.baseline == null) return <span className="faint">—</span>;
+      const diff = row.entry.average - row.entry.baseline;
       return <span className={diff > 0 ? "delta is-up" : diff < 0 ? "delta is-down" : "delta"}>{diff > 0 ? `+${diff}` : diff === 0 ? "持平" : diff}</span>;
     },
   },
-  { key: "count", title: "任务 / 接待", width: 110, align: "right" as const, render: (row: ReportData["ranking"][number]) => <span className="num">{row.tasks} / {row.sessions}</span> },
   {
-    key: "weak", title: "最弱一项", width: 160,
-    render: (row: ReportData["ranking"][number]) => {
-      const worst = ASSESSMENT_DIMENSIONS.map((dim) => ({ label: dim.label, value: row.dims[dim.id] })).filter((dim) => dim.value != null).sort((a, b) => a.value! - b.value!)[0];
-      return worst ? <span>{worst.label} <span className={worst.value! < 60 ? "strong-num is-bad" : "muted"}>{worst.value}</span></span> : <span className="faint">—</span>;
+    key: "satisfaction", title: "满意率", width: 100, align: "right" as const,
+    render: (row: RankRow) => row.entry?.satisfaction
+      ? <span className="rank-sat"><b>{row.entry.satisfaction.rate}%</b><small>{row.entry.satisfaction.rated} 次评价</small></span>
+      : <span className="faint">—</span>,
+  },
+  { key: "count", title: "任务 / 接待", width: 110, align: "right" as const, render: (row: RankRow) => <span className="num">{row.entry ? `${row.entry.tasks} / ${row.entry.sessions}` : "0 / 0"}</span> },
+  {
+    key: "weak", title: "最弱一项", width: 170,
+    render: (row: RankRow) => {
+      if (!row.entry) return <span className="rank-none">{noScoreText(row)}</span>;
+      const worst = weakest(row.entry.dims);
+      return worst ? <span>{worst.label} <span className={worst.value < 60 ? "strong-num is-bad" : "muted"}>{worst.value}</span></span> : <span className="faint">—</span>;
     },
+  },
+  {
+    key: "ops", title: "", width: 90, align: "right" as const,
+    render: (row: RankRow) => row.entry
+      ? <Button size="sm" variant="ghost" onClick={() => { openReplayFor(row.name); onNavigate?.("tracking"); }}>看回放</Button>
+      : <Button size="sm" variant="ghost" onClick={() => onNavigate?.("classes")}>去班级</Button>,
   },
 ];
 
-/* 口径：任务 = 考核单位。任务成绩 = 会话均分；综合成绩 = 任务均分；一人一个样本 */
+/* 考核报表（D-60，设计稿 docs/design/p17-params-teacher 第四节）：按参数只放成绩分布、全班能力雷达、成绩排名，支持导出 Excel / PDF。
+   口径：任务 = 考核单位。任务成绩 = 会话均分；综合成绩 = 任务均分；一人一个样本；自由练习不计入 */
 export function LiveReports({ session, onNavigate }: { session: Session; onNavigate?: (page: string) => void }) {
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [classId, setClassId] = useState<string>("");
@@ -58,6 +118,7 @@ export function LiveReports({ session, onNavigate }: { session: Session; onNavig
   const [data, setData] = useState<ReportData | null>(null);
   const [error, setError] = useState("");
   const [roster, setRoster] = useState<ClassStudent[]>([]);
+  const [filter, setFilter] = useState<"all" | Reason>("all");
 
   /* 名单：用来找“还没有成绩”的学生 */
   useEffect(() => {
@@ -85,28 +146,70 @@ export function LiveReports({ session, onNavigate }: { session: Session; onNavig
     load();
   }, [load]);
 
+  const rows = useMemo<RankRow[]>(() => {
+    const ranking = data?.ranking ?? [];
+    const scored = new Set(ranking.map((row) => row.username));
+    return [
+      ...ranking.map((entry, index): RankRow => ({
+        key: entry.username,
+        rank: index + 1,
+        name: entry.name,
+        username: entry.username,
+        reasons: [
+          ...(entry.average < 60 ? ["low" as const] : []),
+          ...(entry.baseline != null && entry.average < entry.baseline ? ["down" as const] : []),
+        ],
+        entry,
+        lastActiveAt: null,
+        neverLoggedIn: false,
+      })),
+      ...roster
+        .filter((student) => student.status === "active" && !scored.has(student.username))
+        .map((student): RankRow => ({
+          key: student.username,
+          rank: null,
+          name: student.displayName,
+          username: student.username,
+          reasons: ["none"],
+          entry: null,
+          lastActiveAt: student.lastActiveAt,
+          neverLoggedIn: student.mustChangePassword && !student.lastActiveAt,
+        })),
+    ];
+  }, [data, roster]);
+
+  const counts = useMemo(() => {
+    const result = { low: 0, down: 0, none: 0 } as Record<Reason, number>;
+    rows.forEach((row) => row.reasons.forEach((reason) => { result[reason] += 1; }));
+    return result;
+  }, [rows]);
+  const shown = filter === "all" ? rows : rows.filter((row) => row.reasons.includes(filter));
+
+  const className = classes.find((item) => item.id === classId)?.name ?? "全部班级";
+  const taskName = tasks.find((task) => task.id === taskId)?.name ?? null;
+
   function exportExcel() {
     if (!data) return;
-    const className = classes.find((item) => item.id === classId)?.name ?? "全部班级";
-    const rows = data.ranking.map((row, index) => ({
-      排名: index + 1,
+    const sheetRows = rows.map((row) => ({
+      排名: row.rank ?? "—",
       姓名: row.name,
       账号: row.username,
-      已评任务: row.tasks,
-      已评会话: row.sessions,
-      初始测评: row.baseline ?? "—",
-      综合成绩: row.average,
-      较初始提升: row.baseline != null ? row.average - row.baseline : "—",
-      最高任务分: row.best,
-      ...Object.fromEntries(ASSESSMENT_DIMENSIONS.map((dim) => [dim.label, row.dims[dim.id] ?? "—"])),
+      关注原因: row.reasons.map(reasonLabel).join("、") || "—",
+      已评任务: row.entry?.tasks ?? 0,
+      已评会话: row.entry?.sessions ?? 0,
+      初始测评: row.entry?.baseline ?? "—",
+      综合成绩: row.entry?.average ?? "—",
+      较初始提升: row.entry && row.entry.baseline != null ? row.entry.average - row.entry.baseline : "—",
+      最高任务分: row.entry?.best ?? "—",
+      满意率: row.entry?.satisfaction ? `${row.entry.satisfaction.rate}%` : "—",
+      评价次数: row.entry?.satisfaction?.rated ?? 0,
+      ...Object.fromEntries(ASSESSMENT_DIMENSIONS.map((dim) => [dim.label, row.entry?.dims[dim.id] ?? "—"])),
     }));
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "成绩排名");
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheetRows), "成绩排名");
     XLSX.utils.book_append_sheet(
       workbook,
-      XLSX.utils.json_to_sheet(
-        SCORE_BUCKETS.map((label, index) => ({ 分数段: label, 人次: data.distribution[index] ?? 0 })),
-      ),
+      XLSX.utils.json_to_sheet(SCORE_BUCKETS.map((label, index) => ({ 分数段: label, 人数: data.distribution[index] ?? 0 }))),
       "成绩分布",
     );
     XLSX.utils.book_append_sheet(
@@ -117,24 +220,30 @@ export function LiveReports({ session, onNavigate }: { session: Session; onNavig
     XLSX.writeFile(workbook, `考核报表-${className}-${new Date().toLocaleDateString("zh-CN")}.xlsx`);
   }
 
+  /* 一分两率：平均分（较训前）、及格率、优良率，都从成绩分布算 */
   const summary = useMemo(() => {
     if (!data) return null;
     const total = data.distribution.reduce((sum, value) => sum + value, 0);
     const good = (data.distribution[3] ?? 0) + (data.distribution[4] ?? 0);
     const pass = total - (data.distribution[0] ?? 0);
+    const withBaseline = data.ranking.filter((row) => row.baseline != null);
     return {
       average: data.ranking.length ? Math.round(data.ranking.reduce((sum, row) => sum + row.average, 0) / data.ranking.length) : null,
+      gain: withBaseline.length ? Math.round(withBaseline.reduce((sum, row) => sum + row.average - row.baseline!, 0) / withBaseline.length) : null,
       passRate: total > 0 ? Math.round((pass / total) * 100) : null,
       goodRate: total > 0 ? Math.round((good / total) * 100) : null,
+      pass,
+      good,
     };
   }, [data]);
 
-  const className = classes.find((item) => item.id === classId)?.name ?? "全部班级";
-  const taskName = tasks.find((task) => task.id === taskId)?.name ?? null;
-  const baseline = useMemo(() => Object.fromEntries((data?.baselineRadar ?? []).map((dim) => [dim.id, dim.value])), [data]);
-  const weak = useMemo(() => {
-    const scored = (data?.radar ?? []).filter((dim) => dim.value != null).sort((a, b) => (a.value ?? 0) - (b.value ?? 0));
-    return new Set(scored.slice(0, 2).map((dim) => dim.id));
+  const radarValues = useMemo(() => {
+    const scored = (data?.radar ?? []).filter((dim) => dim.value != null);
+    return scored.length ? Object.fromEntries(scored.map((dim) => [dim.id, dim.value!])) : null;
+  }, [data]);
+  const baseline = useMemo(() => {
+    if (!data?.baselineCount) return null;
+    return Object.fromEntries(data.baselineRadar.filter((dim) => dim.value != null).map((dim) => [dim.id, dim.value!]));
   }, [data]);
 
   /* D10：客户端里直接存成 PDF 文件；浏览器里退回系统打印（可选“另存为 PDF”） */
@@ -154,13 +263,6 @@ export function LiveReports({ session, onNavigate }: { session: Session; onNavig
 
   const hasData = Boolean(data && data.ranking.length > 0);
 
-  const withBaseline = (data?.ranking ?? []).filter((row) => row.baseline != null);
-  const gain = withBaseline.length ? Math.round(withBaseline.reduce((sum, row) => sum + row.average - row.baseline!, 0) / withBaseline.length) : null;
-  const activeRoster = roster.filter((row) => row.status === "active").length;
-  const scoredCount = data?.studentCount ?? 0;
-  const passCount = data ? data.distribution.reduce((sum, value) => sum + value, 0) - (data.distribution[0] ?? 0) : 0;
-  const goodCount = data ? (data.distribution[3] ?? 0) + (data.distribution[4] ?? 0) : 0;
-
   return (
     <Bench className="report-sheet">
       <div className="bench-bar">
@@ -173,72 +275,56 @@ export function LiveReports({ session, onNavigate }: { session: Session; onNavig
           {tasks.map((task) => <option key={task.id} value={task.id}>{task.name}{task.status === "closed" ? "（已结束）" : ""}</option>)}
         </Select>
         <div className="bench-bar-end">
-          <Button variant="ghost" icon={FileSpreadsheet} disabled={!hasData} onClick={exportExcel}>导出 Excel</Button>
+          <Button variant="ghost" icon={FileSpreadsheet} disabled={!rows.length} onClick={exportExcel}>导出 Excel</Button>
           <Button variant="primary" icon={Download} disabled={!data} onClick={() => void exportPdf()}>导出 PDF</Button>
         </div>
       </div>
       <h1 className="print-only report-title">{className} · {taskName ?? "全部任务综合"} · 考核报表</h1>
       {error ? <Callout tone="danger" title="读取失败">{error}</Callout> : null}
 
-      {/* 关键数字卡片（D-31）：每个数配一个一眼能读懂的小图；没数据时只画灰色底圈 */}
-      <div className="kpi-cards">
-        <KpiCard
-          label={taskId ? "任务平均分" : "平均分"}
-          help="每个学生先算一个综合成绩（各任务成绩的平均），再求全班平均；自由练习不计入"
-          value={summary?.average != null ? <><b>{summary.average}</b><small>/ 100</small></> : null}
-          sub={summary?.average != null && gain != null ? <><span className={gain < 0 ? "kpi-pill is-down" : "kpi-pill"}>{gain < 0 ? <ArrowDown size={12} /> : <ArrowUp size={12} />}{Math.abs(gain)}</span>较训前</> : null}
-          chart={<ScoreGauge value={summary?.average ?? null} />}
-        />
-        <KpiCard
-          label="及格率"
-          help="综合成绩 60 分及以上的学生，占有成绩学生的比例"
-          value={summary?.passRate != null ? <b>{summary.passRate}%</b> : null}
-          sub={summary?.passRate != null ? `${scoredCount} 人里 ${passCount} 人及格` : null}
-          chart={<RateRing value={summary?.passRate ?? null} />}
-        />
-        <KpiCard
-          label="优良率"
-          help="综合成绩 80 分及以上的学生，占有成绩学生的比例"
-          value={summary?.goodRate != null ? <b>{summary.goodRate}%</b> : null}
-          sub={summary?.goodRate != null ? `${goodCount} 人 80 分以上` : null}
-          chart={<RateRing value={summary?.goodRate ?? null} color="var(--c-cat-2)" />}
-        />
-        <KpiCard
-          label="参评学生"
-          help="已经有成绩的学生 / 班里在用的学生"
-          value={<><b>{scoredCount}</b><small>/ {activeRoster} 人</small></>}
-          bar={activeRoster ? scoredCount / activeRoster : 0}
-        />
-      </div>
-
-      <AttentionBoard
-        ranking={data?.ranking ?? []}
-        roster={roster}
-        hasBaseline={Boolean(data?.baselineCount)}
-        scopeName={className}
-        onNavigate={onNavigate}
-      />
-
       <div className="duo">
-        <Board title={<>成绩分布<HelpTip>每个学生一个综合成绩，按分数段统计人数</HelpTip></>} count={hasData ? `${data!.studentCount} 人` : undefined}>
-          <ScoreDistribution distribution={data?.distribution ?? [0, 0, 0, 0, 0]} emptyNote={<ChartEmptyNote desc="学生完成接待后出现" />} />
+        <Board title={<>成绩分布<HelpTip>每个学生一个综合成绩（各任务成绩的平均），按分数段统计人数；虚线是全班平均分</HelpTip></>} count={hasData ? `${data!.studentCount} 人` : undefined}>
+          <dl className="dist-stats">
+            <div>
+              <dt>{taskId ? "任务平均分" : "平均分"}<HelpTip>每个学生先算综合成绩，再求全班平均；自由练习不计入。“较训前”是做过训前测评的学生，综合成绩比训前测评总分高多少的平均</HelpTip></dt>
+              <dd>
+                {summary?.average != null ? summary.average : <span className="is-dash">—</span>}
+                {summary?.average != null && summary.gain != null ? (
+                  <span className={summary.gain < 0 ? "kpi-pill is-down" : "kpi-pill"}>{summary.gain < 0 ? <ArrowDown size={12} /> : <ArrowUp size={12} />}{Math.abs(summary.gain)} 较训前</span>
+                ) : null}
+              </dd>
+            </div>
+            <div>
+              <dt>及格率<HelpTip>综合成绩 60 分及以上的学生，占有成绩学生的比例</HelpTip></dt>
+              <dd>{summary?.passRate != null ? <>{summary.passRate}%<small>{summary.pass} 人</small></> : <span className="is-dash">—</span>}</dd>
+            </div>
+            <div>
+              <dt>优良率<HelpTip>综合成绩 80 分及以上的学生，占有成绩学生的比例</HelpTip></dt>
+              <dd>{summary?.goodRate != null ? <>{summary.goodRate}%<small>{summary.good} 人</small></> : <span className="is-dash">—</span>}</dd>
+            </div>
+          </dl>
+          <ScoreDistribution distribution={data?.distribution ?? [0, 0, 0, 0, 0]} average={summary?.average ?? null} emptyNote={<ChartEmptyNote desc="学生完成接待后出现" />} />
         </Board>
-        <Board title={<>各项能力<HelpTip>{data?.baselineCount ? "全班每一项的平均分，红色是最弱的两项；竖线是训前测评" : "全班每一项的平均分，红色是最弱的两项"}</HelpTip></>}>
-          <DimensionBars
-            dims={data?.radar?.length ? data.radar : ASSESSMENT_DIMENSIONS.map((dim) => ({ id: dim.id, label: dim.label, value: null }))}
-            weak={hasData ? weak : undefined}
-            baseline={data?.baselineCount ? baseline : undefined}
-            emptyNote={<ChartEmptyNote desc="学生完成接待后出现" />}
-          />
+        <Board
+          title={<>全班能力雷达<HelpTip>{data?.baselineCount ? "全班每一项的平均分；虚线是训前测评。悬停看每一项的定义和建议" : "全班每一项的平均分。悬停看每一项的定义和建议"}</HelpTip></>}
+          count={hasData ? `${data!.studentCount} 人的平均` : undefined}
+        >
+          <AbilityRadar values={radarValues} base={baseline} valueLabel="全班平均" />
         </Board>
       </div>
-      <Board title={<>成绩排名<HelpTip>{taskId ? "按这个任务的成绩排" : "按综合成绩排"}；完整的各项分数在“导出 Excel”里</HelpTip></>}>
-        {hasData ? (
-          <DataTable
-            rows={data!.ranking}
-            rowKey={(row) => row.username}
-            columns={RANK_COLUMNS(data!.ranking, Boolean(taskId))}
+
+      <Board
+        title={<>成绩排名<HelpTip>{taskId ? "按这个任务的成绩排" : "按综合成绩排"}；名字后面是需要关注的原因，红色数字就是原因所在的那一格；还没有成绩的学生排在最后。满意率只算任务里的接待。完整的各项分数在“导出 Excel”里</HelpTip></>}
+        extra={rows.length ? (
+          <FilterChips
+            value={filter}
+            onChange={setFilter}
+            items={[{ id: "all" as const, label: "全部", count: rows.length }, ...REASONS.map((item) => ({ id: item.id, label: item.label, count: counts[item.id] }))]}
           />
+        ) : undefined}
+      >
+        {rows.length ? (
+          <DataTable rows={shown} rowKey={(row) => row.key} columns={RANK_COLUMNS(Boolean(taskId), onNavigate)} empty="这一类没有学生" />
         ) : (
           <div className="rank-ghost">
             <div className="rank-ghost-head"><span>名次</span><span>学生</span><span>综合成绩</span><span>较训前</span><span>最弱一项</span></div>

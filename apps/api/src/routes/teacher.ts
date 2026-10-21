@@ -5,6 +5,7 @@ import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import { writeAudit } from "../auth-context";
 import { weightedTotal } from "../assessment";
+import { loadReceptionStats } from "../reception-stats";
 
 /** 教师授权班级的学生 ID 子查询（管理员不限）；paramIndex 指定教师ID占位序号 */
 function scopedStudentsSql(isAdmin: boolean, paramIndex = 1): string {
@@ -124,73 +125,70 @@ export function registerTeacherRoutes(
   db: Db,
   guard: AuthGuard,
 ): void {
-  // 数据总览：核心指标 + 成绩分布 + 能力薄弱项
-  // 口径：任务 = 考核单位。会话评分是过程数据；任务成绩 = 任务下已评会话均分；
-  // 「全部任务综合」= 每名学生各任务成绩的平均（一人一个样本）；可按 taskId 查看单个任务。
-  // 自由练习（无任务会话）不评分，天然不进入统计。
-  app.get<{ Querystring: { taskId?: string } }>(
+  // 数据总览（D-59）：参数四项（参训人数、任务完成率、平均分、对话总数）+ 成绩分布 + 各项能力，固定看全部任务
+  // 口径：任务 = 考核单位，学生综合成绩 = 各任务成绩的平均（一人一个样本），和考核报表同一套；自由练习不评分，天然不进成绩。
+  // 参训人数、对话总数是服务类指标，含自由练习（D-61）：对话总数 = 全班学生“累计对话”之和（学生回过话的聊天接待）。
+  app.get(
     "/v1/teacher/overview",
     { preHandler: guard.requireRole("teacher", "admin") },
     async (request) => {
       const user = request.user!;
       const isAdmin = user.role === "admin";
-      const baseParams = isAdmin ? [] : [user.sub];
+      const params = isAdmin ? [] : [user.sub];
       const students = scopedStudentsSql(isAdmin);
-      const taskId = request.query.taskId?.trim() || null;
-      const statParams: unknown[] = [...baseParams];
-      let taskFilter = "";
-      if (taskId) {
-        statParams.push(taskId);
-        taskFilter = ` and c.task_id = $${statParams.length}`;
-      }
+      const replied = "exists (select 1 from conversation_messages m where m.conversation_id = c.id and m.sender = 'student')";
 
-      const [heads, progress, assessed] = await Promise.all([
+      const [heads, progress, week, assessed] = await Promise.all([
         db.query(
           `select
-             (select count(distinct c.student_id) from conversations c where c.student_id in (${students})) as active_students,
-             (select count(*) from users where role = 'student' and id in (${students})) as total_students,
-             (select count(*) from conversation_messages m join conversations c on c.id = m.conversation_id
-              where c.student_id in (${students})) as total_messages,
-             (select count(*) from conversations c where c.student_id in (${students})) as total_conversations,
-             (select count(distinct c.student_id) from conversation_messages m join conversations c on c.id = m.conversation_id
-              where m.sender = 'student' and m.created_at > now() - interval '7 days' and c.student_id in (${students})) as week_active`,
-          baseParams,
+             (select count(*) from users where role = 'student' and status = 'active' and id in (${students})) as total_students,
+             (select count(distinct c.student_id) from conversations c join users u on u.id = c.student_id
+              where u.status = 'active' and c.student_id in (${students}) and ${replied}) as active_students,
+             (select count(*) from conversations c where c.student_id in (${students}) and c.channel = 'chat' and ${replied}) as total_conversations,
+             (select count(distinct c.student_id) from conversation_messages m join conversations c on c.id = m.conversation_id join users u on u.id = c.student_id
+              where u.status = 'active' and m.sender = 'student' and m.created_at >= date_trunc('week', now()) and c.student_id in (${students})) as week_active,
+             (current_date - date_trunc('week', now())::date)::int as today_index`,
+          params,
         ),
         db.query(
-          `select count(*) filter (where tp.status = 'done') as done, count(*) as total
-           from task_progress tp where tp.student_id in (${students})`,
-          baseParams,
+          `select count(*) filter (where tp.status = 'done')::int as done, count(*)::int as total
+           from task_progress tp join users u on u.id = tp.student_id
+           where u.status = 'active' and tp.student_id in (${students})`,
+          params,
+        ),
+        db.query(
+          `select (c.created_at::date - date_trunc('week', now())::date)::int as d, count(*)::int as n from conversations c
+           where c.student_id in (${students}) and c.channel = 'chat' and c.created_at >= date_trunc('week', now()) and ${replied}
+           group by 1`,
+          params,
         ),
         db.query(
           `select a.student_id, a.total, a.scores, c.task_id
            from assessments a join conversations c on c.id = a.conversation_id
-           where a.student_id in (${students}) and c.task_id is not null${taskFilter}`,
-          statParams,
+           where a.student_id in (${students}) and c.task_id is not null`,
+          params,
         ),
       ]);
 
       const stats = aggregateTaskCentric(assessed.rows as AssessedRow[]);
-
       const head = heads.rows[0];
-      const progressRow = progress.rows[0];
+      const done = Number(progress.rows[0]?.done ?? 0);
+      const required = Number(progress.rows[0]?.total ?? 0);
+      /* 本周一到周日每天的对话数，和学生端“本周接待”的柱图同一种画法 */
+      const weekDaily = [0, 0, 0, 0, 0, 0, 0];
+      for (const row of week.rows) if (row.d >= 0 && row.d < 7) weekDaily[row.d] = Number(row.n);
       return {
         activeStudents: Number(head.active_students),
         totalStudents: Number(head.total_students),
-        totalMessages: Number(head.total_messages),
-        totalConversations: Number(head.total_conversations),
         weekActive: Number(head.week_active),
-        completionRate:
-          Number(progressRow.total) > 0
-            ? Math.round((Number(progressRow.done) / Number(progressRow.total)) * 100)
-            : null,
+        totalConversations: Number(head.total_conversations),
+        weekDaily,
+        todayIndex: Number(head.today_index),
+        completion: { done, required, rate: required > 0 ? Math.round((done / required) * 100) : null },
         averageScore: stats.averageScore,
         scoredStudents: stats.studentCount,
         distribution: stats.distribution,
         radar: stats.radar,
-        weakDimensions: stats.radar
-          .filter((item) => item.value !== null)
-          .sort((a, b) => (a.value ?? 0) - (b.value ?? 0))
-          .slice(0, 3),
       };
     },
   );
@@ -410,6 +408,19 @@ export function registerTeacherRoutes(
         params,
       );
 
+      /* D-60：排名表的满意率（4–5 星占比），只算任务里的聊天接待，跟着班级、任务筛选走 */
+      const ratingResult = await db.query(
+        `select c.student_id, count(*)::int as rated, count(*) filter (where c.service_rating >= 4)::int as satisfied
+         from conversations c join users u on u.id = c.student_id
+         where c.student_id in (${scopedStudentsSql(isAdmin)})${classFilter}
+           and c.task_id is not null and c.channel = 'chat' and c.service_rating is not null${taskFilter}
+         group by c.student_id`,
+        params,
+      );
+      const ratingByStudent = new Map(
+        ratingResult.rows.map((row) => [row.student_id as string, { rated: Number(row.rated), rate: Math.round((Number(row.satisfied) / Number(row.rated)) * 100) }]),
+      );
+
       /* 初始测评基线：用于训前 vs 当前对比 */
       const baselineResult = await db.query(
         `select b.student_id, b.scores, b.total
@@ -454,6 +465,7 @@ export function registerTeacherRoutes(
           best: Math.max(...entry.taskFinals.values()),
           baseline: baselineByStudent.get(studentId) ?? null,
           dims: entry.dims,
+          satisfaction: ratingByStudent.get(studentId) ?? null,
         }))
         .sort((a, b) => b.average - a.average);
 
@@ -522,6 +534,7 @@ export function registerTeacherRoutes(
          order by a.created_at desc limit 100`,
         params,
       );
+      const reception = await loadReceptionStats(db, result.rows.map((row) => row.conversation_id as string));
       return result.rows.map((row) => ({
         id: row.id,
         conversationId: row.conversation_id,
@@ -544,6 +557,8 @@ export function registerTeacherRoutes(
         channel: (row.channel ?? "chat") as "chat" | "mail",
         serviceRating: row.service_rating == null ? null : Number(row.service_rating),
         closedAt: row.closed_at ?? null,
+        /* D-61：和学生复盘同一块“本次接待” */
+        reception: reception.get(row.conversation_id as string) ?? null,
         createdAt: row.created_at,
       }));
     },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeResponsiveness, replyTurnScore } from "./responsiveness";
+import { averageReplySec, computeResponsiveness, replyRounds, replyTurnScore, replyWithinRate, summarizeReplies } from "./responsiveness";
 
 const at = (sec: number) => new Date(Date.UTC(2026, 9, 13, 8, 0, 0) + sec * 1000).toISOString();
 
@@ -62,5 +62,52 @@ describe("消息响应时效", () => {
 
   it("没有可计的轮次时不给分", () => {
     expect(computeResponsiveness([{ sender: "student", at: at(0) }]).score).toBeNull();
+  });
+});
+
+describe("平均响应与 3 分钟回复率（D-61）", () => {
+  const t = (sec: number) => new Date(at(sec)).getTime();
+
+  it("逐轮列出，最后没回的那一轮等待为 null", () => {
+    const rounds = replyRounds([
+      { sender: "buyer", at: at(0) },
+      { sender: "buyer", at: at(15) },
+      { sender: "student", at: at(40) },
+      { sender: "buyer", at: at(100) },
+    ]);
+    expect(rounds).toEqual([{ startedAt: t(0), waitSec: 40 }, { startedAt: t(100), waitSec: null }]);
+  });
+
+  it("3 分钟内回复算达标；单轮等待按 10 分钟封顶进平均", () => {
+    const summary = summarizeReplies(
+      replyRounds([
+        { sender: "buyer", at: at(0) },
+        { sender: "student", at: at(60) },
+        { sender: "buyer", at: at(100) },
+        { sender: "student", at: at(280) },
+        { sender: "buyer", at: at(300) },
+        { sender: "student", at: at(1500) },
+      ]),
+      t(1500),
+    );
+    expect(summary).toEqual({ waitSum: 60 + 180 + 600, replied: 3, within: 2, counted: 3 });
+    expect(averageReplySec(summary)).toBe(280);
+    expect(replyWithinRate(summary)).toBe(67);
+  });
+
+  it("最后没回的一轮：等满 3 分钟算没达标，不满 3 分钟就结束的不计入", () => {
+    const messages = [
+      { sender: "buyer", at: at(0) },
+      { sender: "student", at: at(30) },
+      { sender: "buyer", at: at(60) },
+    ];
+    expect(summarizeReplies(replyRounds(messages), t(120))).toMatchObject({ within: 1, counted: 1 });
+    expect(summarizeReplies(replyRounds(messages), t(240))).toMatchObject({ within: 1, counted: 2, replied: 1 });
+  });
+
+  it("没有买家发言时两项都为空", () => {
+    const summary = summarizeReplies(replyRounds([{ sender: "student", at: at(0) }]), t(10));
+    expect(averageReplySec(summary)).toBeNull();
+    expect(replyWithinRate(summary)).toBeNull();
   });
 });

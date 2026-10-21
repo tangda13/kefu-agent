@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { BusinessStage, OrderKind, ScenarioScript } from "@cecs/contracts";
 import {
+  averageReplySec,
   buyerHistoryOrderCount,
   composePersonaWithRule,
   computeCustomerTags,
@@ -14,6 +15,7 @@ import {
   generateBuyerOrderHistory,
   generateOrderForScenario,
   productFactSheet,
+  replyWithinRate,
   storeCoupons,
   toStudentPersonaView,
   type OrderInfo,
@@ -38,6 +40,7 @@ import { once } from "../inflight";
 import { loadBuyerOrders } from "../buyer-orders";
 import { buildOutgoingTranslationMessages, buildTranslationMessages } from "../prompts/assist";
 import { rateService } from "../service-rating";
+import { loadReceptionTimings, sumReplySummaries } from "../reception-stats";
 import {
   endFollowUp,
   FOLLOWUP_MAX_TURNS,
@@ -818,13 +821,13 @@ export function registerConversationRoutes(
     },
   );
 
-  // 学生客服指标：今日接待/平均响应/未回复/12小时响应率/满意率（今天 4–5 星占比）/询单支付金额/付款人数/询单转化率
+  // 学生客服指标：今日接待/平均响应/未回复/3 分钟回复率/满意率（今天 4–5 星占比）/询单支付金额/付款人数/询单转化率
   app.get(
     "/v1/student/workbench-stats",
     { preHandler: guard.requireRole("student") },
     async (request) => {
       const user = request.user!;
-      const [today, unreplied, response, twelveHour, satisfaction, paid] = await Promise.all([
+      const [today, unreplied, todayChats, satisfaction, paid] = await Promise.all([
         db.query(
           `select count(*) as n from conversations
            where student_id = $1 and channel = 'chat' and created_at::date = current_date`,
@@ -838,34 +841,12 @@ export function registerConversationRoutes(
            ) = 'buyer'`,
           [user.sub],
         ),
+        // 平均响应、3 分钟回复率（D-61）：今天有买家发言的聊天接待，只算今天开始的轮次；和我的记录、复盘同一套算法
         db.query(
-          `select avg(extract(epoch from (reply_at - buyer_at))) as avg_s from (
-             select m.created_at as buyer_at,
-               (select min(m2.created_at) from conversation_messages m2
-                where m2.conversation_id = m.conversation_id
-                  and m2.sender = 'student' and m2.created_at > m.created_at) as reply_at
-             from conversation_messages m
-             join conversations c on c.id = m.conversation_id
-             where c.student_id = $1 and m.sender = 'buyer'
-               and m.created_at::date = current_date
-           ) gaps where reply_at is not null`,
-          [user.sub],
-        ),
-        // 12 小时响应率：近 7 天买家消息中，12 小时内得到学生回复的占比（未满 12 小时且未回复的不计入分母）
-        db.query(
-          `select count(*) filter (where reply_at is not null and reply_at - buyer_at <= interval '12 hours') as ok,
-                  count(*) as total
-           from (
-             select m.created_at as buyer_at,
-               (select min(m2.created_at) from conversation_messages m2
-                where m2.conversation_id = m.conversation_id
-                  and m2.sender = 'student' and m2.created_at > m.created_at) as reply_at
-             from conversation_messages m
-             join conversations c on c.id = m.conversation_id
-             where c.student_id = $1 and m.sender = 'buyer'
-               and m.created_at > now() - interval '7 days'
-           ) gaps
-           where reply_at is not null or buyer_at < now() - interval '12 hours'`,
+          `select c.id, (extract(epoch from date_trunc('day', now())) * 1000)::bigint as day_start from conversations c
+           where c.student_id = $1 and c.channel = 'chat' and exists (
+             select 1 from conversation_messages m
+             where m.conversation_id = c.id and m.sender = 'buyer' and m.created_at >= date_trunc('day', now()))`,
           [user.sub],
         ),
         // 满意率（D-54）：今天结束的接待里，买家服务评价 4–5 星的占比
@@ -886,17 +867,16 @@ export function registerConversationRoutes(
           [user.sub],
         ),
       ]);
-      const avg = response.rows[0]?.avg_s;
+      const dayStart = todayChats.rows.length ? Number(todayChats.rows[0].day_start) : Date.now();
+      const replies = sumReplySummaries((await loadReceptionTimings(db, todayChats.rows.map((row) => row.id as string))).values(), dayStart);
       const todayCount = Number(today.rows[0]?.n ?? 0);
-      const twelveTotal = Number(twelveHour.rows[0]?.total ?? 0);
       const rated = Number(satisfaction.rows[0]?.rated ?? 0);
       const paidBuyers = Number(paid.rows[0]?.buyers ?? 0);
       return {
         todayConversations: todayCount,
         unreplied: Number(unreplied.rows[0]?.n ?? 0),
-        avgResponseSeconds: avg === null || avg === undefined ? null : Math.round(Number(avg)),
-        twelveHourResponseRate:
-          twelveTotal > 0 ? Math.round((Number(twelveHour.rows[0]?.ok ?? 0) / twelveTotal) * 1000) / 10 : null,
+        avgResponseSeconds: averageReplySec(replies),
+        replyWithinRate: replyWithinRate(replies),
         satisfactionRate: rated > 0 ? Math.round((Number(satisfaction.rows[0]?.satisfied ?? 0) / rated) * 100) : null,
         inquiryPaidAmount: Math.round(Number(paid.rows[0]?.amount ?? 0) * 100) / 100,
         paidBuyers,

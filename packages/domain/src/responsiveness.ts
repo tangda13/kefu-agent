@@ -49,25 +49,89 @@ export function replyTurnScore(seconds: number): number {
 
 const timeOf = (value: string | Date) => new Date(value).getTime();
 
-/** 逐轮扫描：waits = 每一轮买家第一条消息到客服第一条回复的秒数；pendingSince = 最后还没回的那一轮从何时开始等 */
-function scanWaits(messages: TimedMessage[]): { waits: number[]; pendingSince: number | null } {
+export interface ReplyRound {
+  /** 这一轮买家第一条消息的时间（毫秒） */
+  startedAt: number;
+  /** 等了多少秒才回；到最后也没回为 null */
+  waitSec: number | null;
+}
+
+/** 逐轮扫描：每一轮 = 买家第一条消息到客服第一条回复；最后还没回的那一轮 waitSec 为 null */
+export function replyRounds(messages: TimedMessage[]): ReplyRound[] {
   const sorted = messages.filter((m) => m.sender === "buyer" || m.sender === "student").sort((a, b) => timeOf(a.at) - timeOf(b.at));
-  const waits: number[] = [];
+  const rounds: ReplyRound[] = [];
   let pendingSince: number | null = null;
   for (const message of sorted) {
     if (message.sender === "buyer") {
       if (pendingSince == null) pendingSince = timeOf(message.at);
     } else if (pendingSince != null) {
-      waits.push(Math.max(0, (timeOf(message.at) - pendingSince) / 1000));
+      rounds.push({ startedAt: pendingSince, waitSec: Math.max(0, (timeOf(message.at) - pendingSince) / 1000) });
       pendingSince = null;
     }
   }
-  return { waits, pendingSince };
+  if (pendingSince != null) rounds.push({ startedAt: pendingSince, waitSec: null });
+  return rounds;
+}
+
+function scanWaits(messages: TimedMessage[]): { waits: number[]; pendingSince: number | null } {
+  const rounds = replyRounds(messages);
+  const last = rounds[rounds.length - 1];
+  return {
+    waits: rounds.filter((round) => round.waitSec != null).map((round) => round.waitSec!),
+    pendingSince: last && last.waitSec == null ? last.startedAt : null,
+  };
 }
 
 /** 每一轮的等待秒数（买家连发、催促不重置计时）；没回复的轮次不算 */
 export function replyWaits(messages: TimedMessage[]): number[] {
   return scanWaits(messages).waits;
+}
+
+/** 接待指标里单轮等待按 10 分钟封顶：买家等这么久早已离开（D-53） */
+export const RESPONSE_CAP_SEC = 600;
+/** 3 分钟回复率的门槛（D-61，同飞鸽“3 分钟人工回复率”） */
+export const REPLY_WITHIN_SEC = 180;
+
+export interface ReplySummary {
+  /** 回了的轮次等待秒数之和（单轮封顶 10 分钟）；平均响应 = waitSum / replied */
+  waitSum: number;
+  replied: number;
+  /** 3 分钟回复率 = within / counted */
+  within: number;
+  counted: number;
+}
+
+export const EMPTY_REPLY_SUMMARY: ReplySummary = { waitSum: 0, replied: 0, within: 0, counted: 0 };
+
+/**
+ * 平均响应与 3 分钟回复率（D-61）：工作台顶栏、我的记录、复盘“本次接待”都用这一个函数，总数和单次对得上。
+ * endAt：最后没回的那一轮等到什么时候为止（会话结束时间；还在接待用现在）。等满 3 分钟算没达标，不满 3 分钟会话就结束的不计入。
+ */
+export function summarizeReplies(rounds: ReplyRound[], endAt: number): ReplySummary {
+  const summary = { ...EMPTY_REPLY_SUMMARY };
+  for (const round of rounds) {
+    if (round.waitSec != null) {
+      summary.waitSum += Math.min(round.waitSec, RESPONSE_CAP_SEC);
+      summary.replied += 1;
+      summary.counted += 1;
+      if (round.waitSec <= REPLY_WITHIN_SEC) summary.within += 1;
+    } else if ((endAt - round.startedAt) / 1000 >= REPLY_WITHIN_SEC) {
+      summary.counted += 1;
+    }
+  }
+  return summary;
+}
+
+export function addReplySummaries(a: ReplySummary, b: ReplySummary): ReplySummary {
+  return { waitSum: a.waitSum + b.waitSum, replied: a.replied + b.replied, within: a.within + b.within, counted: a.counted + b.counted };
+}
+
+export function averageReplySec(summary: ReplySummary): number | null {
+  return summary.replied ? Math.round(summary.waitSum / summary.replied) : null;
+}
+
+export function replyWithinRate(summary: ReplySummary): number | null {
+  return summary.counted ? Math.round((summary.within / summary.counted) * 100) : null;
 }
 
 export function computeResponsiveness(

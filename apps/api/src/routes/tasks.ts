@@ -3,15 +3,13 @@ import { ASSESSMENT_DIMENSIONS, BUSINESS_STAGES } from "@cecs/contracts";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import { teacherOwnsClass, writeAudit } from "../auth-context";
-import { filterPersonaTemplates, replyWaits, type PersonaRule } from "@cecs/domain";
+import { averageReplySec, filterPersonaTemplates, replyWithinRate, type PersonaRule } from "@cecs/domain";
+import { loadReceptionTimings, sumReplySummaries } from "../reception-stats";
 import { ratingSummary } from "../service-rating";
 import { loadEnabledPersonaTemplates } from "./catalog";
 import type { LlmGateway } from "../llm/gateway";
 import { sweepConversations } from "../lifecycle";
 import { aggregateTaskCentric, type AssessedRow } from "./teacher";
-
-/** 平均响应时长的单轮封顶（秒），和买家耐心规则里“约 10 分钟离开”一致 */
-const RESPONSE_CAP_SEC = 600;
 
 interface CreateTaskBody {
   name?: string;
@@ -477,34 +475,9 @@ export function registerTaskRoutes(
         ),
         db.query("select total from baseline_assessments where student_id = $1", [user.sub]),
       ]);
-      /* 平均响应时长（D-53）：全部聊天接待（含练习）里买家每一轮到客服第一条回复的等待，和“消息响应时效”同一种算法 */
-      const timing = await db.query(
-        `select m.conversation_id, m.sender, m.created_at from conversation_messages m
-         join conversations c on c.id = m.conversation_id
-         where c.student_id = $1 and c.channel = 'chat' and m.sender in ('buyer', 'student')
-         order by m.conversation_id, m.created_at`,
-        [user.sub],
-      );
-      const byConversation = new Map<string, Array<{ sender: string; at: string }>>();
-      for (const row of timing.rows) {
-        const list = byConversation.get(row.conversation_id) ?? [];
-        list.push({ sender: row.sender, at: row.created_at });
-        byConversation.set(row.conversation_id, list);
-      }
-      let waitSum = 0;
-      let waitTurns = 0;
-      let firstSum = 0;
-      let firstCount = 0;
-      // 单轮等待按 10 分钟封顶：买家等这么久早已离开（D-40），隔天才回的老会话不该把平均值拉到几十小时
-      const cap = (seconds: number) => Math.min(seconds, RESPONSE_CAP_SEC);
-      for (const messages of byConversation.values()) {
-        const waits = replyWaits(messages);
-        if (!waits.length) continue;
-        for (const seconds of waits) waitSum += cap(seconds);
-        waitTurns += waits.length;
-        firstSum += cap(waits[0]!);
-        firstCount += 1;
-      }
+      /* 平均响应时长（D-53）、3 分钟回复率（D-61）：全部聊天接待（含练习），和复盘“本次接待”同一套算法（单轮封顶 10 分钟） */
+      const chatIds = await db.query("select id from conversations where student_id = $1 and channel = 'chat'", [user.sub]);
+      const replies = sumReplySummaries((await loadReceptionTimings(db, chatIds.rows.map((row) => row.id as string))).values());
       /* 满意率（D-54）：买家服务评价 4–5 星的占比，全部接待 */
       const rating = await ratingSummary(db, user.sub, "and c.channel = 'chat'");
       /* 达标率：任务接待里达到该任务达标线（没设按 60）的次数占比；本周练习：本周开始的接待次数（含自由练习） */
@@ -565,9 +538,9 @@ export function registerTaskRoutes(
           rounds: Number(talk.rows[0]?.rounds ?? 0),
         },
         response: {
-          avgSeconds: waitTurns ? Math.round(waitSum / waitTurns) : null,
-          firstSeconds: firstCount ? Math.round(firstSum / firstCount) : null,
-          turns: waitTurns,
+          avgSeconds: averageReplySec(replies),
+          turns: replies.replied,
+          withinRate: replyWithinRate(replies),
         },
         rating,
       };

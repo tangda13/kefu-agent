@@ -94,7 +94,7 @@ export function ShiftBar({ task, practice, switchable, onPickTask, reason, pract
           {moreOpen ? (
             <div className="wbk-pop wbk-more-pop">
               <dl>
-                <dt>12 小时响应率</dt><dd className="num">{stats?.twelveHourResponseRate != null ? `${stats.twelveHourResponseRate}%` : "—"}</dd>
+                <dt>3 分钟回复率</dt><dd className="num">{stats?.replyWithinRate != null ? `${stats.replyWithinRate}%` : "—"}</dd>
                 <dt>询单支付金额</dt><dd className="num">USD {(stats?.inquiryPaidAmount ?? 0).toFixed(2)}</dd>
                 <dt>付款人数</dt><dd className="num">{stats?.paidBuyers ?? "—"}</dd>
                 <dt>询单转化率</dt><dd className="num">{stats?.conversionRate != null ? `${stats.conversionRate}%` : "—"}</dd>

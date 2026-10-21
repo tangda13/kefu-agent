@@ -193,13 +193,44 @@ export function ScoreGauge({ value }: { value: number | null }) {
   const mx = 52 - r * Math.cos(angle);
   const my = 50 - r * Math.sin(angle);
   return (
-    <svg className="kpi-gauge" viewBox="0 0 104 60" aria-hidden="true">
+    <svg className="kpi-gauge" viewBox="0 -6 104 66" aria-hidden="true">
       <path d="M12 50 A40 40 0 0 1 92 50" fill="none" stroke="var(--c-surface-hover)" strokeWidth={8} strokeLinecap="round" />
       {value != null ? <path d="M12 50 A40 40 0 0 1 92 50" fill="none" stroke={value < 60 ? "var(--c-danger)" : "var(--c-brand)"} strokeWidth={8} strokeLinecap="round" strokeDasharray={`${(length * Math.max(0, Math.min(100, value))) / 100} ${length}`} /> : null}
       <line x1={mx - 6 * Math.cos(angle)} y1={my - 6 * Math.sin(angle)} x2={mx + 7 * Math.cos(angle)} y2={my + 7 * Math.sin(angle)} stroke="var(--c-ink-2)" strokeWidth={2} />
       <text x={mx - 15} y={my - 6} fontSize={9} fill="var(--c-ink-3)">60</text>
     </svg>
   );
+}
+
+const WEEK_LABELS = "一二三四五六日";
+
+/** 本周七天柱图（学生端本周接待、教师端对话总数共用）：今天高亮，没有数的日子画一道灰线 */
+export function WeekBars({ daily, today }: { daily: number[]; today: number }) {
+  const max = Math.max(1, ...daily);
+  return (
+    <svg className="kpi-week" viewBox="0 0 126 58" aria-hidden="true">
+      {daily.map((count, index) => {
+        const height = count ? 6 + Math.round((count / max) * 30) : 2;
+        const isToday = index === today;
+        return (
+          <g key={index}>
+            <rect x={index * 18 + 2} y={40 - height} width={11} height={height} rx={2} fill={isToday ? "var(--c-brand)" : count ? "#bfd2f3" : "#e3e7ee"}>
+              <title>周{WEEK_LABELS[index]} {count} 次</title>
+            </rect>
+            <text x={index * 18 + 7.5} y={55} fontSize={10} textAnchor="middle" fill={isToday ? "var(--c-brand-ink)" : "#9aa3b0"}>{WEEK_LABELS[index]}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/** 最弱的几项：取第 count 低的分数为线，和它同分的一起算（三项都是 53 时三项都标） */
+export function weakestIds(dims: RadarDim[], count = 2): Set<string> {
+  const scored = dims.filter((dim) => dim.value != null).sort((a, b) => a.value! - b.value!);
+  if (!scored.length) return new Set();
+  const line = scored[Math.min(count, scored.length) - 1]!.value!;
+  return new Set(scored.filter((dim) => dim.value! <= line).map((dim) => dim.id));
 }
 
 /** 圆环：百分比；value 为空只画灰色底圈 */
@@ -219,12 +250,22 @@ export function ChartEmptyNote({ title = "还没有评分", desc, action }: { ti
   return <div className="chart-note"><b>{title}</b><span>{desc}</span>{action}</div>;
 }
 
-/** 成绩分布：五档竖条。没有数据时照常画出五档和坐标，柱子用斜纹占位，配一张提示卡（D-30） */
-export function ScoreDistribution({ distribution, emptyNote }: { distribution: number[]; emptyNote?: ReactNode }) {
+/** 平均分落在第几档、档内的位置（0–1）：<60、60-70、70-80、80-90、90+ */
+function bucketPosition(score: number): { index: number; fraction: number } {
+  if (score < 60) return { index: 0, fraction: Math.max(0, score) / 60 };
+  const index = Math.min(4, Math.floor((score - 50) / 10));
+  return { index, fraction: Math.min(1, (score - (index * 10 + 50)) / 10) };
+}
+
+/** 成绩分布：五档竖条。没有数据时照常画出五档和坐标，柱子用斜纹占位，配一张提示卡（D-30）；average 给了就画一条平均分虚线（D-60） */
+export function ScoreDistribution({ distribution, emptyNote, average }: { distribution: number[]; emptyNote?: ReactNode; average?: number | null }) {
   const total = distribution.reduce((sum, value) => sum + value, 0);
   const max = Math.max(1, ...distribution);
+  const mark = total && average != null ? bucketPosition(average) : null;
   return (
     <div className={total ? "score-dist" : "score-dist is-empty"} role="img" aria-label="成绩分布">
+      {/* 五列、列间距 16px：第 index 列左边缘 + 档内比例 */}
+      {mark ? <span className="score-dist-avg" style={{ left: `calc((100% - 64px) / 5 * ${mark.index + mark.fraction} + ${mark.index * 16}px)` }}><b>平均 {average}</b></span> : null}
       {distribution.map((value, index) => (
         <div key={index} className="score-dist-col">
           <span className="score-dist-count">{value} 人</span>

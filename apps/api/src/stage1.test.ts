@@ -1546,6 +1546,58 @@ describe("参数核对 · 学生端（D-53 关键数字、D-54 服务评价、D-
     expect(stats.satisfactionRate).toBe(100);
   });
 
+  it("D-61：复盘“本次接待”和我的记录、工作台顶栏同一套算法（3 分钟回复率、单轮封顶、买家等太久离开）", async () => {
+    const task = await db.query(
+      `insert into tasks (name, business_stage, scenario_ids, interaction_mode, scoring_weights, status, created_by)
+       values ('D-61 接待指标', 'after_sale', '["AFTER-001"]', 'text', '{}', 'published', (select id from users where username = 'admin')) returning id`,
+    );
+    const conversation = await db.query(
+      `insert into conversations (task_id, student_id, scenario_id, status, closed_reason, service_rating, created_at, closed_at)
+       values ($1, $2, 'AFTER-001', 'closed', 'buyer_left', 4, now() - interval '20 minutes', now() - interval '2 minutes') returning id`,
+      [task.rows[0].id, studentId],
+    );
+    const id = conversation.rows[0].id as string;
+    // 第 1 轮 60 秒回（达标）；第 2 轮 300 秒回（没达标）；第 3 轮一直没回，等了 8 分钟买家离开（计入、没达标）
+    await db.query(
+      `insert into conversation_messages (conversation_id, sender, content, created_at) values
+         ($1, 'buyer', 'Hi', now() - interval '20 minutes'),
+         ($1, 'student', 'Hello', now() - interval '19 minutes'),
+         ($1, 'buyer', 'Any update?', now() - interval '18 minutes'),
+         ($1, 'teacher', '先安抚', now() - interval '16 minutes'),
+         ($1, 'student', 'Checking now', now() - interval '13 minutes'),
+         ($1, 'buyer', 'Hello?', now() - interval '10 minutes')`,
+      [id],
+    );
+    await db.query(
+      `insert into assessments (conversation_id, student_id, scores, total, comment) values ($1, $2, $3, 60, '响应偏慢')`,
+      [id, studentId, JSON.stringify({ professionalism: 60, effectiveness: 60, empathy: 60, resolution: 60, grammar: 60, compliance: 60 })],
+    );
+    const expected = { rating: 4, avgReplySec: 180, replyWithin: { within: 1, counted: 3 }, rounds: 2, durationSec: 1080, endReason: "left_waiting" };
+
+    // 限时到由后台巡检关闭，关闭时间晚：接待时长按最后一条消息算（20 分钟进线，15 分钟前最后一条 → 5 分钟）
+    const swept = await db.query(
+      `insert into conversations (task_id, student_id, scenario_id, status, closed_reason, created_at, closed_at)
+       values ($1, $2, 'AFTER-001', 'closed', 'timeout', now() - interval '20 minutes', now()) returning id`,
+      [task.rows[0].id, studentId],
+    );
+    await db.query("insert into conversation_messages (conversation_id, sender, content, created_at) values ($1, 'student', 'Hello', now() - interval '15 minutes')", [swept.rows[0].id]);
+    await db.query(`insert into assessments (conversation_id, student_id, scores, total, comment) values ($1, $2, '{}', 50, '超时')`, [swept.rows[0].id, studentId]);
+
+    const records = (await app.inject({ method: "GET", url: "/v1/student/assessments", headers: auth(student) })).json();
+    expect(records.records.find((item: { conversationId: string }) => item.conversationId === id).reception).toEqual(expected);
+    expect(records.records.find((item: { conversationId: string }) => item.conversationId === swept.rows[0].id).reception).toMatchObject({ durationSec: 300, endReason: "timeout", rounds: 1 });
+    const admin = await login("admin", "Admin#Prod9");
+    const reviews = (await app.inject({ method: "GET", url: "/v1/teacher/assessments", headers: auth(admin) })).json() as Array<{ conversationId: string; reception: unknown }>;
+    expect(reviews.find((item) => item.conversationId === id)!.reception).toEqual(expected);
+
+    // 总数 = 上一条用例的那次接待（30 秒回，达标）+ 这一次：(30 + 60 + 300) / 3 = 130 秒；3 分钟回复率 2 / 4
+    const summary = (await app.inject({ method: "GET", url: "/v1/student/summary", headers: auth(student) })).json();
+    expect(summary.response).toMatchObject({ avgSeconds: 130, turns: 3, withinRate: 50 });
+    const stats = (await app.inject({ method: "GET", url: "/v1/student/workbench-stats", headers: auth(student) })).json();
+    expect(stats).not.toHaveProperty("twelveHourResponseRate");
+    expect(stats.replyWithinRate).toBeGreaterThanOrEqual(0);
+  });
+
   it("D-56：会话结束后发物流通知卡片，买家回复后跟进，客服回满 3 轮自动结束，不改原结束原因和星级", async () => {
     const created = await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { scenarioId: "IN-002" } });
     const id = created.json().id as string;
@@ -1629,7 +1681,7 @@ describe("参数核对 · 学生端（D-53 关键数字、D-54 服务评价、D-
     expect(assessment.prompt_version).toContain("#mail");
     expect((await db.query("select status from task_progress where task_id = $1 and student_id = $2", [taskId, studentId])).rows[0].status).toBe("done");
     const records = (await app.inject({ method: "GET", url: "/v1/student/assessments", headers: auth(student) })).json();
-    expect(records.records.find((item: { conversationId: string }) => item.conversationId === opened.id)).toMatchObject({ channel: "mail" });
+    expect(records.records.find((item: { conversationId: string }) => item.conversationId === opened.id)).toMatchObject({ channel: "mail", reception: null });
     const resend = await app.inject({
       method: "POST",
       url: "/v1/mail/submissions",
@@ -1637,5 +1689,68 @@ describe("参数核对 · 学生端（D-53 关键数字、D-54 服务评价、D-
       payload: { templateId: "MAIL-001", subject: "Again", body: "Again", conversationId: opened.id },
     });
     expect(resend.json().code).toBe("MAIL_TASK_CLOSED");
+  });
+});
+
+describe("参数核对 · 教师端（D-59 数据总览、D-60 考核报表）", () => {
+  it("参训人数、任务完成率只算在用的学生；对话总数 = 学生回过话的聊天接待（含练习、不含邮件）；平均分和报表同口径", async () => {
+    const { hashPassword } = await import("./security");
+    const klass = (await db.query("insert into classes (name) values ('D59测试班') returning id")).rows[0].id as string;
+    const addUser = async (username: string, role: string, status = "active") =>
+      (await db.query(
+        `insert into users (username, display_name, role, password_hash, class_id, status) values ($1, $1, $2, $3, $4, $5) returning id`,
+        [username, role, await hashPassword("Teach#D59x"), role === "student" ? klass : null, status],
+      )).rows[0].id as string;
+    const teacherId = await addUser("t-d59", "teacher");
+    await db.query("insert into teacher_classes (teacher_id, class_id) values ($1, $2)", [teacherId, klass]);
+    const [a, b, gone] = [await addUser("s-d59-a", "student"), await addUser("s-d59-b", "student"), await addUser("s-d59-c", "student", "disabled")];
+    const task = (await db.query(
+      `insert into tasks (name, business_stage, scenario_ids, interaction_mode, scoring_weights, status, created_by)
+       values ('D-59 总览', 'after_sale', '["AFTER-001"]', 'text', '{}', 'published', $1) returning id`,
+      [teacherId],
+    )).rows[0].id as string;
+    await db.query("insert into task_progress (task_id, student_id, status) values ($1, $2, 'done'), ($1, $3, 'todo'), ($1, $4, 'done')", [task, a, b, gone]);
+    const conversation = async (studentId: string, taskId: string | null, channel: string, senders: string[]) => {
+      const id = (await db.query(
+        "insert into conversations (task_id, student_id, scenario_id, channel, status) values ($1, $2, 'AFTER-001', $3, 'closed') returning id",
+        [taskId, studentId, channel],
+      )).rows[0].id as string;
+      for (const sender of senders) await db.query("insert into conversation_messages (conversation_id, sender, content) values ($1, $2, 'x')", [id, sender]);
+      return id;
+    };
+    const scored = await conversation(a, task, "chat", ["buyer", "student"]);
+    await conversation(a, null, "chat", ["buyer", "student"]); // 自由练习：算对话
+    await conversation(a, task, "chat", ["buyer"]); // 学生一句没回：不算
+    await conversation(b, task, "mail", ["student"]); // 邮件：参训算、对话不算
+    await conversation(gone, task, "chat", ["buyer", "student"]); // 停用的学生：对话照算（历史不消失），参训人数不算
+    await db.query(
+      "insert into assessments (conversation_id, student_id, scores, total, comment) values ($1, $2, $3, 70, '-')",
+      [scored, a, JSON.stringify({ professionalism: 70, effectiveness: 70, empathy: 70, resolution: 70, grammar: 70, compliance: 70 })],
+    );
+
+    const teacher = await login("t-d59", "Teach#D59x");
+    const body = (await app.inject({ method: "GET", url: "/v1/teacher/overview", headers: auth(teacher) })).json();
+    expect(body).toMatchObject({
+      activeStudents: 2,
+      totalStudents: 2,
+      weekActive: 2,
+      totalConversations: 3,
+      completion: { done: 1, required: 2, rate: 50 },
+      averageScore: 70,
+      scoredStudents: 1,
+      distribution: [0, 0, 1, 0, 0],
+    });
+    expect(body.weekDaily[body.todayIndex]).toBe(3);
+    expect(body).not.toHaveProperty("weakDimensions");
+
+    // D-60：排名表的满意率只算任务里的聊天接待（5 星 + 3 星 → 50%），自由练习的星级不算
+    await db.query("update conversations set service_rating = 5 where id = $1", [scored]);
+    const other = await conversation(a, task, "chat", ["buyer", "student"]);
+    await db.query("update conversations set service_rating = 3 where id = $1", [other]);
+    const practice = await conversation(a, null, "chat", ["buyer", "student"]);
+    await db.query("update conversations set service_rating = 5 where id = $1", [practice]);
+    const report = (await app.inject({ method: "GET", url: `/v1/teacher/reports?classId=${klass}`, headers: auth(teacher) })).json();
+    expect(report.ranking).toHaveLength(1);
+    expect(report.ranking[0]).toMatchObject({ username: "s-d59-a", average: 70, satisfaction: { rated: 2, rate: 50 } });
   });
 });

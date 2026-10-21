@@ -528,8 +528,8 @@ export interface StudentSummary {
   todayIndex?: number;
   /** 本周接待里的自由练习次数 */
   weekPractice: number;
-  /** 平均响应时长（D-53）：全部聊天接待里买家每轮到客服第一条回复的等待；firstSeconds 是首次响应的平均 */
-  response?: { avgSeconds: number | null; firstSeconds: number | null; turns: number };
+  /** 平均响应时长（D-53）、3 分钟回复率（D-61，%）：全部聊天接待（含练习），和复盘“本次接待”同一套算法 */
+  response?: { avgSeconds: number | null; turns: number; withinRate: number | null };
   /** 满意率（D-54）：服务评价 counts 依次是 5 星到 1 星的次数，rate = 4–5 星占比（%） */
   rating?: { counts: [number, number, number, number, number]; total: number; satisfied: number; rate: number | null; average: number | null };
 }
@@ -624,7 +624,8 @@ export interface WorkbenchStats {
   todayConversations: number;
   unreplied: number;
   avgResponseSeconds: number | null;
-  twelveHourResponseRate: number | null;
+  /** 3 分钟回复率（%）：今天开始的买家发言轮次（D-61） */
+  replyWithinRate: number | null;
   satisfactionRate: number | null;
   inquiryPaidAmount: number;
   paidBuyers: number;

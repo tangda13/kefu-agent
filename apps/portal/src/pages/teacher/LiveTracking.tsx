@@ -1,11 +1,12 @@
 import { Archive, Clock, Download, Lightbulb, List, Lock, MessagesSquare, MonitorPlay, Send, Target } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ASSESSMENT_DIMENSIONS } from "@cecs/contracts";
+import { ASSESSMENT_DIMENSIONS, type ReceptionStats } from "@cecs/contracts";
 import {
   ApiError, apiGet, apiPost, apiRequestPatch, assetUrl,
   type BuyerPublicView, type ConversationMessage, type Session,
 } from "../../api/client";
 import { BuyerAvatar } from "../../components/BuyerAvatar";
+import { ReceptionGrid, receptionText } from "../../components/ReceptionStats";
 import { UserAvatar } from "../../components/AccountCenter";
 import {
   Bench, Board, Button, Drawer, Empty, Field, FilterChips, HeaderTabs, HelpTip, Input, MoreMenu, SearchBox, Tag, Textarea, Toolbar, toast,
@@ -79,6 +80,8 @@ interface TeacherAssessment {
   channel?: "chat" | "mail";
   /** 买家服务评价 1–5 星（D-54） */
   serviceRating?: number | null;
+  /** 和学生复盘同一块“本次接待”（D-61）；邮件为空 */
+  reception?: ReceptionStats | null;
   createdAt: string;
 }
 
@@ -657,6 +660,7 @@ function ReviewDrawer({ session, item, onClose, onSaved }: { session: Session; i
       "【对话】",
       ...(messages ?? []).map((message) => `${time(message.createdAt)} ${SENDER_LABELS[message.sender] ?? message.sender}：${KIND_LABELS[message.kind ?? ""] ?? ""}${messageText(message)}`),
       ...(item.serviceRating ? [`买家评价了本次服务：${item.serviceRating} 星`] : []),
+      ...(item.reception ? ["", `【本次接待】${receptionText(item.reception)}`] : []),
       "",
       `【评分】总分 ${item.total}${item.reviewedAt ? `（AI 原始 ${aiTotal}）` : ""}`,
       ...ASSESSMENT_DIMENSIONS.map((dim) => `${dim.label}：${item.scores?.[dim.id] ?? "—"}`),
@@ -701,6 +705,12 @@ function ReviewDrawer({ session, item, onClose, onSaved }: { session: Session; i
             <strong>{total ?? "—"}</strong>
             <em>{total != null && total !== aiTotal ? `AI 原始 ${aiTotal}` : "AI 评分"}{Object.values(item.weights ?? {}).some((value) => value > 0) ? " · 按任务权重计算" : " · 各项等权"}</em>
           </div>
+          {item.reception ? (
+            <div className="review-block">
+              <h4>本次接待<HelpTip>这一次接待的数据，和学生工作台顶栏、我的记录里的满意率、平均响应时长、3 分钟回复率是同一个算法。</HelpTip></h4>
+              <ReceptionGrid stats={item.reception} />
+            </div>
+          ) : null}
           <div className="review-dims">
             {ASSESSMENT_DIMENSIONS.map((dim) => {
               const changed = scores[dim.id] !== String(aiScores?.[dim.id] ?? "");
