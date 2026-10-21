@@ -364,13 +364,13 @@ export function registerClassRoutes(
         reply.code(403);
         return { code: "FORBIDDEN", message: "您未被授权管理该班级。" };
       }
-      // D8：名单带统计列。平均分按任务口径：先算每个任务的会话均分，再对任务求平均（自由练习不计）
+      // D8：名单带统计列。平均分按任务口径：先算每个任务的会话均分（取整成任务成绩，和考核报表 aggregateTaskCentric 一致），再对任务求平均（自由练习不计）
       const result = await db.query(
         `select u.id, u.username, u.display_name, u.status, u.must_change_password, u.created_at, u.group_name,
                 (select count(*) from task_progress tp where tp.student_id = u.id) as tasks_total,
                 (select count(*) from task_progress tp where tp.student_id = u.id and tp.status = 'done') as tasks_done,
                 (select round(avg(t.score)) from (
-                   select avg(a.total) as score from assessments a join conversations c on c.id = a.conversation_id
+                   select round(avg(a.total)) as score from assessments a join conversations c on c.id = a.conversation_id
                    where a.student_id = u.id and c.task_id is not null group by c.task_id
                  ) t) as average_score,
                 (select max(m.created_at) from conversation_messages m join conversations c on c.id = m.conversation_id
@@ -391,6 +391,45 @@ export function registerClassRoutes(
         tasksDone: Number(row.tasks_done),
         averageScore: row.average_score == null ? null : Number(row.average_score),
         lastActiveAt: row.last_active_at ?? null,
+      }));
+    },
+  );
+
+  /* 参数 2.2.3（D-63）：学生详情里的参训任务——每个下发给他的任务的完成状态和成绩。
+     成绩 = 这个任务下已评会话的均分，和考核报表的任务成绩同一口径 */
+  app.get<{ Params: { studentId: string } }>(
+    "/v1/students/:studentId/tasks",
+    { preHandler: guard.requireRole("teacher", "admin") },
+    async (request, reply) => {
+      const student = await loadStudent(db, request.params.studentId);
+      if (!student) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "学生不存在。" };
+      }
+      if (!student.class_id || !(await teacherOwnsClass(db, request.user!, student.class_id))) {
+        reply.code(403);
+        return { code: "FORBIDDEN", message: "您未被授权管理该学生。" };
+      }
+      const result = await db.query(
+        `select t.id, t.name, t.business_stage, t.status, t.start_at, t.deadline, tp.status as progress,
+                (select round(avg(a.total)) from assessments a join conversations c on c.id = a.conversation_id
+                 where a.student_id = tp.student_id and c.task_id = t.id) as score,
+                (select count(*) from conversations c where c.task_id = t.id and c.student_id = tp.student_id)::int as conversations
+         from task_progress tp join tasks t on t.id = tp.task_id
+         where tp.student_id = $1
+         order by t.created_at desc`,
+        [student.id],
+      );
+      return result.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        businessStage: row.business_stage,
+        taskStatus: row.status,
+        startAt: row.start_at ?? null,
+        deadline: row.deadline ?? null,
+        progress: row.progress as "todo" | "in_progress" | "done",
+        score: row.score == null ? null : Number(row.score),
+        conversations: Number(row.conversations),
       }));
     },
   );

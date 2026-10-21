@@ -14,7 +14,7 @@ import { LiveReports } from "./LiveReports";
 
 export function TeacherPages({ page, session, onNavigate }: { page: string; session?: Session | null; onNavigate?: (page: string) => void }) {
   if (page === "assignments") return session ? <LiveAssignments session={session} onNavigate={onNavigate} /> : <Assignments />;
-  if (page === "classes") return session ? <LiveClasses session={session} /> : <Classes />;
+  if (page === "classes") return session ? <LiveClasses session={session} onNavigate={onNavigate} /> : <Classes />;
   if (page === "notices") return session ? <LiveNotices session={session} /> : <Notices />;
   if (page === "tracking") return session ? <LiveTracking session={session} onNavigate={onNavigate} /> : <Tracking />;
   if (page === "reports") return session ? <LiveReports session={session} onNavigate={onNavigate} /> : <Reports />;

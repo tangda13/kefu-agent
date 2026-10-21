@@ -324,6 +324,22 @@ export const fetchClasses = (session: Session) =>
   apiGet<ClassSummary[]>("/v1/classes", session);
 export const createClass = (session: Session, name: string) =>
   apiPost<ClassSummary>("/v1/classes", session, { name });
+/** 学生详情里的参训任务（D-63）：完成状态、任务成绩、有没有接待记录 */
+export interface StudentTaskItem {
+  id: string;
+  name: string;
+  businessStage: "pre_sale" | "in_sale" | "after_sale" | "customer_care";
+  taskStatus: string;
+  startAt: string | null;
+  deadline: string | null;
+  progress: "todo" | "in_progress" | "done";
+  score: number | null;
+  conversations: number;
+}
+
+export const fetchStudentTaskList = (session: Session, studentId: string) =>
+  apiGet<StudentTaskItem[]>(`/v1/students/${studentId}/tasks`, session);
+
 export const fetchClassStudents = (session: Session, classId: string) =>
   apiGet<ClassStudent[]>(`/v1/classes/${classId}/students`, session);
 export const setStudentGroup = (session: Session, classId: string, studentIds: string[], groupName: string | null) =>

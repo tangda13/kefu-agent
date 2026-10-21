@@ -1345,6 +1345,37 @@
 .tdv-w b { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .tdv-w.is-off { color: var(--c-ink-3); }
 .tdv-w.is-off b { font-weight: 400; }
+/* 学生详情（参数 2.2.3，D-63）：和任务详情同一套分组样式 */
+.cls-row.is-click { cursor: pointer; }
+.cls-row.is-click:hover:not(.is-sel) { background: var(--c-surface-hover); }
+.sdv-who { display: flex; align-items: center; gap: 12px; }
+.sdv-who b { display: block; font-size: var(--fs-body); }
+.sdv-who small { font-size: var(--fs-caption); color: var(--c-ink-3); }
+.sdv-tags { display: flex; align-items: center; gap: 10px; margin-left: auto; font-size: var(--fs-small); }
+.sdv-figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 16px 0 12px; }
+.sdv-figs > div { display: grid; align-content: start; gap: 2px; min-width: 0; padding: 0 14px; border-left: 1px solid var(--c-line); }
+.sdv-figs > div:first-child { padding-left: 0; border-left: 0; }
+.sdv-figs small { font-size: var(--fs-caption); color: var(--c-ink-3); }
+.sdv-figs b { font-size: 22px; font-weight: 700; line-height: 30px; font-variant-numeric: tabular-nums; }
+.sdv-figs b em { margin-left: 2px; font-style: normal; font-size: var(--fs-caption); font-weight: 400; color: var(--c-ink-3); }
+.sdv-figs b.is-na { color: #c3cad5; }
+.sdv-figs b.is-bad { color: var(--c-danger); }
+.sdv-figs b.is-act { font-size: 18px; }
+.sdv-figs b.is-ok { color: var(--c-ok); }
+.sdv-figs b.is-warn { color: var(--c-warn); }
+.sdv-figs .tdv-bar { margin: 6px 0 0; }
+.sdv-sub { font-size: var(--fs-caption); color: var(--c-ink-3); }
+.sdv-task { display: grid; grid-template-columns: minmax(0, 1fr) 64px 36px 52px; align-items: center; gap: 10px; padding: 8px 0; font-size: var(--fs-small); }
+.sdv-task + .sdv-task { border-top: 1px dashed var(--c-line); }
+.sdv-task-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sdv-task-name b { overflow: hidden; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
+.sdv-state { color: var(--c-ink-3); }
+.sdv-state.is-ok { color: var(--c-ok); }
+.sdv-state.is-warn { color: var(--c-warn); }
+.sdv-score { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sdv-score.is-na { font-weight: 400; color: #c3cad5; }
+.sdv-score.is-bad { color: var(--c-danger); }
+.sdv-task .board-link, .sdv-noreplay { justify-self: end; font-size: var(--fs-small); }
 .tl-figs .tl-prog { display: block; height: 5px; margin: 4px 0 0; overflow: hidden; border-radius: 3px; background: var(--c-surface-hover); }
 .tl-figs .tl-prog i { display: block; height: 100%; border-radius: 3px; background: var(--c-brand); }
 .tl-open { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px dashed var(--c-line-strong); border-radius: var(--r-md); background: var(--c-surface); font-size: var(--fs-small); color: var(--c-ink-2); }

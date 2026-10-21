@@ -1,14 +1,16 @@
 import { Download, FileUp, Pencil, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import {
-  ApiError, createClass, deleteClass, deleteStudent, fetchClassStudents, fetchClasses, renameClass, resetStudentPassword,
+  ApiError, createClass, deleteClass, deleteStudent, fetchClassStudents, fetchClasses, fetchStudentTaskList, renameClass, resetStudentPassword,
   setStudentGroup, setStudentStatus, updateStudent,
-  type ClassStudent, type ClassSummary, type Session,
+  type ClassStudent, type ClassSummary, type Session, type StudentTaskItem,
 } from "../../api/client";
 import { ImportStudentsDialog, PasswordNotice } from "../../components/AccountDialogs";
 import {
-  Bench, Board, Button, Confirm, DataTable, Dialog, Field, FilterChips, Flag, HeaderTabs, Input, MoreMenu, SearchBox, Select, Tag, toast,
+  Bench, Board, Button, Confirm, DataTable, Dialog, Drawer, Field, FilterChips, Flag, HeaderTabs, Input, MoreMenu, SearchBox, Select, StageTag, Tag, toast,
 } from "../../ui";
+import { openReplayFor } from "./widgets";
 
 const errorText = (cause: unknown) => (cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
 const NO_GROUP = "__none";
@@ -16,16 +18,123 @@ const PENDING = "__pending";
 const DISABLED = "__disabled";
 const AVATAR_TONES = [1, 2, 3, 4, 5];
 
-/** 账号状态（D-35：班级页只管名单，不再显示练习数据） */
+/** 账号状态（D-35：名单只管名单；练习数据在学生详情和导出里，D-63） */
 function accountState(row: ClassStudent): "ok" | "pending" | "disabled" {
   if (row.status !== "active") return "disabled";
   return row.mustChangePassword ? "pending" : "ok";
 }
 const ACCOUNT_LABELS = { ok: "正常", pending: "待改密", disabled: "已停用" } as const;
 const joinedText = (iso: string) => new Date(iso).toLocaleDateString("zh-CN", { year: new Date(iso).getFullYear() === new Date().getFullYear() ? undefined : "numeric", month: "long", day: "numeric" });
+/**
+ * 活跃状态（参数 2.2.3，D-63）：按最近一次接待算，含自由练习（服务类指标，D-61）。
+ * 名单上不显示（D-35），在学生详情和导出里看
+ */
+export function activityOf(row: ClassStudent): { text: string; tone: "ok" | "warn" | ""; lastText: string; shortText: string } {
+  if (!row.lastActiveAt) {
+    const never = row.mustChangePassword;
+    const text = never ? "从没登录过" : "还没练过";
+    return { text, tone: never ? "warn" : "", lastText: text, shortText: text };
+  }
+  const last = new Date(row.lastActiveAt);
+  const days = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(last).setHours(0, 0, 0, 0)) / 86_400_000);
+  const lastText = last.toLocaleString("zh-CN", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const shortText = last.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  if (days <= 0) return { text: "今天练过", tone: "ok", lastText, shortText };
+  if (days < 7) return { text: `${days} 天前`, tone: "", lastText, shortText };
+  return { text: `${days} 天没练`, tone: "warn", lastText, shortText };
+}
+
 const toneOf = (text: string) => AVATAR_TONES[[...text].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % AVATAR_TONES.length]!;
 
-export function LiveClasses({ session }: { session: Session }) {
+/** 参训任务一行的状态：老师看的是这个学生做到哪了 */
+function taskProgressText(item: StudentTaskItem): { text: string; tone: "ok" | "warn" | "" } {
+  if (item.progress === "done") return { text: "已完成", tone: "ok" };
+  if (item.taskStatus === "closed") return { text: "没完成", tone: "warn" };
+  if (item.startAt && new Date(item.startAt).getTime() > Date.now()) {
+    return { text: `${new Date(item.startAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })} 开放`, tone: "" };
+  }
+  return { text: item.progress === "in_progress" ? "进行中" : "还没开始", tone: "" };
+}
+
+/**
+ * 学生详情（参数 2.2.3，D-63，设计稿 docs/design/p17-params-teacher 第八节）：名单只管名单（D-35），
+ * 参训任务数、平均分、活跃状态点开学生看；样式和任务详情一样，分组之间一条分隔线、组内不画线
+ */
+function StudentDetail({ session, student, className, onClose, onReset, onEdit, onNavigate }: {
+  session: Session; student: ClassStudent; className: string;
+  onClose: () => void; onReset: () => void; onEdit: () => void; onNavigate?: (page: string) => void;
+}) {
+  const [tasks, setTasks] = useState<StudentTaskItem[] | null>(null);
+  useEffect(() => {
+    fetchStudentTaskList(session, student.id).then(setTasks).catch(() => setTasks([]));
+  }, [session, student.id]);
+  const tone = toneOf(student.displayName);
+  const activity = activityOf(student);
+  const scored = (tasks ?? []).filter((item) => item.score != null).length;
+  const state = accountState(student);
+  const percent = student.tasksTotal ? Math.round((student.tasksDone / student.tasksTotal) * 100) : 0;
+  const replay = () => { openReplayFor(student.displayName); onNavigate?.("tracking"); };
+  return (
+    <Drawer
+      title={student.displayName}
+      width={480}
+      onClose={onClose}
+      footer={<><Button onClick={onReset}>重置密码</Button><Button onClick={onEdit}>编辑 / 转班</Button></>}
+    >
+      <div className="tdv">
+        <div className="sdv-who">
+          <span className="cls-av" style={{ background: `var(--c-cat-${tone}-soft)`, color: `var(--c-cat-${tone})` }}>{student.displayName.slice(0, 1)}</span>
+          <span><b>{student.username}</b><small>{className}</small></span>
+          <span className="sdv-tags">
+            {student.groupName ? <Flag tone="plain">{student.groupName}</Flag> : <span className="faint">未分组</span>}
+            <span className={`cls-acc is-${state}`}><i />{ACCOUNT_LABELS[state]}</span>
+          </span>
+        </div>
+        <div className="sdv-figs">
+          <div>
+            <small>参训任务</small>
+            <b>{student.tasksDone}<em>/ {student.tasksTotal}</em></b>
+            <span className="tdv-bar"><i style={{ width: `${percent}%` }} /></span>
+          </div>
+          <div>
+            <small>平均分</small>
+            <b className={student.averageScore == null ? "is-na" : student.averageScore < 60 ? "is-bad" : undefined}>{student.averageScore ?? "—"}</b>
+            {scored ? <span className="sdv-sub">{scored} 个任务有成绩</span> : null}
+          </div>
+          <div>
+            <small>活跃状态</small>
+            <b className={`is-act${activity.tone ? ` is-${activity.tone}` : ""}`}>{activity.text}</b>
+            {student.lastActiveAt ? <span className="sdv-sub">{activity.shortText} 最近练习</span> : null}
+          </div>
+        </div>
+        <section className="tdv-sec">
+          <h5>参训任务 {tasks?.length ?? ""}</h5>
+          {tasks === null ? <p className="board-quiet">正在读取…</p> : tasks.length === 0 ? <p className="faint">还没有下发给这个学生的任务</p> : tasks.map((item) => {
+            const progress = taskProgressText(item);
+            return (
+              <div key={item.id} className="sdv-task">
+                <span className="sdv-task-name"><b>{item.name}</b><StageTag stage={item.businessStage} /></span>
+                <span className={progress.tone ? `sdv-state is-${progress.tone}` : "sdv-state"}>{progress.text}</span>
+                <span className={item.score == null ? "sdv-score is-na" : item.score < 60 ? "sdv-score is-bad" : "sdv-score"}>{item.score ?? "—"}</span>
+                {item.conversations ? <button type="button" className="board-link" onClick={replay}>回放 ›</button> : <span className="faint sdv-noreplay">回放 ›</span>}
+              </div>
+            );
+          })}
+        </section>
+        <section className="tdv-sec">
+          <h5>账号</h5>
+          <dl className="tdv-kv">
+            <dt>加入时间</dt><dd>{new Date(student.createdAt).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })}</dd>
+            <dt>账号状态</dt><dd>{ACCOUNT_LABELS[state]}</dd>
+            <dt>分组</dt><dd>{student.groupName ?? "未分组"}</dd>
+          </dl>
+        </section>
+      </div>
+    </Drawer>
+  );
+}
+
+export function LiveClasses({ session, onNavigate }: { session: Session; onNavigate?: (page: string) => void }) {
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [classId, setClassId] = useState("");
   const [students, setStudents] = useState<ClassStudent[]>([]);
@@ -33,6 +142,7 @@ export function LiveClasses({ session }: { session: Session }) {
   const [keyword, setKeyword] = useState("");
   const [group, setGroup] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
+  const [viewing, setViewing] = useState<ClassStudent | null>(null);
   const [dialog, setDialog] = useState<
     | { kind: "newClass" | "rename" | "deleteClass" | "import" | "group" }
     | { kind: "edit" | "reset" | "disable" | "remove"; student: ClassStudent }
@@ -107,18 +217,22 @@ export function LiveClasses({ session }: { session: Session }) {
     }
   }
 
+  /* 导出名单（D-63）：Excel，带参训任务、平均分、最近练习，和考核报表的导出一致 */
   function exportRoster() {
     if (!current) return;
-    const header = "学号,姓名,分组,账号状态,加入时间\n";
-    const body = students.map((row) => [
-      row.username, row.displayName, row.groupName ?? "", ACCOUNT_LABELS[accountState(row)], new Date(row.createdAt).toLocaleDateString("zh-CN"),
-    ].join(",")).join("\n");
-    const blob = new Blob(["﻿" + header + body], { type: "text/csv;charset=utf-8" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `${current.name}-名单.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
+    const rows = students.map((row) => ({
+      学号: row.username,
+      姓名: row.displayName,
+      分组: row.groupName ?? "—",
+      账号状态: ACCOUNT_LABELS[accountState(row)],
+      参训任务: `${row.tasksDone} / ${row.tasksTotal}`,
+      平均分: row.averageScore ?? "—",
+      最近练习: activityOf(row).lastText,
+      加入时间: new Date(row.createdAt).toLocaleDateString("zh-CN"),
+    }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "名单");
+    XLSX.writeFile(workbook, `${current.name}-名单-${new Date().toLocaleDateString("zh-CN").replace(/\//g, "-")}.xlsx`);
   }
 
   const classMenu = (
@@ -203,22 +317,23 @@ export function LiveClasses({ session }: { session: Session }) {
                   const tone = toneOf(row.displayName);
                   const checked = selected.includes(row.id);
                   return (
-                    <div key={row.id} className={["cls-row", checked ? "is-sel" : "", state === "disabled" ? "is-off" : ""].filter(Boolean).join(" ")}>
-                      <input type="checkbox" aria-label={`选择 ${row.displayName}`} checked={checked}
+                    <div key={row.id} className={["cls-row is-click", checked ? "is-sel" : "", state === "disabled" ? "is-off" : ""].filter(Boolean).join(" ")}
+                      role="button" tabIndex={0} onClick={() => setViewing(row)} onKeyDown={(event) => { if (event.key === "Enter") setViewing(row); }}>
+                      <input type="checkbox" aria-label={`选择 ${row.displayName}`} checked={checked} onClick={(event) => event.stopPropagation()}
                         onChange={() => setSelected((list) => (list.includes(row.id) ? list.filter((id) => id !== row.id) : [...list, row.id]))} />
                       <span className="cls-av" style={{ background: `var(--c-cat-${tone}-soft)`, color: `var(--c-cat-${tone})` }}>{row.displayName.slice(0, 1)}</span>
                       <span className="cls-name"><b>{row.displayName}</b><small>{row.username}</small></span>
                       <span>{row.groupName ? <Flag tone="plain">{row.groupName}</Flag> : <span className="faint">未分组</span>}</span>
                       <span className={`cls-acc is-${state}`}><i />{ACCOUNT_LABELS[state]}</span>
                       <span className="cls-time">{joinedText(row.createdAt)}</span>
-                      <MoreMenu items={[
+                      <span onClick={(event) => event.stopPropagation()}><MoreMenu items={[
                         { label: "编辑 / 转班", onClick: () => setDialog({ kind: "edit", student: row }) },
                         { label: "重置密码", onClick: () => setDialog({ kind: "reset", student: row }) },
                         row.status === "active"
                           ? { label: "停用账号", onClick: () => setDialog({ kind: "disable", student: row }) }
                           : { label: "恢复账号", onClick: () => void run(() => setStudentStatus(session, row.id, "active"), `${row.displayName} 已恢复`) },
                         { label: "删除", danger: true, onClick: () => setDialog({ kind: "remove", student: row }) },
-                      ]} />
+                      ]} /></span>
                     </div>
                   );
                 })}
@@ -227,6 +342,18 @@ export function LiveClasses({ session }: { session: Session }) {
           </div>
         )}
       </Bench>
+
+      {viewing ? (
+        <StudentDetail
+          session={session}
+          student={viewing}
+          className={current?.name ?? ""}
+          onClose={() => setViewing(null)}
+          onReset={() => { setDialog({ kind: "reset", student: viewing }); setViewing(null); }}
+          onEdit={() => { setDialog({ kind: "edit", student: viewing }); setViewing(null); }}
+          onNavigate={onNavigate}
+        />
+      ) : null}
 
       {dialog?.kind === "newClass" ? (
         <NameDialog title="新建班级" label="班级名称" placeholder="例如：跨境电商2602班" confirmText="新建" onClose={() => setDialog(null)}

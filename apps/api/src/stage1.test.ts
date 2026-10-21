@@ -1692,7 +1692,7 @@ describe("参数核对 · 学生端（D-53 关键数字、D-54 服务评价、D-
   });
 });
 
-describe("参数核对 · 教师端（D-59 数据总览、D-60 考核报表）", () => {
+describe("参数核对 · 教师端（D-59 数据总览、D-60 考核报表、D-63 学生详情）", () => {
   it("参训人数、任务完成率只算在用的学生；对话总数 = 学生回过话的聊天接待（含练习、不含邮件）；平均分和报表同口径", async () => {
     const { hashPassword } = await import("./security");
     const klass = (await db.query("insert into classes (name) values ('D59测试班') returning id")).rows[0].id as string;
@@ -1752,5 +1752,30 @@ describe("参数核对 · 教师端（D-59 数据总览、D-60 考核报表）",
     const report = (await app.inject({ method: "GET", url: `/v1/teacher/reports?classId=${klass}`, headers: auth(teacher) })).json();
     expect(report.ranking).toHaveLength(1);
     expect(report.ranking[0]).toMatchObject({ username: "s-d59-a", average: 70, satisfaction: { rated: 2, rate: 50 } });
+
+    // D-63：学生详情里的参训任务；别的老师看不了
+    const detail = (await app.inject({ method: "GET", url: `/v1/students/${a}/tasks`, headers: auth(teacher) })).json();
+    expect(detail).toEqual([expect.objectContaining({ id: task, name: "D-59 总览", progress: "done", score: 70, conversations: 3 })]);
+    const outsiderId = await addUser("t-d63-other", "teacher");
+    expect(outsiderId).toBeTruthy();
+    const outsider = await login("t-d63-other", "Teach#D59x");
+    expect((await app.inject({ method: "GET", url: `/v1/students/${a}/tasks`, headers: auth(outsider) })).statusCode).toBe(403);
+
+    // 名单平均分和考核报表同一口径：第二个任务两次 46、47 → 任务成绩 47，综合 (70 + 47) / 2 = 58.5 → 59（不先取整会算成 58）
+    const second = (await db.query(
+      `insert into tasks (name, business_stage, scenario_ids, interaction_mode, scoring_weights, status, created_by)
+       values ('D-63 口径', 'after_sale', '["AFTER-001"]', 'text', '{}', 'published', $1) returning id`,
+      [teacherId],
+    )).rows[0].id as string;
+    await db.query("insert into task_progress (task_id, student_id, status) values ($1, $2, 'done')", [second, a]);
+    for (const total of [46, 47]) {
+      const id = await conversation(a, second, "chat", ["buyer", "student"]);
+      await db.query("insert into assessments (conversation_id, student_id, scores, total, comment) values ($1, $2, '{}', $3, '-')", [id, a, total]);
+    }
+    const rosterRow = ((await app.inject({ method: "GET", url: `/v1/classes/${klass}/students`, headers: auth(teacher) })).json() as Array<{ username: string; averageScore: number }>)
+      .find((row) => row.username === "s-d59-a")!;
+    const reportRow = (await app.inject({ method: "GET", url: `/v1/teacher/reports?classId=${klass}`, headers: auth(teacher) })).json().ranking[0];
+    expect(reportRow.average).toBe(59);
+    expect(rosterRow.averageScore).toBe(reportRow.average);
   });
 });
