@@ -39,14 +39,28 @@ export function TaskRowHead({ timeLabel = "截止" }: { timeLabel?: string }) {
 const daysLeft = (iso: string) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000));
 const shortDate = (iso: string) => new Date(iso).toLocaleString("zh-CN", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
-/** 任务卡片（D-35，实训任务页）：头部业务环节 + 状态；中间三格只放判断要用的数：完成、平均分（低于达标线标红）、剩余时间（2 天内标橙） */
+/** 截止一格（参数 2.2.2 要列出截止时间）：大字日期，小字还剩几天；进行中 2 天内、已过截止标橙 */
+function DueFigure({ task, state }: { task: TeacherTask; state: "active" | "upcoming" | "closed" }) {
+  if (!task.deadline) return <b className="is-small">不设</b>;
+  const date = new Date(task.deadline).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+  if (state === "closed") return <b className="is-small">{date}</b>;
+  const past = new Date(task.deadline).getTime() < Date.now();
+  const left = daysLeft(task.deadline);
+  const warn = past || left <= 2;
+  return (
+    <>
+      <b className={warn ? "is-small is-warn" : "is-small"}>{date}</b>
+      <span className={warn ? "tl-due-sub is-warn" : "tl-due-sub"}>{past ? "已过截止" : left === 0 ? "今天截止" : `还剩 ${left} 天`}</span>
+    </>
+  );
+}
+
+/** 任务卡片（D-35，实训任务页）：头部业务环节 + 状态；中间三格只放判断要用的数：完成、平均分（低于达标线标红）、截止（T3：日期 + 还剩几天，2 天内标橙） */
 export function TaskCard({ task, state, onOpen, menu, onTracking, onReport }: {
   task: TeacherTask; state: "active" | "upcoming" | "closed"; onOpen: () => void; menu?: ReactNode; onTracking: () => void; onReport: () => void;
 }) {
   const meta = [task.classes.map((item) => item.name).join("、") || "未分配班级", `${task.scenarioIds.length} 个场景`, ARRIVAL_SHORT[task.arrivalMode ?? "sequential"]].filter(Boolean).join(" · ");
   const score = task.averageScore;
-  const left = task.deadline ? daysLeft(task.deadline) : null;
-  const urgent = state === "active" && left != null && left <= 2;
   const percent = task.studentTotal ? Math.round((task.studentDone / task.studentTotal) * 100) : 0;
   return (
     <article className={`tl-card is-${state}`} role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.key === "Enter") onOpen(); }}>
@@ -69,10 +83,8 @@ export function TaskCard({ task, state, onOpen, menu, onTracking, onReport }: {
             <b className={score == null ? "is-na" : task.passScore != null && score < task.passScore ? "is-bad" : score < 60 ? "is-bad" : undefined}>{score ?? "—"}</b>
           </div>
           <div>
-            <small>{state === "closed" ? "截止于" : "剩余"}</small>
-            {state === "closed"
-              ? <b className="is-small">{task.deadline ? new Date(task.deadline).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }) : "—"}</b>
-              : <b className={left == null ? "is-na" : urgent ? "is-warn" : undefined}>{left == null ? "—" : left === 0 ? "今天" : <>{left}<em>天</em></>}</b>}
+            <small>截止</small>
+            <DueFigure task={task} state={state} />
           </div>
         </div>
       )}

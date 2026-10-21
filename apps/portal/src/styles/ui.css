@@ -1320,6 +1320,31 @@
 .tl-figs b.is-warn { color: var(--c-warn); }
 .tl-figs b.is-na { color: var(--c-ink-disabled); }
 .tl-figs b.is-small { font-size: 15px; }
+.tl-figs .tl-due-sub { font-size: var(--fs-caption); color: var(--c-ink-3); white-space: nowrap; }
+.tl-figs .tl-due-sub.is-warn { font-weight: 600; color: var(--c-warn); }
+/* 任务详情（参数核对 T2）：顶部状态和完成进度；分组之间一条分隔线，组内不画线 */
+.tdv { display: grid; }
+.tdv-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: var(--fs-small); color: var(--c-ink-2); }
+.tdv-prog { display: flex; align-items: baseline; gap: 16px; margin: 14px 0 6px; }
+.tdv-prog b { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tdv-prog b em { margin-left: 3px; font-style: normal; font-size: var(--fs-small); font-weight: 400; color: var(--c-ink-3); }
+.tdv-prog span { font-size: var(--fs-small); color: var(--c-ink-3); }
+.tdv-bar { display: block; height: 6px; margin-bottom: 10px; overflow: hidden; border-radius: 3px; background: var(--c-surface-hover); }
+.tdv-bar i { display: block; height: 100%; border-radius: 3px; background: var(--c-brand); }
+.tdv-sec { padding: 16px 0; border-top: 1px solid var(--c-line); }
+.tdv-sec:last-child { padding-bottom: 0; }
+.tdv-sec h5 { display: flex; align-items: center; gap: 4px; margin: 0 0 8px; font-size: var(--fs-caption); font-weight: 600; color: var(--c-ink-3); }
+.tdv-kv { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: var(--fs-body); }
+.tdv-kv dt { color: var(--c-ink-3); }
+.tdv-kv dd { margin: 0; color: var(--c-ink); }
+.tdv-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tdv-chips span { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 14px; background: var(--c-surface-hover); font-size: var(--fs-small); color: var(--c-ink); }
+.tdv-w { display: grid; grid-template-columns: 112px minmax(0, 1fr) 48px; align-items: center; gap: 10px; height: 26px; font-size: var(--fs-small); }
+.tdv-w-bar { height: 6px; overflow: hidden; border-radius: 3px; background: var(--c-surface-hover); }
+.tdv-w-bar i { display: block; height: 100%; border-radius: 3px; background: var(--c-brand); }
+.tdv-w b { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tdv-w.is-off { color: var(--c-ink-3); }
+.tdv-w.is-off b { font-weight: 400; }
 .tl-figs .tl-prog { display: block; height: 5px; margin: 4px 0 0; overflow: hidden; border-radius: 3px; background: var(--c-surface-hover); }
 .tl-figs .tl-prog i { display: block; height: 100%; border-radius: 3px; background: var(--c-brand); }
 .tl-open { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px dashed var(--c-line-strong); border-radius: var(--r-md); background: var(--c-surface); font-size: var(--fs-small); color: var(--c-ink-2); }

@@ -1,5 +1,5 @@
 import { Archive, CalendarClock, CircleStop, Pencil, RotateCcw, Trash2, Check, CircleCheck, Dices, Keyboard, Layers, Lock, Mail, MessageCircle, Mic, Package, Plus, Sparkles, Type, Users } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ASSESSMENT_DIMENSIONS, BUSINESS_STAGES, BUSINESS_STAGE_LABELS, BUYER_ROLES, CUSTOMER_TYPES, DECISION_STYLES, EMOTIONS, NATIONALITIES, PERSONALITIES,
   type BusinessStage,
@@ -9,8 +9,8 @@ import {
   type ClassSummary, type PersonaSample, type PersonaTemplate, type ScenarioSummary, type Session, type TeacherTask,
 } from "../../api/client";
 import {
-  Bench, Board, Button, ChipSelect, Confirm, Drawer, Field, HeaderTabs, Input, KeyValues, MoreMenu, SearchBox, Segmented, Select,
-  Status, toast,
+  Bench, Board, Button, ChipSelect, Confirm, Drawer, Field, HeaderTabs, Input, MoreMenu, SearchBox, Segmented, Select,
+  HelpTip, StageTag, Status, toast,
 } from "../../ui";
 import { TaskCard } from "./TaskRow";
 import { openReportFor, openTrackingTab } from "./widgets";
@@ -18,6 +18,8 @@ import { openReportFor, openTrackingTab } from "./widgets";
 const INTERACTION_LABELS: Record<string, string> = { text_voice: "文字和语音", text: "只用文字", voice: "只用语音" };
 const LANGUAGE_LABELS: Record<string, string> = { "en-US": "英语", "es-ES": "西班牙语", "fr-FR": "法语" };
 const ARRIVAL_LABELS = { sequential: "一位接一位", interval: "按间隔进线", all_at_once: "同时进线" } as const;
+/** T5：邮件评六项，权重怎么算（weightedTotal 只在有分的维度里按权重平均） */
+const WEIGHT_MAIL_NOTE = "邮件不评客户情绪安抚、消息响应时效，这两项的权重在邮件里按比例分给其余几项。";
 
 type ArrivalMode = keyof typeof ARRIVAL_LABELS;
 type CompletionRule = "all_scenarios" | "conversation_count";
@@ -95,6 +97,19 @@ function formFromTask(task: TeacherTask): TaskForm {
   };
 }
 
+/** 学期（T6）：2–7 月春季，8 月到次年 1 月秋季 */
+function semesterOf(date: Date): { key: number; label: string } {
+  const month = date.getMonth() + 1;
+  const year = month === 1 ? date.getFullYear() - 1 : date.getFullYear();
+  const spring = month >= 2 && month <= 7;
+  return { key: year * 2 + (spring ? 0 : 1), label: `${year} ${spring ? "春季" : "秋季"}` };
+}
+
+/** 任务归哪个学期：进行中、未开始的都算本学期；已结束的按截止时间，没设截止按下发时间 */
+function taskSemester(task: TeacherTask): { key: number; label: string } {
+  return taskState(task) === "closed" ? semesterOf(new Date(task.deadline ?? task.createdAt)) : semesterOf(new Date());
+}
+
 function taskState(task: TeacherTask): TaskTab {
   if (task.status === "closed") return "closed";
   if (task.startAt && new Date(task.startAt).getTime() > Date.now()) return "upcoming";
@@ -118,6 +133,105 @@ function ruleSummary(rule: PersonaRule | undefined, personaNames?: Record<string
   return `从「${scope}」里抽${vary ? `；${vary}` : "，沟通方式用画像默认值"}`;
 }
 
+/** 买家画像规则按行列出（任务详情 T2）：人群范围一行一项，沟通方式只列设了的 */
+function ruleRows(rule: PersonaRule | undefined, personaNames?: Record<string, string>): Array<[string, string]> {
+  const rows: Array<[string, string]> = [];
+  if (rule?.templateIds?.length) rows.push(["指定画像", rule.templateIds.map((id) => personaNames?.[id] ?? id).join("、")]);
+  else {
+    if (rule?.customerTypes?.length) rows.push(["客户价值层", rule.customerTypes.join("、")]);
+    if (rule?.buyerRoles?.length) rows.push(["买家角色", rule.buyerRoles.join("、")]);
+    if (rule?.decisionStyles?.length) rows.push(["决策风格", rule.decisionStyles.join("、")]);
+    if (!rows.length) rows.push(["人群", "画像库全部"]);
+  }
+  const vary: Array<[string, string[] | undefined]> = [
+    ["国籍", rule?.nationalityPool],
+    ["性格", rule?.personalityPool],
+    ["情绪", rule?.emotionPool],
+    ["语言", rule?.languages?.map((item) => LANGUAGE_LABELS[item] ?? item)],
+  ];
+  const picked = vary.filter(([, value]) => value?.length);
+  if (picked.length) picked.forEach(([label, value]) => rows.push([label, value!.join("、")]));
+  else rows.push(["沟通方式", "用画像的默认值"]);
+  return rows;
+}
+
+function DetailGroup({ title, rows }: { title: ReactNode; rows: Array<[string, ReactNode]> }) {
+  return (
+    <section className="tdv-sec">
+      <h5>{title}</h5>
+      <dl className="tdv-kv">{rows.map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>
+    </section>
+  );
+}
+
+/** 任务详情（T2，设计稿 docs/design/p17-params-teacher 第七节）：顶部状态和完成进度，下面按组列，组之间一条分隔线、组内不画线 */
+function TaskDetail({ session, task, scenarios, onClose, onEdit }: {
+  session: Session; task: TeacherTask; scenarios: ScenarioSummary[]; onClose: () => void; onEdit: () => void;
+}) {
+  const rule = task.personaRule as PersonaRule | undefined;
+  const picked = rule?.templateIds?.length ?? 0;
+  const [personaNames, setPersonaNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!picked) return;
+    fetchPersonas(session).then((list) => setPersonaNames(Object.fromEntries(list.map((item) => [item.id, item.name])))).catch(() => undefined);
+  }, [session, picked]);
+  const byId = new Map(scenarios.map((item) => [item.id, item]));
+  const state = taskState(task);
+  const percent = task.studentTotal ? Math.round((task.studentDone / task.studentTotal) * 100) : 0;
+  return (
+    <Drawer title={task.name} width={480} onClose={onClose} footer={<Button onClick={onEdit}>编辑</Button>}>
+      <div className="tdv">
+        <div className="tdv-top">
+          {{ active: <Status tone="ok">进行中</Status>, upcoming: <Status tone="warn">未开始</Status>, closed: <Status>已结束</Status> }[state]}
+          <StageTag stage={task.businessStage} />
+          <span>{task.classes.map((item) => item.name).join("、") || "未分配班级"} · {task.studentTotal} 名学生</span>
+        </div>
+        <div className="tdv-prog">
+          <b>{task.studentDone}<em>/ {task.studentTotal} 人完成</em></b>
+          {task.averageScore != null ? <span>平均分 {task.averageScore}</span> : null}
+        </div>
+        <span className="tdv-bar"><i style={{ width: `${percent}%` }} /></span>
+        <DetailGroup title="时间" rows={[
+          ["开放", task.startAt ? new Date(task.startAt).toLocaleString("zh-CN") : "下发后立即开放"],
+          ["截止", task.deadline ? new Date(task.deadline).toLocaleString("zh-CN") : "不设截止"],
+          ["单次限时", task.timeLimitMinutes ? `${task.timeLimitMinutes} 分钟` : "不限时"],
+        ]} />
+        <DetailGroup title="交互模式" rows={[
+          ["交互模式", INTERACTION_LABELS[task.interactionMode] ?? task.interactionMode],
+          ["买家进线", task.arrivalMode === "interval" ? `每 ${task.arrivalIntervalMinutes ?? 5} 分钟进线一位` : ARRIVAL_LABELS[task.arrivalMode ?? "sequential"]],
+        ]} />
+        <DetailGroup title="完成与达标" rows={[
+          ["完成标准", task.completionRule === "conversation_count" ? `完成 ${task.requiredCount ?? 1} 次接待` : `每个场景至少接待一次（共 ${task.scenarioIds.length} 个）`],
+          ["达标线", task.passScore != null ? `${task.passScore} 分` : "不设，完成即达标"],
+        ]} />
+        <section className="tdv-sec">
+          <h5>场景</h5>
+          <div className="tdv-chips">
+            {task.scenarioIds.map((id) => {
+              const scenario = byId.get(id);
+              return <span key={id}>{scenario?.channel === "mail" ? <Mail size={12} /> : <MessageCircle size={12} />}{scenario?.name ?? id}</span>;
+            })}
+          </div>
+        </section>
+        <DetailGroup title="买家画像" rows={ruleRows(rule, personaNames)} />
+        <section className="tdv-sec">
+          <h5>评分权重<HelpTip>{WEIGHT_MAIL_NOTE}</HelpTip></h5>
+          {ASSESSMENT_DIMENSIONS.map((dim) => {
+            const value = task.scoringWeights?.[dim.id] ?? 0;
+            return (
+              <div key={dim.id} className={value ? "tdv-w" : "tdv-w is-off"}>
+                <span>{dim.label}</span>
+                <span className="tdv-w-bar">{value ? <i style={{ width: `${Math.min(100, value * 2.5)}%` }} /> : null}</span>
+                <b>{value ? `${value}%` : "不计分"}</b>
+              </div>
+            );
+          })}
+        </section>
+      </div>
+    </Drawer>
+  );
+}
+
 export function LiveAssignments({ session, onNavigate }: { session: Session; onNavigate?: (page: string) => void }) {
   const [tasks, setTasks] = useState<TeacherTask[]>([]);
   const [classes, setClasses] = useState<ClassSummary[]>([]);
@@ -127,6 +241,8 @@ export function LiveAssignments({ session, onNavigate }: { session: Session; onN
   const [stage, setStage] = useState<BusinessStage | "">("");
   const [showClosed, setShowClosed] = useState(false);
   const [keyword, setKeyword] = useState("");
+  /** T6：默认看本学期；current = 本学期，all = 全部学期，数字 = 某个往期学期 */
+  const [semester, setSemester] = useState<string>("current");
   const [viewing, setViewing] = useState<TeacherTask | null>(null);
   const [editing, setEditing] = useState<TeacherTask | "new" | null>(null);
   const [closing, setClosing] = useState<TeacherTask | null>(null);
@@ -146,17 +262,30 @@ export function LiveAssignments({ session, onNavigate }: { session: Session; onN
   }, [session]);
   useEffect(() => { void load(); }, [load]);
 
-  const scenarioNames = useMemo(() => new Map(scenarios.map((item) => [item.id, item.name])), [scenarios]);
+  const current = semesterOf(new Date());
+  const pastSemesters = useMemo(() => {
+    const seen = new Map<number, string>();
+    for (const task of tasks) {
+      const item = taskSemester(task);
+      if (item.key !== current.key) seen.set(item.key, item.label);
+    }
+    return [...seen.entries()].sort((a, b) => b[0] - a[0]);
+  }, [tasks, current.key]);
+  const inSemester = useMemo(() => {
+    if (semester === "all") return tasks;
+    const key = semester === "current" ? current.key : Number(semester);
+    return tasks.filter((task) => taskSemester(task).key === key);
+  }, [tasks, semester, current.key]);
   const counts = useMemo(() => {
     const result: Record<TaskTab, number> = { active: 0, upcoming: 0, closed: 0 };
-    for (const task of tasks) result[taskState(task)] += 1;
+    for (const task of inSemester) result[taskState(task)] += 1;
     return result;
-  }, [tasks]);
+  }, [inSemester]);
   const visible = useMemo(() => {
     const word = keyword.trim().toLowerCase();
-    return tasks.filter((task) => (tab === "all" || taskState(task) === tab) && (!stage || task.businessStage === stage)
+    return inSemester.filter((task) => (tab === "all" || taskState(task) === tab) && (!stage || task.businessStage === stage)
       && (!word || `${task.name} ${task.classes.map((item) => item.name).join(" ")}`.toLowerCase().includes(word)));
-  }, [tasks, tab, stage, keyword]);
+  }, [inSemester, tab, stage, keyword]);
   // D-35：按状态分组。进行中按截止时间排（快截止的在前），未开始按开放时间，已结束按截止倒序
   const groups = useMemo(() => {
     const by = (state: TaskTab) => visible.filter((task) => taskState(task) === state);
@@ -206,8 +335,13 @@ export function LiveAssignments({ session, onNavigate }: { session: Session; onN
       <Bench>
         <div className="tl-bar">
           <SearchBox value={keyword} onChange={setKeyword} placeholder="搜索任务或班级" />
+          <Select className="tl-stage" value={semester} onChange={(event) => setSemester(event.target.value)} aria-label="学期">
+            <option value="current">本学期（{current.label}）</option>
+            {pastSemesters.map(([key, label]) => <option key={key} value={String(key)}>{label}</option>)}
+            <option value="all">全部学期</option>
+          </Select>
           <div className="tl-seg" role="tablist">
-            {([["all", "全部", tasks.length], ["active", "进行中", counts.active], ["upcoming", "未开始", counts.upcoming], ["closed", "已结束", counts.closed]] as Array<[TaskTab | "all", string, number]>).map(([id, label, count]) => (
+            {([["all", "全部", inSemester.length], ["active", "进行中", counts.active], ["upcoming", "未开始", counts.upcoming], ["closed", "已结束", counts.closed]] as Array<[TaskTab | "all", string, number]>).map(([id, label, count]) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "is-on" : undefined} onClick={() => setTab(id)}>{label}<i>{count}</i></button>
             ))}
           </div>
@@ -218,7 +352,7 @@ export function LiveAssignments({ session, onNavigate }: { session: Session; onN
           <div className="bench-bar-end"><Button variant="primary" icon={Plus} onClick={() => setEditing("new")}>新建任务</Button></div>
         </div>
         {loading ? <Board><p className="board-quiet">正在读取…</p></Board> : visible.length === 0 ? (
-          <Board><p className="board-quiet">{keyword || stage ? "没有匹配的任务" : tab === "upcoming" ? "没有预约开放的任务。新建任务时选“指定时间”开放，就会先出现在这里。" : tab === "closed" ? "还没有结束的任务" : <>还没有任务。<Button variant="text" onClick={() => setEditing("new")}>新建一个</Button>，给班级下发练习。</>}</p></Board>
+          <Board><p className="board-quiet">{keyword || stage ? "没有匹配的任务" : semester !== "all" && !inSemester.length && tasks.length ? <>这个学期还没有任务。<Button variant="text" onClick={() => setSemester("all")}>看全部学期</Button></> : tab === "upcoming" ? "没有预约开放的任务。新建任务时选“指定时间”开放，就会先出现在这里。" : tab === "closed" ? "还没有结束的任务" : <>还没有任务。<Button variant="text" onClick={() => setEditing("new")}>新建一个</Button>，给班级下发练习。</>}</p></Board>
         ) : (
           <>
             {([["active", "进行中", "ok"], ["upcoming", "未开始", "muted"]] as Array<[TaskTab, string, string]>).map(([state, label, tone]) => groups[state].length ? (
@@ -258,31 +392,7 @@ export function LiveAssignments({ session, onNavigate }: { session: Session; onN
       </Bench>
 
       {viewing ? (
-        <Drawer
-          title={viewing.name}
-          width={480}
-          onClose={() => setViewing(null)}
-          footer={<Button onClick={() => { setEditing(viewing); setViewing(null); }}>编辑</Button>}
-        >
-          <KeyValues
-            items={[
-              { label: "状态", value: { active: <Status tone="ok">进行中</Status>, upcoming: <Status tone="warn">未开始</Status>, closed: <Status>已结束</Status> }[taskState(viewing)] },
-              { label: "班级", value: viewing.classes.map((item) => item.name).join("、") || "—" },
-              { label: "业务环节", value: BUSINESS_STAGE_LABELS[viewing.businessStage] },
-              { label: "场景", value: viewing.scenarioIds.map((id) => scenarioNames.get(id) ?? id).join("、") || "—" },
-              { label: "完成情况", value: `${viewing.studentDone} / ${viewing.studentTotal} 人完成` },
-              { label: "开放时间", value: viewing.startAt ? new Date(viewing.startAt).toLocaleString("zh-CN") : "下发后立即开放" },
-              { label: "截止时间", value: viewing.deadline ? new Date(viewing.deadline).toLocaleString("zh-CN") : "不设截止" },
-              { label: "单次限时", value: viewing.timeLimitMinutes ? `${viewing.timeLimitMinutes} 分钟` : "不限时" },
-              { label: "回复方式", value: INTERACTION_LABELS[viewing.interactionMode] ?? viewing.interactionMode },
-              { label: "完成标准", value: viewing.completionRule === "conversation_count" ? `完成 ${viewing.requiredCount ?? 1} 次接待` : `每个场景至少接待一次（共 ${viewing.scenarioIds.length} 个）` },
-              { label: "达标线", value: viewing.passScore != null ? `${viewing.passScore} 分` : "不设，完成即达标" },
-              { label: "买家进线", value: viewing.arrivalMode === "interval" ? `每 ${viewing.arrivalIntervalMinutes ?? 5} 分钟进线一位` : ARRIVAL_LABELS[viewing.arrivalMode ?? "sequential"] },
-              { label: "买家画像", value: ruleSummary(viewing.personaRule as PersonaRule | undefined) },
-              { label: "评分权重", value: ASSESSMENT_DIMENSIONS.map((dim) => `${dim.label} ${viewing.scoringWeights?.[dim.id] ?? 0}%`).join("、") },
-            ]}
-          />
-        </Drawer>
+        <TaskDetail session={session} task={viewing} scenarios={scenarios} onClose={() => setViewing(null)} onEdit={() => { setEditing(viewing); setViewing(null); }} />
       ) : null}
 
       {editing ? (
@@ -452,6 +562,9 @@ function TaskDrawer({ session, task, classes, scenarios, onClose, onSaved }: {
   // 分步导航：点击跳到对应位置，滚动时高亮当前步骤
   const mainRef = useRef<HTMLDivElement>(null);
   const [activeStep, setActiveStep] = useState(0);
+  /** T1：新建时只有老师看过（滚到或点开）的步骤才打勾；这几步有默认值，没看过就打勾像是已经设置过 */
+  const [seenSteps, setSeenSteps] = useState<Set<number>>(() => new Set([0]));
+  useEffect(() => { setSeenSteps((prev) => (prev.has(activeStep) ? prev : new Set(prev).add(activeStep))); }, [activeStep]);
   // 点击导航时只滚右侧内容区；滚动过程中不跟着滚动位置改高亮，滚完再恢复（避免导航闪跳）
   const jumping = useRef<number | null>(null);
   const jump = (index: number) => {
@@ -482,12 +595,12 @@ function TaskDrawer({ session, task, classes, scenarios, onClose, onSaved }: {
     setActiveStep((prev) => (prev === current ? prev : current));
   };
   const steps = [
-    { label: "基本信息", value: BUSINESS_STAGE_LABELS[form.businessStage], done: Boolean(form.name.trim()) },
-    { label: "班级与场景", value: `${form.classIds.length} 班 · ${form.scenarioIds.length} 个`, done: form.classIds.length > 0 && form.scenarioIds.length > 0 },
-    { label: "时间与节奏", value: form.deadline ? `${Math.max(0, Math.ceil((new Date(form.deadline).getTime() - Date.now()) / 86_400_000))} 天` : "不限期", done: true },
-    { label: "买家画像", value: creating ? (preview ? `${preview.matchCount} 个画像` : "…") : "已设定", done: creating ? Boolean(preview?.matchCount) : true },
-    { label: "评分权重", value: `合计 ${weightSum}`, done: weightSum === 100 },
-  ];
+    { label: "基本信息", value: BUSINESS_STAGE_LABELS[form.businessStage], valid: Boolean(form.name.trim()) },
+    { label: "班级与场景", value: `${form.classIds.length} 班 · ${form.scenarioIds.length} 个`, valid: form.classIds.length > 0 && form.scenarioIds.length > 0 },
+    { label: "时间与交互", value: form.deadline ? `${Math.max(0, Math.ceil((new Date(form.deadline).getTime() - Date.now()) / 86_400_000))} 天` : "不限期", valid: true },
+    { label: "买家画像", value: creating ? (preview ? `${preview.matchCount} 个画像` : "…") : "已设定", valid: creating ? Boolean(preview?.matchCount) : true },
+    { label: "评分权重", value: `合计 ${weightSum}`, valid: weightSum === 100 },
+  ].map((step, index) => ({ ...step, done: step.valid && (!creating || seenSteps.has(index)) }));
 
   async function save() {
     const name = form.name.trim();
@@ -666,7 +779,7 @@ function TaskDrawer({ session, task, classes, scenarios, onClose, onSaved }: {
             </section>
           )}
 
-          <h4 className="td-sec" data-step="2"><span>3</span>时间与节奏</h4>
+          <h4 className="td-sec" data-step="2"><span>3</span>时间与交互</h4>
           <section className="td-box">
             <div className="td-grid2">
               <div className="td-field">
@@ -699,7 +812,7 @@ function TaskDrawer({ session, task, classes, scenarios, onClose, onSaved }: {
                 </div>
               </div>
               <div className="td-field">
-                <span className="td-label">回复方式</span>
+                <span className="td-label">交互模式</span>
                 {creating ? (
                   <div className="td-pills">
                     {INTERACTION_OPTIONS.map(([id, label, Icon]) => <Pill key={id} on={form.interactionMode === id} onClick={() => set("interactionMode", id)}><Icon size={14} />{label}</Pill>)}
@@ -808,7 +921,7 @@ function TaskDrawer({ session, task, classes, scenarios, onClose, onSaved }: {
           ) : null}
             </section>
 
-          <h4 className="td-sec" data-step="4"><span>5</span>评分权重<em>想重点考核哪一项，就把它调高</em></h4>
+          <h4 className="td-sec" data-step="4"><span>5</span>评分权重<em>想重点考核哪一项，就把它调高</em><HelpTip>{WEIGHT_MAIL_NOTE}</HelpTip></h4>
           <section className="td-box">
             {creating ? (
               <>

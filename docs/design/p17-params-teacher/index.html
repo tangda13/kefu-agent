@@ -111,6 +111,40 @@ body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microso
 .svc { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 16px; } .svc .sub2 { font-size: 12px; color: var(--ink-3); } .svc b.ok { color: var(--ok); font-size: 16px; } .svc span { display: block; font-size: 12px; color: var(--ink-3); } .svc b { font-size: 18px; font-weight: 700; line-height: 28px; } .svc b small { font-size: 12px; font-weight: 400; color: var(--ink-3); margin-left: 3px; }
 .svc .stars, .svc .stars span { display: inline; color: #f2b01e; font-size: 15px; letter-spacing: 1px; } .svc .stars .off { color: #d6dce5; } .svc .note { display: block; font-size: 12px; color: var(--ok); }
 .rp .dimr { display: grid; grid-template-columns: 104px 1fr 30px 40px; gap: 10px; align-items: center; height: 26px; font-size: 13px; } .rp .dimr .bar { height: 6px; border-radius: 3px; background: #edf0f4; overflow: hidden; } .rp .dimr .bar i { display: block; height: 100%; background: var(--brand); } .rp .dimr strong { text-align: right; } .rp .dimr em { font-style: normal; font-size: 12px; color: var(--ok); text-align: right; } .rp .dimr.na { color: var(--ink-4); }
+
+/* ===== 七、实训任务 ===== */
+.tri3 { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 16px; }
+.ic { width: 16px; height: 16px; stroke-width: 1.75; vertical-align: -3px; }
+.tk-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 20px; background: #f4f6f9; border: 1px solid #d6dce5; border-radius: 12px; }
+.tkc { background: #fff; border: 1px solid #e3e7ee; border-radius: 12px; padding: 16px 20px 12px; }
+.tkc h3 { margin: 0; font-size: 16px; display: flex; justify-content: space-between; align-items: center; }
+.tg { font-size: 12px; font-weight: 400; padding: 1px 8px; border-radius: 4px; }
+.tg.after { background: #fbefdc; color: #8c5b0f; } .tg.in { background: #e8effc; color: #174aa8; } .tg.pre { background: #e0f3f0; color: #0a7a70; }
+.tkc .mt { font-size: 13px; color: #5e6a7b; margin: 4px 0 12px; }
+.tkc .figs { display: grid; grid-template-columns: 1.2fr 1fr 1.1fr; }
+.tkc .figs > div { padding: 0 12px; border-left: 1px solid #e3e7ee; } .tkc .figs > div:first-child { padding-left: 0; border-left: 0; }
+.tkc small { display: block; font-size: 12px; color: #5e6a7b; } .tkc b { font-size: 22px; line-height: 32px; } .tkc b em { font-style: normal; font-size: 12px; font-weight: 400; color: #5e6a7b; margin-left: 2px; }
+.tkc b.na { color: #c3cad5; } .tkc b.sm { font-size: 18px; } .tkc .sub { font-size: 12px; color: #5e6a7b; } .tkc .sub.warn { color: #a3640b; font-weight: 600; } .tkc b.warn { color: #a3640b; }
+.tkc .pg { height: 6px; border-radius: 3px; background: #edf0f4; margin-top: 2px; overflow: hidden; } .tkc .pg i { display: block; height: 100%; background: #1d5fd1; }
+.tkc .ft { display: flex; gap: 14px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #edf0f4; font-size: 13px; color: #174aa8; }
+.tkc .hl { outline: 2px dashed #6e9be8; outline-offset: 3px; border-radius: 6px; }
+.dw { width: 480px; background: #fff; border: 1px solid #d6dce5; border-radius: 12px; box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); overflow: hidden; }
+.dw-h { display: flex; align-items: center; padding: 16px 24px; border-bottom: 1px solid #e3e7ee; font-size: 18px; font-weight: 700; } .dw-h span { margin-left: auto; color: #9aa3b0; font-weight: 400; }
+.dw-b { padding: 18px 24px 8px; }
+.dw-top { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #465163; } .dw-top .dot { width: 8px; height: 8px; border-radius: 50%; background: #1a7445; display: inline-block; margin-right: 4px; }
+.dw-prog { margin: 12px 0 4px; display: flex; align-items: baseline; gap: 16px; } .dw-prog b { font-size: 24px; } .dw-prog b em { font-style: normal; font-size: 13px; font-weight: 400; color: #5e6a7b; margin-left: 2px; } .dw-prog span { font-size: 13px; color: #5e6a7b; }
+.dw-bar { height: 6px; border-radius: 3px; background: #edf0f4; overflow: hidden; margin-bottom: 14px; } .dw-bar i { display: block; height: 100%; width: 50%; background: #1d5fd1; }
+.dw-sec { padding: 14px 0; border-top: 1px solid #edf0f4; }
+.dw-sec h5 { margin: 0 0 8px; font-size: 12px; color: #9aa3b0; font-weight: 600; }
+.dw-kv { display: grid; grid-template-columns: 84px 1fr; gap: 6px 12px; font-size: 14px; margin: 0; } .dw-kv dt { color: #5e6a7b; } .dw-kv dd { margin: 0; color: #161c26; }
+.dw-chips { display: flex; flex-wrap: wrap; gap: 6px; } .dw-chips span { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 14px; background: #f1f3f7; font-size: 13px; }
+.dw-w { display: grid; grid-template-columns: 110px 1fr 44px; gap: 10px; align-items: center; height: 24px; font-size: 13px; } .dw-w .bar { height: 6px; border-radius: 3px; background: #edf0f4; overflow: hidden; } .dw-w .bar i { display: block; height: 100%; background: #1d5fd1; } .dw-w b { text-align: right; font-weight: 600; } .dw-w.off { color: #9aa3b0; } .dw-w.off b { font-weight: 400; color: #9aa3b0; }
+.dw-f { display: flex; justify-content: flex-end; padding: 12px 24px; border-top: 1px solid #e3e7ee; } .dw-f span { border: 1px solid #c8cfda; border-radius: 6px; padding: 4px 16px; font-size: 14px; }
+.navs { display: grid; grid-template-columns: repeat(2, 280px); gap: 32px; }
+.navs h6 { margin: 0 0 8px; font-size: 12px; color: #465163; font-weight: 600; }
+.nv { background: #fff; border: 1px solid #d6dce5; border-radius: 12px; padding: 12px; }
+.nv div { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border-radius: 8px; font-size: 14px; color: #465163; } .nv div small { margin-left: auto; font-size: 12px; color: #9aa3b0; }
+.nv div.on { background: #eef4fe; color: #161c26; font-weight: 600; } .nv .n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; background: #e3e7ee; color: #465163; font-weight: 600; } .nv .on .n { background: #1d5fd1; color: #fff; } .nv .ok .n { background: #e3f4ea; color: #1a7445; }
 </style>
 </head>
 <body>
@@ -163,6 +197,52 @@ body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microso
     <tr><td>平均分</td><td>分数 / 100</td><td>“41 人有成绩”</td><td>半圆仪表，刻 60 分线</td><td>和考核报表同一个算法：每个学生先算综合成绩（各任务成绩的平均），再求全班平均；自由练习不计入</td></tr>
     <tr><td>对话总数</td><td>次数</td><td>“本周 126 次”</td><td>近 7 天每天几次，今天标蓝</td><td>全班学生“累计对话”加起来：学生回过话的聊天接待，含自由练习，不含邮件</td></tr>
   </table>
+
+  <h2>七、实训任务 <small>参数 2.2.2</small></h2>
+  <table class="t">
+    <tr><th>#</th><th>位置</th><th>现在</th><th>参数原文</th><th>改法</th></tr>
+    <tr><td>T1</td><td>新建任务 · 左侧步骤</td><td>第 3–5 步有默认值，一打开就打勾，看起来像已经设置过</td><td>—</td><td class="chg">老师滚到或点开过这一步、并且填得合法，才打勾；没看过的显示序号，右边照常写默认值（不限期 / 40 个画像 / 合计 100）。编辑已有任务照旧全部打勾（bug）</td></tr>
+    <tr><td>T2</td><td>任务详情抽屉</td><td>14 行键值，每行一条横线；评分权重是一长段文字</td><td>—</td><td class="chg">顶部是状态、环节、班级和完成进度；下面分组：时间、交互模式、完成与达标、场景、买家画像、评分权重。组之间一条分隔线，组内不画线；评分权重画八行小横条，0% 的灰掉写“不计分”（bug）</td></tr>
+    <tr><td>T3</td><td>任务卡片 · 第三格</td><td>“剩余 N 天”，不设截止显示“—”，看不到截止日期</td><td>“含所属班级、业务环节、截止时间、完成进度、状态”</td><td class="chg">改成“截止”：大字写日期（10/25），小字“还剩 2 天”，2 天内橙色；不设截止写“不设”；已结束写日期</td></tr>
+    <tr><td>T4</td><td>“回复方式”的叫法</td><td>新建任务、详情里叫“回复方式”，整个页面没有“交互模式”</td><td>“交互模式”</td><td class="chg">改名“交互模式”，选项不变（文字 / 语音 / 文字和语音）；第 3 步改名“时间与交互”</td></tr>
+    <tr><td>T5</td><td>评分权重 · 问号</td><td>没说邮件怎么算</td><td>“可配置考核评分维度及权重”</td><td class="chg">问号里补一句：邮件不评客户情绪安抚、消息响应时效，这两项的权重在邮件里按比例分给其余几项（现在的算法就是这样，只补说明）</td></tr>
+    <tr><td>T6</td><td>“本学期”</td><td>系统没有学期，列出全部任务，已结束的折叠</td><td>“展示本学期所有实训任务”</td><td class="chg">待定：加不加“本学期 / 全部”筛选</td></tr>
+  </table>
+
+  <h3 class="sub" style="margin:28px 0 8px;font-size:16px">现在</h3>
+  <div class="tri3">
+    <figure><img class="before" src="assets/before-task-list.png" alt=""><figcaption>任务列表：第三格是“剩余”</figcaption></figure>
+    <figure><img class="before" src="assets/before-task-detail.png" alt=""><figcaption>任务详情：每行一条横线</figcaption></figure>
+    <figure><img class="before" src="assets/before-task-new.png" alt=""><figcaption>新建任务：第 3–5 步一打开就打勾（你圈出的位置）</figcaption></figure>
+  </div>
+
+  <h3 class="sub" style="margin:28px 0 8px;font-size:16px">T3 任务卡片：第三格改成“截止”</h3>
+  <div class="tk-cards"><div class="tkc"><h3>新品推广首训<span class="tg pre">售前沟通</span></h3><div class="mt">跨境电商2601班 · 2 个场景</div><div class="figs"><div><small>完成</small><b>38<em>/ 45 人</em></b><div class="pg"><i style="width:84%"></i></div></div><div><small>平均分</small><b>74</b></div><div class="hl"><small>截止</small><b class="sm warn">10/22</b><div class="sub warn">还剩 2 天</div></div></div><div class="ft"><i data-lucide="message-square-more" class="ic"></i>看跟踪　<i data-lucide="file-chart-column" class="ic"></i>看成绩</div></div><div class="tkc"><h3>售中物流同步演练<span class="tg in">售中处理</span></h3><div class="mt">跨境电商2601班 · 1 个场景</div><div class="figs"><div><small>完成</small><b>30<em>/ 45 人</em></b><div class="pg"><i style="width:66%"></i></div></div><div><small>平均分</small><b>70</b></div><div class="hl"><small>截止</small><b class="sm">10/30</b><div class="sub">还剩 10 天</div></div></div><div class="ft"><i data-lucide="message-square-more" class="ic"></i>看跟踪　<i data-lucide="file-chart-column" class="ic"></i>看成绩</div></div><div class="tkc"><h3>画像规则验证-售后<span class="tg after">售后处理</span></h3><div class="mt">跨境电商2601班 · 1 个场景</div><div class="figs"><div><small>完成</small><b>0<em>/ 2 人</em></b><div class="pg"><i style="width:0%"></i></div></div><div><small>平均分</small><b class="na">—</b></div><div class="hl"><small>截止</small><b class="sm">不设</b></div></div><div class="ft"><i data-lucide="message-square-more" class="ic"></i>看跟踪　<i data-lucide="file-chart-column" class="ic"></i>看成绩</div></div></div>
+
+  <h3 class="sub" style="margin:28px 0 8px;font-size:16px">T2 + T4 + T5 任务详情抽屉</h3>
+  <p class="lede">一块内容一层：分组用小标题和一条分隔线，组内的行不画线。“交互模式”和“买家进线”放在一组。</p>
+  <div class="dw">
+    <div class="dw-h">画像规则验证-售后<span>✕</span></div>
+    <div class="dw-b">
+      <div class="dw-top"><span><i class="dot"></i>进行中</span><span class="tg after">售后处理</span><span>跨境电商2601班 · 2 名学生</span></div>
+      <div class="dw-prog"><b>1<em>/ 2 人完成</em></b><span>平均分 80</span></div>
+      <div class="dw-bar"><i></i></div>
+      <section class="dw-sec"><h5>时间</h5><dl class="dw-kv"><dt>开放</dt><dd>下发后立即开放</dd><dt>截止</dt><dd>不设截止</dd><dt>单次限时</dt><dd>不限时</dd></dl></section>
+      <section class="dw-sec"><h5>交互模式</h5><dl class="dw-kv"><dt>交互模式</dt><dd>文字和语音</dd><dt>买家进线</dt><dd>一位接一位</dd></dl></section>
+      <section class="dw-sec"><h5>完成与达标</h5><dl class="dw-kv"><dt>完成标准</dt><dd>每个场景至少接待一次（共 1 个）</dd><dt>达标线</dt><dd>不设，完成即达标</dd></dl></section>
+      <section class="dw-sec"><h5>场景</h5><div class="dw-chips"><span><i data-lucide="message-circle" class="ic"></i>货损退款协商</span></div></section>
+      <section class="dw-sec"><h5>买家画像</h5><dl class="dw-kv"><dt>人群</dt><dd>画像库全部</dd><dt>国籍</dt><dd>德国、法国</dd><dt>情绪</dt><dd>不满</dd></dl></section>
+      <section class="dw-sec"><h5>评分权重 <span class="help"><i data-lucide="circle-help" class="ic"></i></span></h5><div class="dw-w"><span>服务话术规范</span><span class="bar"><i style="width:40%"></i></span><b>16%</b></div><div class="dw-w"><span>客户沟通有效性</span><span class="bar"><i style="width:40%"></i></span><b>16%</b></div><div class="dw-w"><span>客户情绪安抚</span><span class="bar"><i style="width:40%"></i></span><b>16%</b></div><div class="dw-w"><span>订单问题解决</span><span class="bar"><i style="width:40%"></i></span><b>16%</b></div><div class="dw-w off"><span>商品信息准确性</span><span class="bar"></span><b>不计分</b></div><div class="dw-w off"><span>消息响应时效</span><span class="bar"></span><b>不计分</b></div><div class="dw-w"><span>语法准确性</span><span class="bar"><i style="width:40%"></i></span><b>16%</b></div><div class="dw-w"><span>沟通用语合规</span><span class="bar"><i style="width:50%"></i></span><b>20%</b></div></section>
+    </div>
+    <div class="dw-f"><span>编辑</span></div>
+  </div>
+  <p class="note">评分权重的问号：“想重点考核哪一项就调高。邮件不评客户情绪安抚、消息响应时效，这两项的权重在邮件里按比例分给其余几项。”</p>
+
+  <h3 class="sub" style="margin:28px 0 8px;font-size:16px">T1 新建任务的步骤</h3>
+  <div class="navs">
+    <div><h6>刚打开</h6><div class="nv"><div class="on"><span class="n">1</span>基本信息<small>售前沟通</small></div><div class=""><span class="n">2</span>班级与场景<small>0 班 · 0 个</small></div><div class=""><span class="n">3</span>时间与交互<small>不限期</small></div><div class=""><span class="n">4</span>买家画像<small>40 个画像</small></div><div class=""><span class="n">5</span>评分权重<small>合计 100</small></div></div></div>
+    <div><h6>填完前两步、滚到第 4 步</h6><div class="nv"><div class="ok"><span class="n">✓</span>基本信息<small>售后处理</small></div><div class="ok"><span class="n">✓</span>班级与场景<small>1 班 · 2 个</small></div><div class="ok"><span class="n">✓</span>时间与交互<small>7 天</small></div><div class="on"><span class="n">4</span>买家画像<small>12 个画像</small></div><div class=""><span class="n">5</span>评分权重<small>合计 100</small></div></div></div>
+  </div>
 </div>
 
 <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
