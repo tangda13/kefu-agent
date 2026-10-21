@@ -812,7 +812,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   // 输入框翻译：把客服写的中文译成买家的语言，直接替换输入框内容（同一段文字只翻一次，服务端存库）
   async function translateInput() {
     const text = input.trim();
-    if (!text || outBusy) return;
+    if (!text) return void textareaRef.current?.focus();
+    if (outBusy) return;
     setOutBusy(true);
     try {
       const translated = await translateText(session, text, outTarget);
@@ -1563,9 +1564,11 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
               {canType ? (
                 <TranslateButton
                   target={outTarget}
+                  buyerTarget={targetOf(buyer?.language)}
                   onTarget={setOutTarget}
                   busy={outBusy}
-                  disabled={composerDisabled || !input.trim()}
+                  disabled={composerDisabled}
+                  empty={!input.trim()}
                   onTranslate={() => void translateInput()}
                 />
               ) : null}
@@ -1650,9 +1653,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
               products={products}
               browsed={browsedProducts}
               canSend={!cardDisabled}
-              canFill={Boolean(active) && !isClosed && canType}
               onSend={(type, id) => void sendCard(type, id)}
-              onFill={appendToInput}
               onDetail={setDetailProduct}
             />
           ) : null}

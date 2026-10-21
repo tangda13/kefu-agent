@@ -1,23 +1,19 @@
 import { Package2 } from "lucide-react";
 import { useState } from "react";
 import { assetUrl, type StoreProduct } from "../../../api/client";
-import { Button, Segmented } from "../../../ui";
+import { Segmented } from "../../../ui";
 
-/* 右栏「商品」页签：全店商品 / 买家看过；发送、邀请下单、详情抽屉、规格属性、算价 */
+/* 右栏「商品」页签：全店商品 / 买家看过；详情抽屉、发送、邀请下单。
+   规格、算价已去掉（D-73）：规格、价格、库存都在详情里，要哪句点“引用”填进输入框 */
 
-export function ProductsTab({ products, browsed, canSend, canFill, onSend, onFill, onDetail }: {
+export function ProductsTab({ products, browsed, canSend, onSend, onDetail }: {
   products: StoreProduct[];
   browsed: StoreProduct[];
   canSend: boolean;
-  canFill: boolean;
   onSend: (type: "product" | "invite", productId: string) => void;
-  onFill: (text: string) => void;
   onDetail: (product: StoreProduct) => void;
 }) {
   const [tab, setTab] = useState<"store" | "browsed">("store");
-  const [specOpen, setSpecOpen] = useState<string | null>(null);
-  const [calcOpen, setCalcOpen] = useState<string | null>(null);
-  const [qty, setQty] = useState(1);
   const list = tab === "store" ? products : browsed;
 
   return (
@@ -32,9 +28,6 @@ export function ProductsTab({ products, browsed, canSend, canFill, onSend, onFil
         ]}
       />
       {list.map((product) => {
-        const specParts = product.spec.split("/").map((part) => part.trim()).filter(Boolean);
-        const specText = `${product.name} — SKU ${product.id} · ${product.spec} · USD ${Number(product.price).toFixed(2)} · In stock: ${product.stock}`;
-        const quoteText = `${product.name}: ${qty} × USD ${Number(product.price).toFixed(2)} = USD ${(product.price * qty).toFixed(2)}`;
         const image = product.images?.[0] ?? product.imageUrl;
         return (
           <article key={product.id} className="wbk-pc">
@@ -43,33 +36,12 @@ export function ProductsTab({ products, browsed, canSend, canFill, onSend, onFil
               <b>{product.name}</b>
               <div className="wbk-pc-p num">USD {Number(product.price).toFixed(2)}</div>
               <div className="wbk-pc-m">已售 {product.sales} · 库存 {product.stock}</div>
-              {/* 操作一行平铺：详情、发送、邀请下单、规格、算价 */}
               <div className="wbk-pc-ac is-row">
                 <button type="button" onClick={() => onDetail(product)}>详情</button>
                 <button type="button" disabled={!canSend} onClick={() => onSend("product", product.id)}>发送</button>
                 <button type="button" disabled={!canSend} onClick={() => onSend("invite", product.id)}>邀请下单</button>
-                <button type="button" className={specOpen === product.id ? "is-on" : ""} onClick={() => { setSpecOpen(specOpen === product.id ? null : product.id); setCalcOpen(null); }}>规格</button>
-                <button type="button" className={calcOpen === product.id ? "is-on" : ""} onClick={() => { setCalcOpen(calcOpen === product.id ? null : product.id); setSpecOpen(null); setQty(1); }}>算价</button>
               </div>
             </div>
-            {specOpen === product.id ? (
-              <div className="wbk-pc-expand">
-                <dl className="wbk-kv">
-                  <dt>SKU 编码</dt><dd className="num">{product.id}</dd>
-                  {specParts.map((part, index) => (<span key={part} style={{ display: "contents" }}><dt>规格 {index + 1}</dt><dd>{part}</dd></span>))}
-                  <dt>单价</dt><dd className="num">USD {Number(product.price).toFixed(2)}</dd>
-                  <dt>库存 / 已售</dt><dd className="num">{product.stock} / {product.sales}</dd>
-                </dl>
-                <Button size="sm" disabled={!canFill} onClick={() => { onFill(specText); setSpecOpen(null); }}>填入规格信息</Button>
-              </div>
-            ) : null}
-            {calcOpen === product.id ? (
-              <div className="wbk-pc-expand wbk-calc">
-                <label>数量<input type="number" min={1} max={999} value={qty} onChange={(event) => setQty(Math.max(1, Math.min(999, Number(event.target.value) || 1)))} aria-label="数量" /></label>
-                <span>合计 <strong className="num">USD {(product.price * qty).toFixed(2)}</strong></span>
-                <Button size="sm" disabled={!canFill} onClick={() => { onFill(quoteText); setCalcOpen(null); }}>填入报价</Button>
-              </div>
-            ) : null}
           </article>
         );
       })}

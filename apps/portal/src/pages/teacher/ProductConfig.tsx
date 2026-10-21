@@ -1,7 +1,7 @@
 import {
-  Check, CircleAlert, CircleCheck, FileSpreadsheet, Info, LibraryBig, Link2, Loader, Package2, Plus, Sparkles, SquarePen, Star, Trash2, X,
+  Check, CircleAlert, CircleCheck, FileSpreadsheet, Info, LibraryBig, Link2, Loader, Package2, Pencil, Plus, Sparkles, SquarePen, Star, Trash2, X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 import * as XLSX from "xlsx";
 import {
   CATEGORY_SEP, PRODUCT_CATEGORIES, PRODUCT_DETAIL_GROUPS, PRODUCT_SOURCE_LABELS, categoryTemplate, isSizedCategory, productCompleteness,
@@ -477,6 +477,14 @@ function ExcelDialog({ session, onClose, onDone }: { session: Session; onClose: 
 // ---------- 商品编辑 / 核对采集结果 ----------
 
 /** 按规格维度生成全部组合；已有组合保留原价格和库存 */
+/** 规格最多 3 个维度、60 个组合 */
+const MAX_DIMS = 3;
+const MAX_SKUS = 60;
+/** 添加规格时的常用规格名，去掉商品里已经有的 */
+const COMMON_DIM_NAMES = ["款式", "套餐", "包装", "容量", "版本"];
+/** 规格值可以一次粘贴多个：逗号、顿号、分号、换行都算分隔 */
+const splitValues = (text: string) => text.split(/[,，、;；\n\t]+/).map((item) => item.trim()).filter(Boolean);
+
 function buildSkus(options: Array<{ name: string; values: string[] }>, existing: ProductSku[], price: number, stock: number): ProductSku[] {
   const dims = options.filter((option) => option.name.trim() && option.values.length);
   if (!dims.length) return [];
@@ -484,7 +492,17 @@ function buildSkus(options: Array<{ name: string; values: string[] }>, existing:
   for (const dim of dims) combos = combos.flatMap((combo) => dim.values.map((value) => ({ ...combo, [dim.name]: value })));
   const key = (values: Record<string, string>) => dims.map((dim) => values[dim.name] ?? "").join("|");
   const old = new Map(existing.map((sku) => [key(sku.values), sku]));
-  return combos.slice(0, 60).map((values) => old.get(key(values)) ?? { values, price, stock });
+  // 加了一个规格后，新组合沿用去掉新规格那一层的老组合的价格和库存（Black · US 7 → Black · US 7 · Classic）
+  const parent = (values: Record<string, string>) => existing.find((sku) => {
+    const names = Object.keys(sku.values);
+    return names.length > 0 && names.every((name) => values[name] === sku.values[name]);
+  });
+  return combos.slice(0, MAX_SKUS).map((values) => {
+    const same = old.get(key(values));
+    if (same) return same;
+    const from = parent(values);
+    return from ? { values, price: from.price, stock: from.stock } : { values, price, stock };
+  });
 }
 
 type ImageItem = { kind: "saved"; url: string } | { kind: "pending"; blob: Blob; preview: string };
@@ -500,15 +518,50 @@ function withTemplate(details: ProductDetails, template: CategoryTemplate | null
   return { ...details, specs, options: options.sort((a, b) => rank(a.name) - rank(b.name)) };
 }
 
-/** 一个规格维度：平台标准取值（尺码、鞋码）勾选，其他取值自己填 */
-function DimRow({ name, presets, values, onChange, onRename, onRemove }: {
-  name: string; presets?: readonly string[]; values: string[]; onChange: (values: string[]) => void; onRename?: (name: string) => void; onRemove?: () => void;
+/** 规格值输入框：回车、逗号添加；一次粘贴多个（逗号、顿号、换行隔开）自动拆开 */
+function DimValueInput({ placeholder, wide, inputRef, onAdd, onEmptyEnter, onEscape }: {
+  placeholder: string; wide?: boolean; inputRef?: Ref<HTMLInputElement>; onAdd: (values: string[]) => void; onEmptyEnter?: () => void; onEscape?: () => void;
 }) {
   const [draft, setDraft] = useState("");
-  const add = () => {
-    const value = draft.trim();
-    if (value && !values.includes(value)) onChange([...values, value]);
+  const add = (text: string) => {
+    const next = splitValues(text);
+    if (next.length) onAdd(next);
     setDraft("");
+  };
+  return (
+    <input ref={inputRef} className={wide ? "pe-dim-add is-wide" : "pe-dim-add"} value={draft} maxLength={40} placeholder={placeholder}
+      onChange={(event) => setDraft(event.target.value)} onBlur={() => add(draft)}
+      onPaste={(event) => {
+        const text = event.clipboardData.getData("text");
+        if (splitValues(text).length > 1) { event.preventDefault(); add(`${draft},${text}`); }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") return onEscape?.();
+        if (event.key !== "Enter" && event.key !== "," && event.key !== "，") return;
+        event.preventDefault();
+        if (!draft.trim() && event.key === "Enter") onEmptyEnter?.();
+        else add(draft);
+      }} />
+  );
+}
+
+/** 一个规格维度：平台标准取值（尺码、鞋码）勾选，其他取值自己填；自己加的规格点名称改名 */
+function DimRow({ name, presets, values, taken, onChange, onRename, onRemove }: {
+  name: string; presets?: readonly string[]; values: string[]; taken: string[]; onChange: (values: string[]) => void; onRename?: (name: string) => void; onRemove?: () => void;
+}) {
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const cancelRename = useRef(false);
+  const add = (next: string[]) => {
+    const fresh = next.filter((value, index) => !values.includes(value) && next.indexOf(value) === index);
+    if (fresh.length) onChange([...values, ...fresh]);
+  };
+  const commitName = () => {
+    const next = (renaming ?? "").trim();
+    setRenaming(null);
+    if (cancelRename.current) { cancelRename.current = false; return; }
+    if (!next || next === name) return;
+    if (taken.includes(next)) return void toast.error(`已经有“${next}”了`);
+    onRename?.(next);
   };
   const toggle = (value: string) => {
     const next = values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
@@ -519,15 +572,71 @@ function DimRow({ name, presets, values, onChange, onRename, onRemove }: {
   const extras = values.filter((value) => !presets?.includes(value));
   return (
     <div className="pe-dim">
-      {onRename ? <Input className="pe-dim-name" value={name} maxLength={12} onChange={(event) => onRename(event.target.value)} /> : <b>{name}</b>}
+      {renaming !== null ? (
+        <Input className="pe-dim-name" autoFocus value={renaming} maxLength={12} onChange={(event) => setRenaming(event.target.value)} onBlur={commitName}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") cancelRename.current = true;
+            if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
+          }} />
+      ) : onRename ? (
+        <button type="button" className="pe-dim-rename" title="改名" onClick={() => setRenaming(name)}>{name}<Pencil size={13} /></button>
+      ) : <b>{name}</b>}
       <div className="pe-dim-vals">
         {presets?.map((value) => <button key={value} type="button" className={values.includes(value) ? "is-on" : undefined} onClick={() => toggle(value)}>{value}</button>)}
         {extras.map((value) => <span key={value} className="pe-dim-chip">{value}<button type="button" title="去掉" onClick={() => onChange(values.filter((item) => item !== value))}><X size={12} /></button></span>)}
-        <input className="pe-dim-add" value={draft} maxLength={40} placeholder={presets ? "其他取值" : `加${name}，回车确认`}
-          onChange={(event) => setDraft(event.target.value)} onBlur={add}
-          onKeyDown={(event) => { if (event.key === "Enter" || event.key === "," || event.key === "，") { event.preventDefault(); add(); } }} />
+        <DimValueInput placeholder={presets ? "其他取值" : `加${name}，回车添加`} onAdd={add} />
       </div>
       {onRemove ? <button type="button" className="pe-del" title="删除这个规格" onClick={onRemove}><Trash2 size={15} /></button> : <span />}
+    </div>
+  );
+}
+
+/** 添加规格（D-72）：先定规格名（常用名点一下就填好），再填规格值，底部算出添加后一共几个规格；添加后收成普通的一行 */
+function NewDimCard({ dims, onAdd, onCancel }: { dims: Array<{ name: string; values: string[] }>; onAdd: (name: string, values: string[]) => void; onCancel: () => void }) {
+  const [name, setName] = useState("");
+  const [values, setValues] = useState<string[]>([]);
+  const valueRef = useRef<HTMLInputElement>(null);
+  const trimmed = name.trim();
+  const taken = dims.map((dim) => dim.name);
+  const duplicate = taken.includes(trimmed);
+  const suggestions = COMMON_DIM_NAMES.filter((item) => !taken.includes(item));
+  const filled = dims.filter((dim) => dim.name.trim() && dim.values.length);
+  const total = filled.reduce((count, dim) => count * dim.values.length, 1) * values.length;
+  const ready = Boolean(trimmed) && !duplicate && values.length > 0;
+  const add = (next: string[]) => setValues((current) => [...current, ...next.filter((value, index) => !current.includes(value) && next.indexOf(value) === index)]);
+  const pick = (item: string) => { setName(item); valueRef.current?.focus(); };
+  return (
+    <div className="pe-newdim">
+      <div className="pe-newdim-row">
+        <label>规格名</label>
+        <div className="pe-newdim-name">
+          <Input autoFocus value={name} maxLength={12} placeholder="如 款式"
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") { event.preventDefault(); valueRef.current?.focus(); }
+              if (event.key === "Escape") onCancel();
+            }} />
+          {suggestions.length ? (
+            <span className="pe-newdim-sug">常用{suggestions.map((item) => <button key={item} type="button" className={trimmed === item ? "is-on" : undefined} onClick={() => pick(item)}>{item}</button>)}</span>
+          ) : null}
+        </div>
+      </div>
+      {duplicate ? <p className="pe-newdim-err">已经有“{trimmed}”了</p> : null}
+      <div className="pe-newdim-row">
+        <label>规格值</label>
+        <div className="pe-dim-vals">
+          {values.map((value) => <span key={value} className="pe-dim-chip">{value}<button type="button" title="去掉" onClick={() => setValues(values.filter((item) => item !== value))}><X size={12} /></button></span>)}
+          <DimValueInput wide inputRef={valueRef} placeholder="回车添加，可粘贴多个，用逗号隔开" onAdd={add} onEscape={onCancel}
+            onEmptyEnter={() => { if (ready) onAdd(trimmed, values); }} />
+        </div>
+      </div>
+      <div className="pe-newdim-ft">
+        <span>
+          {ready ? <>添加后 {filled.map((dim) => `${dim.name} ${dim.values.length} × `).join("")}<em>{trimmed} {values.length}</em> = <b>{total}</b> 个规格{total > MAX_SKUS ? <i>，只保留前 {MAX_SKUS} 个</i> : null}</> : null}
+        </span>
+        <Button size="sm" onClick={onCancel}>取消</Button>
+        <Button size="sm" variant="primary" disabled={!ready} onClick={() => onAdd(trimmed, values)}>添加</Button>
+      </div>
     </div>
   );
 }
@@ -550,6 +659,9 @@ function ProductEditor({ session, seed, recent, onClose, onSaved }: { session: S
   /** 换类目会重置类目属性和规格，先确认 */
   const [switching, setSwitching] = useState<string | null>(null);
   const [bulk, setBulk] = useState({ price: "", stock: "" });
+  /** 正在添加规格（展开小卡） / 刚加的自定义属性行（名称框自动聚焦） */
+  const [addingDim, setAddingDim] = useState(false);
+  const [newAttrIndex, setNewAttrIndex] = useState(-1);
   const [images, setImages] = useState<ImageItem[]>(() => [
     ...(product?.images?.length ? product.images : product?.imageUrl ? [product.imageUrl] : []).map((url) => ({ kind: "saved" as const, url })),
     ...(seed.pendingImages ?? []).map((blob) => ({ kind: "pending" as const, blob, preview: URL.createObjectURL(blob) })),
@@ -641,6 +753,14 @@ function ProductEditor({ session, seed, recent, onClose, onSaved }: { session: S
   const skus = details.skus ?? [];
   const regenerate = (nextOptions: typeof options) => patch({ options: nextOptions, skus: buildSkus(nextOptions, skus, numericPrice > 0 ? numericPrice : 0, Number(stock) || 100) });
   const skuDims = options.filter((option) => option.name.trim() && option.values.length);
+  /** 改名不动价格库存：规格表里的键跟着改 */
+  const renameDim = (index: number, next: string) => {
+    const before = options[index]?.name ?? "";
+    patch({
+      options: options.map((option, i) => (i === index ? { ...option, name: next } : option)),
+      skus: skus.map((sku) => (before in sku.values ? { ...sku, values: Object.fromEntries(Object.entries(sku.values).map(([key, value]) => [key === before ? next : key, value])) } : sku)),
+    });
+  };
 
   const chart = details.sizeChart ?? null;
   const sizeDim = sized ? template?.dims.find((dim) => dim.presets) ?? null : null;
@@ -746,28 +866,39 @@ function ProductEditor({ session, seed, recent, onClose, onSaved }: { session: S
             <div className="pe-list">
               {(details.specs ?? []).map((row, index) => ({ row, index })).filter(({ row }) => !(template?.attributes.map((item) => item.name) ?? []).includes(row.name)).map(({ row, index }) => (
                 <div key={index} className="pe-kv">
-                  <Input value={row.name} maxLength={20} placeholder="属性名，如 产地" onChange={(event) => patch({ specs: (details.specs ?? []).map((r, i) => (i === index ? { ...r, name: event.target.value } : r)) })} />
+                  <Input value={row.name} maxLength={20} placeholder="属性名，如 产地" autoFocus={index === newAttrIndex} onChange={(event) => patch({ specs: (details.specs ?? []).map((r, i) => (i === index ? { ...r, name: event.target.value } : r)) })} />
                   <Input value={row.value} maxLength={120} placeholder="中国广东" onChange={(event) => patch({ specs: (details.specs ?? []).map((r, i) => (i === index ? { ...r, value: event.target.value } : r)) })} />
                   <button type="button" className="pe-del" onClick={() => patch({ specs: (details.specs ?? []).filter((_, i) => i !== index) })}><Trash2 size={15} /></button>
                 </div>
               ))}
-              <Button variant="ghost" icon={Plus} onClick={() => patch({ specs: [...(details.specs ?? []), { name: "", value: "" }] })}>加一个属性</Button>
+              <button type="button" className="pe-addrow" onClick={() => { setNewAttrIndex((details.specs ?? []).length); patch({ specs: [...(details.specs ?? []), { name: "", value: "" }] }); }}>
+                <Plus size={15} />添加自定义属性<small>如 产地、包装清单、认证</small>
+              </button>
             </div>
           </section>
 
           <section data-group="skus" className="pe-sec">
-            <h4>规格与库存<span>{skus.length ? `${options.filter((o) => o.values.length).map((o) => `${o.name} ${o.values.length}`).join(" × ")} = ${skus.length} 个规格` : template ? `这个类目用“${template.dims.map((dim) => dim.name).join(" × ")}”；只卖一个款式就不用填，价格库存写在基本信息里` : "最多 3 个维度，如颜色、尺码"}</span></h4>
+            <h4>规格与库存<span>{skus.length ? `${options.filter((o) => o.values.length).map((o) => `${o.name} ${o.values.length}`).join(" × ")} = ${skus.length} 个规格` : template ? `这个类目用“${template.dims.map((dim) => dim.name).join(" × ")}”；只卖一个款式就不用填，价格库存写在基本信息里` : "最多 3 个维度，如颜色、尺码"}</span>
+              <HelpTip>规格是买家下单时要选的，如颜色、尺码、款式，每个组合单独定价、单独算库存。材质、产地这类不用选的，写在上面的类目属性里。</HelpTip>
+            </h4>
             <div className="pe-dims">
               {options.map((option, index) => {
                 const preset = template?.dims.find((dim) => dim.name === option.name);
                 return (
-                  <DimRow key={index} name={option.name} presets={preset?.presets} values={option.values}
+                  <DimRow key={index} name={option.name} presets={preset?.presets} values={option.values} taken={options.filter((_, i) => i !== index).map((o) => o.name)}
                     onChange={(values) => regenerate(options.map((o, i) => (i === index ? { ...o, values } : o)))}
-                    onRename={preset ? undefined : (next) => regenerate(options.map((o, i) => (i === index ? { ...o, name: next } : o)))}
+                    onRename={preset ? undefined : (next) => renameDim(index, next)}
                     onRemove={preset ? undefined : () => regenerate(options.filter((_, i) => i !== index))} />
                 );
               })}
-              {options.length < 3 ? <Button variant="ghost" icon={Plus} onClick={() => regenerate([...options, { name: options.some((o) => o.name === "款式") ? "规格" : "款式", values: [] }])}>加一个规格</Button> : null}
+              {addingDim ? (
+                <NewDimCard dims={options} onCancel={() => setAddingDim(false)}
+                  onAdd={(dimName, values) => { regenerate([...options, { name: dimName, values }]); setAddingDim(false); }} />
+              ) : options.length < MAX_DIMS ? (
+                <button type="button" className="pe-addrow" onClick={() => setAddingDim(true)}>
+                  <Plus size={15} />添加规格<small>如 款式、套餐、包装</small><small className="pe-addrow-r">还能加 {MAX_DIMS - options.length} 个</small>
+                </button>
+              ) : <p className="pe-hint">最多 {MAX_DIMS} 个规格</p>}
             </div>
             {skus.length ? (
               <div className="pe-table">

@@ -414,6 +414,8 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
 <h2 id="changelog">12. 变更记录</h2>
 <div class="table-wrap"><table>
 <tr><th>日期</th><th>变更</th></tr>
+<tr><td>2026-10-21</td><td>学生工作台小修（D-73），无迁移、无接口变化：<code>ui</code> 新增 <code>Tip</code>（图标按钮悬停说明，复用 <code>.ui-help-pop</code> 浮层）；<code>HeadControls.tsx</code> 待跟进 / 结束会话改图标按钮 <code>.wbk-hbtn</code>；<code>TranslateButton.tsx</code> 改无边框“译成××语”，新增 buyerTarget、empty 参数；<code>ProductsTab.tsx</code> 去掉规格、算价及 canFill / onFill 参数</td></tr>
+<tr><td>2026-10-21</td><td>添加商品三处修复，无迁移、无新接口：① 链接采集下载图片改用 <code>session.fetch</code> 的 <code>referrer</code> 选项（手写 <code>Referer</code> 头会被 Electron 拦成 <code>ERR_BLOCKED_BY_CLIENT</code>，图片此前一张都下不下来），失败写 <code>[capture] image download failed</code> 日志；② <code>POST /v1/store/products/extract</code> 去掉整体 90 秒超时，改按档案超时，主档案超时自动换备用档案；③ 加规格改为“规格名 + 规格值 + 实时规格数”小卡（D-72，<code>ProductConfig.tsx</code> 的 NewDimCard / DimValueInput），自定义规格点名称改名且规格表键跟着改，<code>buildSkus</code> 加规格后按原组合沿用价格库存</td></tr>
 <tr><td>2026-10-21</td><td>买家头像去掉平台默认灰色剪影（D-71），无迁移：domain <code>AVATAR_KIND_WEIGHTS</code> 改为首字母 20% / 人像 75% / 非人脸 5%；<code>toStudentPersonaView</code> 把老快照的 default 返回成 initial；前端删掉 DefaultSilhouette，default 也按首字母画。</td></tr>
 <tr><td>2026-10-21</td><td>学生工作台任务条去掉“切换任务”（D-70），无迁移：TaskChip / ShiftBar 去掉 switchable、onPick(Task) 参数和 .wbk-taskpop-sw 样式；LiveWorkbench 的 taskFocus 只取任务大厅带进来的 initialTaskId。进线逻辑不变（所有进行中任务各按节奏进线）。</td></tr>
 <tr><td>2026-10-21</td><td>学生端：任务大厅“看复盘”改为跳到我的记录后滚到这个任务的记录并高亮闪两下，不筛选、不自动打开（D-69，<code>LiveRecords.tsx</code> 的 flashTask、样式 <code>.sl-rr.is-flash</code>）；复盘弹层、初始测评弹层用 createPortal 挂到 body（原来在 Bench 里吃到 16px 上边距，顶部露白边）。无迁移。</td></tr>

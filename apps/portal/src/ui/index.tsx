@@ -214,6 +214,30 @@ export function HelpTip({ children, label = "说明" }: { children: ReactNode; l
   );
 }
 
+/** 图标按钮的悬停说明：和问号提示同一种浮层（挂到 body，不被裁掉），鼠标移上去马上出现，比系统 title 快、样式统一。
+    placement 不传时按位置自动选上下 */
+export function Tip({ label, placement, children }: { label: ReactNode; placement?: "top" | "bottom"; children: ReactNode }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; up: boolean } | null>(null);
+  const show = () => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    const up = placement ? placement === "top" : rect.bottom + 60 > window.innerHeight;
+    const left = Math.min(Math.max(rect.left + rect.width / 2, 80), window.innerWidth - 80);
+    setPos({ left, top: up ? rect.top - 6 : rect.bottom + 6, up });
+  };
+  const hide = () => setPos(null);
+  return (
+    <span ref={ref} className="ui-tip" onMouseEnter={show} onMouseLeave={hide} onMouseDown={hide} onFocus={show} onBlur={hide}>
+      {children}
+      {pos && label ? createPortal(
+        <span className={pos.up ? "ui-help-pop ui-tip-pop is-up" : "ui-help-pop ui-tip-pop"} role="tooltip" style={{ left: pos.left, top: pos.top }}>{label}</span>,
+        document.body,
+      ) : null}
+    </span>
+  );
+}
+
 export interface StatItem {
   label: ReactNode;
   value: ReactNode;

@@ -91,6 +91,8 @@
 .ui-help:hover, .ui-help:focus { color: var(--c-ink-2); outline: none; }
 .ui-help-pop { position: fixed; z-index: 1000; width: max-content; max-width: 280px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--c-ink); color: #fff; font-size: var(--fs-caption); font-weight: 400; line-height: 1.5; white-space: normal; transform: translateX(-50%); pointer-events: none; box-shadow: var(--sh-popover); }
 .ui-help-pop.is-up { transform: translate(-50%, -100%); }
+.ui-tip { display: inline-flex; }
+.ui-tip-pop { padding: 4px 8px; white-space: nowrap; }
 
 /* ---------- 统计条 ---------- */
 .ui-statbar { display: flex; border: 1px solid var(--c-line); border-radius: var(--r-md); background: var(--c-surface); }
@@ -1053,6 +1055,33 @@
 .pe-dim-chip button { display: inline-flex; padding: 2px; border: 0; background: none; color: inherit; cursor: pointer; }
 .pe-dim-add { width: 150px; height: 28px; padding: 0 10px; border: 1px dashed var(--c-line-strong); border-radius: 14px; background: none; font: inherit; font-size: var(--fs-small); outline: none; }
 .pe-dim-add:focus { border-style: solid; border-color: var(--c-brand); }
+.pe-dim-add.is-wide { width: 260px; }
+/* D-72：自己加的规格，名称是文字 + 小笔，点击改名 */
+.pe-dim-rename { display: inline-flex; align-items: center; gap: 4px; justify-self: start; padding: 5px 0 0; border: 0; background: none; font: inherit; font-size: var(--fs-small); color: var(--c-ink-2); cursor: pointer; }
+.pe-dim-rename svg { color: var(--c-ink-4); }
+.pe-dim-rename:hover, .pe-dim-rename:hover svg { color: var(--c-brand-ink); }
+/* 整行虚线“添加”，贴在列表末尾，写清加什么 */
+.pe-addrow { display: flex; align-items: center; gap: 8px; width: 100%; height: 36px; padding: 0 12px; border: 1px dashed var(--c-line-strong); border-radius: var(--r-md); background: none; font: inherit; font-size: var(--fs-small); font-weight: 600; color: var(--c-brand-ink); cursor: pointer; }
+.pe-addrow:hover { border-color: var(--c-brand); background: var(--c-brand-soft); }
+.pe-addrow small { font-size: var(--fs-caption); font-weight: 400; color: var(--c-ink-3); }
+.pe-addrow .pe-addrow-r { margin-left: auto; }
+/* 添加规格的小卡：先定规格名，再填规格值，底部算出添加后几个规格 */
+.pe-newdim { width: 100%; border: 1px solid var(--c-brand); border-radius: var(--r-md); box-shadow: 0 0 0 3px rgba(29, 95, 209, .08); }
+.pe-newdim-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; align-items: center; padding: 12px 14px 0; }
+.pe-newdim-row > label { font-size: var(--fs-small); color: var(--c-ink-2); }
+.pe-newdim-name { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.pe-newdim-name .ui-input { width: 180px; }
+.pe-newdim-sug { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: var(--fs-caption); color: var(--c-ink-3); }
+.pe-newdim-sug button { height: 24px; margin-left: 4px; padding: 0 10px; border: 1px solid var(--c-line); border-radius: 12px; background: var(--c-surface-2); font: inherit; font-size: var(--fs-caption); color: var(--c-ink-2); cursor: pointer; }
+.pe-newdim-sug button + button { margin-left: 0; }
+.pe-newdim-sug button:hover { border-color: var(--c-brand); color: var(--c-brand-ink); }
+.pe-newdim-sug button.is-on { border-color: var(--c-brand); background: var(--c-brand-soft); font-weight: 600; color: var(--c-brand-ink); }
+.pe-newdim-err { margin: 4px 0 0 96px; font-size: var(--fs-caption); color: var(--c-danger); }
+.pe-newdim-ft { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 14px; border-top: 1px solid var(--c-line); border-radius: 0 0 var(--r-md) var(--r-md); background: var(--c-surface-2); font-size: var(--fs-small); color: var(--c-ink-2); }
+.pe-newdim-ft > span { margin-right: auto; }
+.pe-newdim-ft em { font-style: normal; font-weight: 600; color: var(--c-brand-ink); }
+.pe-newdim-ft b { color: var(--c-ink); }
+.pe-newdim-ft i { font-style: normal; color: var(--c-warn); }
 .pe-tr.is-bulk { background: var(--c-surface-2); color: var(--c-brand-ink); }
 .pe-hint { margin: 0; font-size: var(--fs-small); color: var(--c-ink-3); }
 
@@ -1063,7 +1092,7 @@
 .cpk-crumb i { margin: 0 8px; font-style: normal; color: var(--c-ink-4, #9aa3b0); }
 .cpk-crumb em { font-style: normal; }
 .cpk-search { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border: 1px solid var(--c-line-strong); border-radius: var(--r-md); color: var(--c-ink-3); }
-.cpk-search:focus-within { border-color: var(--c-brand); }
+.cpk-search:focus-within { border-color: var(--c-brand); box-shadow: var(--focus-ring); }
 .cpk-search input { flex: 1; border: 0; background: none; font: inherit; font-size: var(--fs-small); color: var(--c-ink); outline: none; }
 .cpk-hist { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: var(--fs-small); color: var(--c-ink-3); }
 .cpk-hist button { padding: 0 10px; border: 0; border-left: 1px solid var(--c-line); background: none; font: inherit; color: var(--c-ink); cursor: pointer; }
@@ -1163,6 +1192,7 @@
 .pf-ai { display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 6px 0 12px; border: 1px solid #c9d8f5; border-radius: 10px; background: linear-gradient(90deg, var(--c-brand-soft), var(--c-surface)); color: var(--c-brand); }
 .pf-ai input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; font: inherit; font-size: var(--fs-small); color: var(--c-ink); outline: none; }
 .pf-ai input::placeholder { color: var(--c-ink-3); }
+.pf-ai:focus-within { border-color: var(--c-brand); box-shadow: var(--focus-ring); }
 .pf-grp { display: grid; gap: 10px; }
 .pf-grp h5 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-small); font-weight: 600; }
 .pf-grp h5 span { font-weight: 400; font-size: var(--fs-caption); color: var(--c-ink-3); }

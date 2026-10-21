@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>添加商品 · 加规格</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+* { box-sizing: border-box; } html, body { margin: 0; }
+body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.doc { max-width: 1120px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 24px; } .doc h2 { margin: 48px 0 8px; font-size: 20px; } .doc h2 small { font-size: 13px; font-weight: 400; color: #465163; margin-left: 8px; }
+.doc h3 { margin: 32px 0 6px; font-size: 16px; }
+.lede { margin: 0 0 16px; color: #465163; }
+.note { margin: 8px 0 0; font-size: 13px; color: #465163; }
+.before { width: 100%; display: block; border-radius: 10px; border: 1px solid #d6dce5; }
+.t { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d6dce5; border-radius: 10px; overflow: hidden; font-size: 13px; }
+.t th, .t td { text-align: left; padding: 9px 14px; border-bottom: 1px solid #edf0f4; vertical-align: top; } .t th { background: #f6f8fb; color: #465163; font-size: 12px; white-space: nowrap; } .t td:first-child { white-space: nowrap; font-weight: 600; }
+.chg { color: #174aa8; }
+.src { font-size: 12px; color: #5e6a7b; } .src a { color: #174aa8; }
+.frame { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid #d6dce5; box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); background: #fff; margin-top: 8px; max-width: 1040px; }
+.screen { position: absolute; top: 0; left: 0; width: 1040px; transform-origin: 0 0; overflow: hidden; }
+.cap { font-size: 13px; color: #465163; margin: 20px 0 0; } .cap b { color: #161c26; }
+
+/* 织 UI 令牌（同 apps/portal/src/styles/tokens.css） */
+.s { --surface:#fff; --surface-2:#f8f9fb; --hover:#eef2f7; --line:#e3e7ee; --line-strong:#c8cfda; --ink:#161c26; --ink-2:#465163; --ink-3:#5e6a7b; --ink-4:#9aa3b0;
+  --brand:#1d5fd1; --brand-soft:#e8effc; --brand-ink:#174aa8; --ok:#1a7445; --warn:#9a5200; --danger:#b8302a; --danger-wash:#fbe8e6;
+  background: #fff; color: var(--ink); font: 400 14px/22px Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.s .ic { width: 15px; height: 15px; stroke-width: 1.75; flex: none; }
+
+/* 抽屉外壳（照现状） */
+.dw { display: grid; grid-template-rows: 56px minmax(0, 1fr) 60px; height: 100%; }
+.dw-h { display: flex; align-items: center; padding: 0 24px; border-bottom: 1px solid var(--line); font-size: 18px; font-weight: 700; } .dw-h .x { margin-left: auto; color: var(--ink-3); }
+.dw-f { display: flex; align-items: center; gap: 10px; padding: 0 24px; border-top: 1px solid var(--line); } .dw-f span { margin-right: auto; font-size: 13px; color: var(--ink-3); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 16px; border-radius: 6px; font-size: 14px; white-space: nowrap; border: 1px solid var(--line-strong); background: #fff; color: var(--ink); }
+.btn.p { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; } .btn.sm { height: 30px; padding: 0 14px; font-size: 13px; } .btn.off { opacity: .45; }
+.pe { display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 0; }
+.pe-nav { display: grid; gap: 2px; align-content: start; padding: 16px 12px; border-right: 1px solid var(--line); background: var(--surface-2); }
+.pe-cat { display: grid; gap: 2px; margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; } .pe-cat small { font-size: 12px; color: var(--ink-3); } .pe-cat b { font-size: 13px; line-height: 18px; } .pe-cat a { font-size: 12px; color: var(--brand-ink); }
+.pe-nav .it { display: flex; align-items: center; justify-content: space-between; height: 34px; padding: 0 10px; border-radius: 6px; font-size: 13px; color: var(--ink-2); }
+.pe-nav .it.on { background: #fff; font-weight: 600; color: var(--ink); box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 0 0 1px var(--line); }
+.pe-nav .ok { color: var(--ok); } .pe-nav .miss { color: #d98a1c; }
+.pe-body { padding: 20px 28px 40px; overflow: hidden; display: grid; gap: 24px; align-content: start; }
+.sec { display: grid; gap: 12px; } .sec + .sec { padding-top: 24px; border-top: 1px solid var(--line); }
+.sec h4 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; font-weight: 600; } .sec h4 > span { font-weight: 400; font-size: 12px; color: var(--ink-3); }
+.sec h4 .help { position: relative; display: inline-flex; color: var(--ink-4); }
+.tip { position: absolute; left: -12px; top: 26px; z-index: 5; width: 340px; padding: 10px 12px; border-radius: 8px; background: #1f2633; color: #fff; font-size: 12px; line-height: 19px; font-weight: 400; box-shadow: 0 8px 24px -8px rgba(16,24,40,.4); }
+.fld { display: grid; gap: 6px; } .fld > label { font-size: 13px; color: var(--ink-2); }
+.in { display: flex; align-items: center; height: 34px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; font-size: 14px; color: var(--ink); min-width: 0; white-space: nowrap; overflow: hidden; }
+.in.ph { color: var(--ink-4); } .in.focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(29,95,209,.14); }
+.attrs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 14px; }
+.kv { display: grid; grid-template-columns: 160px minmax(0, 1fr) 32px; gap: 8px; align-items: center; }
+.del { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; color: var(--ink-3); } .del.hot { background: var(--danger-wash); color: var(--danger); }
+
+/* 新：整行虚线“添加”，贴在列表末尾 */
+.addrow { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border: 1px dashed var(--line-strong); border-radius: 8px; color: var(--brand-ink); font-size: 13px; font-weight: 600; }
+.addrow small { font-weight: 400; color: var(--ink-3); font-size: 12px; } .addrow small.r { margin-left: auto; }
+.addrow.hover { background: var(--brand-soft); border-color: var(--brand); }
+.fullrow { font-size: 12px; color: var(--ink-3); padding-left: 2px; }
+
+/* 规格维度行 */
+.dims { display: grid; gap: 10px; }
+.dim { display: grid; grid-template-columns: 96px minmax(0, 1fr) 64px; gap: 10px; align-items: start; }
+.dim > .nm { padding-top: 3px; font-size: 13px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
+.dim > .nm .pen { color: var(--ink-4); } .dim.hover > .nm { color: var(--brand-ink); } .dim.hover > .nm .pen { color: var(--brand-ink); }
+.dim .ops { display: flex; justify-content: flex-end; }
+.vals { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pv { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 14px; font-size: 13px; color: var(--ink-2); }
+.pv.on { border-color: var(--brand); background: var(--brand-soft); font-weight: 600; color: var(--brand-ink); }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px 0 12px; border-radius: 14px; background: var(--brand-soft); font-size: 13px; font-weight: 600; color: var(--brand-ink); } .chip .ic { width: 12px; height: 12px; }
+.dadd { display: inline-flex; align-items: center; width: 150px; height: 28px; padding: 0 10px; border: 1px dashed var(--line-strong); border-radius: 14px; font-size: 13px; color: var(--ink-4); }
+.dadd.focus { border: 1px solid var(--brand); color: var(--ink-4); width: 260px; } .dadd.wide { width: 260px; }
+.caret { display: inline-block; width: 1px; height: 15px; background: var(--ink); margin-right: 6px; }
+
+/* 新：添加规格的小卡（只此一层边框） */
+.newdim { border: 1px solid var(--brand); border-radius: 8px; background: #fff; box-shadow: 0 0 0 3px rgba(29,95,209,.08); }
+.newdim .row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; align-items: center; padding: 12px 14px 0; }
+.newdim .row > label { font-size: 13px; color: var(--ink-2); }
+.newdim .nmline { display: flex; align-items: center; gap: 12px; } .newdim .nmline .in { width: 180px; }
+.sug { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ink-3); } .sug b { font-weight: 400; margin-right: 4px; }
+.sug span { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); font-size: 12px; }
+.sug span.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-ink); font-weight: 600; }
+.newdim .ft { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--surface-2); border-radius: 0 0 8px 8px; font-size: 13px; color: var(--ink-2); }
+.newdim .ft .eq { margin-right: auto; } .newdim .ft .eq b { color: var(--ink); } .newdim .ft .eq em { font-style: normal; color: var(--brand-ink); font-weight: 600; }
+.err { font-size: 12px; color: var(--danger); }
+
+/* 规格表 */
+.tb { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.tr { display: grid; gap: 8px; align-items: center; padding: 6px 12px; border-top: 1px solid var(--line); font-size: 13px; } .tr:first-child { border-top: 0; }
+.tr.h { background: var(--surface-2); font-size: 12px; font-weight: 500; color: var(--ink-3); } .tr.bulk { background: var(--surface-2); color: var(--brand-ink); }
+.tr .in { height: 30px; font-size: 13px; } .tr .new { background: #fff8e6; }
+.more { padding: 6px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); text-align: center; }
+.mark { outline: 2px dashed #6e9be8; outline-offset: 5px; border-radius: 8px; }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>添加商品：加规格、加自定义属性</h1>
+  <p class="lede">只改“规格与库存”里加规格的方式，以及“类目属性”下面加自定义属性的按钮。主图、基本信息、规格表、尺码表等其他部分照旧。数据结构不变（规格仍是“规格名 + 一组规格值”），不改接口、不加迁移。</p>
+
+  <h2>一、问题诊断</h2>
+  <table class="t">
+    <tr><th>#</th><th>现在</th><th>为什么不直观</th><th>改法</th></tr>
+    <tr><td>1</td><td>点“加一个规格”，直接多出一行，左边是写着“款式”的输入框</td><td>看着像一个要填的值，看不出这是规格名、可以改；和上面“颜色”“鞋码”的灰字名称长得不一样。截图里“我”被当成值填进去了</td><td class="chg">先出一张小卡：先定规格名（常用名点一下就填好），再填规格值，点“添加”后收成和颜色、鞋码一样的一行</td></tr>
+    <tr><td>2</td><td>规格值靠“回车确认”，虚线小框像一个标签</td><td>不按回车容易以为加上了；要加好几个值得一个个回车；加完一共变成几个规格，要往下翻表才知道</td><td class="chg">输入框写明“回车添加”，可以一次粘贴“Classic, Pro, Max”自动拆成三个；小卡底部实时算出“颜色 2 × 鞋码 4 × 款式 2 = 16 个规格”</td></tr>
+    <tr><td>3</td><td>“加一个属性”“加一个规格”是两个一模一样的浅色按钮，飘在块的下方</td><td>分不清加的是属性还是规格：属性是商品说明（材质、产地），规格是买家下单要选的（颜色、尺码、款式），选哪个决定会不会多出规格表的行</td><td class="chg">两处都改成贴在列表末尾的整行虚线框，写清加什么并举例；“规格与库存”标题旁加问号，鼠标移上去看两者区别</td></tr>
+    <tr><td>4</td><td>自定义规格行的名称一直是输入框，删除按钮在最右边</td><td>和类目给的规格行样式不一致，看不出哪行是自己加的、怎么改名</td><td class="chg">收起后名称是文字 + 一支小笔，点名称就能改名；行尾删除照旧（和自定义属性行一致）</td></tr>
+    <tr><td>5</td><td>加满 3 个规格后，按钮直接消失</td><td>没有任何说明，以为功能没了</td><td class="chg">虚线框换成一行灰字“最多 3 个规格”</td></tr>
+  </table>
+
+  <h3>依据：主流后台加规格都是“先定名，再填值，确认后收起”</h3>
+  <p class="lede">Shopify 的商品变体：在 Variants 区点“添加选项”，先填选项名（如 Size），再一格一个填选项值，点 Done 收起；每个商品最多 3 个选项，系统列出全部组合。国内后台也普遍分“规格名 / 规格值”两层。我们的类目模板已经是这两层，缺的是新增时“先定名、再填值、确认收起”这一步。</p>
+  <p class="src">来源：<a href="https://help.shopify.com/en/manual/products/variants/add-variants">Shopify Help Center · Adding variants</a></p>
+
+  <h2>二、改前</h2>
+  <img class="before" src="assets/before-spec.png" alt="改前截图">
+  <p class="note">你圈出的两处：类目属性下面的“加一个属性”，以及点“加一个规格”后出现的“款式”行。</p>
+
+  <h2>三、改后 <small>数据是编的，只看版式；类目沿用截图里的“鞋靴 › 男鞋 › 休闲鞋”</small></h2>
+
+  <p class="cap"><b>① 平时的样子。</b>自定义属性、规格各有一条整行虚线框，贴在各自列表末尾。“规格与库存”标题旁的问号说明属性和规格的区别（图中是鼠标移上去的样子）。</p>
+  <div class="frame" data-h="760"><div class="screen s" data-tpl="normal"></div></div>
+
+  <p class="cap"><b>② 点“添加规格”。</b>虚线框原地展开成一张小卡：光标先在规格名上，右边是这个商品还没用过的常用名，点一下就填好；回车进到规格值，一次可以粘贴多个。底部实时算出添加后一共几个规格，规格名或规格值没填时“添加”是灰的。规格名和已有的重了，就在输入框下面提示“已经有“颜色”了”。</p>
+  <div class="frame" data-h="640"><div class="screen s" data-tpl="adding"></div></div>
+
+  <p class="cap"><b>③ 添加后。</b>“款式”收成和颜色、鞋码一样的一行，名称旁一支小笔，点名称就能改名（图中是鼠标移到这一行上的样子）。规格表多出“款式”一列，原来每个“颜色 × 鞋码”填好的价格和库存带到它的新组合里。满 3 个规格后，虚线框换成一行灰字。</p>
+  <div class="frame" data-h="700"><div class="screen s" data-tpl="added"></div></div>
+
+  <h2>四、空状态 <small>换一个类目：3C 数码 › 耳机（颜色 × 版本），什么都还没填</small></h2>
+  <p class="cap">类目给的规格行照常显示，只有输入框；还没有值时不出规格表，标题旁一句“只卖一个款式就不用填”（沿用现在的文案）。添加规格的虚线框照常在。</p>
+  <div class="frame" data-h="580"><div class="screen s" data-tpl="empty"></div></div>
+
+  <h2>五、实现范围</h2>
+  <table class="t">
+    <tr><th>改什么</th><th>说明</th></tr>
+    <tr><td>添加规格</td><td>新增“添加规格”小卡（规格名 + 常用名 + 规格值 + 实时规格数 + 取消 / 添加），添加后收成普通行；常用名：款式、套餐、包装、容量、版本，去掉这个商品已经有的</td></tr>
+    <tr><td>规格值输入</td><td>所有规格行（含颜色）都支持一次粘贴多个，按逗号、顿号、换行拆开；占位文字改成“加颜色，回车添加”</td></tr>
+    <tr><td>自定义规格行</td><td>名称收成文字 + 小笔，点击改名，重名时不让保存</td></tr>
+    <tr><td>两个“加一个”按钮</td><td>改成整行虚线框“添加自定义属性 / 添加规格”，带举例；满 3 个规格显示灰字</td></tr>
+    <tr><td>问号</td><td>“规格与库存”标题旁加问号，说明属性和规格的区别</td></tr>
+    <tr><td>顺带修</td><td>现在加一个规格后，规格表里已经填好的价格和库存会全部重置成基本信息里的价格；改成按原来的组合带过去（如“Black · US 7”的价格带给“Black · US 7 · Classic”和“Black · US 7 · Pro”）</td></tr>
+    <tr><td>不动</td><td>类目模板、规格表、批量设置、尺码表、保存逻辑、接口和数据结构</td></tr>
+  </table>
+</div>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+const I = (n, c = "") => `<i data-lucide="${n}" class="ic ${c}"></i>`;
+
+function drawer({ title = "添加商品", cat = "鞋靴 › 男鞋 › 休闲鞋", nav, active, body }) {
+  const items = nav.map(([label, ok]) => `<div class="it${label === active ? " on" : ""}">${label}${ok ? I("circle-check", "ok") : I("circle-alert", "miss")}</div>`).join("");
+  return `<div class="dw">
+    <div class="dw-h">${title}<span class="x">${I("x")}</span></div>
+    <div class="pe">
+      <nav class="pe-nav"><div class="pe-cat"><small>类目</small><b>${cat}</b><a>更换类目</a></div>${items}</nav>
+      <div class="pe-body">${body}</div>
+    </div>
+    <div class="dw-f"><span>保存后可以随时再编辑</span><b class="btn">取消</b><b class="btn p">上架</b></div>
+  </div>`;
+}
+const SHOE_NAV = (skus) => [["主图", true], ["基本信息", true], ["类目属性", true], ["规格与库存", skus], ["尺码表", skus], ["卖点与描述", true], ["物流", true], ["售后与常见问题", false]];
+
+const field = (label, value, ph) => `<div class="fld"><label>${label}</label><div class="in${value ? "" : " ph"}">${value || ph}</div></div>`;
+const attrs = () => `<section class="sec">
+  <h4>类目属性<span>按类目预设，至少填 3 项；买家问起材质、型号这类问题，学生按这里回答</span></h4>
+  <div class="attrs">${field("鞋面材质", "帆布", "")}${field("鞋底材质", "橡胶", "")}${field("闭合方式", "系带", "")}${field("适用场景", "日常 / 通勤", "")}</div>
+  <div class="kv"><div class="in">产地</div><div class="in">中国福建晋江</div><span class="del">${I("trash-2")}</span></div>
+  <div class="addrow">${I("plus")}添加自定义属性<small>如 产地、包装清单、认证</small></div>
+</section>`;
+
+const SHOES = ["US 5", "US 6", "US 7", "US 8", "US 9", "US 10", "US 11", "US 12"];
+const PICKED = ["US 7", "US 8", "US 9", "US 10"];
+const colorRow = (vals = ["Black", "White"]) => `<div class="dim"><span class="nm">颜色</span><div class="vals">${vals.map((v) => `<span class="chip">${v}${I("x")}</span>`).join("")}<span class="dadd">加颜色，回车添加</span></div><span></span></div>`;
+const sizeRow = () => `<div class="dim"><span class="nm">鞋码</span><div class="vals">${SHOES.map((v) => `<span class="pv${PICKED.includes(v) ? " on" : ""}">${v}</span>`).join("")}<span class="dadd">其他取值</span></div><span></span></div>`;
+const styleRow = (hover) => `<div class="dim${hover ? " hover" : ""}"><span class="nm">款式${I("pencil", "pen")}</span><div class="vals"><span class="chip">Classic${I("x")}</span><span class="chip">Pro${I("x")}</span><span class="dadd">加款式，回车添加</span></div><span class="ops"><span class="del${hover ? "" : ""}">${I("trash-2")}</span></span></div>`;
+const addRow = (left = 1, hover = false) => `<div class="addrow${hover ? " hover" : ""}">${I("plus")}添加规格<small>如 款式、套餐、包装</small><small class="r">还能加 ${left} 个</small></div>`;
+
+function table(dims, rows, total, newFrom = 99) {
+  const cols = `repeat(${dims.length}, minmax(0, 1fr)) 110px 100px 140px`;
+  const head = `<div class="tr h" style="grid-template-columns:${cols}">${dims.map((d) => `<span>${d}</span>`).join("")}<span>价格（USD）</span><span>库存</span><span>商家编码</span></div>`;
+  const bulk = `<div class="tr bulk" style="grid-template-columns:${cols}"><span style="grid-column: span ${dims.length}">批量设置 · 全部 ${total} 个规格</span><div class="in ph">价格</div><div class="in ph">库存</div><span style="text-align:center">应用</span></div>`;
+  const body = rows.map((r, i) => `<div class="tr" style="grid-template-columns:${cols}">${r.map((v) => `<span>${v}</span>`).join("")}<div class="in${i >= newFrom ? " new" : ""}">39.90</div><div class="in${i >= newFrom ? " new" : ""}">100</div><div class="in ph">选填</div></div>`).join("");
+  return `<div class="tb">${head}${bulk}${body}<div class="more">共 ${total} 行</div></div>`;
+}
+
+const TPL = {
+  normal: () => drawer({ nav: SHOE_NAV(true), active: "规格与库存", body: `${attrs()}
+    <section class="sec">
+      <h4>规格与库存<span>颜色 2 × 鞋码 4 = 8 个规格</span><span class="help">${I("circle-help")}<span class="tip">规格是买家下单时要选的，如颜色、尺码、款式，每个组合单独定价、单独算库存。<br>材质、产地这类不用选的，写在上面的类目属性里。</span></span></h4>
+      <div class="dims">${colorRow()}${sizeRow()}${addRow(1)}</div>
+      ${table(["颜色", "鞋码"], [["Black", "US 7"], ["Black", "US 8"], ["Black", "US 9"]], 8)}
+    </section>` }),
+
+  adding: () => drawer({ nav: SHOE_NAV(true), active: "规格与库存", body: `
+    <section class="sec">
+      <h4>规格与库存<span>颜色 2 × 鞋码 4 = 8 个规格</span><span class="help">${I("circle-help")}</span></h4>
+      <div class="dims">${colorRow()}${sizeRow()}
+        <div class="newdim">
+          <div class="row"><label>规格名</label><div class="nmline"><div class="in">款式</div><div class="sug"><b>常用</b><span class="on">款式</span><span>套餐</span><span>包装</span><span>容量</span><span>版本</span></div></div></div>
+          <div class="row"><label>规格值</label><div class="vals"><span class="chip">Classic${I("x")}</span><span class="chip">Pro${I("x")}</span><span class="dadd focus"><i class="caret"></i>回车添加，可粘贴多个，用逗号隔开</span></div></div>
+          <div class="ft"><span class="eq">添加后 颜色 2 × 鞋码 4 × <em>款式 2</em> = <b>16</b> 个规格</span><b class="btn sm">取消</b><b class="btn sm p">添加</b></div>
+        </div>
+      </div>
+      ${table(["颜色", "鞋码"], [["Black", "US 7"], ["Black", "US 8"]], 8)}
+    </section>` }),
+
+  added: () => drawer({ nav: SHOE_NAV(true), active: "规格与库存", body: `
+    <section class="sec">
+      <h4>规格与库存<span>颜色 2 × 鞋码 4 × 款式 2 = 16 个规格</span><span class="help">${I("circle-help")}</span></h4>
+      <div class="dims">${colorRow()}${sizeRow()}${styleRow(true)}<div class="fullrow">最多 3 个规格</div></div>
+      ${table(["颜色", "鞋码", "款式"], [["Black", "US 7", "Classic"], ["Black", "US 7", "Pro"], ["Black", "US 8", "Classic"], ["Black", "US 8", "Pro"]], 16)}
+    </section>` }),
+
+  empty: () => drawer({ cat: "3C 数码 › 音频 › 耳机", nav: [["主图", false], ["基本信息", false], ["类目属性", false], ["规格与库存", true], ["卖点与描述", false], ["物流", false], ["售后与常见问题", false]], active: "规格与库存", body: `
+    <section class="sec">
+      <h4>规格与库存<span>这个类目用“颜色 × 版本”；只卖一个款式就不用填，价格库存写在基本信息里</span><span class="help">${I("circle-help")}</span></h4>
+      <div class="dims">
+        <div class="dim"><span class="nm">颜色</span><div class="vals"><span class="dadd wide">加颜色，回车添加</span></div><span></span></div>
+        <div class="dim"><span class="nm">版本</span><div class="vals"><span class="dadd wide">加版本，回车添加</span></div><span></span></div>
+        ${addRow(1)}
+      </div>
+    </section>` }),
+};
+
+document.querySelectorAll("[data-tpl]").forEach((el) => { el.innerHTML = TPL[el.dataset.tpl](); });
+if (window.lucide) lucide.createIcons();
+function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const h = +(f.dataset.h || 700); s.style.height = `${h}px`; const k = Math.min(1, f.clientWidth / 1040); s.style.transform = `scale(${k})`; f.style.height = `${h * k}px`; }); }
+fit(); addEventListener("resize", fit);
+</script>
+</body>
+</html>
