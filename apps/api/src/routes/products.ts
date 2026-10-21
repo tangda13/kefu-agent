@@ -325,11 +325,12 @@ export function registerProductRoutes(app: FastifyInstance, db: Db, guard: AuthG
         return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "请由管理员配置 LLM 服务。" };
       }
       try {
+        // 不传整体超时：每个档案按自己的超时算，主档案超时会换备用档案（整体超时一到就直接失败，不会换）
         const { data } = await gateway.completeJson(
           "assist",
           buildProductDraftMessages({ url: str(body.url, 500), title: str(body.title, 300), structured: str(body.structured, 8000), pageText }),
           productDraftSchema,
-          { temperature: 0.2, maxTokens: 3500, signal: AbortSignal.timeout(90_000) },
+          { temperature: 0.2, maxTokens: 3500 },
         );
         const normalized = normalizeProductDraft(data as Record<string, unknown>);
         const details = sanitizeDetails(normalized);

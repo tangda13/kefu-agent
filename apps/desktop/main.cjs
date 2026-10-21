@@ -85,20 +85,22 @@ function readProductPage() {
 }
 const CAPTURE_SCRIPT = `(${readProductPage.toString()})()`;
 
-/** 下载商品图，最多 5 张（主图 5 张）；不要 avif（服务端只收 png / jpg / webp） */
+/** 下载商品图，最多 5 张（主图 5 张）；不要 avif（服务端只收 png / jpg / webp）。
+ * 来源页只能用 referrer 选项带：在 headers 里手写 Referer 会被 Electron 直接拦掉（net::ERR_BLOCKED_BY_CLIENT） */
 async function downloadImages(captureSession, urls, referer) {
   const result = [];
   for (const url of urls) {
     if (result.length >= 5) break;
     try {
-      const response = await captureSession.fetch(url, { headers: { Referer: referer, Accept: "image/webp,image/jpeg,image/png,*/*;q=0.5" } });
+      const response = await captureSession.fetch(url, { referrer: referer, headers: { Accept: "image/webp,image/jpeg,image/png,*/*;q=0.5" } });
       const type = response.headers.get("content-type") || "";
       if (!response.ok || !/^image\/(png|jpe?g|webp)/.test(type)) continue;
       const buffer = Buffer.from(await response.arrayBuffer());
       if (buffer.length < 8000 || buffer.length > 5 * 1024 * 1024) continue;
       result.push({ dataUrl: `data:${type.split(";")[0]};base64,${buffer.toString("base64")}` });
-    } catch {
-      // 单张失败跳过
+    } catch (error) {
+      // 单张失败跳过，留一行日志方便排查
+      console.warn("[capture] image download failed", url, String(error));
     }
   }
   return result;
