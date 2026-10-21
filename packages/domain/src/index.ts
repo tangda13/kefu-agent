@@ -321,9 +321,9 @@ export const AVATAR_LIBRARY = {
   object: 30,
 };
 
-/** 头像类型占比（累计阈值）：默认剪影 10% / 首字母 10% / 人像 75% / 非人脸 5% */
+/** 头像类型占比（累计阈值）：首字母 20% / 人像 75% / 非人脸 5%。
+ * 平台默认灰色剪影 2026-10-21 起不再抽（D-71：会被当成头像读取失败）；老快照里的 default 显示成首字母 */
 export const AVATAR_KIND_WEIGHTS: ReadonlyArray<readonly [AvatarKind, number]> = [
-  ["default", 0.1],
   ["initial", 0.2],
   ["photo", 0.95],
   ["object", 1],
@@ -635,7 +635,7 @@ export function toStudentPersonaView(snapshot: PersonaSnapshot) {
     language: snapshot.language,
     customerType: snapshot.customerType,
     avatarUrl: snapshot.avatarUrl || null,
-    avatarKind: snapshot.avatarKind ?? (snapshot.avatarUrl ? "photo" : "initial"),
+    avatarKind: snapshot.avatarKind === "default" ? "initial" : snapshot.avatarKind ?? (snapshot.avatarUrl ? "photo" : "initial"),
   };
 }
 

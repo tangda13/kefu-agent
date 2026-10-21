@@ -127,19 +127,6 @@
 .wbk-sub { font-size: 12px; color: var(--c-ink-3); line-height: 16px; }
 .wbk-ch-end { flex: none; margin-left: auto; display: flex; align-items: center; gap: 4px; }
 
-.wbk-reason-wrap { position: relative; }
-.wbk-reason { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--c-line-strong); background: var(--c-surface); color: var(--c-ink-3); font-size: 13px; white-space: nowrap; cursor: pointer; }
-.wbk-reason:hover { background: var(--c-surface-hover); }
-.wbk-reason b { display: inline-flex; align-items: center; gap: 4px; color: var(--c-ink); font-weight: 600; }
-.wbk-reason svg { width: 14px; height: 14px; }
-.wbk-reason .wbk-ai { color: var(--c-info); }
-.wbk-reason.is-static { border-color: transparent; background: var(--c-surface-2); cursor: default; }
-.wbk-reason-pop { top: calc(100% + 6px); right: 0; width: 360px; padding: 8px; }
-.wbk-reason-confirm { display: flex; align-items: center; gap: 6px; width: 100%; height: 34px; margin-bottom: 6px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--c-info-wash); color: var(--c-info); font-size: 13px; font-weight: 600; cursor: pointer; }
-.wbk-reason-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
-.wbk-reason-grid button { height: 30px; padding: 0 6px; border: 0; border-radius: 4px; background: none; color: var(--c-ink); font-size: 13px; cursor: pointer; white-space: nowrap; }
-.wbk-reason-grid button:hover { background: var(--c-surface-hover); }
-.wbk-reason-grid button.is-on { background: var(--c-brand-soft); color: var(--c-brand-ink); font-weight: 600; }
 .wbk-fup { display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--c-ink-2); font-size: 13px; white-space: nowrap; cursor: pointer; }
 .wbk-fup:hover { background: var(--c-surface-hover); }
 .wbk-fup svg { width: 15px; height: 15px; }
@@ -422,11 +409,6 @@
 .wbk-taskpop-sc li { padding-left: 18px; position: relative; color: var(--c-ink-2); }
 .wbk-taskpop-sc li::before { content: ""; position: absolute; left: 2px; top: 6px; width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--c-line-strong); }
 .wbk-taskpop-sc li.is-done::before { background: var(--c-brand); box-shadow: none; }
-.wbk-taskpop-sw { display: grid; gap: 2px; border-top: 1px solid var(--c-line); padding-top: 10px; font-size: 13px; }
-.wbk-taskpop-sw span { font-size: 12px; color: var(--c-ink-3); margin-bottom: 4px; }
-.wbk-taskpop-sw button { text-align: left; padding: 5px 8px; border: 0; border-radius: 6px; background: none; color: var(--c-ink-2); cursor: pointer; }
-.wbk-taskpop-sw button:hover { background: var(--c-surface-hover); }
-.wbk-taskpop-sw button.is-on { background: var(--c-brand-soft); color: var(--c-brand-ink); font-weight: 600; }
 
 /* 客服状态：头像 + 状态角标，点开切换（参照千牛 / 飞鸽） */
 .wbk-agent { position: relative; }
@@ -458,9 +440,6 @@
 
 /* 框里的文本框不再画自己的焦点框：外层输入框（composer / 备注 / 回复框）已经有聚焦高亮 */
 .wbk-ta:focus-visible, .wbk-note textarea:focus-visible, .ml2-box textarea:focus-visible, .ml2-reply textarea:focus-visible, .rr-box .rr-input:focus-visible { outline: none; }
-.wbk-taskpop-reason { display: grid; gap: 8px; border-top: 1px solid var(--c-line); padding-top: 10px; font-size: 13px; }
-.wbk-taskpop-reason > span { font-size: 12px; color: var(--c-ink-3); }
-.wbk-taskpop .wbk-reason-grid { grid-template-columns: repeat(3, 1fr); }
 .wbk-taskpop-stop { justify-self: start; padding: 0; border: 0; background: none; color: var(--c-danger); font-size: 13px; cursor: pointer; }
 /* 商品卡操作：一行平铺的文字按钮，不换行 */
 .wbk-pc-ac.is-row { flex-wrap: nowrap; gap: 12px; margin-top: 6px; white-space: nowrap; }

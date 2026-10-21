@@ -68,7 +68,7 @@ import "../../styles/student-workbench.css";
 import { ConversationRail, type RailTab } from "./workbench/ConversationRail";
 import { CustomerCard } from "./workbench/CustomerCard";
 import { EndCard } from "./workbench/EndCard";
-import { EndButton, FollowUpToggle, ReasonPicker } from "./workbench/HeadControls";
+import { EndButton, FollowUpToggle } from "./workbench/HeadControls";
 import { OrdersTab } from "./workbench/OrdersTab";
 import { ProductDrawer } from "./workbench/ProductDrawer";
 import { ProductsTab } from "./workbench/ProductsTab";
@@ -181,7 +181,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   }, [practice, session]);
 
   /** 任务条里选中的任务（只影响任务条和倒计时，不筛会话列表）；从任务大厅进入时就是那个任务 */
-  const [taskFocus, setTaskFocus] = useState<string | null>(initialTaskId ?? null);
+  // 从任务大厅“开始 / 继续”进来的任务：没有打开的会话时任务条显示它（D-70：工作台里不切任务）
+  const [taskFocus] = useState<string | null>(initialTaskId ?? null);
   /** 客服状态：挂起时暂停进线（不存本机，打开工作台默认在线） */
   const [agentState, setAgentState] = useState<AgentState>("online");
   const agentStateRef = useRef<AgentState>("online");
@@ -1049,23 +1050,20 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     }
   }
 
-  // ---------- 客服标记（咨询原因 / 待跟进 / 客户备注）与结束接待 ----------
+  // ---------- 客服标记（待跟进 / 客户备注）与结束接待 ----------
 
-  async function saveMeta(patch: { contactReason?: string | null; followUp?: boolean; buyerNote?: string | null }) {
+  async function saveMeta(patch: { followUp?: boolean; buyerNote?: string | null }) {
     if (!activeId) return;
     const cid = activeId;
     const before = active;
     // 先在界面上生效，失败再退回
     patchConversation(cid, {
-      ...(patch.contactReason !== undefined ? { contactReason: patch.contactReason } : {}),
       ...(patch.followUp !== undefined ? { followUp: patch.followUp } : {}),
       ...(patch.buyerNote !== undefined ? { buyerNote: patch.buyerNote, buyerNoteAt: new Date().toISOString() } : {}),
     });
     try {
       const saved: ServiceMeta = await saveServiceMeta(session, cid, patch);
       patchConversation(cid, {
-        contactReason: saved.contactReason,
-        contactReasonSuggested: saved.contactReasonSuggested,
         followUp: saved.followUp,
         buyerNote: saved.buyerNote,
         buyerNoteAt: saved.buyerNoteAt,
@@ -1073,7 +1071,6 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     } catch (cause) {
       if (before) {
         patchConversation(cid, {
-          contactReason: before.contactReason,
           followUp: before.followUp,
           buyerNote: before.buyerNote,
           buyerNoteAt: before.buyerNoteAt,
@@ -1426,14 +1423,6 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
           total: practiceTotal,
           onStop: () => writePractice(null),
         } : null}
-        switchable={inProgressTasks}
-        reason={active && !active.taskId ? { value: active.contactReason ?? null, disabled: isClosed, onPick: (value) => void saveMeta({ contactReason: value }) } : null}
-        onPickTask={(taskId) => {
-          // 切换训练任务的聚焦：倒计时、任务条跟着变，并打开这个任务正在接待的买家（会话列表仍显示全部）
-          setTaskFocus(taskId);
-          const first = conversations.find((item) => item.taskId === taskId && !closedLocal.has(item.id));
-          if (first) pickConversation(first.id);
-        }}
         agent={{
           state: agentState,
           onState: setAgentState,
@@ -1481,8 +1470,6 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
           </div>
           {active ? (
             <div className="wbk-ch-end">
-              {/* 自由练习时咨询类型收进顶栏“自由练习”任务条 */}
-              {active.taskId ? <ReasonPicker conversation={active} disabled={isClosed} onPick={(reason) => void saveMeta({ contactReason: reason })} /> : null}
               <FollowUpToggle on={Boolean(active.followUp)} onToggle={() => void saveMeta({ followUp: !active.followUp })} />
               {isClosed ? <span className="wbk-tag is-closed">已结束</span> : <EndButton onClick={() => setEndConfirm(true)} />}
             </div>

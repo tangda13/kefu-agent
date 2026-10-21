@@ -437,9 +437,7 @@ export interface ConversationSummary {
   /** 系统客户标签（按订单规则计算，只读）：粉丝 / 大订单客户 / 普通客户 / 沉睡客户 / 新客 */
   customerTags?: CustomerTag[];
   orderStats?: { count: number; total: number; lastPlacedAt: string | null };
-  /** 客服标记（C2）：咨询原因（系统按场景预填 contactReasonSuggested，学生确认后写入 contactReason）、待跟进、客户备注 */
-  contactReason?: string | null;
-  contactReasonSuggested?: string | null;
+  /** 客服标记（C2）：待跟进、客户备注。咨询类型 D-68 起不在工作台显示，库里的 contact_reason 列保留 */
   followUp?: boolean;
   buyerNote?: string | null;
   buyerNoteAt?: string | null;
@@ -494,14 +492,7 @@ export const startMailTask = (session: Session, taskId: string, scenarioId: stri
 
 export type CustomerTag = "粉丝" | "大订单客户" | "普通客户" | "沉睡客户" | "新客";
 
-export const CONTACT_REASONS = [
-  "商品咨询", "尺码与规格", "运费与时效", "价格与优惠", "付款问题", "修改订单", "取消订单", "催发货", "物流查询", "清关问题",
-  "丢件与派送失败", "货损", "缺件或错发", "质量问题", "退换货", "退款", "平台纠纷", "评价相关", "店铺回访", "其他",
-] as const;
-
 export interface ServiceMeta {
-  contactReason: string | null;
-  contactReasonSuggested: string | null;
   followUp: boolean;
   buyerNote: string | null;
   buyerNoteAt: string | null;
@@ -510,7 +501,7 @@ export interface ServiceMeta {
 export const saveServiceMeta = (
   session: Session,
   conversationId: string,
-  patch: { contactReason?: string | null; followUp?: boolean; buyerNote?: string | null },
+  patch: { followUp?: boolean; buyerNote?: string | null },
 ) => apiRequestPatch<ServiceMeta>(`/v1/conversations/${conversationId}/service-meta`, session, patch);
 
 /** 店铺资料（全平台一份，老师在场景配置 → 店铺商品维护） */

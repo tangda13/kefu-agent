@@ -1,67 +1,7 @@
-import { ChevronDown, Star } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { CONTACT_REASONS, type ConversationSummary } from "../../../api/client";
+import { Star } from "lucide-react";
 import { Button } from "../../../ui";
 
-/* 会话头右侧：咨询类型（客服自己选，同千牛“服务小记”）、待跟进星标、结束接待 */
-
-export function ReasonPicker({ conversation, disabled, onPick }: {
-  conversation: ConversationSummary;
-  disabled: boolean;
-  onPick: (reason: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
-
-  const shown = conversation.contactReason ?? null;
-
-  if (disabled) {
-    return (
-      <span className="wbk-reason is-static">
-        咨询类型<b>{shown ?? "未选择"}</b>
-      </span>
-    );
-  }
-  return (
-    <div className="wbk-reason-wrap" ref={ref}>
-      <button type="button" className={shown ? "wbk-reason" : "wbk-reason is-empty"} aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        咨询类型
-        <b>{shown ?? "请选择"}</b>
-        <ChevronDown size={14} />
-      </button>
-      {open ? (
-        <div className="wbk-pop wbk-reason-pop" role="listbox" aria-label="咨询类型">
-          <div className="wbk-reason-grid">
-            {CONTACT_REASONS.map((reason) => (
-              <button key={reason} type="button" role="option" aria-selected={reason === shown} className={reason === shown ? "is-on" : ""} onClick={() => { setOpen(false); onPick(reason); }}>
-                {reason}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/** 咨询类型选项网格（自由练习时放在任务条的弹层里） */
-export function ReasonGrid({ value, onPick }: { value: string | null; onPick: (reason: string) => void }) {
-  return (
-    <div className="wbk-reason-grid">
-      {CONTACT_REASONS.map((reason) => (
-        <button key={reason} type="button" className={reason === value ? "is-on" : ""} onClick={() => onPick(reason)}>{reason}</button>
-      ))}
-    </div>
-  );
-}
+/* 会话头右侧：待跟进星标、结束会话。咨询类型已去掉（D-68：真实工作台的会话头不会让客服先选咨询类型） */
 
 export function FollowUpToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (

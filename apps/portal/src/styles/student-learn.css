@@ -192,6 +192,15 @@
    只保留标题行与内容之间的一条线、当前任务与其余任务之间的一条线 */
 .sl-rr { border-top: 0; border-bottom: 0; border-radius: 8px; margin: 0 8px; padding-left: 16px; padding-right: 16px; }
 .sl-rr:hover { background: var(--c-surface-2); }
+/* 从任务大厅“看复盘”跳过来：这个任务的记录闪两下（浅蓝底 + 左侧细线），减少动效时只留静态高亮 */
+.sl-rr.is-flash { animation: sl-flash 1.2s ease-in-out 2; }
+@keyframes sl-flash {
+  0%, 100% { background: transparent; box-shadow: none; }
+  35%, 65% { background: var(--c-brand-soft); box-shadow: inset 3px 0 0 var(--c-brand); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sl-rr.is-flash { animation: none; background: var(--c-brand-soft); box-shadow: inset 3px 0 0 var(--c-brand); }
+}
 .th3-tr, .th3-dr { border-bottom: 0; border-radius: 8px; margin: 0 8px; padding-left: 16px; padding-right: 16px; }
 .th3-tr:hover, .th3-dr:hover { background: var(--c-surface-2); }
 .th3-th { border-bottom: 0; padding-bottom: 4px; }

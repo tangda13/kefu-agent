@@ -1,5 +1,6 @@
 import { ChartLine, MessageSquareDashed, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ASSESSMENT_DIMENSIONS, type ReceptionStats } from "@cecs/contracts";
 import { BuyerAvatar } from "../../components/BuyerAvatar";
 import { AbilityRadar, DIM_TIPS, useBoxSize } from "../../components/AbilityRadar";
@@ -301,8 +302,8 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
   useEffect(() => () => audioRef.current?.pause(), []);
   const [range, setRange] = useState<RangeKey>("all");
   const [filter, setFilter] = useState<ListFilter>("all");
-  /** 从任务大厅“看复盘”进来：只看这个任务的记录，并直接打开最近一次复盘 */
-  const [taskFocus, setTaskFocus] = useState<string | null>(() => {
+  /** 从任务大厅“看复盘”进来：列表滚到这个任务的记录，高亮闪一下提醒，不筛选、不自动打开复盘 */
+  const [flashTask, setFlashTask] = useState<string | null>(() => {
     try {
       const id = sessionStorage.getItem(RECORD_TASK_KEY);
       sessionStorage.removeItem(RECORD_TASK_KEY);
@@ -316,16 +317,29 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
 
   useEffect(() => {
     apiGet<AssessmentData>("/v1/student/assessments", session)
-      .then((loaded) => {
-        setData(loaded);
-        const latest = taskFocus ? loaded.records.find((record) => record.taskId === taskFocus) : null;
-        if (latest) setActive(latest);
-      })
+      .then(setData)
       .catch((cause) => setError(errorText(cause)));
     fetchBaselineStatus(session)
       .then((status) => setBaseline(status.completed && status.result ? status.result : null))
       .catch(() => undefined);
   }, [session]);
+
+  useEffect(() => {
+    if (!data || !flashTask) return;
+    if (!data.records.some((record) => record.taskId === flashTask)) {
+      setFlashTask(null);
+      return;
+    }
+    setFilter("all");
+    const frame = requestAnimationFrame(() => {
+      document.querySelector(`.sl-rr[data-task="${CSS.escape(flashTask)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    const timer = window.setTimeout(() => setFlashTask(null), 2600);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [data, flashTask]);
 
   useEffect(() => {
     if (!active) {
@@ -395,8 +409,7 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
   const taskCount = records.filter((record) => !record.practice).length;
   const practiceCount = records.length - taskCount;
   const teacherCount = records.filter((record) => record.teacherComment).length;
-  const focusName = taskFocus ? records.find((record) => record.taskId === taskFocus)?.taskName ?? null : null;
-  const visibleRecords = records.filter((record) => (taskFocus ? record.taskId === taskFocus : true)).filter((record) =>
+  const visibleRecords = records.filter((record) =>
     filter === "task" ? !record.practice : filter === "practice" ? !!record.practice : filter === "teacher" ? !!record.teacherComment : true,
   );
 
@@ -445,10 +458,10 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
       </div>
 
       <Board
-        title={focusName ? <>成绩记录 · {focusName}<button type="button" className="sl-focus-clear" onClick={() => setTaskFocus(null)}>看全部</button></> : "成绩记录"}
-        count={focusName ? visibleRecords.length : records.length}
+        title="成绩记录"
+        count={records.length}
         extra={
-          records.length && !focusName ? (
+          records.length ? (
             <FilterChips<ListFilter>
               value={filter}
               onChange={setFilter}
@@ -474,7 +487,9 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
           <p className="sl-quiet">这一类下面还没有记录。</p>
         ) : (
           visibleRecords.map((record) => (
-            <div key={record.id} className={record.practice ? "sl-rr is-practice" : "sl-rr"} onClick={() => setActive(record)}>
+            <div key={record.id} data-task={record.taskId ?? undefined}
+              className={["sl-rr", record.practice ? "is-practice" : "", flashTask && record.taskId === flashTask ? "is-flash" : ""].filter(Boolean).join(" ")}
+              onClick={() => setActive(record)}>
               <span className={`sl-sc is-${record.practice ? "practice" : scoreTone(record)}`}>
                 {record.practice ? "练习" : <>{record.total}<small>分</small></>}
               </span>
@@ -502,7 +517,8 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
         )}
       </Board>
 
-      {active ? (
+      {/* 挂到 body 上：放在 Bench 里会吃到 .bench-wrap > * + * 的上边距，整层下移、顶部露出一条 */}
+      {active ? createPortal(
         <div className="rec-modal-overlay" onClick={() => setActive(null)}>
           <div className="rec-modal" role="dialog" aria-modal="true" aria-label="对话复盘" onClick={(event) => event.stopPropagation()}>
             <header className="rec-modal-head">
@@ -610,7 +626,8 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
               </aside>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </Bench>
   );

@@ -185,10 +185,9 @@ describe("D-41 买家头像多样化", () => {
       else if (pick.avatarKind === "object") expect(pick.avatarUrl).toMatch(/^avatars\/o-\d{2}\.jpg$/);
       else expect(pick.avatarUrl).toMatch(/^avatars\/a-(eu|la|ea|sea|sa|me|af)-(f|m)-\d{2,3}\.jpg$/);
     }
-    expect(count.default).toBeGreaterThan(60);
-    expect(count.default).toBeLessThan(150);
-    expect(count.initial).toBeGreaterThan(60);
-    expect(count.initial).toBeLessThan(150);
+    expect(count.default).toBe(0);
+    expect(count.initial).toBeGreaterThan(140);
+    expect(count.initial).toBeLessThan(260);
     expect(count.photo).toBeGreaterThan(680);
     expect(count.photo).toBeLessThan(820);
     expect(count.object).toBeGreaterThan(20);

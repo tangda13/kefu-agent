@@ -1,5 +1,6 @@
 import { Check, ClipboardCheck, Headset, Mail, MessageCircle, PenLine } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { ASSESSMENT_DIMENSIONS, BUSINESS_STAGES, BUSINESS_STAGE_LABELS, type BusinessStage } from "@cecs/contracts";
 import {
   fetchBaselineStatus,
@@ -437,12 +438,14 @@ export function TaskHall({
 
       {detail ? <Drawer title={detail.name} onClose={() => setDetail(null)}><TaskRequirements task={detail} /></Drawer> : null}
 
-      {showQuiz && session ? (
+      {/* 测评弹层挂到 body 上，不吃 Bench 的上边距 */}
+      {showQuiz && session ? createPortal(
         <BaselineQuiz
           session={session}
           onClose={() => setShowQuiz(false)}
           onCompleted={(result) => setBaseline({ completed: true, result })}
-        />
+        />,
+        document.body,
       ) : null}
     </Bench>
   );

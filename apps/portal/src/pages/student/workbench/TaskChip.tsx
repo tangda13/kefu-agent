@@ -2,7 +2,6 @@ import { ChevronDown, GraduationCap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { BUSINESS_STAGE_LABELS } from "@cecs/contracts";
 import { type StudentTask } from "../../../api/client";
-import { ReasonGrid } from "./HeadControls";
 
 /* 任务条：训练信息（环节、任务、进度、要求）放在平台外壳顶栏，用虚线框和学士帽图标
    和仿真的客服软件区分开；收起时一行，点开看完整要求、切换任务。 */
@@ -16,15 +15,10 @@ function deadlineText(deadline: string | null): string {
   return `${date.getMonth() + 1} 月 ${date.getDate()} 日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")} 截止`;
 }
 
-export function TaskChip({ task, practice, switchable, onPick, reason, practiceInfo }: {
+export function TaskChip({ task, practice, practiceInfo }: {
   task: StudentTask | null;
   /** 当前接待的是自由练习 */
   practice: boolean;
-  /** 进行中的任务，可切换聚焦 */
-  switchable: StudentTask[];
-  onPick: (taskId: string) => void;
-  /** 自由练习时，咨询类型收在这里（不放会话头） */
-  reason?: { value: string | null; disabled: boolean; onPick: (reason: string) => void } | null;
   practiceInfo?: { scope: string; max: number; arrived: number; total: number; onStop: () => void } | null;
 }) {
   const [open, setOpen] = useState(false);
@@ -44,7 +38,6 @@ export function TaskChip({ task, practice, switchable, onPick, reason, practiceI
       <div className="wbk-taskchip-wrap" ref={ref}>
         <button type="button" className="wbk-taskchip" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
           <GraduationCap size={14} />自由练习
-          {reason?.value ? <span className="wbk-taskchip-stage">· {reason.value}</span> : null}
           <ChevronDown size={13} />
         </button>
         {open ? (
@@ -56,12 +49,6 @@ export function TaskChip({ task, practice, switchable, onPick, reason, practiceI
                 <dt>进线</dt><dd>同时最多 {practiceInfo.max} 位</dd>
                 <dt>已进线</dt><dd className="num">{practiceInfo.arrived}{practiceInfo.total ? ` / ${practiceInfo.total}` : ""} 位{practiceInfo.total && practiceInfo.arrived >= practiceInfo.total ? "（本轮已满）" : ""}</dd>
               </dl>
-            ) : null}
-            {reason ? (
-              <div className="wbk-taskpop-reason">
-                <span>咨询类型</span>
-                {reason.disabled ? <b>{reason.value ?? "未选择"}</b> : <ReasonGrid value={reason.value} onPick={(value) => { reason.onPick(value); setOpen(false); }} />}
-              </div>
             ) : null}
             {practiceInfo ? (
               <button type="button" className="wbk-taskpop-stop" onClick={() => { practiceInfo.onStop(); setOpen(false); }}>结束练习（不再进线新买家）</button>
@@ -104,16 +91,6 @@ export function TaskChip({ task, practice, switchable, onPick, reason, practiceI
                 <li key={scenario.id} className={started.has(scenario.id) ? "is-done" : ""}>{scenario.name}</li>
               ))}
             </ul>
-          ) : null}
-          {switchable.length > 1 ? (
-            <div className="wbk-taskpop-sw">
-              <span>切换任务</span>
-              {switchable.map((item) => (
-                <button key={item.id} type="button" className={item.id === task.id ? "is-on" : ""} onClick={() => { setOpen(false); onPick(item.id); }}>
-                  {item.name}
-                </button>
-              ))}
-            </div>
           ) : null}
         </div>
       ) : null}
