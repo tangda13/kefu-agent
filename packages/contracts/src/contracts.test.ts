@@ -7,6 +7,14 @@ import {
   NATIONALITIES,
   PERSONALITIES,
   SUPPORTED_LANGUAGES,
+  categoryLeaves,
+  categoryTemplate,
+  isLeafCategory,
+  isSizedCategory,
+  normalizeCategory,
+  couponFace,
+  couponRuleText,
+  couponScopeText,
 } from "./index";
 
 describe("parameter document minimums", () => {
@@ -34,3 +42,40 @@ describe("parameter document minimums", () => {
   });
 });
 
+
+describe("商品类目树（D-65）", () => {
+  it("完整路径照收，老类目对到树上，只写末级名按名字找", () => {
+    expect(normalizeCategory("服装 > 女装 > 连衣裙")).toBe("服装 > 女装 > 连衣裙");
+    expect(normalizeCategory("服装›女装›连衣裙")).toBe("服装 > 女装 > 连衣裙");
+    expect(normalizeCategory("女装")).toBe("服装 > 女装");
+    expect(normalizeCategory("鞋靴箱包", "Women's Faux Leather Tote Bag")).toBe("箱包");
+    expect(normalizeCategory("鞋靴箱包", "Men's Lightweight Mesh Running Shoes")).toBe("鞋靴");
+    expect(normalizeCategory("托特包")).toBe("箱包 > 女包 > 托特包");
+    expect(normalizeCategory("针织衫 / 毛衣")).toBe("服装 > 女装 > 针织衫 / 毛衣");
+    expect(normalizeCategory("不存在的类目")).toBeNull();
+  });
+
+  it("模板从末级往上继承，写了就覆盖；只有服饰、鞋靴、宠物服饰有尺码表", () => {
+    expect(categoryTemplate("服装 > 女装 > 连衣裙")!.dims.map((dim) => dim.name)).toEqual(["颜色", "尺码"]);
+    expect(isSizedCategory("服装 > 女装 > 连衣裙")).toBe(true);
+    expect(isSizedCategory("服装 > 服饰配件 > 帽子")).toBe(false);
+    expect(categoryTemplate("3C 数码 > 耳机音箱 > 无线耳机")!.dims.map((dim) => dim.name)).toEqual(["颜色", "版本"]);
+    expect(isSizedCategory("3C 数码 > 耳机音箱 > 无线耳机")).toBe(false);
+    expect(isSizedCategory("宠物用品 > 宠物服饰 > 宠物衣服")).toBe(true);
+    expect(isLeafCategory("服装 > 女装")).toBe(false);
+    expect(isLeafCategory("服装 > 女装 > 连衣裙")).toBe(true);
+    expect(categoryLeaves().length).toBeGreaterThan(50);
+  });
+});
+
+describe("店铺优惠券文字（D-66）", () => {
+  it("规则、票面、适用范围", () => {
+    expect(couponRuleText({ kind: "amount", amount: 5, threshold: 30 })).toBe("满 $30 减 $5");
+    expect(couponRuleText({ kind: "percent", amount: 10, threshold: 0 })).toBe("全店 9 折");
+    expect(couponRuleText({ kind: "percent", amount: 15, threshold: 50 })).toBe("满 $50 8.5 折");
+    expect(couponRuleText({ kind: "shipping", amount: 0, threshold: 20 })).toBe("满 $20 免运费");
+    expect(couponFace({ kind: "amount", amount: 7.5, threshold: 0 })).toEqual({ value: "$7.50", gate: "无门槛" });
+    expect(couponScopeText({ productIds: ["A", "B"], customerTypes: ["复购老客", "粉丝客"] })).toBe("指定 2 个商品 · 仅复购老客、粉丝客");
+    expect(couponScopeText({ productIds: [], customerTypes: [] })).toBe("全店商品 · 不限客户");
+  });
+});

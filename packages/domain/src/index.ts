@@ -700,13 +700,6 @@ export const storeProducts = [
   { id: "SKU-006", name: "Pro Makeup Brush Set 12pcs", spec: "Vegan fiber / travel pouch", price: 24.2, sales: 664, stock: 275, tone: "#8f2f55" },
 ] as const;
 
-export const storeCoupons = [
-  { id: "CPN-001", title: "New Customer $5 Off", rule: "满 $30 减 $5", scope: "新客专享", validDays: 7 },
-  { id: "CPN-002", title: "10% Off Storewide", rule: "全店通用 9 折", scope: "无门槛", validDays: 3 },
-  { id: "CPN-003", title: "Free Shipping", rule: "满 $20 免运费", scope: "标准运输", validDays: 15 },
-  { id: "CPN-004", title: "Loyal Buyer $8 Off", rule: "满 $50 减 $8", scope: "复购客户", validDays: 30 },
-] as const;
-
 const PRODUCTS = storeProducts;
 
 const CARRIERS = ["4PX Express", "Yanwen Logistics", "Cainiao Global", "YunExpress"] as const;

@@ -16,7 +16,6 @@ import {
   generateOrderForScenario,
   productFactSheet,
   replyWithinRate,
-  storeCoupons,
   toStudentPersonaView,
   type OrderInfo,
 } from "@cecs/domain";
@@ -40,6 +39,7 @@ import { once } from "../inflight";
 import { loadBuyerOrders } from "../buyer-orders";
 import { buildOutgoingTranslationMessages, buildTranslationMessages } from "../prompts/assist";
 import { rateService } from "../service-rating";
+import { loadEnabledCoupon } from "./coupons";
 import { loadReceptionTimings, sumReplySummaries } from "../reception-stats";
 import {
   endFollowUp,
@@ -1385,14 +1385,15 @@ export function registerConversationRoutes(
         };
         content = `[Shared an order card] ${info.orderNo} · ${info.productName} ×${info.quantity} · status: ${info.statusLabel}`;
       } else if (type === "coupon") {
-        const coupon = storeCoupons.find((item) => item.id === refId);
+        const coupon = refId ? await loadEnabledCoupon(db, refId) : null;
         if (!coupon) {
           reply.code(400);
-          return { code: "INVALID_INPUT", message: "优惠券不存在。" };
+          return { code: "INVALID_INPUT", message: "这张优惠券不存在或已经停用。" };
         }
         kind = "coupon";
-        payload = { ...coupon };
-        content = `[Sent a coupon] ${coupon.title}（${coupon.rule}，有效期 ${coupon.validDays} 天）`;
+        // 存快照：之后改券、删券，老聊天里的卡片照原样显示（D-66）
+        payload = { id: coupon.id, title: coupon.title, rule: coupon.rule, scope: coupon.scope, validDays: coupon.validDays, customerTypes: coupon.customerTypes };
+        content = `[Sent a coupon] ${coupon.title}（${coupon.rule}，${coupon.scope}，有效期 ${coupon.validDays} 天）`;
       } else {
         reply.code(400);
         return { code: "INVALID_INPUT", message: "卡片类型无效。" };

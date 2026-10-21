@@ -44,7 +44,7 @@ interface PersonaBody {
   note?: string | null;
 }
 
-/** 画像入参清洗（D-33）：结构化字段必填并校验；名称不填时用“决策风格 + 买家角色”；identity / preference 由结构化字段派生 */
+/** 画像入参清洗（D-33）：结构化字段必填并校验；名称不填时用“消费偏好 + 买家角色”；identity / preference 由结构化字段派生 */
 function normalizePersona(body: PersonaBody): { problem: string | null; values: Required<Omit<PersonaBody, "id">> } {
   const concerns = Array.isArray(body.concerns) ? [...new Set(body.concerns.filter((item) => PERSONA_CONCERNS.includes(item as never)))] : [];
   const note = typeof body.note === "string" ? body.note.trim().slice(0, 120) : "";
@@ -68,8 +68,8 @@ function normalizePersona(body: PersonaBody): { problem: string | null; values: 
   };
   let problem: string | null = null;
   if (!buyerRole) problem = "请选择买家角色";
-  else if (!decisionStyle) problem = "请选择决策风格";
-  else if (!CUSTOMER_TYPES.includes(values.customerType as never)) problem = "请选择客户价值层";
+  else if (!decisionStyle) problem = "请选择消费偏好";
+  else if (!CUSTOMER_TYPES.includes(values.customerType as never)) problem = "请选择客户类型";
   else if (!concerns.length) problem = "至少选一个关注点";
   else if (concerns.length > PERSONA_CONCERN_MAX) problem = `关注点最多选 ${PERSONA_CONCERN_MAX} 个`;
   else if (!NATIONALITIES.includes(values.nationality as never)) problem = "国籍不在支持范围";
@@ -227,7 +227,7 @@ export function registerCatalogRoutes(
       const customerTypes = request.body?.customerTypes;
       if (customerTypes !== undefined && (!Array.isArray(customerTypes) || customerTypes.some((item) => !CUSTOMER_TYPES.includes(item as never)))) {
         reply.code(400);
-        return { code: "INVALID_INPUT", message: "客户价值层无效。" };
+        return { code: "INVALID_INPUT", message: "客户类型无效。" };
       }
       if (channel !== undefined && !SCENARIO_CHANNELS.includes(channel as never)) {
         reply.code(400);
@@ -595,14 +595,6 @@ export function registerCatalogRoutes(
     },
   );
 
-  app.get(
-    "/v1/store/coupons",
-    { preHandler: guard.requireRole() },
-    async () => {
-      const { storeCoupons } = await import("@cecs/domain");
-      return storeCoupons;
-    },
-  );
 
   app.get(
     "/v1/catalog/personas",

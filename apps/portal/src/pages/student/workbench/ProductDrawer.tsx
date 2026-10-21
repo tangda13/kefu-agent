@@ -1,7 +1,8 @@
+import { CATEGORY_SEP } from "@cecs/contracts";
 import { CornerDownLeft, Send, ShoppingCart } from "lucide-react";
 import { useMemo, useState } from "react";
 import { assetUrl, type StoreProduct } from "../../../api/client";
-import { Button, Drawer, Tag, toast } from "../../../ui";
+import { Button, Drawer, toast } from "../../../ui";
 
 /* 商品详情抽屉（D-32）：主图 + 缩略图、价格、款式、卖点、参数、物流、售后、常见问题。
    每条参数 / 问答右上角“引用”：把这句填进输入框。 */
@@ -57,7 +58,7 @@ export function ProductDrawer({ product, canSend, canFill, onClose, onQuote, onS
     <Drawer
       width={720}
       onClose={onClose}
-      title={<span className="wbk-pd-title">商品详情{product.category ? <Tag>{product.category}</Tag> : null}</span>}
+      title={<span className="wbk-pd-title">商品详情{product.category ? <span className="wbk-pd-cat">{product.category.split(CATEGORY_SEP).join(" › ")}</span> : null}</span>}
       footer={browseOnly ? undefined : (
         <div className="wbk-pd-foot">
           <div>
@@ -83,7 +84,7 @@ export function ProductDrawer({ product, canSend, canFill, onClose, onQuote, onS
           </div>
           <div>
             <h4>{product.name}</h4>
-            <div className="wbk-pd-price num">${price}<small>已售 {product.sales} · 库存 {stock}</small></div>
+            <div className="wbk-pd-price num">${Number(price).toFixed(2)}<small>已售 {product.sales} · 库存 {stock}{sku?.code ? ` · 商家编码 ${sku.code}` : ""}</small></div>
             {options.length > 0 ? (
               <div className="wbk-pd-skus">
                 {options.map((option) => (

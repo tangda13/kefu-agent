@@ -656,4 +656,28 @@ where c.status = 'closed' and c.service_rating is null and c.channel = 'chat'
   and exists (select 1 from conversation_messages m where m.conversation_id = c.id and m.sender = 'buyer');
 `,
   },
+  {
+    /* D-66：店铺优惠券从代码里的 4 张固定券改成教师端可配置。amount：满减是美元、折扣是减百分之几；product_ids 空 = 全店，customer_types 空 = 不限 */
+    id: "040_store_coupons",
+    sql: `
+create table if not exists store_coupons (
+  id text primary key,
+  title text not null,
+  kind text not null check (kind in ('amount', 'percent', 'shipping')),
+  amount numeric not null default 0,
+  threshold numeric not null default 0,
+  product_ids jsonb not null default '[]',
+  customer_types jsonb not null default '[]',
+  valid_days integer not null check (valid_days between 1 and 365),
+  enabled boolean not null default true,
+  created_at timestamptz not null default now()
+);
+insert into store_coupons (id, title, kind, amount, threshold, customer_types, valid_days, created_at) values
+  ('CPN-001', 'New Customer $5 Off', 'amount', 5, 30, '["潜在意向客"]', 7, now() - interval '4 seconds'),
+  ('CPN-002', '10% Off Storewide', 'percent', 10, 0, '[]', 3, now() - interval '3 seconds'),
+  ('CPN-003', 'Free Shipping', 'shipping', 0, 20, '[]', 15, now() - interval '2 seconds'),
+  ('CPN-004', 'Loyal Buyer $8 Off', 'amount', 8, 50, '["复购老客"]', 30, now() - interval '1 seconds')
+on conflict (id) do nothing;
+`,
+  },
 ];

@@ -285,6 +285,15 @@ describe("阶段1：教师建班、导入学生、下发任务的端到端链路
     expect(row.stock).toBe(15);
     expect(row.images).toEqual([]);
     expect(row.details.skus[1].values).toEqual({ 颜色: "Navy", 尺码: "L" });
+    // D-65：类目按类目树存；老的十个类目对到树上；只写末级名按名字找；商家编码保存
+    expect(row.category).toBe("服装 > 男装");
+    const dress = await app.inject({
+      method: "POST", url: "/v1/store/products", headers: auth(teacher1),
+      payload: { name: "Wrap Dress", price: 29.9, category: "连衣裙", details: { options: [{ name: "尺码", values: ["S"] }], skus: [{ values: { 尺码: "S" }, price: 29.9, stock: 3, code: "WD-S" }] } },
+    });
+    const dressRow = (await app.inject({ method: "GET", url: "/v1/store/products?all=1", headers: auth(teacher1) })).json().find((item: { id: string }) => item.id === dress.json().id);
+    expect(dressRow.category).toBe("服装 > 女装 > 连衣裙");
+    expect(dressRow.details.skus[0].code).toBe("WD-S");
     const library = await app.inject({ method: "GET", url: "/v1/store/library", headers: auth(teacher1) });
     expect(library.statusCode).toBe(200);
     const extract = await app.inject({ method: "POST", url: "/v1/store/products/extract", headers: auth(teacher1), payload: { text: "short" } });
@@ -1598,6 +1607,36 @@ describe("参数核对 · 学生端（D-53 关键数字、D-54 服务评价、D-
     expect(stats.replyWithinRate).toBeGreaterThanOrEqual(0);
   });
 
+  it("D-66：优惠券由教师端配置；学生只看得到启用的券；停用的发不出去；券卡片带门槛和适用客户，存快照", async () => {
+    const admin = await login("admin", "Admin#Prod9");
+    const listAll = (await app.inject({ method: "GET", url: "/v1/store/coupons", headers: auth(admin) })).json() as Array<{ id: string; rule: string; scope: string }>;
+    expect(listAll.find((item) => item.id === "CPN-001")).toMatchObject({ rule: "满 $30 减 $5", scope: "全店商品 · 仅潜在意向客" });
+    const bad = await app.inject({ method: "POST", url: "/v1/store/coupons", headers: auth(admin), payload: { title: "Too Much", kind: "percent", amount: 95, threshold: 0, validDays: 3 } });
+    expect(bad.statusCode).toBe(400);
+    const created = await app.inject({
+      method: "POST", url: "/v1/store/coupons", headers: auth(admin),
+      payload: { title: "VIP $10 Off", kind: "amount", amount: 10, threshold: 60, customerTypes: ["粉丝客"], validDays: 14 },
+    });
+    expect(created.statusCode).toBe(200);
+    const vip = created.json().id as string;
+    expect((await app.inject({ method: "PATCH", url: "/v1/store/coupons/CPN-002", headers: auth(admin), payload: { enabled: false } })).statusCode).toBe(200);
+
+    const seen = (await app.inject({ method: "GET", url: "/v1/store/coupons", headers: auth(student) })).json() as Array<{ id: string; rule: string; scope: string }>;
+    expect(seen.some((item) => item.id === "CPN-002")).toBe(false);
+    expect(seen.find((item) => item.id === vip)).toMatchObject({ rule: "满 $60 减 $10", scope: "全店商品 · 仅粉丝客" });
+
+    const conversation = (await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { scenarioId: "AFTER-001" } })).json().id as string;
+    const off = await app.inject({ method: "POST", url: `/v1/conversations/${conversation}/cards`, headers: auth(student), payload: { type: "coupon", refId: "CPN-002" } });
+    expect(off.statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: `/v1/conversations/${conversation}/cards`, headers: auth(student), payload: { type: "coupon", refId: vip } })).statusCode).toBe(200);
+    const sent = (await db.query("select content, payload from conversation_messages where conversation_id = $1 and kind = 'coupon'", [conversation])).rows[0];
+    expect(sent.content).toContain("仅粉丝客");
+    // 删券不影响已经发出去的卡片
+    expect((await app.inject({ method: "DELETE", url: `/v1/store/coupons/${vip}`, headers: auth(admin) })).statusCode).toBe(200);
+    expect((await db.query("select payload from conversation_messages where conversation_id = $1 and kind = 'coupon'", [conversation])).rows[0].payload).toMatchObject({ title: "VIP $10 Off", rule: "满 $60 减 $10" });
+    await app.inject({ method: "PATCH", url: "/v1/store/coupons/CPN-002", headers: auth(admin), payload: { enabled: true } });
+  });
+
   it("D-56：会话结束后发物流通知卡片，买家回复后跟进，客服回满 3 轮自动结束，不改原结束原因和星级", async () => {
     const created = await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { scenarioId: "IN-002" } });
     const id = created.json().id as string;
@@ -1788,7 +1827,8 @@ describe("参数核对 · 教师端（D-59 数据总览、D-60 考核报表、D-
     await db.query("insert into conversation_messages (conversation_id, sender, content) values ($1, 'buyer', 'Broken again'), ($1, 'student', 'Sorry to hear that')", [live]);
     const tracking = (await app.inject({ method: "GET", url: "/v1/teacher/tracking", headers: auth(teacher) })).json() as Array<Record<string, unknown>>;
     expect(tracking.find((item) => item.conversationId === live)).toMatchObject({ alert: true, alertReasons: ["unhappy"], satisfaction: 32, timeLimitMinutes: 30 });
-    const reviews = (await app.inject({ method: "GET", url: "/v1/teacher/assessments", headers: auth(teacher) })).json() as Array<{ buyer?: { name?: string; avatarUrl?: string } }>;
-    expect(reviews[0]!.buyer?.avatarUrl).toBeTruthy();
+    // 头像按会话 id 抽，可能是照片也可能是首字母，所以只看买家信息带上了
+    const reviews = (await app.inject({ method: "GET", url: "/v1/teacher/assessments", headers: auth(teacher) })).json() as Array<{ buyer?: { avatarKind?: string } }>;
+    expect(reviews[0]!.buyer?.avatarKind).toBeTruthy();
   });
 });

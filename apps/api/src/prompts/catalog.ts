@@ -8,7 +8,7 @@ import {
   EMOTIONS,
   NATIONALITIES,
   PERSONALITIES,
-  PRODUCT_CATEGORIES,
+  categoryLeaves,
   SUPPORTED_LANGUAGES,
 } from "@cecs/contracts";
 import type { ChatMessage } from "../llm/gateway";
@@ -77,7 +77,7 @@ export function buildProductDraftMessages(input: { url?: string; title?: string;
         "2. 商品名、卖点、描述用英文（页面是中文就翻译成自然的英文），去掉品牌名、店铺名和夸大用语（best、100%、guaranteed、No.1 等改成客观描述）。",
         "3. 规格维度名用中文（颜色、尺码、容量、款式），取值保留页面写法；skus 列出页面能看到的组合，价格用美元（页面是人民币按 1 美元 = 7.2 元换算并保留两位小数），页面没写库存时 stock 填 100。",
         "4. specs 参数名用中文；sizeChart 只在服饰鞋包且页面有尺码表时填，表头中文带单位。",
-        `5. category 只能取：${PRODUCT_CATEGORIES.join("、")}，判断不了填 null。`,
+        `5. category 从下面的类目里挑最贴近的一个，原样写出完整路径，判断不了填 null：${categoryLeaves().join("；")}。`,
         "6. shipping.methods 的 region 用中文地区名（美国、欧洲、其他地区），days 写时效文字，fee 美元数字（包邮为 0）；afterSale、faq 用中文。",
         "只返回一个 JSON 对象，结构严格如下（数组可以为空，没有的对象填 null）：",
         JSON.stringify({

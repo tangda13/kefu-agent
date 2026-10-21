@@ -1,4 +1,6 @@
 /** 商品详情（D-32）：学生端商品详情页和买家 AI 都读这些字段。所有字段可缺，缺的项在教师端标橙 */
+import { isSizedCategory } from "./category";
+
 
 export const PRODUCT_CATEGORIES = [
   "女装",
@@ -14,8 +16,7 @@ export const PRODUCT_CATEGORIES = [
 ] as const;
 export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
 
-/** 需要尺码表的类目；其他类目尺码表一组不计入完整度 */
-export const SIZED_CATEGORIES: readonly string[] = ["女装", "男装", "鞋靴箱包"];
+/** 老的十个类目（D-32），只留给内置商品库和老数据；新建商品用类目树（category.ts，D-65） */
 
 export const PRODUCT_SOURCES = ["manual", "link", "text", "library", "excel"] as const;
 export type ProductSource = (typeof PRODUCT_SOURCES)[number];
@@ -38,6 +39,8 @@ export interface ProductSku {
   values: Record<string, string>;
   price: number;
   stock: number;
+  /** 商家编码（D-65），学生选中规格时显示 */
+  code?: string;
 }
 
 export interface ProductSpecRow {
@@ -92,14 +95,14 @@ export interface ProductDetails {
   faq?: ProductFaq[];
 }
 
-/** 完整度的 8 组（与教师端编辑抽屉左栏一致） */
+/** 完整度的 8 组，顺序同发布商品的流程（D-65）：图片 → 基本信息 → 类目属性 → 规格 → 尺码表（只有服饰鞋类）→ 描述 → 物流 → 售后 */
 export const PRODUCT_DETAIL_GROUPS = [
   { key: "images", label: "图片" },
   { key: "basic", label: "基本信息" },
+  { key: "specs", label: "类目属性" },
   { key: "skus", label: "规格与库存" },
-  { key: "copy", label: "卖点与描述" },
-  { key: "specs", label: "参数" },
   { key: "sizeChart", label: "尺码表" },
+  { key: "copy", label: "卖点与描述" },
   { key: "shipping", label: "物流" },
   { key: "afterSale", label: "售后与常见问题" },
 ] as const;
@@ -113,10 +116,10 @@ export interface ProductCompletenessInput {
   details?: ProductDetails;
 }
 
-/** 每组是否已填。尺码表只对服饰鞋包类目要求，其他类目视为已填 */
+/** 每组是否已填。尺码表只对有尺码表的类目要求（服饰、鞋靴、宠物服饰），其他类目视为已填 */
 export function productCompleteness(product: ProductCompletenessInput): Record<ProductDetailGroup, boolean> {
   const d = product.details ?? {};
-  const sized = SIZED_CATEGORIES.includes(product.category ?? "");
+  const sized = isSizedCategory(product.category);
   return {
     images: (product.images?.length ?? 0) > 0,
     basic: Boolean(product.name?.trim()) && (product.price ?? 0) > 0 && Boolean(product.category),

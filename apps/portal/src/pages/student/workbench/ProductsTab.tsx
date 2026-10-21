@@ -33,15 +33,15 @@ export function ProductsTab({ products, browsed, canSend, canFill, onSend, onFil
       />
       {list.map((product) => {
         const specParts = product.spec.split("/").map((part) => part.trim()).filter(Boolean);
-        const specText = `${product.name} — SKU ${product.id} · ${product.spec} · USD ${product.price} · In stock: ${product.stock}`;
-        const quoteText = `${product.name}: ${qty} × USD ${product.price} = USD ${(product.price * qty).toFixed(2)}`;
+        const specText = `${product.name} — SKU ${product.id} · ${product.spec} · USD ${Number(product.price).toFixed(2)} · In stock: ${product.stock}`;
+        const quoteText = `${product.name}: ${qty} × USD ${Number(product.price).toFixed(2)} = USD ${(product.price * qty).toFixed(2)}`;
         const image = product.images?.[0] ?? product.imageUrl;
         return (
           <article key={product.id} className="wbk-pc">
             {image ? <img src={assetUrl(image) ?? undefined} alt={product.name} /> : <span className="wbk-card-thumb is-lg" style={{ background: product.tone }}><Package2 size={22} /></span>}
             <div className="wbk-pc-main">
               <b>{product.name}</b>
-              <div className="wbk-pc-p num">USD {product.price}</div>
+              <div className="wbk-pc-p num">USD {Number(product.price).toFixed(2)}</div>
               <div className="wbk-pc-m">已售 {product.sales} · 库存 {product.stock}</div>
               {/* 操作一行平铺：详情、发送、邀请下单、规格、算价 */}
               <div className="wbk-pc-ac is-row">
@@ -57,7 +57,7 @@ export function ProductsTab({ products, browsed, canSend, canFill, onSend, onFil
                 <dl className="wbk-kv">
                   <dt>SKU 编码</dt><dd className="num">{product.id}</dd>
                   {specParts.map((part, index) => (<span key={part} style={{ display: "contents" }}><dt>规格 {index + 1}</dt><dd>{part}</dd></span>))}
-                  <dt>单价</dt><dd className="num">USD {product.price}</dd>
+                  <dt>单价</dt><dd className="num">USD {Number(product.price).toFixed(2)}</dd>
                   <dt>库存 / 已售</dt><dd className="num">{product.stock} / {product.sales}</dd>
                 </dl>
                 <Button size="sm" disabled={!canFill} onClick={() => { onFill(specText); setSpecOpen(null); }}>填入规格信息</Button>

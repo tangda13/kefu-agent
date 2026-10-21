@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import {
-  PRODUCT_CATEGORIES,
   PRODUCT_SOURCES,
+  normalizeCategory,
   type ProductDetails,
   type ProductSource,
 } from "@cecs/contracts";
@@ -40,7 +40,8 @@ export function sanitizeDetails(raw: unknown): ProductDetails {
       for (const [key, value] of Object.entries((sku.values ?? {}) as Record<string, unknown>)) {
         if (optionNames.has(key) && str(value, 40)) values[key] = str(value, 40);
       }
-      return { values, price: num(sku.price), stock: Math.floor(num(sku.stock)) };
+      const code = str(sku.code, 40);
+      return { values, price: num(sku.price), stock: Math.floor(num(sku.stock)), ...(code ? { code } : {}) };
     })
     .filter((sku) => Object.keys(sku.values).length > 0);
   const chart = (d.sizeChart ?? null) as Record<string, unknown> | null;
@@ -136,7 +137,8 @@ function productRowToJson(row: Record<string, unknown>) {
     enabled: row.enabled,
     imageUrl: images[0] ?? (row.image_url as string | null) ?? null,
     images,
-    category: (row.category as string | null) ?? null,
+    /* D-65：老数据的十个类目读出来时对到类目树上 */
+    category: normalizeCategory(row.category, row.name as string),
     details: (row.details ?? {}) as ProductDetails,
     source: row.source,
     sourceUrl: (row.source_url as string | null) ?? null,
@@ -170,7 +172,7 @@ function normalizeBody(body: ProductBody) {
     details,
     spec: specSummary(str(body.spec, 120), details),
     stock: totalStock(Math.floor(num(body.stock ?? 100)), details),
-    category: PRODUCT_CATEGORIES.includes(body.category as never) ? (body.category as string) : null,
+    category: normalizeCategory(body.category, name),
     images: cleanImages(body.images),
     source: (PRODUCT_SOURCES.includes(body.source as never) ? body.source : "manual") as ProductSource,
     sourceUrl: str(body.sourceUrl, 500) || null,
@@ -334,7 +336,7 @@ export function registerProductRoutes(app: FastifyInstance, db: Db, guard: AuthG
         await writeAudit(db, request.user!.sub, "product.extract", undefined, { url: str(body.url, 200) || null });
         return {
           name: data.name,
-          category: PRODUCT_CATEGORIES.includes(normalized.category as never) ? normalized.category : null,
+          category: normalizeCategory(normalized.category, String(data.name ?? "")),
           price: price > 0 ? price : details.skus?.[0]?.price ?? null,
           details,
         };

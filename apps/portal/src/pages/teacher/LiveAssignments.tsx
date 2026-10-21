@@ -138,9 +138,9 @@ function ruleRows(rule: PersonaRule | undefined, personaNames?: Record<string, s
   const rows: Array<[string, string]> = [];
   if (rule?.templateIds?.length) rows.push(["指定画像", rule.templateIds.map((id) => personaNames?.[id] ?? id).join("、")]);
   else {
-    if (rule?.customerTypes?.length) rows.push(["客户价值层", rule.customerTypes.join("、")]);
+    if (rule?.customerTypes?.length) rows.push(["客户类型", rule.customerTypes.join("、")]);
     if (rule?.buyerRoles?.length) rows.push(["买家角色", rule.buyerRoles.join("、")]);
-    if (rule?.decisionStyles?.length) rows.push(["决策风格", rule.decisionStyles.join("、")]);
+    if (rule?.decisionStyles?.length) rows.push(["消费偏好", rule.decisionStyles.join("、")]);
     if (!rows.length) rows.push(["人群", "画像库全部"]);
   }
   const vary: Array<[string, string[] | undefined]> = [
@@ -510,7 +510,7 @@ function TaskDrawer({ session, task, classes, scenarios, onClose, onSaved }: {
   useEffect(() => { fetchPersonas(session).then((list) => setPersonas(list.filter((item) => item.enabled))).catch(() => undefined); }, [session]);
   const personaNames = useMemo(() => Object.fromEntries(personas.map((item) => [item.id, item.name])), [personas]);
 
-  // D-33：选了场景就按场景的“适用客户价值层”预选人群范围；老师手动改过就不再跟着变
+  // D-33：选了场景就按场景的“适用客户类型”预选人群范围；老师手动改过就不再跟着变
   const scenarioTypes = useMemo(
     () => [...new Set(scenarios.filter((item) => form.scenarioIds.includes(item.id)).flatMap((item) => item.customerTypes ?? []))],
     [scenarios, form.scenarioIds],
@@ -871,10 +871,10 @@ function TaskDrawer({ session, task, classes, scenarios, onClose, onSaved }: {
                 </header>
                 {scopeMode === "filter" ? (
                   <div className="tp-rows">
-                    <TpRow label="客户价值层" options={[...CUSTOMER_TYPES]} value={form.rule.customerTypes} onChange={(value) => { setTypesTouched(true); setRule("customerTypes", value); }}
+                    <TpRow label="客户类型" options={[...CUSTOMER_TYPES]} value={form.rule.customerTypes} onChange={(value) => { setTypesTouched(true); setRule("customerTypes", value); }}
                       note={scenarioTypes.length && !typesTouched ? "已按场景预选" : undefined} />
                     <TpRow label="买家角色" options={[...BUYER_ROLES]} value={form.rule.buyerRoles} onChange={(value) => setRule("buyerRoles", value)} />
-                    <TpRow label="决策风格" options={[...DECISION_STYLES]} value={form.rule.decisionStyles} onChange={(value) => setRule("decisionStyles", value)} />
+                    <TpRow label="消费偏好" options={[...DECISION_STYLES]} value={form.rule.decisionStyles} onChange={(value) => setRule("decisionStyles", value)} />
                     <p className="tp-foot-note">每行不选 = 不限</p>
                   </div>
                 ) : (
@@ -986,7 +986,7 @@ function TpRow({ label, options, labels, value, onChange, note }: {
   );
 }
 
-/** 指定画像：按客户价值层分组的勾选列表（两列对齐、组可全选、可搜索、限高滚动） */
+/** 指定画像：按客户类型分组的勾选列表（两列对齐、组可全选、可搜索、限高滚动） */
 function PersonaPicker({ personas, word, onWord, value, onChange }: {
   personas: PersonaTemplate[]; word: string; onWord: (word: string) => void; value: string[]; onChange: (value: string[]) => void;
 }) {

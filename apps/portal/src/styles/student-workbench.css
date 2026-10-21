@@ -332,6 +332,8 @@
 
 /* ---------- 商品详情抽屉（挂在 body 上） ---------- */
 .wbk-pd-title { display: inline-flex; align-items: center; gap: 10px; }
+/* 类目路径（D-65），和真实商品页顶部的面包屑一样 */
+.wbk-pd-cat { font-size: var(--fs-small); font-weight: 400; color: var(--c-ink-3); }
 .wbk-pd { display: grid; gap: 22px; align-content: start; }
 .wbk-pd-hero { display: grid; grid-template-columns: 220px 1fr; gap: 20px; }
 .wbk-pd-gal img.is-main, .wbk-pd-noimg { display: block; width: 220px; height: 220px; border-radius: 10px; object-fit: cover; border: 1px solid var(--c-line); }

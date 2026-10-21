@@ -1,11 +1,11 @@
 import {
-  Check, CircleAlert, CircleCheck, ClipboardPaste, FileSpreadsheet, Info, LibraryBig, Link2, Loader, Package2, Plus, Sparkles, SquarePen, Star, Trash2, X,
+  Check, CircleAlert, CircleCheck, FileSpreadsheet, Info, LibraryBig, Link2, Loader, Package2, Plus, Sparkles, SquarePen, Star, Trash2, X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as XLSX from "xlsx";
 import {
-  PRODUCT_CATEGORIES, PRODUCT_DETAIL_GROUPS, PRODUCT_SOURCE_LABELS, SIZED_CATEGORIES, productCompleteness,
-  type ProductDetailGroup, type ProductDetails, type ProductSku,
+  CATEGORY_SEP, PRODUCT_CATEGORIES, PRODUCT_DETAIL_GROUPS, PRODUCT_SOURCE_LABELS, categoryTemplate, isSizedCategory, productCompleteness,
+  type CategoryTemplate, type ProductDetailGroup, type ProductDetails, type ProductSku,
 } from "@cecs/contracts";
 import {
   ApiError, apiGet, apiPost, apiRequestDelete, apiRequestPatch, assetUrl, uploadProductImage,
@@ -15,8 +15,9 @@ import {
   Bench, Board, Button, Confirm, DataTable, Dialog, Drawer, Field, FilterChips, HelpTip, Input, MoreMenu, SearchBox, Segmented, Select, Switch, Textarea, Toolbar, toast,
 } from "../../ui";
 import { StoreCard } from "./StoreProfile";
+import { CategoryPicker } from "./CategoryPicker";
 
-/** 店铺商品（D-32）：卡片带详情完整度；添加商品先选方式（粘贴链接 / 粘贴文字 / 商品库，另有手动和 Excel） */
+/** 店铺商品（D-32）：卡片带详情完整度；添加商品三条主路（D-65）：新建商品（先选类目）/ 粘贴链接（打不开改粘贴文字）/ 商品库；Excel 在工具栏“批量导入” */
 
 
 const errorText = (cause: unknown) => (cause instanceof ApiError ? cause.message : "无法连接服务器，请稍后重试。");
@@ -40,6 +41,9 @@ export function ProductTab({ session, products, loading, reload }: { session: Se
   const [excel, setExcel] = useState(false);
   const [editor, setEditor] = useState<EditorSeed | null>(null);
   const [removing, setRemoving] = useState<StoreProduct | null>(null);
+  const [picking, setPicking] = useState(false);
+  /* 选类目的“最近使用”：店里最近上架商品的类目（存在库里，不靠本机） */
+  const recent = useMemo(() => [...new Set([...products].reverse().map((item) => item.category).filter((item): item is string => Boolean(item)))], [products]);
 
   const visible = products.filter((item) => !keyword.trim() || `${item.name} ${item.spec}`.toLowerCase().includes(keyword.trim().toLowerCase()));
   const partial = (item: StoreProduct) => filledCount(item) < GROUP_COUNT;
@@ -60,7 +64,7 @@ export function ProductTab({ session, products, loading, reload }: { session: Se
     <AddWays
       onPick={(mode) => {
         if (mode === "library") { setAdding(null); setLibrary(true); }
-        else if (mode === "manual") { setAdding(null); setEditor({ product: null, draft: { name: "", category: null, price: null, details: {}, source: "manual" } }); }
+        else if (mode === "manual") { setAdding(null); setPicking(true); }
         else if (mode === "excel") { setAdding(null); setExcel(true); }
         else setAdding(mode);
       }}
@@ -70,7 +74,7 @@ export function ProductTab({ session, products, loading, reload }: { session: Se
   return (
     <Bench>
       <StoreCard session={session} />
-      <Toolbar actions={<Button variant="primary" icon={Plus} onClick={() => setAdding("ways")}>添加商品</Button>}>
+      <Toolbar actions={<><Button variant="ghost" icon={FileSpreadsheet} onClick={() => setExcel(true)}>批量导入</Button><Button variant="primary" icon={Plus} onClick={() => setAdding("ways")}>添加商品</Button></>}>
         <SearchBox value={keyword} onChange={setKeyword} placeholder="搜索商品" />
         <FilterChips
           items={[
@@ -140,7 +144,11 @@ export function ProductTab({ session, products, loading, reload }: { session: Se
       ) : null}
       {library ? <LibraryDrawer session={session} onClose={() => setLibrary(false)} onAdded={() => { setLibrary(false); void reload(); }} /> : null}
       {excel ? <ExcelDialog session={session} onClose={() => setExcel(false)} onDone={() => { setExcel(false); void reload(); }} /> : null}
-      {editor ? <ProductEditor session={session} seed={editor} onClose={() => setEditor(null)} onSaved={() => { setEditor(null); void reload(); }} /> : null}
+      {picking ? (
+        <CategoryPicker value={null} recent={recent} onClose={() => setPicking(false)}
+          onPick={(path) => { setPicking(false); setEditor({ product: null, draft: { name: "", category: path, price: null, details: {}, source: "manual" } }); }} />
+      ) : null}
+      {editor ? <ProductEditor session={session} seed={editor} recent={recent} onClose={() => setEditor(null)} onSaved={() => { setEditor(null); void reload(); }} /> : null}
       {removing ? (
         <Confirm title="删除商品" danger confirmText="删除"
           onConfirm={() => void apiRequestDelete(`/v1/store/products/${removing.id}`, session).then(() => { toast.ok("已删除"); setRemoving(null); return reload(); }).catch((cause) => toast.error(errorText(cause)))}
@@ -157,24 +165,22 @@ export function ProductTab({ session, products, loading, reload }: { session: Se
 type WayId = "link" | "text" | "library" | "manual" | "excel";
 
 function AddWays({ onPick }: { onPick: (mode: WayId) => void }) {
-  const way = (id: WayId, Icon: typeof Link2, title: string, desc: string, meta: string, recommended = false) => (
-    <button type="button" className={recommended ? "gd-way is-rec" : "gd-way"} onClick={() => onPick(id)}>
+  const way = (id: WayId, Icon: typeof Link2, title: string, desc: string, meta: string, extra?: ReactNode) => (
+    <div className="gd-way" role="button" tabIndex={0} onClick={() => onPick(id)} onKeyDown={(event) => { if (event.key === "Enter") onPick(id); }}>
       <span className="gd-way-ico"><Icon size={20} /></span>
-      <b>{title}{recommended ? <span className="ui-tag is-accent">推荐</span> : null}</b>
+      <b>{title}</b>
       <p>{desc}</p>
       <span className="gd-way-meta">{meta}</span>
-    </button>
+      {extra}
+    </div>
   );
   return (
     <div className="gd-ways-wrap">
       <div className="gd-ways">
-        {way("link", Link2, "粘贴商品链接", "粘贴速卖通、亚马逊、Shopee、1688 等平台的商品页链接，读取页面后由 AI 整理成商品信息。", "约 20 秒一个 · 消耗少量模型额度", true)}
-        {way("text", ClipboardPaste, "粘贴详情页文字", "链接打不开时，把详情页全选复制进来，AI 同样整理成商品信息，图片另外上传。", "任何来源都能用 · 消耗少量模型额度")}
+        {way("manual", SquarePen, "新建商品", "先选类目，再按类目填属性、规格和库存，和电商平台发布商品的流程一样。", "不消耗额度")}
+        {way("link", Link2, "粘贴商品链接", "粘贴速卖通、亚马逊、Shopee、1688 等平台的商品页链接，AI 读取后整理成商品信息，类目也自动识别。", "约 20 秒一个 · 消耗少量模型额度",
+          <button type="button" className="gd-way-alt" onClick={(event) => { event.stopPropagation(); onPick("text"); }}>链接打不开？改为粘贴详情页文字 ›</button>)}
         {way("library", LibraryBig, "从商品库挑选", "系统内置的跨类目商品，图片和详情都已齐全，勾选后直接上架。", "不消耗额度 · 适合快速开课")}
-      </div>
-      <div className="gd-ways-alt">
-        <button type="button" onClick={() => onPick("manual")}><SquarePen size={16} />手动填写<span>一个一个填</span></button>
-        <button type="button" onClick={() => onPick("excel")}><FileSpreadsheet size={16} />Excel 批量导入<span>下载模板，填好后上传</span></button>
       </div>
     </div>
   );
@@ -400,10 +406,10 @@ function ExcelDialog({ session, onClose, onDone }: { session: Session; onClose: 
   function download() {
     const sheet = XLSX.utils.aoa_to_sheet([
       [...EXCEL_COLUMNS],
-      ["Linen Wide-Leg Pants", "女装", 26.9, 200, "Beige/Black", "S/M/L/XL", "Breathable linen blend|Elastic waist with drawstring|Two side pockets", "Relaxed wide-leg pants for summer days.", "材质=55% 亚麻 45% 棉;裤长=约 100cm;产地=中国", "中国广州", 3, "签收后 30 天内可退换，商品需未穿着、吊牌完整", "无"],
+      ["Linen Wide-Leg Pants", "服装 > 女装 > 裤装", 26.9, 200, "Beige/Black", "S/M/L/XL", "Breathable linen blend|Elastic waist with drawstring|Two side pockets", "Relaxed wide-leg pants for summer days.", "材质=55% 亚麻 45% 棉;裤长=约 100cm;产地=中国", "中国广州", 3, "签收后 30 天内可退换，商品需未穿着、吊牌完整", "无"],
     ]);
     sheet["!cols"] = EXCEL_COLUMNS.map((_, index) => ({ wch: index === 0 || index >= 6 ? 30 : 12 }));
-    const notes = XLSX.utils.aoa_to_sheet([["列", "说明"], ["类目", PRODUCT_CATEGORIES.join("、")], ["颜色 / 尺码", "多个取值用 / 分隔，会自动生成规格组合，每个组合的价格和库存先用这一行的价格、库存"], ["图片", "导入后在商品卡片里上传"]]);
+    const notes = XLSX.utils.aoa_to_sheet([["列", "说明"], ["类目", "填完整路径（服装 > 女装 > 裤装）或最末一级的名字（裤装、无线耳机、保温杯），和“新建商品”里选类目的名字一样"], ["颜色 / 尺码", "多个取值用 / 分隔，会自动生成规格组合，每个组合的价格和库存先用这一行的价格、库存"], ["图片", "导入后在商品卡片里上传"]]);
     notes["!cols"] = [{ wch: 12 }, { wch: 90 }];
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, sheet, "店铺商品");
@@ -491,7 +497,50 @@ function buildSkus(options: Array<{ name: string; values: string[] }>, existing:
 
 type ImageItem = { kind: "saved"; url: string } | { kind: "pending"; blob: Blob; preview: string };
 
-function ProductEditor({ session, seed, onClose, onSaved }: { session: Session; seed: EditorSeed; onClose: () => void; onSaved: () => void }) {
+/** 按类目补出要填的类目属性和规格维度（D-65）：已经有的不动，模板的规格维度排在前面，最多 3 个 */
+function withTemplate(details: ProductDetails, template: CategoryTemplate | null): ProductDetails {
+  if (!template) return details;
+  const specs = [...(details.specs ?? [])];
+  for (const attr of template.attributes) if (!specs.some((row) => row.name === attr.name)) specs.push({ name: attr.name, value: "" });
+  const options = [...(details.options ?? [])];
+  for (const dim of template.dims) if (options.length < 3 && !options.some((option) => option.name === dim.name)) options.push({ name: dim.name, values: [] });
+  const rank = (name: string) => { const index = template.dims.findIndex((dim) => dim.name === name); return index < 0 ? 9 : index; };
+  return { ...details, specs, options: options.sort((a, b) => rank(a.name) - rank(b.name)) };
+}
+
+/** 一个规格维度：平台标准取值（尺码、鞋码）勾选，其他取值自己填 */
+function DimRow({ name, presets, values, onChange, onRename, onRemove }: {
+  name: string; presets?: readonly string[]; values: string[]; onChange: (values: string[]) => void; onRename?: (name: string) => void; onRemove?: () => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const add = () => {
+    const value = draft.trim();
+    if (value && !values.includes(value)) onChange([...values, value]);
+    setDraft("");
+  };
+  const toggle = (value: string) => {
+    const next = values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+    // 标准取值按平台顺序排（S 在 M 前面），自己加的排后面
+    const rank = (item: string) => { const index = presets?.indexOf(item) ?? -1; return index < 0 ? 99 : index; };
+    onChange(next.sort((a, b) => rank(a) - rank(b)));
+  };
+  const extras = values.filter((value) => !presets?.includes(value));
+  return (
+    <div className="pe-dim">
+      {onRename ? <Input className="pe-dim-name" value={name} maxLength={12} onChange={(event) => onRename(event.target.value)} /> : <b>{name}</b>}
+      <div className="pe-dim-vals">
+        {presets?.map((value) => <button key={value} type="button" className={values.includes(value) ? "is-on" : undefined} onClick={() => toggle(value)}>{value}</button>)}
+        {extras.map((value) => <span key={value} className="pe-dim-chip">{value}<button type="button" title="去掉" onClick={() => onChange(values.filter((item) => item !== value))}><X size={12} /></button></span>)}
+        <input className="pe-dim-add" value={draft} maxLength={40} placeholder={presets ? "其他取值" : `加${name}，回车确认`}
+          onChange={(event) => setDraft(event.target.value)} onBlur={add}
+          onKeyDown={(event) => { if (event.key === "Enter" || event.key === "," || event.key === "，") { event.preventDefault(); add(); } }} />
+      </div>
+      {onRemove ? <button type="button" className="pe-del" title="删除这个规格" onClick={onRemove}><Trash2 size={15} /></button> : <span />}
+    </div>
+  );
+}
+
+function ProductEditor({ session, seed, recent, onClose, onSaved }: { session: Session; seed: EditorSeed; recent: string[]; onClose: () => void; onSaved: () => void }) {
   const product = seed.product;
   const initial = product
     ? { name: product.name, category: product.category ?? null, price: product.price, details: product.details ?? {} }
@@ -500,11 +549,15 @@ function ProductEditor({ session, seed, onClose, onSaved }: { session: Session; 
   const [category, setCategory] = useState(initial.category ?? "");
   const [price, setPrice] = useState(initial.price ? String(initial.price) : "");
   const [stock, setStock] = useState(product ? String(product.stock) : "100");
-  const [details, setDetails] = useState<ProductDetails>(() => ({
+  const [details, setDetails] = useState<ProductDetails>(() => withTemplate({
     options: [], skus: [], bullets: [], description: "", specs: [], sizeChart: null,
     shipping: { shipsFrom: "", methods: [] }, afterSale: { returnPolicy: "", warranty: "" }, faq: [],
     ...initial.details,
-  }));
+  }, categoryTemplate(initial.category)));
+  const [picking, setPicking] = useState(false);
+  /** 换类目会重置类目属性和规格，先确认 */
+  const [switching, setSwitching] = useState<string | null>(null);
+  const [bulk, setBulk] = useState({ price: "", stock: "" });
   const [images, setImages] = useState<ImageItem[]>(() => [
     ...(product?.images?.length ? product.images : product?.imageUrl ? [product.imageUrl] : []).map((url) => ({ kind: "saved" as const, url })),
     ...(seed.pendingImages ?? []).map((blob) => ({ kind: "pending" as const, blob, preview: URL.createObjectURL(blob) })),
@@ -521,9 +574,26 @@ function ProductEditor({ session, seed, onClose, onSaved }: { session: Session; 
     () => productCompleteness({ name, price: numericPrice, category: category || null, images: images.map(() => "x"), details }),
     [name, numericPrice, category, images, details],
   );
-  const missing = PRODUCT_DETAIL_GROUPS.filter((group) => !completeness[group.key]);
   const fromCollect = seed.draft?.source === "link" || seed.draft?.source === "text";
-  const sized = SIZED_CATEGORIES.includes(category);
+  const template = categoryTemplate(category);
+  const sized = isSizedCategory(category);
+  /* 不需要尺码表的类目，左栏不显示这一组 */
+  const groups = PRODUCT_DETAIL_GROUPS.filter((group) => group.key !== "sizeChart" || sized);
+  const missingShown = groups.filter((group) => !completeness[group.key]);
+
+  function applyCategory(next: string) {
+    setCategory(next);
+    setSwitching(null);
+    setPicking(false);
+    const nextTemplate = categoryTemplate(next);
+    setDetails((current) => withTemplate({ ...current, specs: [], options: [], skus: [], sizeChart: null }, nextTemplate));
+  }
+  function pickCategory(next: string) {
+    if (next === category) return setPicking(false);
+    const touched = (details.specs ?? []).some((row) => row.value.trim()) || (details.options ?? []).some((option) => option.values.length);
+    if (category && touched) { setPicking(false); setSwitching(next); }
+    else applyCategory(next);
+  }
 
   function jump(key: ProductDetailGroup) {
     setActive(key);
@@ -539,6 +609,7 @@ function ProductEditor({ session, seed, onClose, onSaved }: { session: Session; 
   }
 
   async function save() {
+    if (!category) return setPicking(true), toast.error("先选类目，类目决定要填哪些属性和规格");
     if (!name.trim()) return jump("basic"), toast.error("商品标题要填");
     if (!Number.isFinite(numericPrice) || numericPrice <= 0) return jump("basic"), toast.error("价格要大于 0");
     setBusy(true);
@@ -577,8 +648,24 @@ function ProductEditor({ session, seed, onClose, onSaved }: { session: Session; 
   const options = details.options ?? [];
   const skus = details.skus ?? [];
   const regenerate = (nextOptions: typeof options) => patch({ options: nextOptions, skus: buildSkus(nextOptions, skus, numericPrice > 0 ? numericPrice : 0, Number(stock) || 100) });
+  const skuDims = options.filter((option) => option.name.trim() && option.values.length);
 
   const chart = details.sizeChart ?? null;
+  const sizeDim = sized ? template?.dims.find((dim) => dim.presets) ?? null : null;
+  const sizeValues = sizeDim ? options.find((option) => option.name === sizeDim.name)?.values ?? [] : [];
+  const sizeKey = sizeValues.join("|");
+  useEffect(() => {
+    if (!sized || !sizeValues.length || !template?.sizeChart) return;
+    setDetails((current) => {
+      const now = current.sizeChart ?? null;
+      const headers = now?.headers.length ? now.headers : [...template.sizeChart!];
+      const rows = sizeValues.map((value) => now?.rows.find((row) => row[0] === value) ?? [value, ...headers.slice(1).map(() => "")]);
+      // 自己加的行（不是勾选出来的尺码）保留
+      const manual = (now?.rows ?? []).filter((row) => !sizeDim?.presets?.includes(row[0] ?? "") && !sizeValues.includes(row[0] ?? ""));
+      const next = { headers, rows: [...rows, ...manual] };
+      return JSON.stringify(next) === JSON.stringify(now) ? current : { ...current, sizeChart: next };
+    });
+  }, [sized, sizeKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const shipping = details.shipping ?? {};
   const afterSale = details.afterSale ?? {};
 
@@ -592,18 +679,23 @@ function ProductEditor({ session, seed, onClose, onSaved }: { session: Session; 
     >
       <div className="pe">
         <nav className="pe-nav">
-          {PRODUCT_DETAIL_GROUPS.map((group) => (
+          <div className="pe-cat">
+            <small>类目</small>
+            <b>{category ? category.split(CATEGORY_SEP).join(" › ") : "还没选类目"}</b>
+            <button type="button" onClick={() => setPicking(true)}>{category ? "更换类目" : "选择类目"}</button>
+          </div>
+          {groups.map((group) => (
             <button key={group.key} type="button" className={active === group.key ? "is-on" : ""} onClick={() => jump(group.key)}>
               {group.label}
               {completeness[group.key] ? <CircleCheck size={15} className="is-ok" /> : <CircleAlert size={15} className="is-miss" />}
             </button>
           ))}
-          <div className="pe-sum"><b>{GROUP_COUNT - missing.length}</b> / {GROUP_COUNT} 组已填</div>
+          <div className="pe-sum"><b>{groups.length - missingShown.length}</b> / {groups.length} 组已填</div>
         </nav>
         <div className="pe-body" ref={bodyRef}>
-          {fromCollect && missing.length ? (
+          {fromCollect && missingShown.length ? (
             <p className="pe-banner">
-              <CircleAlert size={16} />页面上没读到{missing.map((group) => group.label).join("、")}，补上后买家问起时学生才答得出。
+              <CircleAlert size={16} />页面上没读到{missingShown.map((group) => group.label).join("、")}，补上后买家问起时学生才答得出。
               {seed.draft?.sourceUrl ? <a href={seed.draft.sourceUrl} target="_blank" rel="noreferrer">查看原页面</a> : null}
             </p>
           ) : null}
@@ -632,44 +724,111 @@ function ProductEditor({ session, seed, onClose, onSaved }: { session: Session; 
             <h4>基本信息</h4>
             <div className="pe-grid-basic">
               <Field label="商品标题"><Input value={name} maxLength={120} placeholder="Wrap V-Neck Short Sleeve Maxi Dress" onChange={(event) => setName(event.target.value)} /></Field>
-              <Field label="类目">
-                <Select value={category} onChange={(event) => setCategory(event.target.value)}>
-                  <option value="">选择类目</option>
-                  {PRODUCT_CATEGORIES.map((item) => <option key={item}>{item}</option>)}
-                </Select>
-              </Field>
               <Field label="价格（美元）"><Input type="number" min={0} step={0.01} value={price} onChange={(event) => setPrice(event.target.value)} /></Field>
               {!skus.length ? <Field label="库存"><Input type="number" min={0} value={stock} onChange={(event) => setStock(event.target.value)} /></Field> : null}
             </div>
           </section>
 
-          <section data-group="skus" className="pe-sec">
-            <h4>规格与库存<span>{skus.length ? `${options.map((o) => `${o.name} ${o.values.length}`).join(" × ")} = ${skus.length} 个规格` : "最多 3 个维度，如颜色、尺码"}</span></h4>
-            <div className="pe-options">
-              {options.map((option, index) => (
-                <div key={index} className="pe-option">
-                  <Input value={option.name} maxLength={12} placeholder="颜色" onChange={(event) => regenerate(options.map((o, i) => (i === index ? { ...o, name: event.target.value } : o)))} />
-                  <Input value={option.values.join(" / ")} placeholder="Misty Blue / Beige / Black" onChange={(event) => regenerate(options.map((o, i) => (i === index ? { ...o, values: event.target.value.split("/").map((v) => v.trim()).filter(Boolean) } : o)))} />
-                  <button type="button" className="pe-del" title="删除这个维度" onClick={() => regenerate(options.filter((_, i) => i !== index))}><Trash2 size={15} /></button>
+          <section data-group="specs" className="pe-sec">
+            <h4>类目属性<span>{template ? "按类目预设，至少填 3 项；买家问起材质、型号这类问题，学生按这里回答" : "至少 3 项，如材质、尺寸、重量、产地、包装清单"}</span></h4>
+            {template ? (
+              <div className="pe-attrs">
+                {template.attributes.map((attr) => {
+                  const value = (details.specs ?? []).find((row) => row.name === attr.name)?.value ?? "";
+                  const listId = `pe-attr-${attr.name}`;
+                  return (
+                    <Field key={attr.name} label={attr.name}>
+                      <Input value={value} maxLength={120} placeholder={attr.placeholder ?? (attr.options ? attr.options.slice(0, 3).join(" / ") : "")} list={attr.options ? listId : undefined}
+                        onChange={(event) => {
+                          const rows = details.specs ?? [];
+                          patch({ specs: rows.some((row) => row.name === attr.name) ? rows.map((row) => (row.name === attr.name ? { ...row, value: event.target.value } : row)) : [...rows, { name: attr.name, value: event.target.value }] });
+                        }} />
+                      {attr.options ? <datalist id={listId}>{attr.options.map((option) => <option key={option} value={option} />)}</datalist> : null}
+                    </Field>
+                  );
+                })}
+              </div>
+            ) : null}
+            <div className="pe-list">
+              {(details.specs ?? []).map((row, index) => ({ row, index })).filter(({ row }) => !(template?.attributes.map((item) => item.name) ?? []).includes(row.name)).map(({ row, index }) => (
+                <div key={index} className="pe-kv">
+                  <Input value={row.name} maxLength={20} placeholder="属性名，如 产地" onChange={(event) => patch({ specs: (details.specs ?? []).map((r, i) => (i === index ? { ...r, name: event.target.value } : r)) })} />
+                  <Input value={row.value} maxLength={120} placeholder="中国广东" onChange={(event) => patch({ specs: (details.specs ?? []).map((r, i) => (i === index ? { ...r, value: event.target.value } : r)) })} />
+                  <button type="button" className="pe-del" onClick={() => patch({ specs: (details.specs ?? []).filter((_, i) => i !== index) })}><Trash2 size={15} /></button>
                 </div>
               ))}
-              {options.length < 3 ? <Button variant="ghost" icon={Plus} onClick={() => regenerate([...options, { name: options.length ? "尺码" : "颜色", values: [] }])}>加一个规格维度</Button> : null}
+              <Button variant="ghost" icon={Plus} onClick={() => patch({ specs: [...(details.specs ?? []), { name: "", value: "" }] })}>加一个属性</Button>
+            </div>
+          </section>
+
+          <section data-group="skus" className="pe-sec">
+            <h4>规格与库存<span>{skus.length ? `${options.filter((o) => o.values.length).map((o) => `${o.name} ${o.values.length}`).join(" × ")} = ${skus.length} 个规格` : template ? `这个类目用“${template.dims.map((dim) => dim.name).join(" × ")}”；只卖一个款式就不用填，价格库存写在基本信息里` : "最多 3 个维度，如颜色、尺码"}</span></h4>
+            <div className="pe-dims">
+              {options.map((option, index) => {
+                const preset = template?.dims.find((dim) => dim.name === option.name);
+                return (
+                  <DimRow key={index} name={option.name} presets={preset?.presets} values={option.values}
+                    onChange={(values) => regenerate(options.map((o, i) => (i === index ? { ...o, values } : o)))}
+                    onRename={preset ? undefined : (next) => regenerate(options.map((o, i) => (i === index ? { ...o, name: next } : o)))}
+                    onRemove={preset ? undefined : () => regenerate(options.filter((_, i) => i !== index))} />
+                );
+              })}
+              {options.length < 3 ? <Button variant="ghost" icon={Plus} onClick={() => regenerate([...options, { name: options.some((o) => o.name === "款式") ? "规格" : "款式", values: [] }])}>加一个规格</Button> : null}
             </div>
             {skus.length ? (
               <div className="pe-table">
-                <div className="pe-tr is-head" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr)) 120px 120px` }}>
-                  {options.map((option) => <span key={option.name}>{option.name}</span>)}<span>价格</span><span>库存</span>
+                <div className="pe-tr is-head" style={{ gridTemplateColumns: `repeat(${skuDims.length}, minmax(0, 1fr)) 110px 100px 140px` }}>
+                  {skuDims.map((option) => <span key={option.name}>{option.name}</span>)}<span>价格（USD）</span><span>库存</span><span>商家编码</span>
+                </div>
+                <div className="pe-tr is-bulk" style={{ gridTemplateColumns: `repeat(${skuDims.length}, minmax(0, 1fr)) 110px 100px 140px` }}>
+                  <span style={{ gridColumn: `span ${skuDims.length}` }}>批量设置 · 全部 {skus.length} 个规格</span>
+                  <Input type="number" min={0} step={0.01} value={bulk.price} placeholder="价格" onChange={(event) => setBulk({ ...bulk, price: event.target.value })} />
+                  <Input type="number" min={0} value={bulk.stock} placeholder="库存" onChange={(event) => setBulk({ ...bulk, stock: event.target.value })} />
+                  <Button size="sm" variant="ghost" disabled={!bulk.price && !bulk.stock}
+                    onClick={() => { patch({ skus: skus.map((sku) => ({ ...sku, ...(bulk.price ? { price: Number(bulk.price) } : {}), ...(bulk.stock ? { stock: Number(bulk.stock) } : {}) })) }); setBulk({ price: "", stock: "" }); }}>应用</Button>
                 </div>
                 {skus.map((sku, index) => (
-                  <div key={index} className="pe-tr" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr)) 120px 120px` }}>
-                    {options.map((option) => <span key={option.name}>{sku.values[option.name]}</span>)}
+                  <div key={index} className="pe-tr" style={{ gridTemplateColumns: `repeat(${skuDims.length}, minmax(0, 1fr)) 110px 100px 140px` }}>
+                    {skuDims.map((option) => <span key={option.name}>{sku.values[option.name]}</span>)}
                     <Input type="number" min={0} step={0.01} value={sku.price} onChange={(event) => patch({ skus: skus.map((s, i) => (i === index ? { ...s, price: Number(event.target.value) } : s)) })} />
                     <Input type="number" min={0} className={sku.stock < 10 ? "is-low" : undefined} value={sku.stock} onChange={(event) => patch({ skus: skus.map((s, i) => (i === index ? { ...s, stock: Number(event.target.value) } : s)) })} />
+                    <Input value={sku.code ?? ""} maxLength={40} placeholder="选填" onChange={(event) => patch({ skus: skus.map((s, i) => (i === index ? { ...s, code: event.target.value } : s)) })} />
                   </div>
                 ))}
               </div>
             ) : null}
           </section>
+
+          {sized ? (
+            <section data-group="sizeChart" className="pe-sec">
+              <h4>尺码表<span>{sizeDim ? `按勾选的${sizeDim.name}自动建好行，填数字就行` : "这个类目需要尺码表"}</span></h4>
+              {chart ? (
+                <div className="pe-table">
+                  <div className="pe-tr is-head" style={{ gridTemplateColumns: `repeat(${chart.headers.length}, minmax(0, 1fr)) 32px` }}>
+                    {chart.headers.map((header, col) => (
+                      <Input key={col} value={header} maxLength={20} onChange={(event) => patch({ sizeChart: { ...chart, headers: chart.headers.map((h, i) => (i === col ? event.target.value : h)) } })} />
+                    ))}
+                    <span />
+                  </div>
+                  {chart.rows.map((row, rowIndex) => (
+                    <div key={rowIndex} className="pe-tr" style={{ gridTemplateColumns: `repeat(${chart.headers.length}, minmax(0, 1fr)) 32px` }}>
+                      {chart.headers.map((_, col) => (
+                        <Input key={col} value={row[col] ?? ""} maxLength={20}
+                          onChange={(event) => patch({ sizeChart: { ...chart, rows: chart.rows.map((r, i) => (i === rowIndex ? chart.headers.map((__, c) => (c === col ? event.target.value : r[c] ?? "")) : r)) } })} />
+                      ))}
+                      <button type="button" className="pe-del" onClick={() => patch({ sizeChart: { ...chart, rows: chart.rows.filter((_, i) => i !== rowIndex) } })}><Trash2 size={15} /></button>
+                    </div>
+                  ))}
+                  <div className="pe-table-ops">
+                    <Button variant="ghost" icon={Plus} onClick={() => patch({ sizeChart: { ...chart, rows: [...chart.rows, chart.headers.map(() => "")] } })}>加一行</Button>
+                    <Button variant="ghost" icon={Plus} onClick={() => patch({ sizeChart: { headers: [...chart.headers, "新列"], rows: chart.rows.map((r) => [...r, ""]) } })}>加一列</Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="pe-hint">先在“规格与库存”里勾选{sizeDim?.name ?? "尺码"}，这里自动建表。</p>
+              )}
+            </section>
+          ) : null}
 
           <section data-group="copy" className="pe-sec">
             <h4>卖点与描述<HelpTip>学生端商品详情和买家 AI 都会看到。不要写 best、100%、guaranteed 这类绝对化用语</HelpTip></h4>
@@ -683,50 +842,6 @@ function ProductEditor({ session, seed, onClose, onSaved }: { session: Session; 
               ))}
             </div>
             <Field label="描述"><Textarea rows={3} maxLength={2000} value={details.description ?? ""} onChange={(event) => patch({ description: event.target.value })} /></Field>
-          </section>
-
-          <section data-group="specs" className="pe-sec">
-            <h4>参数<span>至少 3 行，如材质、尺寸、重量、产地、包装清单</span></h4>
-            <div className="pe-list">
-              {(details.specs ?? []).map((row, index) => (
-                <div key={index} className="pe-kv">
-                  <Input value={row.name} maxLength={20} placeholder="材质" onChange={(event) => patch({ specs: (details.specs ?? []).map((r, i) => (i === index ? { ...r, name: event.target.value } : r)) })} />
-                  <Input value={row.value} maxLength={120} placeholder="95% 聚酯纤维，5% 氨纶" onChange={(event) => patch({ specs: (details.specs ?? []).map((r, i) => (i === index ? { ...r, value: event.target.value } : r)) })} />
-                  <button type="button" className="pe-del" onClick={() => patch({ specs: (details.specs ?? []).filter((_, i) => i !== index) })}><Trash2 size={15} /></button>
-                </div>
-              ))}
-              <Button variant="ghost" icon={Plus} onClick={() => patch({ specs: [...(details.specs ?? []), { name: "", value: "" }] })}>加一行</Button>
-            </div>
-          </section>
-
-          <section data-group="sizeChart" className="pe-sec">
-            <h4>尺码表<span>{sized ? "服饰鞋包类目需要" : "这个类目不需要尺码表，可以不填"}</span></h4>
-            {chart ? (
-              <div className="pe-table">
-                <div className="pe-tr is-head" style={{ gridTemplateColumns: `repeat(${chart.headers.length}, minmax(0, 1fr)) 32px` }}>
-                  {chart.headers.map((header, col) => (
-                    <Input key={col} value={header} maxLength={20} onChange={(event) => patch({ sizeChart: { ...chart, headers: chart.headers.map((h, i) => (i === col ? event.target.value : h)) } })} />
-                  ))}
-                  <span />
-                </div>
-                {chart.rows.map((row, rowIndex) => (
-                  <div key={rowIndex} className="pe-tr" style={{ gridTemplateColumns: `repeat(${chart.headers.length}, minmax(0, 1fr)) 32px` }}>
-                    {chart.headers.map((_, col) => (
-                      <Input key={col} value={row[col] ?? ""} maxLength={20}
-                        onChange={(event) => patch({ sizeChart: { ...chart, rows: chart.rows.map((r, i) => (i === rowIndex ? chart.headers.map((__, c) => (c === col ? event.target.value : r[c] ?? "")) : r)) } })} />
-                    ))}
-                    <button type="button" className="pe-del" onClick={() => patch({ sizeChart: { ...chart, rows: chart.rows.filter((_, i) => i !== rowIndex) } })}><Trash2 size={15} /></button>
-                  </div>
-                ))}
-                <div className="pe-table-ops">
-                  <Button variant="ghost" icon={Plus} onClick={() => patch({ sizeChart: { ...chart, rows: [...chart.rows, chart.headers.map(() => "")] } })}>加一行</Button>
-                  <Button variant="ghost" icon={Plus} onClick={() => patch({ sizeChart: { headers: [...chart.headers, "新列"], rows: chart.rows.map((r) => [...r, ""]) } })}>加一列</Button>
-                  <Button variant="ghost" onClick={() => patch({ sizeChart: null })}>清空尺码表</Button>
-                </div>
-              </div>
-            ) : (
-              <Button variant="ghost" icon={Plus} onClick={() => patch({ sizeChart: { headers: ["尺码", "胸围(cm)", "腰围(cm)", "衣长(cm)"], rows: [["S", "", "", ""], ["M", "", "", ""], ["L", "", "", ""]] } })}>建一张尺码表</Button>
-            )}
           </section>
 
           <section data-group="shipping" className="pe-sec">
@@ -770,6 +885,12 @@ function ProductEditor({ session, seed, onClose, onSaved }: { session: Session; 
           </section>
         </div>
       </div>
+      {picking ? <CategoryPicker value={category || null} recent={recent} onClose={() => setPicking(false)} onPick={pickCategory} /> : null}
+      {switching ? (
+        <Confirm title="更换类目" confirmText="更换" onConfirm={() => applyCategory(switching)} onClose={() => setSwitching(null)}>
+          换成「{switching.split(CATEGORY_SEP).join(" › ")}」后，类目属性、规格和尺码表要按新类目重新填，已经填的会清空。
+        </Confirm>
+      ) : null}
     </Drawer>
   );
 }

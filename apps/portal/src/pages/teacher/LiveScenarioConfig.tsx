@@ -8,7 +8,8 @@ import {
 import {
   ApiError, apiGet, apiPost, apiRequestPatch, createPersona, deletePersona, fetchPersonas, fetchScenarios, fetchTeacherTasks,
   generatePersonaDraft, samplePersona, updatePersona,
-  type PersonaSample, type PersonaTemplate, type ScenarioSummary, type Session, type StoreProduct, type TeacherTask,
+  fetchStoreCoupons,
+  type PersonaSample, type PersonaTemplate, type ScenarioSummary, type Session, type StoreCoupon, type StoreProduct, type TeacherTask,
 } from "../../api/client";
 import {
   Bench, Board, Button, Confirm, DataTable, Dialog, Drawer, Field, FilterChips, HeaderTabs, HelpTip, Input, MoreMenu, SearchBox, Segmented, Select, StageTag,
@@ -16,8 +17,9 @@ import {
 } from "../../ui";
 import { composePersonaWithRule } from "@cecs/domain";
 import { ProductTab } from "./ProductConfig";
+import { CouponTab } from "./CouponConfig";
 
-type ConfigTab = "scenarios" | "personas" | "products";
+type ConfigTab = "scenarios" | "personas" | "products" | "coupons";
 
 const LANGUAGE_LABELS: Record<string, string> = { "en-US": "英语", "es-ES": "西班牙语", "fr-FR": "法语" };
 const LANGUAGE_BY_LABEL: Record<string, string> = Object.fromEntries(Object.entries(LANGUAGE_LABELS).map(([code, label]) => [label, code]));
@@ -31,16 +33,18 @@ export function LiveScenarioConfig({ session }: { session: Session }) {
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([]);
   const [personas, setPersonas] = useState<PersonaTemplate[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
+  const [coupons, setCoupons] = useState<StoreCoupon[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      const [scenarioList, personaList, productList] = await Promise.all([
-        fetchScenarios(session), fetchPersonas(session), apiGet<StoreProduct[]>("/v1/store/products?all=1", session),
+      const [scenarioList, personaList, productList, couponList] = await Promise.all([
+        fetchScenarios(session), fetchPersonas(session), apiGet<StoreProduct[]>("/v1/store/products?all=1", session), fetchStoreCoupons(session),
       ]);
       setScenarios(scenarioList);
       setPersonas(personaList);
       setProducts(productList);
+      setCoupons(couponList);
     } catch (cause) {
       toast.error(errorText(cause));
     } finally {
@@ -56,6 +60,7 @@ export function LiveScenarioConfig({ session }: { session: Session }) {
           { id: "scenarios", label: "场景", count: scenarios.length },
           { id: "personas", label: "买家画像", count: personas.length },
           { id: "products", label: "店铺商品", count: products.length },
+          { id: "coupons", label: "优惠券", count: coupons.length },
         ]}
         value={tab}
         onChange={setTab}
@@ -63,6 +68,7 @@ export function LiveScenarioConfig({ session }: { session: Session }) {
       {tab === "scenarios" ? <ScenarioTab session={session} scenarios={scenarios} reload={load} /> : null}
       {tab === "personas" ? <PersonaTab session={session} personas={personas} loading={loading} reload={load} /> : null}
       {tab === "products" ? <ProductTab session={session} products={products} loading={loading} reload={load} /> : null}
+      {tab === "coupons" ? <CouponTab session={session} coupons={coupons} products={products} loading={loading} reload={load} /> : null}
     </>
   );
 }
@@ -247,7 +253,7 @@ function ScenarioDrawer({ session, scenario, onClose, onSaved }: { session: Sess
               </Select>
             </Field>
           </div>
-          <Field label={<>适用客户价值层<HelpTip>新建任务选了这个场景时，买家范围会自动预选这些客户类型，老师可以再改。不选 = 不限</HelpTip></>}>
+          <Field label={<>适用客户类型<HelpTip>新建任务选了这个场景时，买家范围会自动预选这些客户类型，老师可以再改。不选 = 不限</HelpTip></>}>
             <OptionChips items={CUSTOMER_TYPES} icons={CUSTOMER_TYPE_ICON} value={customerTypes} onChange={setCustomerTypes} />
           </Field>
         </div>
@@ -285,7 +291,7 @@ const EMPTY_PERSONA: PersonaForm = {
   name: "", buyerRole: "", decisionStyle: "", customerType: "", concerns: [], note: "",
   nationality: NATIONALITIES[0]!, language: SUPPORTED_LANGUAGES[0]!, personality: PERSONALITIES[0]!, emotion: EMOTIONS[0]!,
 };
-const PERSONA_COLUMNS = ["买家角色", "决策风格", "客户价值层", "关注点", "补充说明", "国籍", "语言", "性格", "进店情绪", "名称（选填）"] as const;
+const PERSONA_COLUMNS = ["买家角色", "消费偏好", "客户类型", "关注点", "补充说明", "国籍", "语言", "性格", "进店情绪", "名称（选填）"] as const;
 
 /** 卡片上的“看重”：新结构用关注点，旧结构（还没选角色和风格）退回消费偏好 */
 const lookOf = (item: { concerns?: string[]; preference?: string }) => (item.concerns?.length ? item.concerns.join("、") : item.preference ?? "");
@@ -377,14 +383,14 @@ function PersonaTab({ session, personas, loading, reload }: { session: Session; 
     const notes = XLSX.utils.aoa_to_sheet([
       ["列", "可填的值"],
       ["买家角色", BUYER_ROLES.join("、")],
-      ["决策风格", DECISION_STYLES.join("、")],
-      ["客户价值层", CUSTOMER_TYPES.join("、")],
+      ["消费偏好", DECISION_STYLES.join("、")],
+      ["客户类型", CUSTOMER_TYPES.join("、")],
       ["关注点", `${PERSONA_CONCERNS.join("、")}；1–${PERSONA_CONCERN_MAX} 个，用顿号分隔`],
       ["国籍", NATIONALITIES.join("、")],
       ["语言", Object.values(LANGUAGE_LABELS).join("、")],
       ["性格", PERSONALITIES.join("、")],
       ["进店情绪", EMOTIONS.join("、")],
-      ["名称", "不填就用“决策风格 + 买家角色”"],
+      ["名称", "不填就用“消费偏好 + 买家角色”"],
     ]);
     notes["!cols"] = [{ wch: 10 }, { wch: 90 }];
     const book = XLSX.utils.book_new();
@@ -405,15 +411,15 @@ function PersonaTab({ session, personas, loading, reload }: { session: Session; 
         const cell = (key: string) => String(raw[key] ?? "").trim();
         const row = index + 2;
         const body: PersonaForm = {
-          name: cell("名称（选填）"), buyerRole: cell("买家角色"), decisionStyle: cell("决策风格"), customerType: cell("客户价值层"),
+          name: cell("名称（选填）"), buyerRole: cell("买家角色"), decisionStyle: cell("消费偏好") || cell("决策风格"), customerType: cell("客户类型") || cell("客户价值层"),
           concerns: cell("关注点").split(/[、,，/]/).map((item) => item.trim()).filter(Boolean), note: cell("补充说明"),
           nationality: cell("国籍"), language: LANGUAGE_BY_LABEL[cell("语言")] ?? cell("语言"), personality: cell("性格"), emotion: cell("进店情绪"),
         };
         if (!body.buyerRole && !body.decisionStyle) return;
         const has = (list: readonly string[], value: string) => list.includes(value);
         const problem = !has(BUYER_ROLES, body.buyerRole) ? `买家角色「${body.buyerRole}」不在可选范围`
-          : !has(DECISION_STYLES, body.decisionStyle) ? `决策风格「${body.decisionStyle}」不在可选范围`
-            : !has(CUSTOMER_TYPES, body.customerType) ? `客户价值层「${body.customerType}」不在可选范围`
+          : !has(DECISION_STYLES, body.decisionStyle) ? `消费偏好「${body.decisionStyle}」不在可选范围`
+            : !has(CUSTOMER_TYPES, body.customerType) ? `客户类型「${body.customerType}」不在可选范围`
               : !body.concerns.length || body.concerns.length > PERSONA_CONCERN_MAX || body.concerns.some((item) => !has(PERSONA_CONCERNS, item)) ? `关注点要从可选项里选 1–${PERSONA_CONCERN_MAX} 个`
                 : !has(NATIONALITIES, body.nationality) ? `国籍「${body.nationality}」不在可选范围`
                   : !has(SUPPORTED_LANGUAGES, body.language) ? `语言「${cell("语言")}」不在可选范围`
@@ -465,16 +471,15 @@ function PersonaTab({ session, personas, loading, reload }: { session: Session; 
         }
       >
         <SearchBox value={keyword} onChange={setKeyword} placeholder="搜索人群或关注点" />
-        <FilterChips
-          items={[{ id: "", label: "全部", count: personas.length }, ...CUSTOMER_TYPES.map((item) => ({ id: item, label: item, count: personas.filter((row) => row.customerType === item).length }))]}
-          value={type}
-          onChange={setType}
-        />
-        <Select className="pc-style-filter" value={style} onChange={(event) => setStyle(event.target.value)}>
-          <option value="">全部决策风格</option>
-          {DECISION_STYLES.map((item) => <option key={item}>{item}</option>)}
+        <Select className="pc-style-filter" value={type} onChange={(event) => setType(event.target.value)}>
+          <option value="">全部客户类型</option>
+          {CUSTOMER_TYPES.map((item) => <option key={item} value={item}>{item} {personas.filter((row) => row.customerType === item).length}</option>)}
         </Select>
-        <HelpTip>每张卡片是一类买家：谁在买（买家角色）、怎么做决定（决策风格）、和店铺的关系（客户价值层），外加看重什么。每次接待时姓名、性别、头像随机生成；国籍、性格、情绪是默认值，任务的随机规则可以改掉</HelpTip>
+        <Select className="pc-style-filter" value={style} onChange={(event) => setStyle(event.target.value)}>
+          <option value="">全部消费偏好</option>
+          {DECISION_STYLES.map((item) => <option key={item} value={item}>{item} {personas.filter((row) => row.decisionStyle === item).length}</option>)}
+        </Select>
+        <HelpTip>每张卡片是一类买家：谁在买（买家角色）、怎么做决定（消费偏好）、和店铺的关系（客户类型），外加看重什么。每次接待时姓名、性别、头像随机生成；国籍、性格、情绪是默认值，任务的随机规则可以改掉</HelpTip>
       </Toolbar>
       {loading ? <Board><p className="board-quiet">正在读取…</p></Board> : visible.length === 0 ? (
         <Board><p className="board-quiet">{keyword || type || style ? "没有符合条件的画像" : "还没有画像，点「新建画像」或按模板批量导入"}</p></Board>
@@ -557,7 +562,7 @@ function PersonaDrawDialog({ session, personas, initial, onClose }: { session: S
   useEffect(() => { void draw(); }, [draw]);
 
   const fixed: Array<[string, string]> = [
-    ["买家角色", template.buyerRole ?? template.identity], ["决策风格", template.decisionStyle ?? "—"], ["价值层", template.customerType], ["看重", lookOf(template)],
+    ["买家角色", template.buyerRole ?? template.identity], ["消费偏好", template.decisionStyle ?? "—"], ["客户类型", template.customerType], ["看重", lookOf(template)],
   ];
   const defaults: Array<[string, string]> = [
     ["国籍", template.nationality], ["语言", LANGUAGE_LABELS[template.language] ?? template.language], ["性格", template.personality], ["情绪", template.emotion],
@@ -641,7 +646,7 @@ function PersonaDialog({ session, persona, onClose, onSaved }: { session: Sessio
     concerns: persona.concerns ?? [], note: persona.note ?? "", nationality: persona.nationality, language: persona.language,
     personality: persona.personality, emotion: persona.emotion,
   } : EMPTY_PERSONA));
-  // 名称默认跟着“决策风格 + 买家角色”走；老师手改过就不再自动覆盖
+  // 名称默认跟着“消费偏好 + 买家角色”走；老师手改过就不再自动覆盖
   const [nameTouched, setNameTouched] = useState(() => Boolean(persona && persona.buyerRole && persona.name !== personaDisplayName(persona.decisionStyle, persona.buyerRole)));
   const [editingName, setEditingName] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -672,7 +677,7 @@ function PersonaDialog({ session, persona, onClose, onSaved }: { session: Sessio
   }
 
   async function save() {
-    if (!form.buyerRole || !form.decisionStyle || !form.customerType) return toast.error("买家角色、决策风格、客户价值层都要选");
+    if (!form.buyerRole || !form.decisionStyle || !form.customerType) return toast.error("买家角色、消费偏好、客户类型都要选");
     if (!form.concerns.length) return toast.error("至少选一个关注点");
     setBusy(true);
     const body = { ...form, name: name.trim(), note: form.note.trim() };
@@ -707,10 +712,10 @@ function PersonaDialog({ session, persona, onClose, onSaved }: { session: Sessio
             <h5>这类买家是谁</h5>
             <div className="pf-row"><label>买家角色</label><OptionChips items={BUYER_ROLES} max={1} value={form.buyerRole ? [form.buyerRole] : []} onChange={([value]) => patch({ buyerRole: value ?? "" })} /></div>
             <div className="pf-row">
-              <label>决策风格<HelpTip>取自 Sproles &amp; Kendall 消费者决策风格量表的 8 种，决定对话怎么走：价格敏感型会压价，选择困难型会反复比较。鼠标停在选项上看说明</HelpTip></label>
+              <label>消费偏好<HelpTip>取自 Sproles &amp; Kendall 消费者决策风格量表的 8 种，决定对话怎么走：价格敏感型会压价，选择困难型会反复比较。鼠标停在选项上看说明</HelpTip></label>
               <OptionChips items={DECISION_STYLES} max={1} tips={DECISION_STYLE_TIPS} value={form.decisionStyle ? [form.decisionStyle] : []} onChange={([value]) => patch({ decisionStyle: value ?? "" })} />
             </div>
-            <div className="pf-row"><label>客户价值层</label><OptionChips items={CUSTOMER_TYPES} max={1} icons={CUSTOMER_TYPE_ICON} value={form.customerType ? [form.customerType] : []} onChange={([value]) => patch({ customerType: value ?? "" })} /></div>
+            <div className="pf-row"><label>客户类型</label><OptionChips items={CUSTOMER_TYPES} max={1} icons={CUSTOMER_TYPE_ICON} value={form.customerType ? [form.customerType] : []} onChange={([value]) => patch({ customerType: value ?? "" })} /></div>
           </section>
           <section className="pf-grp">
             <h5>看重什么<span>最多选 {PERSONA_CONCERN_MAX} 个，买家会围绕这些提问</span></h5>

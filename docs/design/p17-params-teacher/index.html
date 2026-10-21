@@ -161,6 +161,66 @@ body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microso
 .sd-task b { font-weight: 500; } .sd-task .tg { margin-left: 6px; } .sd-task .st { font-size: 13px; color: #5e6a7b; } .sd-task .st.done { color: #1a7445; } .sd-task .sc { text-align: right; font-weight: 700; } .sd-task .sc.lo { color: #b8302a; } .sd-task .sc.na { color: #c3cad5; font-weight: 400; } .sd-task .go { text-align: right; font-size: 13px; color: #174aa8; } .sd-task .go.off { color: #c3cad5; }
 .sd-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 24px; border-top: 1px solid #e3e7ee; } .sd-f span { border: 1px solid #c8cfda; border-radius: 6px; padding: 4px 14px; font-size: 14px; }
 .xl { width: 100%; border-collapse: collapse; background: #fff; font-size: 12px; border: 1px solid #d6dce5; } .xl th, .xl td { border: 1px solid #e3e7ee; padding: 4px 8px; text-align: left; white-space: nowrap; } .xl th { background: #f1f3f7; } .xl .xn { background: #eef4fe; }
+
+/* ===== 九、场景配置 ===== */
+.flow { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 8px 0 4px; }
+.flow div { background: #fff; border: 1px solid #d6dce5; border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+.flow div b { display: block; font-size: 14px; margin-bottom: 2px; } .flow div span { color: #5e6a7b; font-size: 12px; } .flow div i { font-style: normal; color: #1d5fd1; font-weight: 700; margin-right: 6px; }
+.pnl { background: #fff; border: 1px solid #d6dce5; border-radius: 12px; box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); overflow: hidden; }
+.pnl-h { display: flex; align-items: center; gap: 10px; padding: 14px 24px; border-bottom: 1px solid #e3e7ee; font-size: 17px; font-weight: 700; } .pnl-h .x { margin-left: auto; color: #9aa3b0; font-weight: 400; } .pnl-h small { font-size: 13px; font-weight: 400; color: #5e6a7b; }
+.pnl-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 24px; border-top: 1px solid #e3e7ee; } .pnl-f span { border: 1px solid #c8cfda; border-radius: 6px; padding: 5px 16px; font-size: 14px; } .pnl-f span.p { background: #1d5fd1; border-color: #1d5fd1; color: #fff; font-weight: 600; } .pnl-f em { margin-right: auto; font-style: normal; font-size: 13px; color: #5e6a7b; align-self: center; }
+.ways3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 24px; }
+.ways3 > div { border: 1px solid #e3e7ee; border-radius: 12px; padding: 18px 20px; } .ways3 > div.on { border-color: #1d5fd1; box-shadow: 0 0 0 3px #e8effc; }
+.ways3 .wi { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: #e8effc; color: #1d5fd1; margin-bottom: 10px; } .ways3 .wi svg { width: 20px; height: 20px; }
+.ways3 b { display: block; font-size: 16px; margin-bottom: 4px; } .ways3 p { margin: 0 0 8px; font-size: 13px; color: #465163; line-height: 20px; } .ways3 small { font-size: 12px; color: #5e6a7b; }
+.ways3 .alt { display: block; margin-top: 8px; font-size: 12px; color: #174aa8; }
+.cats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; padding: 20px 24px 24px; }
+.cats > div { border: 1px solid #e3e7ee; border-radius: 10px; padding: 12px 14px; font-size: 13px; } .cats > div.on { border-color: #1d5fd1; background: #f5f8fe; }
+.cats b { display: block; font-size: 15px; margin-bottom: 4px; } .cats span { display: block; color: #5e6a7b; font-size: 12px; line-height: 18px; } .cats em { font-style: normal; color: #a3640b; }
+.cat-search { margin: 16px 24px 0; height: 36px; border: 1px solid #c8cfda; border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 0 12px; color: #9aa3b0; font-size: 14px; }
+.pe2 { display: grid; grid-template-columns: 180px minmax(0, 1fr); min-height: 560px; }
+.pe2-nav { border-right: 1px solid #e3e7ee; padding: 14px 10px; background: #fbfcfd; }
+.pe2-nav .cat { margin: 0 6px 12px; padding: 10px 12px; border-radius: 8px; background: #fff; border: 1px solid #e3e7ee; font-size: 13px; } .pe2-nav .cat b { display: block; font-size: 14px; } .pe2-nav .cat a { font-size: 12px; color: #174aa8; }
+.pe2-nav div.it { display: flex; align-items: center; justify-content: space-between; height: 36px; padding: 0 12px; border-radius: 6px; font-size: 14px; color: #465163; } .pe2-nav div.it.on { background: #e8effc; color: #174aa8; font-weight: 600; } .pe2-nav div.it i { font-style: normal; font-size: 12px; } .pe2-nav div.it i.ok { color: #1a7445; } .pe2-nav div.it i.miss { color: #a3640b; }
+.pe2-body { padding: 18px 24px; }
+.pe2-body h4 { margin: 0 0 10px; font-size: 15px; display: flex; align-items: baseline; gap: 8px; } .pe2-body h4 small { font-size: 12px; font-weight: 400; color: #5e6a7b; }
+.pe2-sec { padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid #edf0f4; }
+.attrs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 14px; }
+.fld small { display: block; font-size: 12px; color: #465163; margin-bottom: 3px; } .fld small b { color: #b8302a; font-weight: 400; } .fld span { display: flex; align-items: center; justify-content: space-between; height: 34px; border: 1px solid #c8cfda; border-radius: 6px; padding: 0 10px; font-size: 13px; color: #161c26; background: #fff; } .fld span.ph { color: #9aa3b0; }
+.dim { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 10px; align-items: start; margin-bottom: 10px; font-size: 13px; } .dim > b { padding-top: 5px; font-weight: 600; }
+.chipset { display: flex; flex-wrap: wrap; gap: 6px; } .chipset span { padding: 3px 12px; border-radius: 14px; border: 1px solid #c8cfda; font-size: 13px; background: #fff; } .chipset span.on { border-color: #1d5fd1; background: #e8effc; color: #174aa8; font-weight: 600; } .chipset span.add { border-style: dashed; color: #5e6a7b; }
+.skut { border: 1px solid #e3e7ee; border-radius: 8px; overflow: hidden; font-size: 13px; margin-top: 8px; }
+.skut .r { display: grid; grid-template-columns: 1fr 1fr 110px 110px 130px; gap: 10px; align-items: center; padding: 6px 12px; border-top: 1px solid #edf0f4; } .skut .r:first-child { border-top: 0; background: #f6f8fb; color: #5e6a7b; font-size: 12px; } .skut .r.bulk { background: #fbfcfd; color: #174aa8; }
+.skut .in { border: 1px solid #c8cfda; border-radius: 6px; padding: 3px 8px; background: #fff; }
+.note2 { font-size: 12px; color: #5e6a7b; margin-top: 6px; }
+.cpn-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; padding: 20px; background: #f4f6f9; border: 1px solid #d6dce5; border-radius: 12px; }
+.cpn { display: grid; grid-template-columns: 120px minmax(0, 1fr); background: #fff; border: 1px solid #e3e7ee; border-radius: 12px; overflow: hidden; }
+.cpn .v { display: grid; place-content: center; text-align: center; background: #fdf3e4; color: #b45f12; border-right: 2px dashed #f0d7b3; } .cpn .v b { font-size: 24px; line-height: 30px; } .cpn .v small { font-size: 12px; }
+.cpn.off .v { background: #f1f3f7; color: #9aa3b0; border-right-color: #e3e7ee; }
+.cpn .b { padding: 12px 16px; font-size: 13px; } .cpn .b .t { display: flex; align-items: center; gap: 8px; } .cpn .b .t b { font-size: 15px; } .cpn .b .t .sw { margin-left: auto; width: 34px; height: 20px; border-radius: 10px; background: #1d5fd1; position: relative; } .cpn .b .t .sw::after { content: ""; position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; } .cpn.off .b .t .sw { background: #c8cfda; } .cpn.off .b .t .sw::after { right: auto; left: 2px; }
+.cpn .b p { margin: 6px 0 0; color: #465163; } .cpn .b .m { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; } .cpn .b .m span { padding: 1px 8px; border-radius: 4px; background: #f1f3f7; font-size: 12px; color: #465163; } .cpn .b .m span.c { background: #e3f4ea; color: #1a7445; }
+.cpn-form { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px 16px; align-items: center; padding: 20px 24px; font-size: 14px; }
+.cpn-form > b { font-weight: 500; color: #465163; font-size: 13px; }
+.seg3 { display: inline-flex; padding: 3px; border-radius: 8px; background: #f1f3f7; } .seg3 span { padding: 3px 14px; border-radius: 6px; font-size: 13px; color: #465163; } .seg3 span.on { background: #fff; color: #161c26; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.inl { display: inline-flex; align-items: center; gap: 8px; } .inl .in { border: 1px solid #c8cfda; border-radius: 6px; padding: 5px 10px; min-width: 90px; background: #fff; }
+.prev { grid-column: 2; display: inline-flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid #f0d7b3; background: #fffaf2; border-radius: 10px; font-size: 13px; color: #8c5b0f; }
+.ptool { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: #f4f6f9; border: 1px solid #d6dce5; border-radius: 12px; font-size: 13px; }
+.ptool .sb { width: 240px; height: 34px; border: 1px solid #c8cfda; border-radius: 6px; background: #fff; display: flex; align-items: center; padding: 0 10px; color: #9aa3b0; }
+.ptool .sl { height: 34px; border: 1px solid #c8cfda; border-radius: 6px; background: #fff; display: inline-flex; align-items: center; gap: 24px; padding: 0 10px; } .ptool .sl.hl { outline: 2px dashed #6e9be8; outline-offset: 2px; }
+.ptool .bt { height: 34px; border: 1px solid #c8cfda; border-radius: 6px; background: #fff; display: inline-flex; align-items: center; padding: 0 12px; } .ptool .bt.p { background: #1d5fd1; color: #fff; border-color: #1d5fd1; font-weight: 600; } .ptool .r { margin-left: auto; display: flex; gap: 8px; }
+.ptool .chip { height: 30px; border-radius: 15px; border: 1px solid #1d5fd1; background: #e8effc; color: #174aa8; display: inline-flex; align-items: center; padding: 0 12px; font-weight: 600; }
+
+/* 选类目：面包屑 + 三列级联 */
+.cp-crumb { margin: 16px 24px 0; padding: 10px 14px; border-radius: 8px; background: #f6f8fb; font-size: 14px; color: #5e6a7b; }
+.cp-crumb a { color: #174aa8; } .cp-crumb i { font-style: normal; margin: 0 8px; color: #9aa3b0; }
+.cp-search { display: flex; gap: 10px; margin: 12px 24px 0; } .cp-search span { flex: 1; height: 36px; border: 1px solid #1d5fd1; border-radius: 6px; display: flex; align-items: center; padding: 0 12px; color: #9aa3b0; font-size: 14px; } .cp-search b { height: 36px; padding: 0 18px; border-radius: 6px; background: #f1f3f7; display: inline-flex; align-items: center; font-weight: 500; }
+.cp-hist { margin: 10px 24px 0; font-size: 13px; color: #5e6a7b; } .cp-hist span { color: #161c26; margin-left: 12px; } .cp-hist span + span { padding-left: 12px; border-left: 1px solid #d6dce5; }
+.cp-cols { display: grid; grid-template-columns: repeat(3, 1fr) 300px; margin: 12px 24px 0; border: 1px solid #e3e7ee; border-radius: 10px; overflow: hidden; height: 360px; }
+.cp-col { border-right: 1px solid #e3e7ee; padding: 10px 0; overflow: hidden; } .cp-col .f { margin: 0 10px 8px; height: 32px; border: 1px solid #d6dce5; border-radius: 6px; display: flex; align-items: center; padding: 0 10px; color: #9aa3b0; font-size: 13px; }
+.cp-col div.n { display: flex; justify-content: space-between; align-items: center; height: 34px; padding: 0 14px; font-size: 14px; color: #161c26; } .cp-col div.n.on { background: #eef4fe; color: #174aa8; font-weight: 600; box-shadow: inset 3px 0 0 #1d5fd1; } .cp-col div.n em { font-style: normal; color: #9aa3b0; }
+.cp-info { padding: 14px 16px; background: #fbfcfd; font-size: 13px; } .cp-info h6 { margin: 0 0 8px; font-size: 12px; color: #5e6a7b; font-weight: 600; } .cp-info b { display: block; font-size: 15px; margin-bottom: 10px; }
+.cp-info dl { display: grid; grid-template-columns: 52px 1fr; gap: 6px 8px; margin: 0; } .cp-info dt { color: #5e6a7b; } .cp-info dd { margin: 0; } .cp-info .sz { color: #a3640b; }
+.tree { width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; border: 1px solid #d6dce5; } .tree th, .tree td { border: 1px solid #e3e7ee; padding: 5px 10px; text-align: left; vertical-align: top; } .tree th { background: #f6f8fb; color: #465163; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -297,6 +357,139 @@ body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microso
     <tr><td>s2601001</td><td>张三</td><td>—</td><td>正常</td><td class="xn">2 / 4</td><td class="xn">64</td><td class="xn">2026/10/18 16:40</td><td>2026/7/13</td></tr>
     <tr><td>s2601002</td><td>李四</td><td>—</td><td>正常</td><td class="xn">0 / 4</td><td class="xn">—</td><td class="xn">还没练过</td><td>2026/7/13</td></tr>
   </table>
+
+  <h2>九、场景配置 <small>参数 2.2.6</small></h2>
+  <table class="t">
+    <tr><th>#</th><th>位置</th><th>现在</th><th>改法</th></tr>
+    <tr><td>G1</td><td>添加商品</td><td>三张大卡是“粘贴链接 / 粘贴详情页文字 / 从商品库挑选”，手动填写挤在下面一行；手动填写时类目藏在基本信息里，规格维度随便填，所有类目都显示尺码表</td><td class="chg">三条主路：<b>新建商品</b>（手动）/ 粘贴商品链接（打不开时改粘贴详情页文字）/ 从商品库挑选；Excel 导入挪到工具栏“批量导入”。新建商品按主流平台的发布流程：<b>先选类目</b>，类目决定类目属性、规格维度和有没有尺码表</td></tr>
+    <tr><td>G2</td><td>优惠券（新）</td><td>学生工作台的 4 张券写死在代码里，后台没有入口</td><td class="chg">场景配置加第四个页签“优惠券”：名称、类型（满减 / 折扣 / 免运费）、面额、门槛、适用商品、适用客户、有效期、启用。学生工作台只列启用的券，发券给不符合条件的买家不拦，买家 AI 看得到条件</td></tr>
+    <tr><td>S2</td><td>买家画像 · 叫法和筛选</td><td>“客户价值层”四个筛选平铺在工具栏；“决策风格”</td><td class="chg">“客户价值层”改叫<b>客户类型</b>，筛选收进下拉框；“决策风格”改叫<b>消费偏好</b>。画像编辑、新建任务的随机规则、场景的适用客户一起改。只改叫法，选项和数据不动</td></tr>
+  </table>
+
+  <h3 class="sub" style="margin:28px 0 8px;font-size:16px">依据：主流平台发布商品的顺序</h3>
+  <p class="lede">速卖通、Shopee、亚马逊、TikTok Shop 的发布商品页都是先选类目，类目决定后面要填哪些属性、能用哪些规格（变体）；服饰鞋类才有尺码和尺码表。新建商品照这个顺序：</p>
+  <div class="flow">
+    <div><b><i>1</i>选类目</b><span>决定后面每一步填什么</span></div>
+    <div><b><i>2</i>图片与基本信息</b><span>主图、标题、价格</span></div>
+    <div><b><i>3</i>类目属性</b><span>女装填材质、版型；3C 填型号、续航</span></div>
+    <div><b><i>4</i>规格与库存</b><span>类目给好维度，勾选或填值，生成规格表</span></div>
+    <div><b><i>5</i>尺码表</b><span>只有服饰、鞋靴类目</span></div>
+    <div><b><i>6</i>描述、物流、售后</b><span>卖点、发货地与时效、退换</span></div>
+  </div>
+
+  <h3 class="sub" style="margin:28px 0 8px;font-size:16px">G1 添加商品：三条主路</h3>
+  <div class="pnl" style="max-width:960px">
+    <div class="pnl-h">添加商品<span class="x">✕</span></div>
+    <div class="ways3">
+      <div class="on"><span class="wi"><i data-lucide="square-pen"></i></span><b>新建商品</b><p>先选类目，再按类目填属性、规格、库存，和电商平台发布商品的流程一样。</p><small>不消耗额度</small></div>
+      <div><span class="wi"><i data-lucide="link-2"></i></span><b>粘贴商品链接</b><p>粘贴速卖通、亚马逊、Shopee、1688 等平台的商品页链接，AI 读取后整理成商品信息，类目也自动识别。</p><small>约 20 秒一个 · 消耗少量模型额度</small><span class="alt">链接打不开？改为粘贴详情页文字 ›</span></div>
+      <div><span class="wi"><i data-lucide="library-big"></i></span><b>从商品库挑选</b><p>系统内置的跨类目商品，图片和详情都已齐全，勾选后直接上架。</p><small>不消耗额度 · 适合快速开课</small></div>
+    </div>
+  </div>
+  <p class="note">Excel 批量导入挪到店铺商品工具栏的“批量导入”菜单（下载模板 / 选择文件），和买家画像页一样。</p>
+
+  <h3 class="sub" style="margin:28px 0 8px;font-size:16px">G1 新建商品 · 第一步选类目（面包屑 + 级联）</h3>
+  <p class="lede">参照 1688、淘宝的选类目：顶部面包屑是已选路径，点哪一级回到哪一级；可以直接输入商品名搜类目（如“托特包”，列出“箱包 > 女包 > 托特包”这样的完整路径）；“最近使用”记老师用过的类目；三列级联，选到最末一级才能确定。右侧写出这个类目要填的规格、属性和有没有尺码表。</p>
+  <div class="pnl" style="max-width:1260px">
+    <div class="pnl-h">选择类目<span class="x">✕</span></div>
+    <div class="cp-crumb">已选类目：<a>服装</a><i>›</i><a>女装</a><i>›</i><a>连衣裙</a></div>
+    <div class="cp-search"><span>类目搜索：可输入商品名称，如 托特包、蓝牙耳机</span><b>搜索</b></div>
+    <div class="cp-hist">最近使用：<span>连衣裙</span><span>无线耳机</span><span>保温杯</span><span>瑜伽垫</span></div>
+    <div class="cp-cols"><div class="cp-col"><div class="f">名称搜索</div><div class="n on"><span>服装</span><em>›</em></div><div class="n"><span>鞋靴</span><em>›</em></div><div class="n"><span>箱包</span><em>›</em></div><div class="n"><span>3C 数码</span><em>›</em></div><div class="n"><span>家居日用</span><em>›</em></div><div class="n"><span>户外运动</span><em>›</em></div><div class="n"><span>美妆个护</span><em>›</em></div><div class="n"><span>宠物用品</span><em>›</em></div><div class="n"><span>母婴玩具</span><em>›</em></div></div><div class="cp-col"><div class="f">名称搜索</div><div class="n on"><span>女装</span><em>›</em></div><div class="n"><span>男装</span><em>›</em></div><div class="n"><span>童装</span><em>›</em></div><div class="n"><span>内衣家居服</span><em>›</em></div><div class="n"><span>服饰配件</span><em>›</em></div></div><div class="cp-col"><div class="f">名称搜索</div><div class="n on"><span>连衣裙</span><em></em></div><div class="n"><span>半身裙</span><em></em></div><div class="n"><span>T 恤</span><em></em></div><div class="n"><span>衬衫</span><em></em></div><div class="n"><span>针织衫 / 毛衣</span><em></em></div><div class="n"><span>外套</span><em></em></div><div class="n"><span>裤装</span><em></em></div><div class="n"><span>套装</span><em></em></div></div><div class="cp-info"><h6>这个类目要填</h6><b>服装 > 女装 > 连衣裙</b><dl>
+  <dt>规格</dt><dd>颜色 × 尺码（XS–3XL）</dd>
+  <dt>属性</dt><dd>材质、版型、领型、袖长、裙长、风格、适用季节</dd>
+  <dt>尺码表</dt><dd class="sz">需要：尺码、胸围、腰围、裙长、适合身高</dd></dl></div></div>
+    <div class="pnl-f"><span>取消</span><span class="p">确定</span></div>
+  </div>
+
+  <h3 class="sub" style="margin:28px 0 8px;font-size:16px">类目树（预设，规格和属性挂在第二级）</h3>
+  <table class="tree">
+    <tr><th>一级</th><th>二级（规格 · 尺码表）</th><th>三级（示例）</th><th>类目属性</th></tr>
+    <tr><td rowspan="2">服装</td><td>女装 / 男装 / 童装：颜色 × 尺码 · 有尺码表</td><td>连衣裙、半身裙、T 恤、衬衫、外套、裤装</td><td>材质、版型、领型、袖长、风格、适用季节</td></tr>
+    <tr><td>服饰配件：颜色</td><td>帽子、围巾、腰带</td><td>材质、风格</td></tr>
+    <tr><td>鞋靴</td><td>女鞋 / 男鞋：颜色 × 鞋码（US 5–12）· 有尺码表</td><td>运动鞋、凉鞋、靴子、休闲鞋</td><td>鞋面材质、鞋底材质、闭合方式、适用场景</td></tr>
+    <tr><td>箱包</td><td>女包 / 男包 / 旅行箱包：颜色（拉杆箱加尺寸）</td><td>托特包、单肩包、双肩包、拉杆箱</td><td>材质、尺寸、容量、闭合方式</td></tr>
+    <tr><td>3C 数码</td><td>耳机音箱 / 手机配件 / 智能穿戴 / 电脑周边：颜色 × 版本</td><td>无线耳机、蓝牙音箱、充电器、手机壳、智能手表</td><td>型号、连接方式、电池容量、续航、接口、兼容设备</td></tr>
+    <tr><td>家居日用</td><td>厨房餐饮 / 收纳整理 / 家纺 / 灯具：颜色 × 尺寸或容量</td><td>保温杯、餐具、收纳盒、床品、灯串</td><td>材质、尺寸、容量、重量、适用空间</td></tr>
+    <tr><td>户外运动</td><td>健身瑜伽 / 户外露营 / 骑行：颜色 × 尺寸</td><td>瑜伽垫、帐篷、骑行手套</td><td>材质、尺寸、承重、适用运动、防水等级</td></tr>
+    <tr><td>美妆个护</td><td>彩妆 / 护肤 / 美妆工具：色号或款式 × 净含量</td><td>口红、面霜、化妆刷</td><td>净含量、适用肤质、主要成分、保质期</td></tr>
+    <tr><td>宠物用品</td><td>宠物玩具 / 宠物食具 / 宠物服饰（宠物服饰有尺码）：尺寸 × 颜色</td><td>互动喂食玩具、宠物碗、宠物衣服</td><td>材质、适用宠物、适用体型</td></tr>
+    <tr><td>母婴玩具</td><td>婴童用品 / 玩具：颜色 × 款式</td><td>奶瓶、积木、毛绒玩具</td><td>材质、适用年龄、安全认证、是否含电池</td></tr>
+    <tr><td>节日礼品</td><td>节日装饰 / 礼盒：款式 × 包装</td><td>圣诞装饰、礼品盒</td><td>材质、尺寸、适用节日、包装内容</td></tr>
+  </table>
+  <p class="note">已有商品和商品库的旧类目（女装、3C 数码……）自动对到新树的第二级；粘贴链接时 AI 按商品内容挑最末一级。</p>
+
+  <h3 class="sub" style="margin:28px 0 8px;font-size:16px">G1 新建商品 · 第二步填信息（女装）</h3>
+  <p class="lede">左栏顶部写着类目，可以换（换了以后类目属性和规格会重置，先提示）。服饰类目多出“尺码表”一组，尺码表的行按勾选的尺码自动建好。</p>
+  <div class="pnl" style="max-width:1100px">
+    <div class="pnl-h">新建商品<small>Wrap V-Neck Short Sleeve Maxi Dress</small><span class="x">✕</span></div>
+    <div class="pe2"><div class="pe2-nav"><div class="cat"><small>类目</small><b>女装</b><a>更换类目</a></div><div class="it">图片<i class="ok">✓</i></div><div class="it">基本信息<i class="ok">✓</i></div><div class="it on">类目属性</div><div class="it">规格与库存<i class="miss">待填</i></div><div class="it">尺码表<i class="miss">待填</i></div><div class="it">卖点与描述<i class="miss">待填</i></div><div class="it">物流<i class="miss">待填</i></div><div class="it">售后与常见问题<i class="miss">待填</i></div></div><div class="pe2-body">
+  <div class="pe2-sec"><h4>类目属性<small>女装类目的属性，买家问起面料、版型时学生按这里回答</small></h4>
+    <div class="attrs"><div class="fld"><small>材质<b> *</b></small><span class="">95% 聚酯纤维 5% 氨纶</span></div><div class="fld"><small>版型<b> *</b></small><span class="">宽松 ▾</span></div><div class="fld"><small>领型</small><span class="">V 领 ▾</span></div><div class="fld"><small>袖长</small><span class="">短袖 ▾</span></div><div class="fld"><small>风格</small><span class="">度假 ▾</span></div><div class="fld"><small>适用季节</small><span class="">夏季 ▾</span></div></div></div>
+  <div class="pe2-sec"><h4>规格与库存<small>女装用“颜色 × 尺码”，尺码是平台标准尺码，勾选即可；颜色自己填</small></h4>
+    <div class="dim"><b>颜色</b><div class="chipset"><span class="on">Misty Blue</span><span class="on">Beige</span><span class="on">Black</span><span class="add">+ 加颜色</span></div></div>
+    <div class="dim"><b>尺码</b><div class="chipset"><span>XS</span><span class="on">S</span><span class="on">M</span><span class="on">L</span><span class="on">XL</span><span>XXL</span><span>3XL</span></div></div>
+    <div class="skut">
+      <div class="r"><span>颜色</span><span>尺码</span><span>价格（USD）</span><span>库存</span><span>商家编码</span></div>
+      <div class="r bulk"><span>批量设置</span><span>全部 12 个规格</span><span class="in">29.90</span><span class="in">100</span><span>应用</span></div>
+      <div class="r"><span>Misty Blue</span><span>S</span><span class="in">29.90</span><span class="in">100</span><span class="in">WD-MB-S</span></div>
+      <div class="r"><span>Misty Blue</span><span>M</span><span class="in">29.90</span><span class="in">100</span><span class="in">WD-MB-M</span></div>
+      <div class="r"><span>Misty Blue</span><span>L</span><span class="in">29.90</span><span class="in">60</span><span class="in">WD-MB-L</span></div>
+      <div class="r"><span>⋯ 共 12 行</span><span></span><span></span><span></span><span></span></div>
+    </div>
+  </div>
+  <div class="pe2-sec" style="border-bottom:0;margin-bottom:0"><h4>尺码表<small>按勾选的尺码自动建好行，填数字就行</small></h4>
+    <div class="skut"><div class="r" style="grid-template-columns:repeat(5,1fr)"><span>尺码</span><span>胸围(cm)</span><span>腰围(cm)</span><span>衣长(cm)</span><span>适合身高(cm)</span></div>
+      <div class="r" style="grid-template-columns:repeat(5,1fr)"><span>S</span><span class="in">84</span><span class="in">66</span><span class="in">120</span><span class="in">155–160</span></div>
+      <div class="r" style="grid-template-columns:repeat(5,1fr)"><span>M</span><span class="in">88</span><span class="in">70</span><span class="in">122</span><span class="in">160–165</span></div></div>
+  </div>
+</div></div>
+    <div class="pnl-f"><em>3 / 8 组已填，没填的组学生答不出买家的问题</em><span>取消</span><span class="p">上架</span></div>
+  </div>
+
+  <h3 class="sub" style="margin:28px 0 8px;font-size:16px">对比：3C 数码类目</h3>
+  <div class="pnl" style="max-width:1100px">
+    <div class="pnl-h">新建商品<small>Wireless Noise-Cancelling Earbuds</small><span class="x">✕</span></div>
+    <div class="pe2" style="min-height:360px"><div class="pe2-nav"><div class="cat"><small>类目</small><b>3C 数码</b><a>更换类目</a></div><div class="it">图片<i class="ok">✓</i></div><div class="it">基本信息<i class="ok">✓</i></div><div class="it">类目属性<i class="ok">✓</i></div><div class="it on">规格与库存</div><div class="it">卖点与描述<i class="miss">待填</i></div><div class="it">物流<i class="miss">待填</i></div><div class="it">售后与常见问题<i class="miss">待填</i></div></div><div class="pe2-body">
+  <div class="pe2-sec"><h4>规格与库存<small>3C 数码用“颜色 × 版本”，没有尺码；左边也没有“尺码表”这一组</small></h4>
+    <div class="dim"><b>颜色</b><div class="chipset"><span class="on">Black</span><span class="on">White</span><span class="add">+ 加颜色</span></div></div>
+    <div class="dim"><b>版本</b><div class="chipset"><span class="on">Standard</span><span class="on">With Wireless Charging Case</span><span class="add">+ 加版本</span></div></div>
+    <div class="skut">
+      <div class="r"><span>颜色</span><span>版本</span><span>价格（USD）</span><span>库存</span><span>商家编码</span></div>
+      <div class="r"><span>Black</span><span>Standard</span><span class="in">39.99</span><span class="in">200</span><span class="in">EB-BK-STD</span></div>
+      <div class="r"><span>Black</span><span>With Wireless Charging Case</span><span class="in">49.99</span><span class="in">80</span><span class="in">EB-BK-WC</span></div>
+      <div class="r"><span>⋯ 共 4 行</span><span></span><span></span><span></span><span></span></div>
+    </div>
+    <p class="note2">只卖一个款式的话不加规格，直接在基本信息里填价格和库存。</p>
+  </div>
+</div></div>
+  </div>
+  <p class="note">每个类目的属性和规格维度先按上面“选类目”那一屏的十个类目预设，存在 contracts 里，老师填的时候可以再加自定义属性。粘贴链接、商品库、编辑已有商品也进这同一个编辑器。</p>
+
+  <h3 class="sub" style="margin:28px 0 8px;font-size:16px">G2 优惠券页签</h3>
+  <p class="lede">参照速卖通、Shopee 的店铺优惠券和千牛的客服发券。左边的票面是买家看到的面额和门槛，右边是名称（英文，买家看到）、规则、适用商品、有效期和适用客户；开关控制学生工作台能不能发。</p>
+  <div class="ptool"><span class="sb">搜索优惠券</span><span class="chip">全部 4</span><span class="bt">启用 3</span><span class="bt">已停用 1</span><span class="r"><span class="bt p">+ 新建优惠券</span></span></div>
+  <div class="cpn-list" style="margin-top:12px"><div class="cpn"><div class="v"><b>$5</b><small>满 $30 可用</small></div><div class="b"><div class="t"><b>New Customer $5 Off</b><span class="sw"></span></div><p>满 $30 减 $5</p><div class="m"><span>全店商品</span><span>领取后 7 天</span><span class="c">潜在意向客</span></div></div></div><div class="cpn"><div class="v"><b>9 折</b><small>无门槛</small></div><div class="b"><div class="t"><b>10% Off Storewide</b><span class="sw"></span></div><p>全店 9 折</p><div class="m"><span>全店商品</span><span>领取后 3 天</span><span class="c">不限客户</span></div></div></div><div class="cpn"><div class="v"><b>免运费</b><small>满 $20 可用</small></div><div class="b"><div class="t"><b>Free Shipping</b><span class="sw"></span></div><p>满 $20 免标准运费</p><div class="m"><span>全店商品</span><span>领取后 15 天</span><span class="c">不限客户</span></div></div></div><div class="cpn off"><div class="v"><b>$8</b><small>满 $50 可用</small></div><div class="b"><div class="t"><b>Loyal Buyer $8 Off</b><span class="sw"></span></div><p>满 $50 减 $8</p><div class="m"><span>指定 2 个商品</span><span>领取后 30 天</span><span class="c">复购老客、粉丝客</span></div></div></div></div>
+
+  <h3 class="sub" style="margin:28px 0 8px;font-size:16px">G2 新建优惠券</h3>
+  <div class="pnl" style="max-width:760px">
+    <div class="pnl-h">新建优惠券<span class="x">✕</span></div>
+    <div class="cpn-form">
+      <b>名称</b><span class="inl"><span class="in" style="min-width:320px">Loyal Buyer $8 Off</span><small style="color:#5e6a7b">买家看到的名字，用英文</small></span>
+      <b>类型</b><span class="seg3"><span class="on">满减</span><span>折扣</span><span>免运费</span></span>
+      <b>面额</b><span class="inl">减 <span class="in">8</span> 美元</span>
+      <b>使用门槛</b><span class="inl"><span class="seg3"><span>无门槛</span><span class="on">满额可用</span></span> 满 <span class="in">50</span> 美元</span>
+      <b>适用商品</b><span class="inl"><span class="seg3"><span>全店商品</span><span class="on">指定商品</span></span> <span class="in">已选 2 个 ▾</span></span>
+      <b>适用客户</b><span class="chipset"><span>不限</span><span>潜在意向客</span><span class="on">复购老客</span><span class="on">粉丝客</span><span>沉睡客</span></span>
+      <b>有效期</b><span class="inl">领取后 <span class="in">30</span> 天</span>
+      <span class="prev">买家收到的卡片：<b>Loyal Buyer $8 Off</b> · 满 $50 减 $8 · 复购老客、粉丝客 · 30 天内有效</span>
+    </div>
+    <div class="pnl-f"><span>取消</span><span class="p">保存并启用</span></div>
+  </div>
+
+  <h3 class="sub" style="margin:28px 0 8px;font-size:16px">S2 买家画像工具栏</h3>
+  <div class="ptool"><span class="sb">搜索人群或关注点</span><span class="sl hl">全部客户类型 ▾</span><span class="sl">全部消费偏好 ▾</span><span class="r"><span class="bt">试抽</span><span class="bt">批量导入</span><span class="bt p">+ 新建画像</span></span></div>
+  <p class="note">两个下拉框里带数量（潜在意向客 12 / 复购老客 12 / 粉丝客 8 / 沉睡客 8）。卡片上的标签、编辑弹窗里的字段名同步改成“客户类型”“消费偏好”。</p>
 </div>
 
 <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>

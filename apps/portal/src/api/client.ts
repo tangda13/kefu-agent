@@ -1,4 +1,4 @@
-import type { OrderKind, ProductDetails, ProductSource } from "@cecs/contracts";
+import type { CouponKind, OrderKind, ProductDetails, ProductSource } from "@cecs/contracts";
 // 生产部署走 nginx 同域反代时设 VITE_API_URL 为空字符串（API_BASE="" → 相对路径 /v1/...）；
 // 未设置则回退本地开发地址。显式空串不等于 undefined，故不用 ?? 而显式判 undefined。
 const apiUrl = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL;
@@ -628,12 +628,20 @@ export async function uploadProductImage(
   return (await response.json()) as { imageUrl: string; images: string[] };
 }
 
+/** 店铺优惠券（D-66）：字段由教师端配置，rule / scope / face 是服务端按字段生成的文字 */
 export interface StoreCoupon {
   id: string;
   title: string;
+  kind: CouponKind;
+  amount: number;
+  threshold: number;
+  productIds: string[];
+  customerTypes: string[];
+  validDays: number;
+  enabled: boolean;
   rule: string;
   scope: string;
-  validDays: number;
+  face: { value: string; gate: string };
 }
 
 export interface WorkbenchStats {

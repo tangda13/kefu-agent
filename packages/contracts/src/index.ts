@@ -234,4 +234,6 @@ export interface ReceptionStats {
 
 export * from "./llm";
 export * from "./product";
+export * from "./category";
+export * from "./coupon";
 export * from "./persona";

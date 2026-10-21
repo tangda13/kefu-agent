@@ -277,7 +277,7 @@ export function MessageBody({ message, onPlayVoice }: { message: ConversationMes
         <span>
           <b>{product.name}</b>
           <small>SKU {product.id} · {product.spec}</small>
-          <em className="num">USD {product.price}{message.kind === "product" ? ` · 已售 ${product.sales}` : ""}</em>
+          <em className="num">USD {Number(product.price).toFixed(2)}{message.kind === "product" ? ` · 已售 ${product.sales}` : ""}</em>
           {message.kind === "invite" ? <span className="wbk-card-tag"><ShoppingCart size={11} /> 已邀请下单</span> : null}
         </span>
       </div>
