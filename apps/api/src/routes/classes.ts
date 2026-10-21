@@ -69,7 +69,9 @@ export function registerClassRoutes(
     "/v1/admin/teachers",
     { preHandler: guard.requireRole("admin") },
     async (request, reply) => {
-      const { username, displayName, password } = request.body ?? {};
+      const { password } = request.body ?? {};
+      const username = request.body?.username?.trim();
+      const displayName = request.body?.displayName?.trim();
       if (!username || !displayName) {
         reply.code(400);
         return { code: "INVALID_INPUT", message: "请填写教师账号与姓名。" };

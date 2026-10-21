@@ -23,7 +23,7 @@ try {
   const temporaryPassword = generateTemporaryPassword();
   const result = await db.query<{ id: string; role: string }>(
     `update users set password_hash = $1, must_change_password = true, status = 'active', updated_at = now()
-     where username = $2 returning id, role`,
+     where lower(username) = lower($2) returning id, role`,
     [await hashPassword(temporaryPassword), username],
   );
   const user = result.rows[0];

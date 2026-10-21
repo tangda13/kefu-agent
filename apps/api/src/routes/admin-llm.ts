@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { LLM_PURPOSES, LLM_PURPOSE_LABELS, type LlmPurpose, type LlmRoutingSettings } from "@cecs/contracts";
+import { LLM_PURPOSES, LLM_PURPOSE_LABELS, routingAfterDefaultSwitch, type LlmPurpose, type LlmRoutingSettings } from "@cecs/contracts";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import { writeAudit } from "../auth-context";
@@ -173,7 +173,9 @@ export function registerAdminLlmRoutes(
     });
   });
 
-  app.put<{ Body: { profileId?: string } }>("/v1/admin/llm/default", { preHandler: adminOnly }, async (request, reply) => {
+  /* 换默认（D-77）：followRouting = 所有用途一起改为跟随默认；不论是否一起改，
+     主模型因此变了、备用又正好撞上新默认的用途，备用换成原来的主模型（规则见 contracts routingAfterDefaultSwitch） */
+  app.put<{ Body: { profileId?: string; followRouting?: boolean } }>("/v1/admin/llm/default", { preHandler: adminOnly }, async (request, reply) => {
     const profileId = request.body?.profileId ?? "";
     const result = await db.query("select name, enabled, test_status from llm_profiles where id = $1", [profileId]);
     const row = result.rows[0];
@@ -185,11 +187,30 @@ export function registerAdminLlmRoutes(
       reply.code(409);
       return { code: "PROFILE_NOT_TESTED", message: "只有已启用且测试通过的档案才能设为默认。请先测试。" };
     }
+    const followRouting = request.body?.followRouting === true;
+    const [routing, all] = await Promise.all([
+      loadRouting(),
+      db.query<{ id: string; is_default: boolean; enabled: boolean; test_status: string }>("select id, is_default, enabled, test_status from llm_profiles"),
+    ]);
+    const next = routingAfterDefaultSwitch(routing, {
+      from: all.rows.find((profile) => profile.is_default)?.id ?? null,
+      to: profileId,
+      follow: followRouting,
+      usable: new Set(all.rows.filter((profile) => profile.enabled && profile.test_status === "ok").map((profile) => profile.id)),
+    });
+    const routingChanged = JSON.stringify(next) !== JSON.stringify(routing);
     const client = await db.connect();
     try {
       await client.query("begin");
       await client.query("update llm_profiles set is_default = false where is_default");
       await client.query("update llm_profiles set is_default = true where id = $1", [profileId]);
+      if (routingChanged) {
+        await client.query(
+          `insert into app_settings (key, value, updated_at) values ('llm_routing', $1, now())
+           on conflict (key) do update set value = $1, updated_at = now()`,
+          [JSON.stringify(next)],
+        );
+      }
       await client.query("commit");
     } catch (error) {
       await client.query("rollback");
@@ -197,9 +218,13 @@ export function registerAdminLlmRoutes(
     } finally {
       client.release();
     }
-    await writeAudit(db, request.user!.sub, "llm.default_switch", profileId, { name: row.name });
+    await writeAudit(db, request.user!.sub, "llm.default_switch", profileId, {
+      name: row.name,
+      followRouting,
+      ...(routingChanged ? { routing: next } : {}),
+    });
     await gateway.reload();
-    return { ok: true };
+    return { ok: true, routing: next };
   });
 
   app.put<{ Body: Partial<LlmRoutingSettings> }>("/v1/admin/llm/routing", { preHandler: adminOnly }, async (request, reply) => {

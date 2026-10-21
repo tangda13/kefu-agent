@@ -222,3 +222,34 @@ export interface LlmRoutingSettings {
   /** 导演每 N 轮学生发言运行一次（1 = 每轮） */
   directorEveryNTurns: number;
 }
+
+/** 单独指定了别的模型的用途：把 profileId 设为默认时，要问一下这些用途是否一起跟随（D-77） */
+export function purposesPinnedElsewhere(routing: LlmRoutingSettings, profileId: string): LlmPurpose[] {
+  return LLM_PURPOSES.filter((purpose) => {
+    const pinned = routing.routes[purpose].profileId;
+    return pinned !== null && pinned !== profileId;
+  });
+}
+
+/**
+ * 默认模型从 from 换成 to 之后的用途分配（D-77）。follow：所有用途一起改为跟随默认。
+ * 主模型因此变了的用途，备用如果正好是新的主模型（等于没备用），换成原来的主模型（主备对调）；原来的不可用就清空。
+ */
+export function routingAfterDefaultSwitch(
+  routing: LlmRoutingSettings,
+  change: { from: string | null; to: string; follow: boolean; usable: ReadonlySet<string> },
+): LlmRoutingSettings {
+  const routes = { ...routing.routes };
+  for (const purpose of LLM_PURPOSES) {
+    const route = routing.routes[purpose];
+    const profileId = change.follow ? null : route.profileId;
+    const before = route.profileId ?? change.from;
+    const after = profileId ?? change.to;
+    let fallbackProfileId = route.fallbackProfileId;
+    if (before !== after && fallbackProfileId === after) {
+      fallbackProfileId = before && change.usable.has(before) ? before : null;
+    }
+    routes[purpose] = { ...route, profileId, fallbackProfileId };
+  }
+  return { ...routing, routes };
+}

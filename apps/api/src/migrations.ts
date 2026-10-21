@@ -680,4 +680,12 @@ insert into store_coupons (id, title, kind, amount, threshold, customer_types, v
 on conflict (id) do nothing;
 `,
   },
+  {
+    /* D-78：账号不区分大小写。管理端和教师端都能导入学生，S2024001 和 s2024001 不能成为两个账号；登录按小写比对。
+       原样保存（显示用），唯一性按 lower(username) */
+    id: "041_username_case_insensitive",
+    sql: `
+create unique index if not exists users_username_lower_key on users (lower(username));
+`,
+  },
 ];

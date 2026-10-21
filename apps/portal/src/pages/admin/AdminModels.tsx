@@ -6,6 +6,8 @@ import {
   LLM_PURPOSE_LABELS,
   THINKING_LEVELS,
   THINKING_LEVEL_LABELS,
+  purposesPinnedElsewhere,
+  routingAfterDefaultSwitch,
   type LlmProfileView,
   type LlmThinking,
   type LlmPurpose,
@@ -17,7 +19,7 @@ import { ApiError, apiGet, apiPost, apiRequestDelete, apiRequestPut, type Sessio
 import { samePool, VoicePoolSection, type VoicePoolData, type VoicePoolState } from "./VoicePool";
 import { onProvidersTab, takeProvidersTab, type ProvidersTab } from "./providersTab";
 import {
-  Button, Callout, Confirm, DataTable, Drawer, Empty, Field, HeaderTabs, HelpTip, Input, ListRow, Monogram, MoreMenu, SecretInput, Segmented, Select, SettingSection, Sheet,
+  Button, Callout, Confirm, DataTable, Dialog, Drawer, Empty, Field, HeaderTabs, HelpTip, Input, ListRow, Monogram, MoreMenu, SecretInput, Segmented, Select, SettingSection, Sheet,
   Status, Switch, Tag, Textarea, toast,
 } from "../../ui";
 
@@ -115,6 +117,7 @@ function ProfilesSection({ session, llm, reload }: { session: Session; llm: LlmS
   const [editing, setEditing] = useState<LlmProfileView | "new" | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [removing, setRemoving] = useState<LlmProfileView | null>(null);
+  const [switching, setSwitching] = useState<LlmProfileView | null>(null);
   const vendors = useMemo(() => [...new Set((llm?.profiles ?? []).map((profile) => host(profile.baseUrl)))], [llm]);
 
   async function test(profile: LlmProfileView) {
@@ -131,10 +134,17 @@ function ProfilesSection({ session, llm, reload }: { session: Session; llm: LlmS
     }
   }
 
-  async function setDefault(profile: LlmProfileView) {
+  // 有用途单独指定了别的模型时先问是否一起跟随（D-77）
+  function askSetDefault(profile: LlmProfileView) {
+    if (llm && purposesPinnedElsewhere(llm.routing, profile.id).length) setSwitching(profile);
+    else void setDefault(profile, false);
+  }
+
+  async function setDefault(profile: LlmProfileView, followRouting: boolean) {
     try {
-      await apiRequestPut("/v1/admin/llm/default", session, { profileId: profile.id });
-      toast.ok(`已把「${profile.name}」设为默认模型`);
+      await apiRequestPut("/v1/admin/llm/default", session, { profileId: profile.id, followRouting });
+      toast.ok(followRouting ? `已把「${profile.name}」设为默认模型，用途一起跟随` : `已把「${profile.name}」设为默认模型`);
+      setSwitching(null);
       reload();
     } catch (cause) {
       toast.error(errorText(cause));
@@ -178,7 +188,7 @@ function ProfilesSection({ session, llm, reload }: { session: Session; llm: LlmS
               <Button size="sm" onClick={() => setEditing(row)}>编辑</Button>
               {!row.isDefault ? (
                 <MoreMenu items={[
-                  { label: "设为默认", disabled: row.testStatus !== "ok" || !row.enabled, onClick: () => void setDefault(row) },
+                  { label: "设为默认", disabled: row.testStatus !== "ok" || !row.enabled, onClick: () => askSetDefault(row) },
                   { label: "删除", danger: true, onClick: () => setRemoving(row) },
                 ]} />
               ) : <span className="menu-placeholder" />}
@@ -192,7 +202,57 @@ function ProfilesSection({ session, llm, reload }: { session: Session; llm: LlmS
           删除「{removing.name}」后，分配给它的用途会改用默认模型。
         </Confirm>
       ) : null}
+      {switching && llm ? (
+        <DefaultSwitchDialog llm={llm} profile={switching} onChoose={(follow) => setDefault(switching, follow)} onClose={() => setSwitching(null)} />
+      ) : null}
     </SettingSection>
+  );
+}
+
+/** 设为默认时，列出一起跟随后各用途怎么变（只列有变化的） */
+function DefaultSwitchDialog({ llm, profile, onChoose, onClose }: { llm: LlmState; profile: LlmProfileView; onChoose: (follow: boolean) => Promise<void>; onClose: () => void }) {
+  const [busy, setBusy] = useState<"only" | "follow" | null>(null);
+  const nameOf = (id: string | null) => (id ? llm.profiles.find((item) => item.id === id)?.name ?? "已删除的模型" : "跟随默认");
+  const next = routingAfterDefaultSwitch(llm.routing, {
+    from: llm.profiles.find((item) => item.isDefault)?.id ?? null,
+    to: profile.id,
+    follow: true,
+    usable: new Set(llm.profiles.filter((item) => item.enabled && item.testStatus === "ok").map((item) => item.id)),
+  });
+  const changes = LLM_PURPOSES.map((purpose) => ({ purpose, before: llm.routing.routes[purpose], after: next.routes[purpose] }))
+    .filter(({ before, after }) => before.profileId !== after.profileId || before.fallbackProfileId !== after.fallbackProfileId);
+  const pinned = purposesPinnedElsewhere(llm.routing, profile.id).length;
+  async function choose(follow: boolean) {
+    setBusy(follow ? "follow" : "only");
+    await onChoose(follow);
+    setBusy(null);
+  }
+  return (
+    <Dialog
+      title="设为默认模型"
+      onClose={onClose}
+      footer={
+        <>
+          <Button loading={busy === "only"} disabled={busy !== null} onClick={() => void choose(false)}>只改默认</Button>
+          <Button variant="primary" loading={busy === "follow"} disabled={busy !== null} onClick={() => void choose(true)}>一起改</Button>
+        </>
+      }
+    >
+      <p>{pinned} 个用途单独指定了模型。「{profile.name}」设为默认后，要不要一起改为跟随默认？</p>
+      <ul className="default-switch-list">
+        {changes.map(({ purpose, before, after }) => (
+          <li key={purpose}>
+            <strong>{LLM_PURPOSE_LABELS[purpose].label}</strong>
+            <span>
+              {before.profileId !== after.profileId ? <>{nameOf(before.profileId)} → 跟随默认</> : <>跟随默认</>}
+              {before.fallbackProfileId !== after.fallbackProfileId ? (
+                <small>备用 {nameOf(before.fallbackProfileId)} → {after.fallbackProfileId ? nameOf(after.fallbackProfileId) : "不设备用"}</small>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Dialog>
   );
 }
 
@@ -482,7 +542,7 @@ function RoutingSection({ session, llm, reload }: { session: Session; llm: LlmSt
             <small>{LLM_PURPOSE_LABELS[purpose].hint}</small>
           </div>
           <Select value={routing.routes[purpose].profileId ?? ""} onChange={(event) => update(purpose, { profileId: event.target.value || null })}>
-            <option value="">跟随默认模型</option>
+            <option value="">跟随默认（{defaultProfile?.name ?? "未设置"}）</option>
             {usable.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
           </Select>
           <span className="route-arrow">备用</span>

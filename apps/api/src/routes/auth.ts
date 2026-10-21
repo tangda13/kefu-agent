@@ -69,7 +69,8 @@ export function registerAuthRoutes(
   app.post<{ Body: { username?: string; password?: string; expectedRole?: string } }>(
     "/v1/auth/login",
     async (request, reply) => {
-      const { username, password, expectedRole } = request.body ?? {};
+      const { password, expectedRole } = request.body ?? {};
+      const username = request.body?.username?.trim();
       if (!username || !password) {
         reply.code(400);
         return { code: "INVALID_INPUT", message: "请输入账号和密码。" };
@@ -83,7 +84,7 @@ export function registerAuthRoutes(
         };
       }
       const result = await db.query<DbUser>(
-        "select * from users where username = $1",
+        "select * from users where lower(username) = lower($1)",
         [username],
       );
       const user = result.rows[0];

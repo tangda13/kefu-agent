@@ -768,6 +768,24 @@ describe("登录页签校验（I7）与学生编辑/转班/删除（I8）", () =
     expect(blocked.statusCode).toBe(409);
     expect(blocked.json().code).toBe("STUDENT_HAS_DATA");
   });
+
+  it("D-78：账号不区分大小写——只差大小写的导入算已存在，登录大小写随意", async () => {
+    const imported = await app.inject({
+      method: "POST",
+      url: `/v1/classes/${class2501}/students/import`,
+      headers: auth(teacher1),
+      payload: { students: [{ username: "S2501002", displayName: "重名" }] },
+    });
+    expect(imported.json()).toEqual({ created: [], failed: [{ username: "S2501002", reason: "账号已存在" }] });
+
+    const upper = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { username: " S2501002 ", password: "Stud#2027", expectedRole: "student" },
+    });
+    expect(upper.statusCode).toBe(200);
+    expect(upper.json().user.username).toBe("s2501002");
+  });
 });
 
 describe("模型网关管理（G1–G7）+ 验收统计口径（B2）", () => {
@@ -954,6 +972,34 @@ describe("模型网关管理（G1–G7）+ 验收统计口径（B2）", () => {
     expect(removeDefault.statusCode).toBe(409);
     const removeBad = await app.inject({ method: "DELETE", url: `/v1/admin/llm/profiles/${badProfileId}`, headers: auth(admin) });
     expect(removeBad.statusCode).toBe(200);
+  });
+
+  it("D-77：换默认时单独指定的用途可一起跟随；备用撞上新默认就主备对调", async () => {
+    const second = await app.inject({ method: "POST", url: "/v1/admin/llm/profiles", headers: auth(admin), payload: profilePayload({ name: "总网关" }) });
+    const secondId = second.json().id as string;
+    expect((await app.inject({ method: "POST", url: `/v1/admin/llm/profiles/${secondId}/test`, headers: auth(admin) })).json().ok).toBe(true);
+    const original = (await app.inject({ method: "GET", url: "/v1/admin/llm", headers: auth(admin) })).json().routing;
+    expect(original.routes.director.profileId).toBe(profileId);
+    await app.inject({
+      method: "PUT",
+      url: "/v1/admin/llm/routing",
+      headers: auth(admin),
+      payload: { ...original, routes: { ...original.routes, dialogue: { ...original.routes.dialogue, profileId, fallbackProfileId: secondId } } },
+    });
+
+    const followed = await app.inject({ method: "PUT", url: "/v1/admin/llm/default", headers: auth(admin), payload: { profileId: secondId, followRouting: true } });
+    expect(followed.statusCode).toBe(200);
+    expect(followed.json().routing.routes.dialogue).toMatchObject({ profileId: null, fallbackProfileId: profileId });
+    expect(followed.json().routing.routes.director).toMatchObject({ profileId: null, fallbackProfileId: null });
+
+    // 换回来、只改默认：对话跟随默认，备用正好是新默认，换成原来的主模型
+    await app.inject({ method: "PUT", url: "/v1/admin/llm/default", headers: auth(admin), payload: { profileId } });
+    const saved = (await app.inject({ method: "GET", url: "/v1/admin/llm", headers: auth(admin) })).json();
+    expect(saved.routing.routes.dialogue).toMatchObject({ profileId: null, fallbackProfileId: secondId });
+    expect(saved.profiles.find((item: { isDefault: boolean }) => item.isDefault).id).toBe(profileId);
+
+    await app.inject({ method: "PUT", url: "/v1/admin/llm/routing", headers: auth(admin), payload: original });
+    expect((await app.inject({ method: "DELETE", url: `/v1/admin/llm/profiles/${secondId}`, headers: auth(admin) })).statusCode).toBe(200);
   });
 
   it("B2/G6：验收测试计入全部请求，失败算进分母；可导出 CSV；用量按用途计费", async () => {

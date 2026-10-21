@@ -10,7 +10,8 @@ export const LOGIN_WINDOW_MINUTES = 15;
 export const ACCOUNT_MAX_FAILURES = 5;
 export const IP_MAX_FAILURES = 100;
 
-const userKey = (username: string) => `user:${username}`;
+// 账号不区分大小写（D-78），换个大小写不能绕开锁定
+const userKey = (username: string) => `user:${username.trim().toLowerCase()}`;
 const ipKey = (ip: string) => `ip:${ip}`;
 
 /** 返回仍在锁定中的剩余分钟数；未锁定返回 0 */

@@ -17,6 +17,9 @@ import {
   discountRate,
   percentOffOf,
   couponScopeText,
+  purposesPinnedElsewhere,
+  routingAfterDefaultSwitch,
+  type LlmRoutingSettings,
 } from "./index";
 
 describe("parameter document minimums", () => {
@@ -81,5 +84,37 @@ describe("店铺优惠券文字（D-66）", () => {
     expect(couponFace({ kind: "amount", amount: 7.5, threshold: 0 })).toEqual({ value: "$7.50", gate: "无门槛" });
     expect(couponScopeText({ productIds: ["A", "B"], customerTypes: ["复购老客", "粉丝客"] })).toBe("指定 2 个商品 · 仅复购老客、粉丝客");
     expect(couponScopeText({ productIds: [], customerTypes: [] })).toBe("全店商品 · 不限客户");
+  });
+});
+
+describe("换默认模型时用途分配（D-77）", () => {
+  const route = (profileId: string | null, fallbackProfileId: string | null) => ({ profileId, fallbackProfileId, temperature: 0.5, maxTokens: 400 });
+  // 开发库当时的样子：默认 A，四个用途都单独指定 B、备用 A；另有一个用途跟随默认、备用 B
+  const routing: LlmRoutingSettings = {
+    routes: { dialogue: route("B", "A"), director: route("B", "A"), assessment: route("B", null), assist: route(null, "B") },
+    directorEveryNTurns: 1,
+  };
+  const usable = new Set(["A", "B"]);
+
+  it("单独指定了别的模型的用途要问", () => {
+    expect(purposesPinnedElsewhere(routing, "A")).toEqual(["dialogue", "director", "assessment"]);
+    expect(purposesPinnedElsewhere(routing, "B")).toEqual([]);
+  });
+
+  it("一起改：主模型全部跟随默认，备用和新默认相同的换成原来的主模型", () => {
+    const next = routingAfterDefaultSwitch(routing, { from: "B", to: "A", follow: true, usable });
+    expect(next.routes.dialogue).toMatchObject({ profileId: null, fallbackProfileId: "B" });
+    expect(next.routes.assessment).toMatchObject({ profileId: null, fallbackProfileId: null });
+    // 跟随默认的用途主模型从 B 变 A，备用 B 不撞，原样保留
+    expect(next.routes.assist).toMatchObject({ profileId: null, fallbackProfileId: "B" });
+    expect(next.directorEveryNTurns).toBe(1);
+  });
+
+  it("只改默认：单独指定的不动；跟随默认的用途备用撞上新默认时对调，原来的不可用就清空", () => {
+    const next = routingAfterDefaultSwitch(routing, { from: "A", to: "B", follow: false, usable });
+    expect(next.routes.dialogue).toMatchObject({ profileId: "B", fallbackProfileId: "A" });
+    expect(next.routes.assist).toMatchObject({ profileId: null, fallbackProfileId: "A" });
+    const gone = routingAfterDefaultSwitch(routing, { from: "A", to: "B", follow: false, usable: new Set(["B"]) });
+    expect(gone.routes.assist).toMatchObject({ profileId: null, fallbackProfileId: null });
   });
 });
