@@ -6,9 +6,24 @@
  *  - 返回 output.audio.url（24 小时有效的 wav 文件地址）；再下载得到音频
  */
 
+import { PacedLimiter, pacedCall, systemClock, type LimiterClock } from "./rate-limit";
+
 export const ALIYUN_DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/api/v1";
 export const ALIYUN_DEFAULT_MODEL = "qwen3-tts-flash";
 export const ALIYUN_MAX_TEXT = 600;
+
+/**
+ * 千问3-TTS-Flash 限流 180 RPM，可能按秒执行（每秒 3 次），按主账号合并计算（https://help.aliyun.com/zh/model-studio/rate-limit）。
+ * 留一成余量：每 371ms 发一个，约每分钟 162 次。
+ */
+export const ALIYUN_TTS_RPM = 180;
+export const ALIYUN_TTS_INTERVAL_MS = Math.ceil(60_000 / (ALIYUN_TTS_RPM * 0.9));
+/** 买家播报：阿里云 1 秒内轮得到就等它，要等更久才转豆包（只等一小会儿，阿里云就能接住几乎全部日常流量） */
+export const ALIYUN_TTS_DIVERT_WAIT_MS = 1_000;
+/** 收到 429：整条队列暂停 1 秒（限流按秒算） */
+export const ALIYUN_TTS_THROTTLE_PAUSE_MS = 1_000;
+/** 买家播报：阿里云、豆包都不行时排队等阿里云，最多等 5 秒，再排不上就报失败 */
+export const ALIYUN_TTS_QUEUE_WAIT_MS = 5_000;
 
 export interface AliyunConfig {
   apiKey: string;
@@ -122,3 +137,40 @@ export async function synthesizeAliyun(
     throw new AliyunTtsError(`ALIYUN_TTS_${kind.toUpperCase()}: ${String((error as Error)?.message ?? error).slice(0, 200)}`, kind);
   }
 }
+
+/**
+ * 阿里云朗读的限流闸口，本进程所有阿里云朗读（买家播报 + 管理端试听）共用一个：
+ * 买家播报先看 1 秒内能不能轮到，轮不到就转豆包（见 fallback.ts）；
+ * 排队时最多发 3 次，429 / 5xx 退避重试，等不到名额抛限流错误。
+ */
+export class AliyunTtsGate {
+  constructor(
+    readonly limiter: PacedLimiter = new PacedLimiter(ALIYUN_TTS_INTERVAL_MS),
+    private readonly clock: LimiterClock = systemClock,
+  ) {}
+
+  /** waitMs 内轮得到：占下名额、等到那一刻返回 true；轮不到返回 false，不占名额 */
+  acquireWithin(waitMs: number): Promise<boolean> {
+    return this.limiter.acquire(this.clock.now() + waitMs);
+  }
+
+  /** 上游返回 429：比我们算的更紧（同一主账号下别的程序也在用），整条队列暂停一会儿 */
+  throttled(): void {
+    this.limiter.pause(ALIYUN_TTS_THROTTLE_PAUSE_MS);
+  }
+
+  queue<T>(fn: () => Promise<T>, waitMs: number): Promise<T> {
+    return pacedCall(fn, {
+      limiter: this.limiter,
+      latestStart: this.clock.now() + waitMs,
+      maxAttempts: 3,
+      baseDelayMs: 300,
+      throttlePauseMs: ALIYUN_TTS_THROTTLE_PAUSE_MS,
+      classify: classifyAliyunFailure,
+      queueFull: () => new AliyunTtsError(`ALIYUN_TTS_QUEUE_FULL: 排队超过 ${waitMs}ms`, "throttled", undefined, "LocalQueueFull"),
+      clock: this.clock,
+    });
+  }
+}
+
+export const aliyunTtsGate = new AliyunTtsGate();

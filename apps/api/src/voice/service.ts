@@ -4,7 +4,8 @@ import { getSetting, setSetting } from "../settings";
 import type { SecretSealer } from "../llm/secret";
 import { mapAsrLanguage, mapExplicitLanguage, recognizeSpeech, synthesizeSpeech } from "../voice-provider";
 import { synthesizeWithFallback, type FallbackReason } from "./fallback";
-import { ALIYUN_DEFAULT_BASE_URL, ALIYUN_DEFAULT_MODEL, synthesizeAliyun } from "./aliyun";
+import { ALIYUN_DEFAULT_BASE_URL, ALIYUN_DEFAULT_MODEL, aliyunTtsGate, synthesizeAliyun } from "./aliyun";
+import { DOUBAO_WAIT_MS, doubaoAsrSlots, doubaoBusy, doubaoTtsSlots, shouldRetryWithAutoLanguage } from "./doubao";
 import {
   defaultVoicePool, findMissingVoices, normalizeVoicePool, selectVoice,
   type BuyerVoiceFacts, type MissingVoice, type VoiceGender, type VoicePool, type VoiceSelection,
@@ -64,10 +65,12 @@ export interface VoiceProvider {
 const doubaoProvider: VoiceProvider = {
   async synthesize(profile, text, speaker, language) {
     const config = { apiKey: profile.apiKey, resourceId: profile.ttsResourceId, speaker };
+    const explicit = mapExplicitLanguage(language);
     try {
-      return await synthesizeSpeech(config, text, 20_000, mapExplicitLanguage(language));
-    } catch {
-      // 指定语种失败（如混合语言文本）时回退自动检测
+      return await synthesizeSpeech(config, text, 20_000, explicit);
+    } catch (error) {
+      // 指定语种失败（如混合语言文本）时回退自动检测；并发 / 额度超限、超时等重试没用
+      if (!explicit || !shouldRetryWithAutoLanguage(error)) throw error;
       return synthesizeSpeech(config, text);
     }
   },
@@ -185,6 +188,9 @@ export const VOICE_VENDORS: Record<string, VoiceVendorInfo> = {
   doubao: { label: "豆包语音（火山引擎）", provider: doubaoProvider, speakers: DOUBAO_SPEAKERS, audioExt: "mp3", asr: true },
   aliyun: { label: "阿里云百炼（千问3-TTS）", provider: aliyunProvider, speakers: ALIYUN_SPEAKERS, audioExt: "wav", asr: false },
 };
+
+/** 管理端试听没有备用，排队可以多等 */
+const VOICE_PREVIEW_WAIT_MS = 15_000;
 
 /** 试听用的句子：各语种买家的真实口吻 */
 export const VOICE_PREVIEW_TEXT = "Hi, I ordered a jacket last week and it still hasn't arrived. Could you check where my package is?";
@@ -308,7 +314,8 @@ export class VoiceService {
 
   /**
    * 按选定音色合成。退回英语时语种交给厂商自动识别，避免用英语规则硬读其他语言。
-   * 主用阿里云出错（限流 / 欠费 / 5xx / 超时 / 网络 / 鉴权）时，这一次自动改用 selection.fallback（豆包备用音色）。
+   * 阿里云这一刻没名额（每秒约 3 个）或出错（限流 / 欠费 / 5xx / 超时 / 网络 / 鉴权）时，这一次自动改用
+   * selection.fallback（豆包备用音色）；豆包也不行再排队等阿里云，见 fallback.ts。
    */
   async synthesizeWith(
     selection: VoiceSelection,
@@ -321,6 +328,7 @@ export class VoiceService {
       text,
       (item, content) => VOICE_VENDORS[item.voice.vendor]!.provider.synthesize(profile, content, item.voice.id, item.fellBack ? undefined : item.poolLanguage),
       log,
+      { aliyun: aliyunTtsGate, doubao: doubaoTtsSlots },
     );
     return { ...spoken, ext: VOICE_VENDORS[spoken.vendor]!.audioExt };
   }
@@ -331,20 +339,30 @@ export class VoiceService {
     return findMissingVoices(profile.voicePool, await this.availableVendors());
   }
 
-  /** 用指定音色试听（不保存） */
+  /** 用指定音色试听（不保存）；和买家播报共用阿里云限流队列、豆包并发名额 */
   async preview(vendorKey: string, speaker: string, language = "en"): Promise<SynthesizedSpeech> {
     const profile = await this.profile();
     const vendor = VOICE_VENDORS[vendorKey];
     if (!vendor) throw new Error("VENDOR_UNKNOWN");
     const text = VOICE_PREVIEW_TEXTS[language] ?? VOICE_PREVIEW_TEXT;
-    const result = await vendor.provider.synthesize(profile, text, speaker, language);
+    const run = () => vendor.provider.synthesize(profile, text, speaker, language);
+    const result = vendorKey === "aliyun"
+      ? await aliyunTtsGate.queue(run, VOICE_PREVIEW_WAIT_MS)
+      : vendorKey === "doubao"
+        ? await doubaoTtsSlots.run(run, VOICE_PREVIEW_WAIT_MS, () => doubaoBusy("TTS", VOICE_PREVIEW_WAIT_MS))
+        : await run();
     return { ...result, vendor: vendorKey, voiceId: speaker, ext: vendor.audioExt };
   }
 
-  /** 语音识别固定走豆包 */
+  /** 语音识别固定走豆包：占着并发名额才发，最多等 3 秒空位；耗时含等待 */
   async recognize(audio: Buffer, format: "wav" | "mp3", language: string | undefined) {
     const profile = await this.profile();
-    const result = await VOICE_VENDORS.doubao!.provider.recognize(profile, audio, format, language);
-    return { ...result, audioMs: format === "wav" ? wavDurationMs(audio) : 0 };
+    const started = Date.now();
+    const result = await doubaoAsrSlots.run(
+      () => VOICE_VENDORS.doubao!.provider.recognize(profile, audio, format, language),
+      DOUBAO_WAIT_MS,
+      () => doubaoBusy("ASR", DOUBAO_WAIT_MS),
+    );
+    return { ...result, elapsedMs: Date.now() - started, audioMs: format === "wav" ? wavDurationMs(audio) : 0 };
   }
 }

@@ -51,7 +51,8 @@ export interface AlertItem {
 
 /**
  * 近 24 小时阿里云出错转豆包的次数（语音页展示用）；pending = 最近一次阿里云成功朗读之后还在转豆包的次数（告警用，恢复后归零）；
- * 密钥无效 = 有鉴权失败转移且之后没有阿里云成功朗读
+ * 密钥无效 = 有鉴权失败转移且之后没有阿里云成功朗读。
+ * 高峰时阿里云名额用完按设计分到豆包（fallback_reason = 'busy'）不是出错，不计入。
  */
 export async function aliyunFallbackStats(db: Db) {
   const result = await db.query(`with w as (
@@ -60,8 +61,8 @@ export async function aliyunFallbackStats(db: Db) {
       select max(created_at) as last_ok from w where vendor = 'aliyun' and outcome = 'success' and not fallback
     )
     select
-      count(*) filter (where fallback) as total,
-      count(*) filter (where fallback and created_at > coalesce((select last_ok from ok), '-infinity')) as pending,
+      count(*) filter (where fallback and fallback_reason is distinct from 'busy') as total,
+      count(*) filter (where fallback and fallback_reason is distinct from 'busy' and created_at > coalesce((select last_ok from ok), '-infinity')) as pending,
       count(*) filter (where fallback and fallback_reason = 'auth') as auth,
       max(created_at) filter (where fallback and fallback_reason = 'auth') as last_auth,
       (select last_ok from ok) as last_ok
