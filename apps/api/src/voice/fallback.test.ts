@@ -306,6 +306,24 @@ describe("两家都忙：进公共队列，谁先空出来用谁（2026-10-22 �
     expect(calls).toEqual([`aliyun:${selection.voice.id}`]);
   });
 
+  it("排到了阿里云却超时：再给豆包一次", async () => {
+    const { gate, slots, hold, either } = busyBoth(2_000);
+    let aliyunCalls = 0;
+    const synth: SynthFn = async (item) => {
+      if (item.voice.vendor === "aliyun") {
+        aliyunCalls += 1;
+        throw Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
+      }
+      return { audio, elapsedMs: 5 };
+    };
+    const pending = synthesizeWithFallback(german(), "Hallo", synth, undefined, { aliyun: gate, doubao: slots, either });
+    await vi.advanceTimersByTimeAsync(2_100); // 阿里云先到点 → 超时
+    hold(); // 豆包空出来
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(pending).resolves.toMatchObject({ vendor: "doubao", fallback: true, fallbackReason: "busy" });
+    expect(aliyunCalls).toBe(1);
+  });
+
   it("15 秒内两家都没空出来：报失败，不发任何请求", async () => {
     const { gate, slots, either } = busyBoth(60_000);
     const { synth, calls } = fakeSynth(ok);

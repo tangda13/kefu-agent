@@ -160,8 +160,15 @@ export async function synthesizeWithFallback(
         try {
           return asPrimary(await synth(selection, text), true);
         } catch (aliyunError) {
-          if (classifyAliyunFailure(aliyunError) === "throttled") paced?.throttled();
-          throw new VoiceSynthesisError(messageOf(aliyunError), primaryVendor, kind as FallbackReason, aliyunError);
+          const failure = classifyAliyunFailure(aliyunError);
+          if (failure === "throttled") paced?.throttled();
+          if (failure === "other") throw new VoiceSynthesisError(messageOf(aliyunError), primaryVendor, kind as FallbackReason, aliyunError);
+          // 排到了阿里云却超时 / 出错：再给豆包一次（最多等 3 秒空位）；2026-10-22 复测 50 条齐发有 2 条是这样失败的
+          try {
+            return asBackup(await call(backup, DOUBAO_WAIT_MS));
+          } catch (backupError) {
+            throw new VoiceSynthesisError(messageOf(backupError), backup.voice.vendor, kind as FallbackReason, backupError);
+          }
         }
       }
       grant = waited;
