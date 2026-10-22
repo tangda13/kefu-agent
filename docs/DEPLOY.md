@@ -141,7 +141,7 @@ certbot 会把 `location /` 原样复制到 443 的 server 块里。申请完用
 
 ## 八、客户端安装包和自动更新
 
-- 打包和发版流程见 kefu-weihu 技能的 `references/client-release.md`，要点如下。
+- 安装包和自动更新文件由我方发版时提供（打包命令：项目根目录 `node scripts/pack-client.mjs`，产物在 `apps/desktop/dist/`）。放到服务器上的要点如下。
 - **上传顺序**：先把 `cecs-client-setup-<版本>.exe`、`.exe.blockmap` 传到 `~/cecs/updates/`，**最后**传 `latest.yml`。旧版本的 `.blockmap` 留着：客户端靠新旧两个 blockmap 只下载变了的部分（实测 0.1.0→0.1.1 只下了约 0.7MB）。
 - **强制更新**：`updates/policy.json` 里的 `minVersion` 高于客户端版本时，客户端必须更新才能用；平时保持当前最低可用版本。
 - **只改了页面**：重新构建 web 容器即可（第十节），不用发客户端。
