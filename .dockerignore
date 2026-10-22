@@ -16,3 +16,5 @@ apps/api/backups
 *.docx
 *.pdf
 token费用及服务器.xlsx
+updates
+.devrun

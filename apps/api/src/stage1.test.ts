@@ -1387,6 +1387,51 @@ describe("品牌可替换（H6 / D-21）", () => {
   });
 });
 
+describe("学生、教师只能用客户端登录（A3 / D-83）与跨域收紧（F）", () => {
+  let strict: FastifyInstance;
+  const desktopUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Electron/43.1.0 Safari/537.36 CecsDesktop/0.1.0";
+  const browserUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+
+  beforeAll(async () => {
+    // 同一个测试库再起一个按生产配置的实例：只认客户端、不放行跨域
+    strict = await buildServer({
+      db,
+      logger: false,
+      env: { jwtSecret: "test-secret", adminInitialPassword: "Admin#Test1", llmBaseUrl: "", llmApiKey: "", llmModel: "", ttsApiKey: "", desktopOnly: true, corsOrigins: false },
+    });
+  });
+  afterAll(async () => {
+    await strict.close();
+  });
+
+  const loginWith = (username: string, password: string, userAgent: string) =>
+    strict.inject({ method: "POST", url: "/v1/auth/login", headers: { "user-agent": userAgent }, payload: { username, password } });
+
+  it("浏览器登录教师账号被拒、不签发令牌；客户端可以登录；管理员浏览器照常登录", async () => {
+    const fromBrowser = await loginWith("teacher1", "Teach#2026", browserUa);
+    expect(fromBrowser.statusCode).toBe(403);
+    expect(fromBrowser.json()).toMatchObject({ code: "CLIENT_REQUIRED", message: "教师账号请在客户端登录。" });
+    expect(fromBrowser.json().accessToken).toBeUndefined();
+
+    const fromClient = await loginWith("teacher1", "Teach#2026", desktopUa);
+    expect(fromClient.statusCode).toBe(200);
+
+    const admin = await loginWith("admin", "Admin#Prod9", browserUa);
+    expect(admin.statusCode).toBe(200);
+  });
+
+  it("密码错时照常报账号或密码错误，不提示要用客户端", async () => {
+    const wrong = await loginWith("teacher1", "wrong-pass", browserUa);
+    expect(wrong.json().code).toBe("INVALID_CREDENTIALS");
+  });
+
+  it("跨域请求拿不到放行头（页面和接口同源，不需要跨域）", async () => {
+    const response = await strict.inject({ method: "GET", url: "/v1/public/brand", headers: { origin: "https://evil.example" } });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+});
+
 describe("管理端系统总览与内容库（E4–E6）", () => {
   it("系统总览实时检测服务并逐条列出告警；内容库可启停、批量导入，导入去重", async () => {
     const admin = await login("admin", "Admin#Prod9");

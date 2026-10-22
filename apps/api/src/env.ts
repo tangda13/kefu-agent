@@ -11,7 +11,15 @@ export interface ApiEnv {
   accessTokenTtlSeconds: number;
   refreshTokenTtlSeconds: number;
   adminInitialPassword: string;
-  corsOrigins: string[] | true;
+  /**
+   * 允许跨域的来源。生产环境客户端从服务器加载页面（D-83），页面和接口同源，不需要跨域：
+   * 没配 CORS_ORIGINS 时生产为 false（不放行任何跨域），开发为 true（前端 5288 调接口 8787）
+   */
+  corsOrigins: string[] | boolean;
+  /**
+   * 学生、教师只能用客户端登录（参数 4.2.2，A3）：生产默认开，开发 / 测试默认关（方便浏览器里调试）；DESKTOP_ONLY 显式覆盖
+   */
+  desktopOnly: boolean;
   /** 部署在 nginx 后面时置真，request.ip 取 X-Forwarded-For（登录限流按 IP 计数依赖它） */
   trustProxy: boolean;
   port: number;
@@ -31,6 +39,7 @@ export interface ApiEnv {
 
 export function loadEnv(overrides: Partial<ApiEnv> = {}): ApiEnv {
   const corsRaw = process.env.CORS_ORIGINS?.trim();
+  const production = process.env.NODE_ENV === "production";
   return {
     databaseUrl:
       process.env.DATABASE_URL ??
@@ -39,7 +48,8 @@ export function loadEnv(overrides: Partial<ApiEnv> = {}): ApiEnv {
     accessTokenTtlSeconds: Number(process.env.ACCESS_TOKEN_TTL ?? 900),
     refreshTokenTtlSeconds: Number(process.env.REFRESH_TOKEN_TTL ?? 14 * 24 * 3600),
     adminInitialPassword: process.env.ADMIN_INITIAL_PASSWORD ?? "Admin#2026",
-    corsOrigins: corsRaw ? corsRaw.split(",").map((item) => item.trim()) : true,
+    corsOrigins: corsRaw ? corsRaw.split(",").map((item) => item.trim()) : !production,
+    desktopOnly: process.env.DESKTOP_ONLY ? process.env.DESKTOP_ONLY === "true" : production,
     trustProxy: process.env.TRUST_PROXY === "true",
     port: Number(process.env.PORT ?? 8787),
     llmBaseUrl: (process.env.LLM_BASE_URL ?? "").replace(/\/+$/, ""),

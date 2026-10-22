@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>客户端</title>
+<style>
+  :root { color-scheme: light; --ink: #161c26; --muted: #5e6a7b; --line: #e3e7ee; --brand: #1d5fd1; --bg: #f4f6f9; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--ink);
+    font: 14px/1.6 "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
+  main { width: min(440px, calc(100vw - 32px)); padding: 32px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+  h1 { margin: 0 0 8px; font-size: 18px; }
+  p { margin: 0 0 16px; color: var(--muted); }
+  .addr { font-family: Consolas, monospace; font-size: 12px; color: var(--muted); word-break: break-all; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 0 0 16px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--brand); transition: width .3s; }
+  button { height: 32px; padding: 0 16px; border: 0; border-radius: 6px; background: var(--brand); color: #fff; font: inherit; cursor: pointer; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <section id="offline" hidden>
+    <h1>连接不上服务器</h1>
+    <p>请检查网络后重试，每 15 秒也会自动重试一次。仍然不行请联系老师或管理员。</p>
+    <p class="addr" id="reason"></p>
+    <p class="addr" id="server"></p>
+    <button id="retry" type="button">重试</button>
+  </section>
+  <section id="updating" hidden>
+    <h1>客户端需要更新</h1>
+    <p id="update-text">正在下载新版本，完成后会自动重启。</p>
+    <div class="bar"><i id="progress"></i></div>
+  </section>
+</main>
+<script>
+  // 主进程打开本页时带上 mode（offline / updating）、server（服务器地址）、reason（失败原因）
+  const params = new URLSearchParams(location.search);
+  const mode = params.get("mode") === "updating" ? "updating" : "offline";
+  document.getElementById(mode).hidden = false;
+  if (mode === "offline") {
+    const server = params.get("server") || "";
+    document.getElementById("server").textContent = server ? `服务器：${server}` : "";
+    document.getElementById("reason").textContent = params.get("reason") ? `原因：${params.get("reason")}` : "";
+    const retry = () => { if (server) location.href = server; };
+    document.getElementById("retry").addEventListener("click", retry);
+    setTimeout(retry, 15000);
+  }
+  // 更新进度由主进程调用
+  window.setUpdateProgress = (percent) => { document.getElementById("progress").style.width = `${Math.max(0, Math.min(100, percent))}%`; };
+  window.setUpdateText = (text) => { document.getElementById("update-text").textContent = text; };
+</script>
+</body>
+</html>

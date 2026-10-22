@@ -129,12 +129,15 @@ async function streamBuyerTurn(options: {
   const raw = reply && request ? reply.raw : null;
   if (reply && request) {
     reply.hijack();
+    // 跨域头沿用 @fastify/cors 已按白名单算好的（hijack 后不会自动写出），不再无条件回写请求的 Origin（F 节）
+    const presetHeaders = Object.fromEntries(
+      Object.entries(reply.getHeaders()).filter((entry): entry is [string, string | number | string[]] => entry[1] !== undefined),
+    );
     reply.raw.writeHead(200, {
+      ...presetHeaders,
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache",
       connection: "keep-alive",
-      "access-control-allow-origin": String(request.headers.origin ?? "*"),
-      "access-control-allow-credentials": "true",
     });
   }
   const send = (payload: Record<string, unknown>) => {

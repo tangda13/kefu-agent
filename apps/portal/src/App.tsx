@@ -42,7 +42,9 @@ export const OPEN_CONVERSATION_EVENT = "cecs:open-conversation";
 
 // role 参数仅用于管理端入口（?role=admin）与登录页签预选；
 // 学生/教师共用同一客户端，缺省进入「学生登录/教师登录」页签（学生优先）。
+// 生产环境学生、教师只能用客户端（A3 / D-83）：浏览器打开一律是管理端登录，服务端也会拒绝浏览器登录学生、教师账号。
 function readRole(): UserRole {
+  if (import.meta.env.PROD && !window.desktopRuntime?.isDesktop) return "admin";
   const value = new URLSearchParams(window.location.search).get("role");
   return value === "teacher" || value === "admin" ? value : "student";
 }

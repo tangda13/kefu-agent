@@ -2,9 +2,70 @@
   "name": "@cecs/desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "跨境电商客服AI实训平台客户端",
+  "author": "cecs",
+  "main": "main.cjs",
   "scripts": {
-    "build": "node -e \"console.log('Electron shell uses the portal build output')\"",
-    "test": "node --test security.test.cjs"
+    "build": "node -e \"console.log('客户端是外壳，页面从服务器加载（D-83）；打安装包用 pnpm --filter @cecs/desktop dist')\"",
+    "test": "node --test security.test.cjs updater.test.cjs",
+    "pack": "node ../../scripts/pack-client.mjs dir",
+    "dist": "node ../../scripts/pack-client.mjs"
+  },
+  "build": {
+    "appId": "cn.cecs.client",
+    "productName": "跨境电商客服AI实训平台",
+    "electronVersion": "43.1.0",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "updater.cjs",
+      "status.html",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "config.json",
+        "to": "config.json"
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "cecs-client-setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "跨境电商客服AI实训平台",
+      "uninstallDisplayName": "跨境电商客服AI实训平台",
+      "installerLanguages": [
+        "zh_CN"
+      ],
+      "language": "2052",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://kefu.keliagent.cn/updates/"
+      }
+    ],
+    "npmRebuild": false
   }
 }
-

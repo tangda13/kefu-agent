@@ -148,12 +148,12 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
   <div class="card"><div class="k">代码仓库</div><div class="v mono">github.com/tangda13/kefu-agent（main）</div></div>
   <div class="card"><div class="k">规模</div><div class="v">32 张表 · 40 个迁移 · 约 150 个接口</div></div>
 </div>
-<p>三端共用一套 React 前端代码，按登录角色渲染不同导航；学生端/教师端由 Electron 打包为 Windows 安装包，管理端由云端 nginx 以网页形式提供。所有业务数据、AI 调用和密钥都在云端 API，客户端不持有任何密钥。</p>
+<p>三端共用一套 React 前端代码，按登录角色渲染不同导航；学生端/教师端是 Windows 客户端（Electron 外壳，页面从服务器加载，D-83），管理端在浏览器里打开同一地址。所有业务数据、AI 调用和密钥都在云端 API，客户端不持有任何密钥。</p>
 <div class="note"><b>核心产品原则：</b>实训是幕后逻辑。学生端的沉浸层（客服工作台、订单、评价、邮件）必须像真实的客服软件，不出现“实训、轮次、画像”等字样；任务大厅和我的记录属于学习管理层，可以直呼任务和成绩。</div>
 
 <!-- 2 -->
 <h2 id="topology">2. 部署拓扑（目标形态）</h2>
-<p>正式服务器待功能完成后购买（独立服务器、单独部署）。在此之前用本机或临时环境联调；客户端里的服务地址和更新源地址都做成可配置。</p>
+<p>正式服务器：阿里云 ECS（待购买），域名 <code>kefu.keliagent.cn</code>（D-82）。客户端的服务器地址在安装目录 <code>resources/config.json</code>，更新源是同一台服务器的 <code>/updates/</code>。部署步骤见 <code>docs/DEPLOY.md</code>。</p>
 <div class="diagram">
 <svg viewBox="0 0 960 470" role="img" aria-label="部署拓扑图">
   <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
@@ -161,22 +161,20 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
   <rect class="box-a" x="20" y="40" width="220" height="110" rx="4"/>
   <text x="34" y="64" class="title">Windows 客户端（Electron）</text>
   <text x="34" y="86">学生端 / 教师端（同一安装包）</text>
-  <text x="34" y="106" class="small">登录页切换页签 · 前端打包在本地</text>
+  <text x="34" y="106" class="small">外壳 · 页面从服务器加载（D-83）</text>
   <text x="34" y="124" class="small">electron-updater 自动更新</text>
   <rect class="box" x="20" y="200" width="220" height="70" rx="4"/>
   <text x="34" y="224" class="title">浏览器</text>
-  <text x="34" y="246">管理端（?role=admin）</text>
+  <text x="34" y="246">管理端（生产只有管理端登录）</text>
 
   <!-- server zone -->
   <rect class="zone" x="300" y="20" width="420" height="430" rx="6"/>
   <text x="316" y="42" class="small">国内云服务器 · Docker Compose（项目名 cecs）</text>
   <rect class="box" x="320" y="60" width="380" height="96" rx="4"/>
-  <text x="334" y="82" class="title">web：nginx（443 / HTTPS）</text>
-  <text x="334" y="102" class="small">/  → 管理端静态页面</text>
+  <text x="334" y="82" class="title">宿主机 nginx 443（HTTPS）→ web 容器</text>
+  <text x="334" y="102" class="small">/  → 前端页面（客户端和管理端共用）</text>
   <text x="334" y="118" class="small">/v1/*、/uploads/*、/health → api:8787（SSE 关缓冲）</text>
   <text x="334" y="134" class="small">/updates/* → 客户端安装包与 latest.yml</text>
-  <rect class="box-p" x="560" y="68" width="128" height="22" rx="3"/>
-  <text x="570" y="84" class="small">/updates 为规划项</text>
 
   <rect class="box-a" x="320" y="190" width="380" height="120" rx="4"/>
   <text x="334" y="212" class="title">api：Fastify + TypeScript（:8787）</text>
@@ -191,7 +189,7 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
   <rect class="box" x="520" y="340" width="180" height="90" rx="4"/>
   <text x="534" y="362" class="title">文件卷</text>
   <text x="534" y="382" class="small">cecs_uploads（商品图/语音/TTS）</text>
-  <text x="534" y="400" class="small">backups（待挂卷，见待办）</text>
+  <text x="534" y="400" class="small">cecs_backups（备份）· ./updates</text>
 
   <!-- external -->
   <rect class="box" x="760" y="150" width="180" height="96" rx="4"/>
@@ -200,9 +198,9 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
   <text x="774" y="210" class="small">也可直连通义 / 智谱 / Kimi…</text>
   <text x="774" y="226" class="small">兼容 OpenAI 接口，可热切换</text>
   <rect class="box" x="760" y="280" width="180" height="76" rx="4"/>
-  <text x="774" y="304" class="title">豆包语音</text>
-  <text x="774" y="324" class="small">TTS 单向流式 WebSocket</text>
-  <text x="774" y="340" class="small">ASR 大模型识别 WebSocket</text>
+  <text x="774" y="304" class="title">语音：阿里云百炼 + 豆包</text>
+  <text x="774" y="324" class="small">朗读阿里云主用、豆包备用</text>
+  <text x="774" y="340" class="small">识别豆包（限流见 D-80/81）</text>
 
   <!-- arrows -->
   <path class="arrow" d="M240 95 L318 105"/>
@@ -215,7 +213,7 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
   <path class="arrow" d="M700 280 L758 310"/>
 </svg>
 </div>
-<div class="note warn">现状差异：当前 <code>DEPLOY.md</code> 仍是“纯 Web”版本（学生/教师也走浏览器），客户端无安装包、API 地址默认 127.0.0.1。P1 期改造，详见第 11 节。</div>
+<div class="note">生产环境学生、教师只能用客户端登录（服务端认 User-Agent 里的 <code>CecsDesktop/&lt;版本&gt;</code>，<code>DESKTOP_ONLY</code>）；页面和接口同源，生产不放行任何跨域。客户端细节见 kefu-weihu 技能 <code>references/client-release.md</code>。</div>
 
 <!-- 3 -->
 <h2 id="repo">3. 代码结构</h2>
@@ -243,7 +241,7 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
 │  │     └─ settings.ts             app_settings 读写（DB 配置优先于 env）
 │  ├─ portal/       React + Vite 前端（三端共用）
 │  │  └─ src/  App.tsx · api/client.ts · components/ · pages/{student,teacher,admin}/ · styles.css
-│  └─ desktop/      Electron 外壳（main.cjs / preload.cjs，已安全加固，待打包）
+│  └─ desktop/      Electron 外壳：main.cjs（加载服务器页面、跳转与权限锁定）· preload.cjs · updater.cjs（自动更新）· status.html（断网 / 强制更新页）· config.json（服务器地址）
 ├─ packages/
 │  ├─ contracts/    共享类型与常量（业务环节、客户类型、性格、情绪、语言、国籍、评分维度、验收阈值、
 │  │                模型用途与厂商预置模板 llm.ts、场景剧本字段）
@@ -367,7 +365,8 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
 <tr><td class="mono">DATABASE_URL · POSTGRES_PASSWORD</td><td>数据库连接</td></tr>
 <tr><td class="mono">JWT_SECRET · ACCESS_TOKEN_TTL · REFRESH_TOKEN_TTL</td><td>令牌签名与有效期（迁移服务器时 JWT_SECRET 必须原样保留）</td></tr>
 <tr><td class="mono">ADMIN_INITIAL_PASSWORD</td><td>首次启动创建 admin 的初始密码</td></tr>
-<tr><td class="mono">CORS_ORIGINS</td><td>允许的来源；留空等于放行全部（待收紧）</td></tr>
+<tr><td class="mono">CORS_ORIGINS</td><td>允许跨域的来源；留空时生产不放行任何跨域（页面和接口同源），开发放行全部</td></tr>
+<tr><td class="mono">DESKTOP_ONLY</td><td>学生、教师只能用客户端登录；留空时生产开、开发和测试关</td></tr>
 <tr><td class="mono">SETTINGS_ENCRYPTION_KEY</td><td>加密存储厂商 API Key 的密钥；未设置时由 JWT_SECRET 派生（生产应单独设置，换了它需要重新填写各档案的 Key）</td></tr>
 <tr><td class="mono">LLM_BASE_URL · LLM_API_KEY · LLM_MODEL · LLM_EXTRA_BODY</td><td>只在模型档案表为空时导入一次作为默认档案；之后以管理端档案为准</td></tr>
 <tr><td class="mono">TTS_API_KEY · TTS_RESOURCE_ID · TTS_SPEAKER(_MALE) · ASR_RESOURCE_ID</td><td>豆包语音</td></tr>
@@ -405,7 +404,7 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
 <tr><td>P3</td><td>设计定向与组件库</td><td><span class="tag t-ok">已完成</span> H1 风格稿定方向 A；H2 DESIGN.md 2.0 + tokens.css；H3 共用组件库、新外壳与登录页；H6 品牌可替换</td></tr>
 <tr><td>P4</td><td>逐页按新设计重做 + 参数细项补齐</td><td><span class="tag t-plan">待开始</span></td></tr>
 <tr><td>P5</td><td>后台任务可靠性（L1–L4）+ 性能验收（切 DeepSeek 官方）与 200 账号压测</td><td><span class="tag t-plan">待开始</span></td></tr>
-<tr><td>R</td><td>发版上线：客户端打包、自动更新、CORS/nginx、备份修复、DEPLOY.md</td><td><span class="tag t-plan">用户明确发版时启动</span></td></tr>
+<tr><td>R</td><td>发版上线：客户端外壳（D-83）、打包、自动更新、CORS/nginx、DEPLOY.md</td><td><span class="tag t-plan">进行中（2026-10-22 启动）</span></td></tr>
 <tr><td>P6</td><td>购买服务器、部署、交付资料</td><td><span class="tag t-plan">待开始</span></td></tr>
 </table></div>
 <p>完整差距清单（A–L 节）与排期见 <code>docs/重启开发方案-2026-10.md</code>。</p>
@@ -414,6 +413,7 @@ button.theme { background: var(--surface); color: var(--text); border: 1px solid
 <h2 id="changelog">12. 变更记录</h2>
 <div class="table-wrap"><table>
 <tr><th>日期</th><th>变更</th></tr>
+<tr><td>2026-10-22</td><td>R 发版阶段：客户端改为“外壳 + 从服务器加载页面”（D-83）。<code>apps/desktop</code>：<code>main.cjs</code> 按 <code>CECS_DEV_SERVER_URL</code> → <code>resources/config.json</code> → <code>https://kefu.keliagent.cn/</code> 加载页面，只能在服务器和本地状态页之间跳转，本机能力（存 PDF、链接采集、记住密码）只回应服务器页面，权限只给服务器，User-Agent 加 <code>CecsDesktop/&lt;版本&gt;</code>，安装版单开；新增 <code>updater.cjs</code>（electron-updater，generic 源 <code>/updates/</code>，<code>policy.json</code> 的 <code>minVersion</code> 强制更新）、<code>status.html</code>（断网 / 强制更新）、<code>build/icon.ico</code>、electron-builder NSIS 配置。服务端：<code>env.desktopOnly</code>（<code>DESKTOP_ONLY</code>，生产默认开）时浏览器登录学生、教师返回 403 <code>CLIENT_REQUIRED</code>；<code>corsOrigins</code> 生产默认不放行跨域；SSE 不再无条件回写 Origin，改用 CORS 插件算好的头。前端：生产构建在浏览器里一律是管理端登录。nginx：新增 <code>/updates/</code>、入口页不缓存、<code>/assets/</code> 长期缓存、从宿主机 nginx 的 <code>X-Real-IP</code> 取真实 IP；compose 的 web 端口只开 <code>127.0.0.1:8081</code>、挂 <code>./updates</code>。<code>docs/DEPLOY.md</code> 重写（宿主机 nginx + certbot 做 HTTPS）。打包：<code>scripts/pack-client.mjs</code> 在 <code>%TEMP%</code> 英文目录里单独装 electron-updater、用 npx 跑 electron-builder 26.15.3（不进工作区），安装目录 <code>%LOCALAPPDATA%\Programs\cecs-client</code>、用户数据 <code>%APPDATA%\cecs-client</code>（其中的 <code>config.json</code> 可覆盖服务器地址，升级不覆盖）。本机按生产配置实测：浏览器登录教师 403、客户端 200，审计记到真实 IP，0.1.0 → 0.1.1 强制更新差量下载约 0.7MB 后自动重开</td></tr>
 <tr><td>2026-10-22</td><td>豆包并发计数（D-81，不接第三家语音厂商）：<code>voice/rate-limit.ts</code> 新增并发信号量 <code>ConcurrencyLimiter</code>；新增 <code>voice/doubao.ts</code>（语音合成 9 个、语音识别 45 个名额，按豆包正式版默认 10 / 50 留一成；<code>shouldRetryWithAutoLanguage</code>）；<code>synthesizeWithFallback</code> 第五个参数改为 <code>{ aliyun, doubao }</code>，豆包占着名额才发，阿里云还能排队时不等豆包空位，豆包是唯一出路时最多等 3 秒；<code>VoiceService.recognize</code> 占着名额才发（最多等 3 秒，耗时含等待）；管理端豆包试听也占名额；豆包并发 / 额度超限、超时、连不上时不再换语种重试。无迁移，API 测试 183 个全绿</td></tr>
 <tr><td>2026-10-22</td><td>阿里云朗读限流控速（D-80，不提额，按百炼《限流应对最佳实践》）：新增 <code>voice/rate-limit.ts</code>（平滑限速器 <code>PacedLimiter</code>、排队重试 <code>pacedCall</code>）；<code>voice/aliyun.ts</code> 新增进程内闸口 <code>aliyunTtsGate</code>（每 371ms 一个名额，429 暂停 1 秒）；<code>voice/fallback.ts</code> 改为：阿里云 1 秒内轮得到就等它（阿里云是主力），要等更久（<code>busy</code>）或出错立刻转豆包，豆包也不行再排队等阿里云（≤5 秒，429 / 5xx 指数退避 + 抖动，最多 3 次）；管理端试听也走同一队列（≤15 秒）；<code>voice_metrics.elapsed_ms</code> 改为从请求进来算起；<code>aliyunFallbackStats</code> 不再把 <code>busy</code> 计入出错次数和告警。无迁移，API 测试 168 个全绿</td></tr>
 <tr><td>2026-10-21</td><td>部署前准备（A4 + 镜像构建验证）：<code>Dockerfile.api</code> / <code>Dockerfile.web</code> 改 <code>node:24-alpine</code>；api 镜像装 <code>postgresql16-client</code>、<code>tzdata</code>，<code>TZ=Asia/Shanghai</code>；compose 新增 <code>cecs_backups</code> 卷挂 <code>/app/apps/api/backups</code>；可选构建参数 <code>NPM_REGISTRY</code>、<code>ALPINE_MIRROR</code>（<code>.env.example</code> 默认填国内源）。<code>performBackup</code> 只在本机没装 pg_dump 时才借开发库容器，装了却失败照实报错</td></tr>

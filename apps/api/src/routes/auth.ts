@@ -15,6 +15,14 @@ import { clearLoginFailures, lockedMinutes, recordLoginFailure } from "../login-
 
 const ROLE_LABEL: Record<DbUser["role"], string> = { student: "学生", teacher: "教师", admin: "管理员" };
 
+/** 客户端外壳在 User-Agent 末尾加 CecsDesktop/<版本>（apps/desktop/main.cjs）；返回版本号，不是客户端返回 null */
+export function desktopClientVersion(userAgent: string | undefined): string | null {
+  const match = /\bCecsDesktop\/(\d+\.\d+\.\d+)/.exec(userAgent ?? "");
+  return match ? match[1]! : null;
+}
+
+const isDesktopClient = (userAgent: string | undefined) => desktopClientVersion(userAgent) !== null;
+
 interface DbUser {
   id: string;
   username: string;
@@ -112,6 +120,12 @@ export function registerAuthRoutes(
             ? "管理员账号请通过浏览器管理端登录。"
             : `该账号是${ROLE_LABEL[user.role]}账号，请切换到「${ROLE_LABEL[user.role]}登录」。`,
         };
+      }
+      // 学生、教师只能用客户端登录（A3）：客户端在 User-Agent 里带 CecsDesktop/<版本>
+      if (env.desktopOnly && (user.role === "student" || user.role === "teacher") && !isDesktopClient(request.headers["user-agent"])) {
+        await writeAudit(db, user.id, "auth.client_required", username);
+        reply.code(403);
+        return { code: "CLIENT_REQUIRED", message: `${ROLE_LABEL[user.role]}账号请在客户端登录。` };
       }
       await writeAudit(db, user.id, "auth.login", username);
       return issueSession(db, env, user);

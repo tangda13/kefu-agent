@@ -34,7 +34,10 @@ services:
       DATABASE_URL: postgres://cecs:${POSTGRES_PASSWORD:-cecs_dev_2026}@db:5432/cecs
       JWT_SECRET: ${JWT_SECRET:?请在 .env 设置 JWT_SECRET（长随机串）}
       ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-Admin#2026}
+      # 生产不需要跨域（客户端从服务器加载页面，同源）：留空 = 不放行任何跨域来源
       CORS_ORIGINS: ${CORS_ORIGINS:-}
+      # 学生、教师只能用客户端登录；临时要在浏览器里验收时设 false
+      DESKTOP_ONLY: ${DESKTOP_ONLY:-}
       TRUST_PROXY: "true"
       PORT: 8787
       # 加密存储厂商 API Key 的密钥（P2 模型网关）；未设置时由 JWT_SECRET 派生
@@ -65,9 +68,13 @@ services:
         NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
     restart: unless-stopped
     ports:
-      - "8081:80"
+      # 只给本机的宿主机 nginx（HTTPS）转发用，不直接对外
+      - "127.0.0.1:8081:80"
     depends_on:
       - api
+    volumes:
+      # 客户端更新源：发版时把安装包、latest.yml、blockmap 放进宿主机 ./updates（见 docs/DEPLOY.md）
+      - ./updates:/usr/share/nginx/updates:ro
 
 volumes:
   cecs_pg_data:
