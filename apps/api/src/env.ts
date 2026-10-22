@@ -39,7 +39,9 @@ export interface ApiEnv {
 
 export function loadEnv(overrides: Partial<ApiEnv> = {}): ApiEnv {
   const corsRaw = process.env.CORS_ORIGINS?.trim();
-  const production = process.env.NODE_ENV === "production";
+  // .env 在 Windows 上编辑过的话行尾会带回车符：不 trim 的话 DESKTOP_ONLY 只剩一个回车，会被当成“设了、但不是 true”，把只认客户端悄悄关掉（2026-10-22 部署时遇到）
+  const desktopRaw = process.env.DESKTOP_ONLY?.trim();
+  const production = process.env.NODE_ENV?.trim() === "production";
   return {
     databaseUrl:
       process.env.DATABASE_URL ??
@@ -49,8 +51,8 @@ export function loadEnv(overrides: Partial<ApiEnv> = {}): ApiEnv {
     refreshTokenTtlSeconds: Number(process.env.REFRESH_TOKEN_TTL ?? 14 * 24 * 3600),
     adminInitialPassword: process.env.ADMIN_INITIAL_PASSWORD ?? "Admin#2026",
     corsOrigins: corsRaw ? corsRaw.split(",").map((item) => item.trim()) : !production,
-    desktopOnly: process.env.DESKTOP_ONLY ? process.env.DESKTOP_ONLY === "true" : production,
-    trustProxy: process.env.TRUST_PROXY === "true",
+    desktopOnly: desktopRaw ? desktopRaw === "true" : production,
+    trustProxy: process.env.TRUST_PROXY?.trim() === "true",
     port: Number(process.env.PORT ?? 8787),
     llmBaseUrl: (process.env.LLM_BASE_URL ?? "").replace(/\/+$/, ""),
     llmApiKey: process.env.LLM_API_KEY ?? "",

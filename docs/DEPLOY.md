@@ -30,7 +30,7 @@
 
 | 项 | 要求 |
 |---|---|
-| 服务器 | 阿里云 ECS，4 核 8G，不要突发性能实例（t5/t6）；Ubuntu 24.04 64 位；ESSD 100G 左右；按使用流量计费、峰值 100M；打开自动快照 |
+| 服务器 | 阿里云 ECS，2 核 4G 起（不要突发性能实例 t5/t6；4G 内存要加交换文件，见第二节）；Ubuntu 24.04 或 26.04 64 位；ESSD 100G 左右；按使用流量计费、峰值 100M；打开自动快照 |
 | 登录 | 密钥对，用户名 `ecs-user`；私钥放 `C:\Users\22639\Desktop\私密\` |
 | 安全组 | 只开 22、80、443 |
 | 域名 | 阿里云云解析给 `kefu.keliagent.cn` 加 A 记录指向服务器公网 IP（D-82）；keliagent.cn 已在阿里云备案，同账号新服务器不用重新备案 |
@@ -39,11 +39,16 @@
 
 ```bash
 sudo apt-get update && sudo apt-get install -y docker.io docker-compose-v2 nginx certbot python3-certbot-nginx
+# 4G 内存的服务器加 4G 交换文件，构建镜像时用得上
+sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 sudo mkdir -p /etc/docker
 sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
 {
   "live-restore": true,
-  "registry-mirrors": ["https://docker.m.daocloud.io", "https://dockerproxy.net", "https://mirror.ccs.tencentyun.com"]
+  "registry-mirrors": ["https://docker.m.daocloud.io", "https://dockerproxy.net", "https://mirror.ccs.tencentyun.com"],
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "50m", "max-file": "5" }
 }
 EOF
 sudo systemctl daemon-reload && sudo systemctl restart docker
@@ -55,16 +60,14 @@ sudo docker pull node:24-alpine   # 能拉下来再继续
 ## 三、上传代码
 
 ```bash
-# 本机（项目根目录）打包，排除依赖、构建产物、运行时数据和密钥
-tar czf kefu.tar.gz --exclude=node_modules --exclude=dist --exclude=uploads --exclude=updates \
-  --exclude=.git --exclude=.claude --exclude=.devrun --exclude='*.xlsx' --exclude='*.docx' --exclude='*.pdf' \
-  --exclude='*.pem' --exclude='.env' .
+# 本机（项目根目录）：从 git 打包已提交的代码（不含依赖、构建产物、运行时数据和密钥）
+git -c core.autocrlf=false archive --format=tar.gz -o kefu.tar.gz HEAD -- . ':(exclude)docs' ':(exclude)*.docx' ':(exclude)*.xlsx' ':(exclude)*.pdf'
 scp -i <私钥> kefu.tar.gz ecs-user@<服务器IP>:/tmp/
 # 服务器
 mkdir -p ~/cecs/updates && cd ~/cecs && tar xzf /tmp/kefu.tar.gz
 ```
 
-服务器直连 GitHub 很慢，不建议在服务器上 `git clone`。
+服务器直连 GitHub 很慢，不建议在服务器上 `git clone`。**不要直接 tar Windows 上的工作区**：文件是 CRLF 换行，`.env` 的值末尾会多一个回车符，开关和镜像源地址都会失效；`core.autocrlf=false` 让打出来的包保持仓库里的 LF。
 
 ## 四、配置环境变量
 
