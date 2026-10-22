@@ -6,7 +6,7 @@ import {
   setStudentGroup, setStudentStatus, updateStudent,
   type ClassStudent, type ClassSummary, type Session, type StudentTaskItem,
 } from "../../api/client";
-import { ImportStudentsDialog, PasswordNotice } from "../../components/AccountDialogs";
+import { ImportStudentsDialog, PasswordNotice, DeleteRecordsDialog } from "../../components/AccountDialogs";
 import {
   Bench, Board, Button, Confirm, DataTable, Dialog, Drawer, Field, FilterChips, Flag, HeaderTabs, Input, MoreMenu, SearchBox, Select, StageTag, Tag, toast,
 } from "../../ui";
@@ -194,13 +194,17 @@ export function LiveClasses({ session, onNavigate }: { session: Session; onNavig
   const disabledCount = students.filter((row) => accountState(row) === "disabled").length;
   const myRole = (item: ClassSummary) => (item.headTeacherId === session.user.id ? "班主任" : "任课");
 
+  async function done(message: string, reloadClasses = false) {
+    toast.ok(message);
+    setDialog(null);
+    if (reloadClasses) await loadClasses();
+    await loadStudents();
+  }
+
   async function run(action: () => Promise<unknown>, message: string, reloadClasses = false) {
     try {
       await action();
-      toast.ok(message);
-      setDialog(null);
-      if (reloadClasses) await loadClasses();
-      await loadStudents();
+      await done(message, reloadClasses);
     } catch (cause) {
       toast.error(errorText(cause));
     }
@@ -375,15 +379,17 @@ export function LiveClasses({ session, onNavigate }: { session: Session; onNavig
           onSubmit={(name) => run(() => renameClass(session, current.id, name), "已重命名", true)} />
       ) : null}
       {dialog?.kind === "deleteClass" && current ? (
-        students.length > 0 ? (
-          <Confirm title="不能删除" confirmText="知道了" onConfirm={() => setDialog(null)} onClose={() => setDialog(null)}>
-            「{current.name}」还有 {students.length} 名学生。先把学生转到别的班或删除，才能删除班级。
-          </Confirm>
-        ) : (
-          <Confirm title="删除班级" danger confirmText="删除" onConfirm={() => void run(() => deleteClass(session, current.id), `已删除「${current.name}」`, true)} onClose={() => setDialog(null)}>
-            确定删除「{current.name}」吗？
-          </Confirm>
-        )
+        <DeleteRecordsDialog
+          title="删除班级"
+          name={current.name}
+          nameLabel="班级名"
+          intro={`确定删除「${current.name}」吗？`}
+          known={students.length ? { students: students.length } : undefined}
+          warn={(counts) => `「${current.name}」还有 ${counts.students} 名学生，学生账号和他们的实训记录会一起删掉。`}
+          onDelete={(confirm) => deleteClass(session, current.id, confirm)}
+          onDone={() => void done(`已删除「${current.name}」`, true)}
+          onClose={() => setDialog(null)}
+        />
       ) : null}
       {dialog?.kind === "import" && current ? (
         <ImportStudentsDialog session={session} classId={current.id} className={current.name} onClose={() => setDialog(null)}
@@ -415,9 +421,16 @@ export function LiveClasses({ session, onNavigate }: { session: Session; onNavig
         </Confirm>
       ) : null}
       {dialog?.kind === "remove" ? (
-        <Confirm title="删除学生" danger confirmText="删除" onConfirm={() => void run(() => deleteStudent(session, dialog.student.id), `已删除 ${dialog.student.displayName}`, true)} onClose={() => setDialog(null)}>
-          只有还没练过的账号能删除，删除后不能恢复。已经有记录的学生请用「停用账号」。
-        </Confirm>
+        <DeleteRecordsDialog
+          title="删除学生"
+          name={dialog.student.username}
+          nameLabel="学号"
+          intro={`确定删除 ${dialog.student.displayName}（${dialog.student.username}）吗？删除后不能恢复。`}
+          warn={(counts) => `${dialog.student.displayName} 已有 ${counts.records} 条实训记录，会和账号一起删掉。`}
+          onDelete={(confirm) => deleteStudent(session, dialog.student.id, confirm)}
+          onDone={() => void done(`已删除 ${dialog.student.displayName}`, true)}
+          onClose={() => setDialog(null)}
+        />
       ) : null}
       {passwords ? <PasswordNotice title={passwords.title} rows={passwords.rows} onClose={() => setPasswords(null)} /> : null}
     </>

@@ -23,6 +23,14 @@ async function allTeachers(db: Db, ids: string[]): Promise<boolean> {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** 连记录一起删之前先备份一次（D-86），备份失败就不删；测试换成假的，免得备份到开发库、按测试库的份数删掉开发备份 */
+export type BackupBeforeDelete = (db: Db) => Promise<{ fileName: string }>;
+const realBackup: BackupBeforeDelete = async (db) => (await import("./admin")).performBackup(db);
+
+/** 确认文字：输入的学号 / 班级名和目标一致（不区分大小写、忽略首尾空格） */
+const confirmed = (input: string | undefined, expected: string) =>
+  Boolean(input) && input!.trim().toLowerCase() === expected.trim().toLowerCase();
+
 interface StudentRow {
   id: string;
   username: string;
@@ -63,7 +71,10 @@ export function registerClassRoutes(
   app: FastifyInstance,
   db: Db,
   guard: AuthGuard,
+  backup: BackupBeforeDelete = realBackup,
 ): void {
+  const backupBeforeDelete = async () => (await backup(db)).fileName;
+
   // 管理端：新增教师账号（ADM-03 的阶段1最小集）
   app.post<{ Body: { username?: string; displayName?: string; password?: string } }>(
     "/v1/admin/teachers",
@@ -99,6 +110,85 @@ export function registerClassRoutes(
         }
         throw error;
       }
+    },
+  );
+
+  /* 删除教师（D-87）：名下的班级（班主任、任课授权）、建的任务、发的公告、复核记录都转给接手教师，再删账号；
+     名下什么都没有的直接删。不转交的话：班主任和任务引用会挡住删除，公告会被级联删掉，复核人会变空 */
+  app.delete<{ Params: { teacherId: string }; Querystring: { successorId?: string } }>(
+    "/v1/admin/teachers/:teacherId",
+    { preHandler: guard.requireRole("admin") },
+    async (request, reply) => {
+      const { teacherId } = request.params;
+      const successorId = request.query.successorId?.trim() || null;
+      if (!UUID_RE.test(teacherId)) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "教师不存在。" };
+      }
+      const teacher = (await db.query<{ username: string; display_name: string }>(
+        "select username, display_name from users where id = $1 and role = 'teacher'",
+        [teacherId],
+      )).rows[0];
+      if (!teacher) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "教师不存在。" };
+      }
+      const owned = (await db.query<{ classes: number; tasks: number; notices: number }>(
+        `select (select count(*)::int from classes where head_teacher_id = $1)
+              + (select count(*)::int from teacher_classes where teacher_id = $1) as classes,
+                (select count(*)::int from tasks where created_by = $1) as tasks,
+                (select count(*)::int from announcements where publisher_id = $1) as notices`,
+        [teacherId],
+      )).rows[0]!;
+      const hasWork = owned.classes + owned.tasks + owned.notices > 0;
+      if (hasWork) {
+        if (!successorId) {
+          reply.code(409);
+          return {
+            code: "TEACHER_HAS_WORK",
+            message: "该教师名下还有班级或任务，请选择接手的教师。",
+            ...owned,
+          };
+        }
+        const successor = UUID_RE.test(successorId) && successorId !== teacherId
+          ? (await db.query("select 1 from users where id = $1 and role = 'teacher' and status = 'active'", [successorId])).rowCount
+          : 0;
+        if (!successor) {
+          reply.code(400);
+          return { code: "INVALID_SUCCESSOR", message: "接手的教师不存在或已停用。" };
+        }
+      }
+      const client = await db.connect();
+      try {
+        await client.query("begin");
+        if (hasWork) {
+          await client.query("update classes set head_teacher_id = $2 where head_teacher_id = $1", [teacherId, successorId]);
+          await client.query(
+            `insert into teacher_classes (teacher_id, class_id)
+             select $2, class_id from teacher_classes where teacher_id = $1
+             on conflict do nothing`,
+            [teacherId, successorId],
+          );
+          // 接手人成了班主任的班，不必再留一条任课授权（I5 口径：班主任只记在 classes 上）
+          await client.query(
+            "delete from teacher_classes tc using classes c where tc.class_id = c.id and tc.teacher_id = $1 and c.head_teacher_id = $1",
+            [successorId],
+          );
+          await client.query("update tasks set created_by = $2 where created_by = $1", [teacherId, successorId]);
+          await client.query("update announcements set publisher_id = $2 where publisher_id = $1", [teacherId, successorId]);
+          await client.query("update assessments set reviewed_by = $2 where reviewed_by = $1", [teacherId, successorId]);
+        }
+        await client.query("delete from users where id = $1 and role = 'teacher'", [teacherId]);
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release();
+      }
+      guard.invalidateAccount(teacherId);
+      await writeAudit(db, request.user!.sub, "admin.delete_teacher", teacherId, { username: teacher.username, successorId, ...owned });
+      return { ok: true, transferred: hasWork ? owned : null };
     },
   );
 
@@ -174,28 +264,49 @@ export function registerClassRoutes(
     },
   );
 
-  /* 删除班级：仅允许删除没有学生的空班级，避免误删教学数据 */
-  app.delete<{ Params: { classId: string } }>(
+  /* 删除班级：空班级直接删；还有学生的，输入班级名确认后连学生和他们的实训记录一起删，删之前先自动备份（D-86） */
+  app.delete<{ Params: { classId: string }; Querystring: { confirm?: string } }>(
     "/v1/classes/:classId",
     { preHandler: guard.requireRole("teacher", "admin") },
     async (request, reply) => {
       const { classId } = request.params;
       const user = request.user!;
+      if (!UUID_RE.test(classId)) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "班级不存在。" };
+      }
       if (!(await teacherOwnsClass(db, user, classId))) {
         reply.code(403);
         return { code: "FORBIDDEN", message: "您未被授权管理该班级。" };
       }
-      const students = await db.query(
-        "select count(*)::int as n from users where class_id = $1 and role = 'student'",
+      const klass = (await db.query<{ name: string; students: number }>(
+        "select name, (select count(*)::int from users where class_id = $1 and role = 'student') as students from classes where id = $1",
         [classId],
-      );
-      if (students.rows[0].n > 0) {
-        reply.code(409);
-        return { code: "CLASS_NOT_EMPTY", message: "班级内仍有学生，请先转移或清空学生后再删除。" };
+      )).rows[0];
+      if (!klass) {
+        reply.code(404);
+        return { code: "NOT_FOUND", message: "班级不存在。" };
+      }
+      let backup: string | null = null;
+      if (klass.students > 0) {
+        if (!confirmed(request.query.confirm, klass.name)) {
+          reply.code(409);
+          return { code: "CLASS_NOT_EMPTY", message: `班级里还有 ${klass.students} 名学生，确认连学生和他们的实训记录一起删除，请输入班级名。`, students: klass.students };
+        }
+        try {
+          backup = await backupBeforeDelete();
+        } catch (error) {
+          request.log.error(error, "backup before class delete failed");
+          reply.code(503);
+          return { code: "BACKUP_FAILED", message: "删除前自动备份没成功，这次没有删除，请稍后再试或联系管理员。" };
+        }
       }
       const client = await db.connect();
+      let removed: string[] = [];
       try {
         await client.query("begin");
+        // 学生的会话、评分、邮件等都随账号级联删除
+        removed = (await client.query<{ id: string }>("delete from users where class_id = $1 and role = 'student' returning id", [classId])).rows.map((row) => row.id);
         await client.query("delete from task_classes where class_id = $1", [classId]);
         await client.query("delete from teacher_classes where class_id = $1", [classId]);
         await client.query("delete from announcements where class_id = $1", [classId]);
@@ -207,8 +318,9 @@ export function registerClassRoutes(
       } finally {
         client.release();
       }
-      await writeAudit(db, user.sub, "class.delete", classId);
-      return { ok: true };
+      for (const id of removed) guard.invalidateAccount(id);
+      await writeAudit(db, user.sub, "class.delete", classId, { name: klass.name, students: removed.length, backup });
+      return { ok: true, students: removed.length, backup };
     },
   );
 
@@ -283,8 +395,8 @@ export function registerClassRoutes(
     },
   );
 
-  /* 删除学生（I8）：只允许删除没有任何实训记录的账号（如导入错误）；有记录的只能停用，避免误删成绩 */
-  app.delete<{ Params: { studentId: string } }>(
+  /* 删除学生：没练过的直接删；有实训记录的，输入学号确认后连记录一起删，删之前先自动备份（D-86，原 I8 只允许停用） */
+  app.delete<{ Params: { studentId: string }; Querystring: { confirm?: string } }>(
     "/v1/students/:studentId",
     { preHandler: guard.requireRole("teacher", "admin") },
     async (request, reply) => {
@@ -305,14 +417,26 @@ export function registerClassRoutes(
               + (select count(*) from baseline_assessments where student_id = $1) as n`,
         [studentId],
       );
-      if (Number(usage.rows[0]?.n ?? 0) > 0) {
-        reply.code(409);
-        return { code: "STUDENT_HAS_DATA", message: "该学生已有实训记录，不能删除，只能停用。" };
+      const records = Number(usage.rows[0]?.n ?? 0);
+      let backup: string | null = null;
+      if (records > 0) {
+        if (!confirmed(request.query.confirm, student.username)) {
+          reply.code(409);
+          return { code: "STUDENT_HAS_DATA", message: `该学生已有 ${records} 条实训记录，确认连记录一起删除，请输入学号。`, records };
+        }
+        try {
+          backup = await backupBeforeDelete();
+        } catch (error) {
+          request.log.error(error, "backup before student delete failed");
+          reply.code(503);
+          return { code: "BACKUP_FAILED", message: "删除前自动备份没成功，这次没有删除，请稍后再试或联系管理员。" };
+        }
       }
+      // 会话、评分、邮件、话术等都随账号级联删除
       await db.query("delete from users where id = $1 and role = 'student'", [studentId]);
       guard.invalidateAccount(studentId);
-      await writeAudit(db, user.sub, "student.delete", studentId, { username: student.username, classId: student.class_id });
-      return { ok: true };
+      await writeAudit(db, user.sub, "student.delete", studentId, { username: student.username, classId: student.class_id, records, backup });
+      return { ok: true, records, backup };
     },
   );
 

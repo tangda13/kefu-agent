@@ -451,6 +451,9 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
                   />
                   <div className="mon-box-bar">
                     <MoreMenu
+                      side="top"
+                      align="start"
+                      minWidth={300}
                       trigger={<><List size={14} />常用指导</>}
                       triggerClassName="mon-quick"
                       items={GUIDANCE_PRESETS.map((preset) => ({ label: preset, onClick: () => { setDraft(preset); inputRef.current?.focus(); } }))}

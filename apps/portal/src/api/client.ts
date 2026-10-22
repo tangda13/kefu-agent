@@ -1099,16 +1099,17 @@ export const deleteTask = (session: Session, taskId: string) =>
   apiRequestDelete(`/v1/tasks/${taskId}`, session);
 export const renameClass = (session: Session, classId: string, name: string) =>
   apiRequestPatch(`/v1/classes/${classId}`, session, { name });
-export const deleteClass = (session: Session, classId: string) =>
-  apiRequestDelete(`/v1/classes/${classId}`, session);
+/** 空班级直接删；还有学生的返回 CLASS_NOT_EMPTY，带上 confirm = 班级名才连学生一起删（D-86，删前服务端自动备份） */
+export const deleteClass = (session: Session, classId: string, confirm?: string) =>
+  apiRequestDelete(`/v1/classes/${classId}${confirm ? `?confirm=${encodeURIComponent(confirm)}` : ""}`, session);
 export const setStudentStatus = (session: Session, studentId: string, status: "active" | "disabled") =>
   apiRequestPatch(`/v1/students/${studentId}`, session, { status });
 /** 改姓名 / 转班（目标班需有授权） */
 export const updateStudent = (session: Session, studentId: string, patch: { displayName?: string; classId?: string }) =>
   apiRequestPatch(`/v1/students/${studentId}`, session, patch);
-/** 仅无实训记录的学生可删除，否则返回 STUDENT_HAS_DATA */
-export const deleteStudent = (session: Session, studentId: string) =>
-  apiRequestDelete(`/v1/students/${studentId}`, session);
+/** 没练过的直接删；有记录的返回 STUDENT_HAS_DATA，带上 confirm = 学号才连记录一起删（D-86，删前服务端自动备份） */
+export const deleteStudent = (session: Session, studentId: string, confirm?: string) =>
+  apiRequestDelete(`/v1/students/${studentId}${confirm ? `?confirm=${encodeURIComponent(confirm)}` : ""}`, session);
 
 export function apiRequestPut<T = { ok: boolean }>(
   path: string,
@@ -1134,6 +1135,9 @@ export interface AdminTeacher {
 
 export const fetchAdminTeachers = (session: Session) =>
   apiGet<AdminTeacher[]>("/v1/admin/teachers", session);
+/** 名下有班级 / 任务 / 公告的返回 TEACHER_HAS_WORK，带上 successorId 才转交后删除（D-87） */
+export const deleteTeacher = (session: Session, teacherId: string, successorId?: string) =>
+  apiRequestDelete(`/v1/admin/teachers/${teacherId}${successorId ? `?successorId=${encodeURIComponent(successorId)}` : ""}`, session);
 export const resetTeacherPassword = (session: Session, teacherId: string) =>
   apiPost<{ temporaryPassword: string }>(`/v1/admin/teachers/${teacherId}/reset-password`, session);
 export const createClassAsAdmin = (session: Session, name: string, headTeacherId: string | null) =>

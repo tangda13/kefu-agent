@@ -3,6 +3,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ButtonHTMLAttributes,
@@ -348,22 +349,67 @@ export function DataTable<T>({ columns, rows, rowKey, empty = "暂无数据", lo
 }
 
 /** 「更多」菜单：收纳次要和危险操作 */
-export function MoreMenu({ items, label = "更多操作", trigger, triggerClassName }: { items: Array<{ label: string; onClick: () => void; danger?: boolean; disabled?: boolean; icon?: LucideIcon; separated?: boolean }>; label?: string; /** 自定义触发按钮的内容（默认是“…”图标按钮） */ trigger?: ReactNode; triggerClassName?: string }) {
+/** 更多操作菜单：浮层挂到 body（fixed 定位），不会被表格横向滚动区裁掉、也不会把表格撑出滚动条（2026-10-22 管理端账号表格踩过）；
+    放不下时自动翻到另一边。side 首选往下还是往上，align 和触发按钮哪条边对齐（默认右边），minWidth 浮层最小宽度 */
+export function MoreMenu({ items, label = "更多操作", trigger, triggerClassName, side = "bottom", align = "end", minWidth }: { items: Array<{ label: string; onClick: () => void; danger?: boolean; disabled?: boolean; icon?: LucideIcon; separated?: boolean }>; label?: string; /** 自定义触发按钮的内容（默认是“…”图标按钮） */ trigger?: ReactNode; triggerClassName?: string; side?: "bottom" | "top"; align?: "end" | "start"; minWidth?: number }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
+  const popRef = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number | "auto"; right: number | "auto" } | null>(null);
+  // 先不可见地渲染出来量高度，再按触发按钮的位置放好（都在绘制前完成，不闪）
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    const height = popRef.current?.offsetHeight ?? 0;
+    const roomBelow = window.innerHeight - rect.bottom - 8;
+    const roomAbove = rect.top - 8;
+    const fitsBelow = roomBelow >= height + 4;
+    const fitsAbove = roomAbove >= height + 4;
+    const up = side === "top" ? fitsAbove || roomAbove > roomBelow : !fitsBelow && roomAbove > roomBelow;
+    const top = up ? rect.top - 4 - height : rect.bottom + 4;
+    setPos(align === "start"
+      ? { top, left: Math.max(8, rect.left), right: "auto" }
+      : { top, left: "auto", right: Math.max(8, window.innerWidth - rect.right) });
+  }, [open, side, align]);
   useEffect(() => {
     if (!open) return;
-    const close = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    const inside = (target: EventTarget | null) => ref.current?.contains(target as Node) || popRef.current?.contains(target as Node);
+    const onDown = (event: MouseEvent) => {
+      if (!inside(event.target)) setOpen(false);
     };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    // 页面滚动、窗口变化时位置就不对了，直接收起
+    const onScroll = (event: Event) => {
+      if (!inside(event.target)) setOpen(false);
+    };
+    const onResize = () => setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
+    };
   }, [open]);
   return (
     <span className="ui-menu" ref={ref}>
       {trigger ? <button type="button" className={triggerClassName} aria-expanded={open} onClick={() => setOpen((value) => !value)}>{trigger}</button> : <IconButton icon={Ellipsis} label={label} onClick={() => setOpen((value) => !value)} aria-expanded={open} />}
-      {open ? (
-        <span className="ui-menu-pop" role="menu">
+      {open ? createPortal(
+        <span
+          className="ui-menu-pop is-floating"
+          role="menu"
+          ref={popRef}
+          style={pos ? { top: pos.top, left: pos.left, right: pos.right, minWidth } : { top: -9999, left: -9999, right: "auto", minWidth, visibility: "hidden" }}
+        >
           {items.map((item) => (
             <button
               key={item.label}
@@ -380,7 +426,8 @@ export function MoreMenu({ items, label = "更多操作", trigger, triggerClassN
               {item.label}
             </button>
           ))}
-        </span>
+        </span>,
+        document.body,
       ) : null}
     </span>
   );

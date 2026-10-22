@@ -22,7 +22,7 @@ import { createPool, migrate, type Db } from "./db";
 import { seedAdmin, seedCatalog, seedContentTerms, seedStoreProducts } from "./seed";
 import { createAuthGuard } from "./auth-context";
 import { registerAuthRoutes } from "./routes/auth";
-import { registerClassRoutes } from "./routes/classes";
+import { registerClassRoutes, type BackupBeforeDelete } from "./routes/classes";
 import { registerCatalogRoutes } from "./routes/catalog";
 import { registerProductRoutes } from "./routes/products";
 import { registerCouponRoutes } from "./routes/coupons";
@@ -42,6 +42,8 @@ export interface BuildServerOptions {
   env?: Partial<ApiEnv>;
   db?: Db;
   logger?: boolean;
+  /** 删学生 / 班级前的自动备份（D-86），测试传假的 */
+  backupBeforeDelete?: BackupBeforeDelete;
 }
 
 export async function buildServer(options: BuildServerOptions = {}) {
@@ -141,7 +143,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   }));
 
   registerAuthRoutes(app, db, env, guard);
-  registerClassRoutes(app, db, guard);
+  registerClassRoutes(app, db, guard, options.backupBeforeDelete);
   registerCatalogRoutes(app, db, guard, gateway);
   registerProductRoutes(app, db, guard, gateway);
   registerCouponRoutes(app, db, guard);
@@ -187,6 +189,19 @@ export async function buildServer(options: BuildServerOptions = {}) {
     app.addHook("onClose", async () => {
       clearTimeout(firstBackfill);
       clearInterval(backfiller);
+    });
+    // D-88 朗读缓存只留 30 天：启动 2 分钟后清一次，之后每 12 小时一次；删掉的下次播报会重新合成
+    const { pruneTtsCache, TTS_CACHE_MAX_AGE_MS } = await import("./voice/tts-cache");
+    const pruneTts = () => {
+      pruneTtsCache(path.join(uploadsRoot, "tts"), TTS_CACHE_MAX_AGE_MS)
+        .then((removed) => { if (removed) app.log.info({ removed }, "tts cache pruned"); })
+        .catch((error) => app.log.error(error, "tts cache prune failed"));
+    };
+    const firstPrune = setTimeout(pruneTts, 2 * 60 * 1000);
+    const pruner = setInterval(pruneTts, 12 * 60 * 60 * 1000);
+    app.addHook("onClose", async () => {
+      clearTimeout(firstPrune);
+      clearInterval(pruner);
     });
     // L4：上次没跑完的验收测试标成“已中断”
     const { closeInterruptedAcceptance } = await import("./acceptance");

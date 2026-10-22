@@ -2,7 +2,7 @@ import { Activity, CircleCheck, ClipboardCheck, Database, Download, FileUp, Mess
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiError, apiGet, apiPost, apiRequestPatch,
-  addContentTerm, assignClassTeachers, createBackup, createClassAsAdmin, deleteContentTerm, downloadWithAuth,
+  addContentTerm, assignClassTeachers, createBackup, createClassAsAdmin, deleteClass, deleteContentTerm, deleteStudent, deleteTeacher, downloadWithAuth,
   fetchAdminSystem, fetchAdminTeachers, fetchBackupSchedule, fetchBackups, fetchClassStudents, fetchClasses,
   fetchContentTerms, importContentTerms, importStudents, resetStudentPassword, resetTeacherPassword, saveBackupSchedule,
   setContentTermEnabled,
@@ -13,7 +13,7 @@ import {
   Button, Callout, Confirm, DataTable, Dialog, Empty, Field, Figures, Gauge, HeaderTabs, HelpTip, Input, ListRow, MoreMenu, Section,
   SearchBox, Select, SettingSection, Sheet, Status, StatusHero, Switch, Tag, Textarea, Toolbar, toast,
 } from "../../ui";
-import { PasswordNotice } from "../../components/AccountDialogs";
+import { DeleteRecordsDialog, DeleteTeacherDialog, PasswordNotice } from "../../components/AccountDialogs";
 import type { LlmTestResult } from "@cecs/contracts";
 import { openProvidersTab } from "./providersTab";
 
@@ -305,6 +305,7 @@ function TeacherAccounts({ session, teachers, loading, reload }: { session: Sess
   const [formError, setFormError] = useState("");
   const [busy, setBusy] = useState(false);
   const [resetting, setResetting] = useState<AdminTeacher | null>(null);
+  const [removing, setRemoving] = useState<AdminTeacher | null>(null);
   const [passwords, setPasswords] = useState<{ title: string; rows: Array<{ name: string; account: string; password: string }> } | null>(null);
 
   const visible = teachers.filter((t) => `${t.displayName}${t.username}`.toLowerCase().includes(keyword.trim().toLowerCase()));
@@ -373,7 +374,10 @@ function TeacherAccounts({ session, teachers, loading, reload }: { session: Sess
               key: "ops", title: "操作", width: 140, render: (row) => (
                 <span className="ui-row-actions">
                   <Button variant="text" onClick={() => setResetting(row)}>重置密码</Button>
-                  <MoreMenu items={[{ label: row.status === "active" ? "停用账号" : "启用账号", danger: row.status === "active", onClick: () => void toggle(row) }]} />
+                  <MoreMenu items={[
+                    { label: row.status === "active" ? "停用账号" : "启用账号", danger: row.status === "active", onClick: () => void toggle(row) },
+                    { label: "删除账号", danger: true, separated: true, onClick: () => setRemoving(row) },
+                  ]} />
                 </span>
               ),
             },
@@ -398,6 +402,15 @@ function TeacherAccounts({ session, teachers, loading, reload }: { session: Sess
           重置 {resetting.displayName}（{resetting.username}）的密码后，原密码立即失效，对方会被强制退出登录。
         </Confirm>
       ) : null}
+      {removing ? (
+        <DeleteTeacherDialog
+          teacher={removing}
+          teachers={teachers}
+          onDelete={(successorId) => deleteTeacher(session, removing.id, successorId)}
+          onDone={() => { toast.ok(`已删除 ${removing.displayName}`); setRemoving(null); reload(); }}
+          onClose={() => setRemoving(null)}
+        />
+      ) : null}
       {passwords ? <PasswordNotice title={passwords.title} rows={passwords.rows} onClose={() => setPasswords(null)} /> : null}
     </>
   );
@@ -411,6 +424,7 @@ function ClassAuthorization({ session, teachers, classes, loading, reload }: { s
   const [formError, setFormError] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<{ classId: string; name: string; headTeacherId: string; teacherIds: string[] } | null>(null);
+  const [removing, setRemoving] = useState<ClassSummary | null>(null);
 
   async function create() {
     if (!newClass.name.trim()) {
@@ -461,7 +475,14 @@ function ClassAuthorization({ session, teachers, classes, loading, reload }: { s
             { key: "students", title: "学生", width: 90, align: "right", render: (row) => row.studentCount },
             { key: "head", title: "班主任", width: 160, render: (row) => row.headTeacherName ?? <Status tone="warn">未指定</Status> },
             { key: "teachers", title: "任课教师", render: (row) => (row.teachers.length ? row.teachers.map((t) => t.displayName).join("、") : <span className="faint">无</span>) },
-            { key: "ops", title: "操作", width: 100, render: (row) => <Button variant="text" onClick={() => setEditing({ classId: row.id, name: row.name, headTeacherId: row.headTeacherId ?? "", teacherIds: row.teachers.map((t) => t.id) })}>修改授权</Button> },
+            {
+              key: "ops", title: "操作", width: 140, render: (row) => (
+                <span className="ui-row-actions">
+                  <Button variant="text" onClick={() => setEditing({ classId: row.id, name: row.name, headTeacherId: row.headTeacherId ?? "", teacherIds: row.teachers.map((t) => t.id) })}>修改授权</Button>
+                  <MoreMenu items={[{ label: "删除班级", danger: true, onClick: () => setRemoving(row) }]} />
+                </span>
+              ),
+            },
           ]}
         />
 
@@ -513,6 +534,19 @@ function ClassAuthorization({ session, teachers, classes, loading, reload }: { s
           </div>
         </Dialog>
       ) : null}
+      {removing ? (
+        <DeleteRecordsDialog
+          title="删除班级"
+          name={removing.name}
+          nameLabel="班级名"
+          intro={`确定删除「${removing.name}」吗？`}
+          known={removing.studentCount ? { students: removing.studentCount } : undefined}
+          warn={(counts) => `「${removing.name}」还有 ${counts.students} 名学生，学生账号和他们的实训记录会一起删掉。`}
+          onDelete={(confirm) => deleteClass(session, removing.id, confirm)}
+          onDone={() => { toast.ok(`已删除「${removing.name}」`); setRemoving(null); reload(); }}
+          onClose={() => setRemoving(null)}
+        />
+      ) : null}
     </>
   );
 }
@@ -529,6 +563,7 @@ function StudentAccounts({ session, classes, reload }: { session: Session; class
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [resetting, setResetting] = useState<ClassStudent | null>(null);
+  const [removing, setRemoving] = useState<ClassStudent | null>(null);
   const [passwords, setPasswords] = useState<{ title: string; rows: Array<{ name: string; account: string; password: string }> } | null>(null);
 
   useEffect(() => {
@@ -602,7 +637,14 @@ function StudentAccounts({ session, classes, reload }: { session: Session; class
             { key: "account", title: "学号", width: 160, render: (row) => <span className="num">{row.username}</span> },
             { key: "name", title: "姓名", render: (row) => <>{row.displayName}{row.mustChangePassword ? <small>尚未修改初始密码</small> : null}</> },
             { key: "status", title: "状态", width: 100, render: (row) => (row.status === "active" ? <Status tone="ok">启用</Status> : <Status tone="danger">停用</Status>) },
-            { key: "ops", title: "操作", width: 100, render: (row) => <Button variant="text" onClick={() => setResetting(row)}>重置密码</Button> },
+            {
+              key: "ops", title: "操作", width: 140, render: (row) => (
+                <span className="ui-row-actions">
+                  <Button variant="text" onClick={() => setResetting(row)}>重置密码</Button>
+                  <MoreMenu items={[{ label: "删除", danger: true, onClick: () => setRemoving(row) }]} />
+                </span>
+              ),
+            },
           ]}
         />
 
@@ -644,6 +686,18 @@ function StudentAccounts({ session, classes, reload }: { session: Session; class
         <Confirm title="重置密码" confirmText="重置" busy={busy} onConfirm={() => void confirmReset()} onClose={() => setResetting(null)}>
           重置 {resetting.displayName}（{resetting.username}）的密码后，原密码立即失效。
         </Confirm>
+      ) : null}
+      {removing ? (
+        <DeleteRecordsDialog
+          title="删除学生"
+          name={removing.username}
+          nameLabel="学号"
+          intro={`确定删除 ${removing.displayName}（${removing.username}）吗？删除后不能恢复。`}
+          warn={(counts) => `${removing.displayName} 已有 ${counts.records} 条实训记录，会和账号一起删掉。`}
+          onDelete={(confirm) => deleteStudent(session, removing.id, confirm)}
+          onDone={() => { toast.ok(`已删除 ${removing.displayName}`); setRemoving(null); loadStudents(); reload(); }}
+          onClose={() => setRemoving(null)}
+        />
       ) : null}
       {passwords ? <PasswordNotice title={passwords.title} rows={passwords.rows} onClose={() => setPasswords(null)} /> : null}
     </>

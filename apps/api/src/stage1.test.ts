@@ -11,6 +11,8 @@ const TEST_DATABASE_URL =
 
 let db: Db;
 let app: FastifyInstance;
+/** 删学生 / 班级前的自动备份（D-86）在测试里只计数 */
+let backups = 0;
 
 interface Session {
   accessToken: string;
@@ -46,6 +48,10 @@ beforeAll(async () => {
       llmApiKey: "",
       llmModel: "",
       ttsApiKey: "",
+    },
+    backupBeforeDelete: async () => {
+      backups += 1;
+      return { fileName: `backup-test-${backups}.sql` };
     },
   });
 });
@@ -754,7 +760,7 @@ describe("登录页签校验（I7）与学生编辑/转班/删除（I8）", () =
     expect(roster.json().map((s: { displayName: string }) => s.displayName)).toEqual(["王小五"]);
   });
 
-  it("I8：没有实训记录的学生可删除；有记录的只能停用", async () => {
+  it("I8：没有实训记录的学生直接删；有记录的不带确认删不掉（D-86 起输入学号可连记录一起删）", async () => {
     const removed = await app.inject({ method: "DELETE", url: `/v1/students/${newStudentId}`, headers: auth(teacher2) });
     expect(removed.statusCode).toBe(200);
     expect(await db.query("select 1 from users where id = $1", [newStudentId]).then((r) => r.rowCount)).toBe(0);
@@ -785,6 +791,119 @@ describe("登录页签校验（I7）与学生编辑/转班/删除（I8）", () =
     });
     expect(upper.statusCode).toBe(200);
     expect(upper.json().user.username).toBe("s2501002");
+  });
+});
+
+describe("删除教师、学生、班级（D-86 连记录删先备份 / D-87 教师删时转交）", () => {
+  let admin: Session;
+  let teacherA: Session;
+  const ids: Record<string, string> = {};
+  let classA = "";
+  let classB = "";
+
+  async function idOf(username: string): Promise<string> {
+    return (await db.query("select id from users where username = $1", [username])).rows[0].id as string;
+  }
+
+  beforeAll(async () => {
+    admin = await login("admin", "Admin#Prod9");
+    for (const [username, displayName] of [["delt1", "张老师"], ["delt2", "赵老师"], ["delt3", "钱老师"], ["delt4", "孙老师"]] as const) {
+      const created = await app.inject({ method: "POST", url: "/v1/admin/teachers", headers: auth(admin), payload: { username, displayName, password: "Teach#2026" } });
+      expect(created.statusCode).toBe(200);
+      ids[username] = await idOf(username);
+    }
+    await app.inject({ method: "PATCH", url: `/v1/admin/teachers/${ids.delt3}`, headers: auth(admin), payload: { status: "disabled" } });
+    teacherA = await login("delt1", "Teach#2026");
+    classA = (await app.inject({ method: "POST", url: "/v1/classes", headers: auth(teacherA), payload: { name: "删除测试A" } })).json().id;
+    const imported = await app.inject({
+      method: "POST",
+      url: `/v1/classes/${classA}/students/import`,
+      headers: auth(teacherA),
+      payload: { students: [{ username: "sd001", displayName: "删一", password: "Stud#2026" }, { username: "sd002", displayName: "删二", password: "Stud#2026" }] },
+    });
+    expect(imported.json().created).toHaveLength(2);
+    // 班级 B：班主任是 delt2，delt1 只是任课授权；delt1 还建了一个任务、发了一条公告
+    classB = (await app.inject({ method: "POST", url: "/v1/classes", headers: auth(admin), payload: { name: "删除测试B" } })).json().id;
+    await db.query("update classes set head_teacher_id = $2 where id = $1", [classB, ids.delt2]);
+    await db.query("insert into teacher_classes (teacher_id, class_id) values ($1, $2)", [ids.delt1, classB]);
+    await db.query("insert into tasks (name, business_stage, created_by) values ('删除测试任务', 'pre_sale', $1)", [ids.delt1]);
+    await db.query("insert into announcements (publisher_id, class_id, title, content) values ($1, $2, '通知', '内容')", [ids.delt1, classA]);
+  });
+
+  it("D-87：名下有班级 / 任务的教师要选接手人；转交后班主任、任课授权、任务、公告都归接手人", async () => {
+    const byTeacher = await app.inject({ method: "DELETE", url: `/v1/admin/teachers/${ids.delt1}`, headers: auth(teacherA) });
+    expect(byTeacher.statusCode).toBe(403);
+
+    const needSuccessor = await app.inject({ method: "DELETE", url: `/v1/admin/teachers/${ids.delt1}`, headers: auth(admin) });
+    expect(needSuccessor.statusCode).toBe(409);
+    expect(needSuccessor.json()).toMatchObject({ code: "TEACHER_HAS_WORK", classes: 2, tasks: 1, notices: 1 });
+
+    for (const bad of [ids.delt1, ids.delt3, "not-a-uuid"]) {
+      const rejected = await app.inject({ method: "DELETE", url: `/v1/admin/teachers/${ids.delt1}?successorId=${bad}`, headers: auth(admin) });
+      expect(rejected.statusCode).toBe(400);
+      expect(rejected.json().code).toBe("INVALID_SUCCESSOR");
+    }
+
+    const done = await app.inject({ method: "DELETE", url: `/v1/admin/teachers/${ids.delt1}?successorId=${ids.delt2}`, headers: auth(admin) });
+    expect(done.statusCode).toBe(200);
+    expect(await db.query("select 1 from users where id = $1", [ids.delt1]).then((r) => r.rowCount)).toBe(0);
+    expect((await db.query("select head_teacher_id from classes where id = $1", [classA])).rows[0].head_teacher_id).toBe(ids.delt2);
+    // delt2 本来就是 B 的班主任，不再多一条任课授权
+    expect(await db.query("select 1 from teacher_classes where teacher_id = $1", [ids.delt2]).then((r) => r.rowCount)).toBe(0);
+    expect((await db.query("select created_by from tasks where name = '删除测试任务'")).rows[0].created_by).toBe(ids.delt2);
+    expect((await db.query("select publisher_id from announcements where class_id = $1", [classA])).rows[0].publisher_id).toBe(ids.delt2);
+    expect(backups).toBe(0);
+
+    const old = await app.inject({ method: "GET", url: "/v1/me", headers: auth(teacherA) });
+    expect(old.statusCode).toBe(401);
+
+    // 名下什么都没有的直接删
+    const empty = await app.inject({ method: "DELETE", url: `/v1/admin/teachers/${ids.delt3}`, headers: auth(admin) });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json().transferred).toBeNull();
+  });
+
+  it("D-86：有实训记录的学生输入学号（不分大小写）才连记录一起删，删之前先备份", async () => {
+    const teacher = await login("delt2", "Teach#2026");
+    const sd001 = await idOf("sd001");
+    await db.query("insert into mail_submissions (student_id, template_id, subject, body) values ($1, 'MAIL-CUSTOM', 'Hi', 'Body')", [sd001]);
+
+    const ask = await app.inject({ method: "DELETE", url: `/v1/students/${sd001}`, headers: auth(teacher) });
+    expect(ask.statusCode).toBe(409);
+    expect(ask.json()).toMatchObject({ code: "STUDENT_HAS_DATA", records: 1 });
+    const wrong = await app.inject({ method: "DELETE", url: `/v1/students/${sd001}?confirm=sd002`, headers: auth(teacher) });
+    expect(wrong.statusCode).toBe(409);
+    expect(backups).toBe(0);
+
+    const done = await app.inject({ method: "DELETE", url: `/v1/students/${sd001}?confirm=%20SD001%20`, headers: auth(teacher) });
+    expect(done.statusCode).toBe(200);
+    expect(done.json()).toMatchObject({ records: 1, backup: "backup-test-1.sql" });
+    expect(backups).toBe(1);
+    expect(await db.query("select 1 from mail_submissions where student_id = $1", [sd001]).then((r) => r.rowCount)).toBe(0);
+  });
+
+  it("D-86：还有学生的班级输入班级名才删，学生和他们的记录一起删，删之前先备份；空班级直接删", async () => {
+    const teacher = await login("delt2", "Teach#2026");
+    const student = await login("sd002", "Stud#2026");
+    const outsider = await login("delt4", "Teach#2026");
+    expect((await app.inject({ method: "DELETE", url: `/v1/classes/${classA}?confirm=${encodeURIComponent("删除测试A")}`, headers: auth(outsider) })).statusCode).toBe(403);
+
+    const ask = await app.inject({ method: "DELETE", url: `/v1/classes/${classA}`, headers: auth(teacher) });
+    expect(ask.statusCode).toBe(409);
+    expect(ask.json()).toMatchObject({ code: "CLASS_NOT_EMPTY", students: 1 });
+
+    const done = await app.inject({ method: "DELETE", url: `/v1/classes/${classA}?confirm=${encodeURIComponent("删除测试A")}`, headers: auth(teacher) });
+    expect(done.statusCode).toBe(200);
+    expect(done.json()).toMatchObject({ students: 1, backup: "backup-test-2.sql" });
+    expect(backups).toBe(2);
+    expect(await db.query("select 1 from users where username = 'sd002'").then((r) => r.rowCount)).toBe(0);
+    expect(await db.query("select 1 from classes where id = $1", [classA]).then((r) => r.rowCount)).toBe(0);
+    expect((await app.inject({ method: "GET", url: "/v1/me", headers: auth(student) })).statusCode).toBe(401);
+
+    const emptyClass = await app.inject({ method: "DELETE", url: `/v1/classes/${classB}`, headers: auth(admin) });
+    expect(emptyClass.statusCode).toBe(200);
+    expect(backups).toBe(2);
+    expect((await app.inject({ method: "DELETE", url: "/v1/classes/not-a-uuid", headers: auth(admin) })).statusCode).toBe(404);
   });
 });
 
