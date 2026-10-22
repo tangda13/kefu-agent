@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import nodeFs from "node:fs";
+import nodePath from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { BusinessStage, OrderKind, ScenarioScript } from "@cecs/contracts";
 import {
@@ -16,13 +18,15 @@ import {
   generateOrderForScenario,
   productFactSheet,
   replyWithinRate,
+  resolvePersonaGender,
   toStudentPersonaView,
   type OrderInfo,
 } from "@cecs/domain";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import type { CallInfo, LlmGateway } from "../llm/gateway";
-import type { VoiceService } from "../voice/service";
+import { VOICE_VENDORS, type VoiceService } from "../voice/service";
+import { VoiceSynthesisError } from "../voice/fallback";
 import { resolveBuyerLanguage } from "../voice/buyer-language";
 import {
   buildBuyerMessages,
@@ -80,6 +84,11 @@ async function followUpAgentTurns(db: Db, conversationId: string, startedAt: str
 }
 
 const STREAM_TIMEOUT_MS = 60_000;
+/** 流式正文合并外发的间隔：人眼察觉不到，网络写入次数少一个数量级 */
+const DELTA_FLUSH_MS = 40;
+/** 观察员模块按需加载一次后复用：每轮都要用，tsx 下每次 import() 都会重新走一遍模块解析（2026-10-22 CPU 分析） */
+let directorModule: Promise<typeof import("../director")> | null = null;
+const loadDirector = () => (directorModule ??= import("../director"));
 
 /** 买家离场标记：模型在告别消息末尾输出，服务端剥离并自动结束会话 */
 const END_MARK = "[END_OF_SERVICE]";
@@ -140,8 +149,32 @@ async function streamBuyerTurn(options: {
       connection: "keep-alive",
     });
   }
+  const writeEvent = (payload: Record<string, unknown>) => {
+    // 合并外发有延时：连接已经结束就不再写（写已结束的流会抛错）
+    if (raw && !raw.writableEnded && !raw.destroyed) raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+  // 正文分段合并外发：200 路同时流式回复时每来一小段就写一次网络，系统调用太多（2026-10-22 压测 CPU 分析里 writev 占 12%）。
+  // 正文攒 DELTA_FLUSH_MS 一起写；其他事件（start / split / done）先把攒着的写出去再写自己，顺序不变，start 照样立刻发
+  let pendingText = "";
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  const flushText = () => {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    if (pendingText) {
+      writeEvent({ type: "delta", text: pendingText });
+      pendingText = "";
+    }
+  };
   const send = (payload: Record<string, unknown>) => {
-    raw?.write(`data: ${JSON.stringify(payload)}\n\n`);
+    if (payload.type === "delta" && typeof payload.text === "string") {
+      pendingText += payload.text;
+      flushTimer ??= setTimeout(flushText, DELTA_FLUSH_MS);
+      return;
+    }
+    flushText();
+    writeEvent(payload);
   };
 
   let firstCharAt: Date | null = null;
@@ -326,7 +359,7 @@ async function streamBuyerTurn(options: {
   // 后台观察员（D-50）：异步评估学生表现与买家满意度，只给教师端、评分和催促用，不回写买家（不阻塞响应）。
   // 跟进不评估：原来那次的满意度和走势留给教师端、评分
   if (outcome === "success" && !conversationClosed && !followUp && history.some((item) => item.role === "student")) {
-    void import("../director")
+    void loadDirector()
       .then(({ runDirector }) => runDirector(db, gateway, conversation.id))
       .catch((error) => log.error(error, "director failed"));
   }
@@ -1045,7 +1078,6 @@ export function registerConversationRoutes(
         sourceTemplateId?: string;
         name?: string;
       };
-      const { resolvePersonaGender } = await import("@cecs/domain");
       const gender = resolvePersonaGender(persona);
       // 音色池（D-42）：语种 → 厂商 → 音色，同一买家固定同一个声音
       const selection = await voice.selectVoice({ ...persona, gender }, gender);
@@ -1053,10 +1085,8 @@ export function registerConversationRoutes(
         reply.code(503);
         return { code: "TTS_NOT_CONFIGURED", message: "语音服务未配置。" };
       }
-      const path = await import("node:path");
-      const fs = await import("node:fs");
-      const { VOICE_VENDORS } = await import("../voice/service");
-      const { VoiceSynthesisError } = await import("../voice/fallback");
+      const path = nodePath;
+      const fs = nodeFs;
       // 缓存文件名带实际使用的厂商和音色 id：换音色不串音
       const nameOf = (item: { voice: { vendor: string; id: string } }) =>
         `${message.id}-${item.voice.vendor}-${item.voice.id.replace(/[^A-Za-z0-9_.-]/g, "_")}.${VOICE_VENDORS[item.voice.vendor]!.audioExt}`;

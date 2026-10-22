@@ -22,8 +22,13 @@ export const ALIYUN_TTS_INTERVAL_MS = Math.ceil(60_000 / (ALIYUN_TTS_RPM * 0.9))
 export const ALIYUN_TTS_DIVERT_WAIT_MS = 1_000;
 /** 收到 429：整条队列暂停 1 秒（限流按秒算） */
 export const ALIYUN_TTS_THROTTLE_PAUSE_MS = 1_000;
-/** 买家播报：阿里云、豆包都不行时排队等阿里云，最多等 5 秒，再排不上就报失败 */
-export const ALIYUN_TTS_QUEUE_WAIT_MS = 5_000;
+/**
+ * 买家播报：阿里云、豆包都忙（或豆包出错）时排队，最多等 15 秒，再轮不到才报失败。
+ * 宁可晚几秒出声也不要直接失败：2026-10-22 压测 100 条齐发，原来等 5 秒失败 69 条；两家合计约每秒 10 个，100 条约 10 秒排完
+ */
+export const ALIYUN_TTS_QUEUE_WAIT_MS = 15_000;
+/** 单次合成的超时：正常 0.7–1.6 秒；原来 20 秒，阿里云偶发卡住时学生要等满 20 秒才转豆包（压测 100 条里 2 条） */
+export const ALIYUN_TTS_TIMEOUT_MS = 8_000;
 
 export interface AliyunConfig {
   apiKey: string;
@@ -108,7 +113,7 @@ export async function synthesizeAliyun(
   text: string,
   voice: string,
   language: string | undefined,
-  timeoutMs = 20_000,
+  timeoutMs = ALIYUN_TTS_TIMEOUT_MS,
 ): Promise<{ audio: Buffer; elapsedMs: number }> {
   const started = Date.now();
   const request = buildAliyunTtsRequest(config, text, voice, language);

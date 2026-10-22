@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AliyunTtsError, classifyAliyunFailure, parseAliyunTtsResponse } from "./aliyun";
-import { ConcurrencyLimiter, PacedLimiter, pacedCall, type LimiterClock } from "./rate-limit";
+import { ConcurrencyLimiter, EitherQueue, PacedLimiter, pacedCall, type LimiterClock } from "./rate-limit";
 
 /** 假时钟：sleep 不真等；advance 为 true 时 sleep 会推进时间（单条流程用），false 时只记录（并发排队用） */
 function fakeClock(advance: boolean, random = 0.5) {
@@ -172,5 +172,50 @@ describe("并发信号量", () => {
     const hold = (await slots.acquire())!;
     await expect(slots.run(async () => "x", 0, () => new Error("busy"))).rejects.toThrow("busy");
     hold();
+  });
+});
+
+describe("两家都忙时的公共队列（EitherQueue）", () => {
+  afterEach(() => { vi.useRealTimers(); });
+  const setup = () => {
+    vi.useFakeTimers();
+    const aliyun = new PacedLimiter(371);
+    const doubao = new ConcurrencyLimiter(1);
+    const hold = doubao.tryAcquire()!;
+    aliyun.pause(2_000); // 阿里云 2 秒后才有名额
+    return { aliyun, doubao, hold, queue: new EitherQueue(aliyun, doubao) };
+  };
+
+  it("豆包先腾出名额：给豆包", async () => {
+    const { hold, queue } = setup();
+    const pending = queue.wait(15_000);
+    await vi.advanceTimersByTimeAsync(500);
+    hold();
+    const grant = await pending;
+    expect(grant?.vendor).toBe("doubao");
+    if (grant?.vendor === "doubao") grant.release();
+  });
+
+  it("阿里云先到下一个发送时刻：给阿里云，且不提前预订", async () => {
+    const { aliyun, queue } = setup();
+    const before = aliyun.nextFreeTime;
+    const pending = queue.wait(15_000);
+    expect(aliyun.nextFreeTime).toBe(before); // 排队时没占阿里云名额
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect((await pending)?.vendor).toBe("aliyun");
+  });
+
+  it("按到达顺序派发；等过期返回 null", async () => {
+    const { hold, queue } = setup();
+    const order: string[] = [];
+    const first = queue.wait(15_000).then((g) => { order.push(`first:${g?.vendor}`); return g; });
+    const second = queue.wait(100).then((g) => { order.push(`second:${g?.vendor ?? "timeout"}`); return g; });
+    await vi.advanceTimersByTimeAsync(150);
+    hold();
+    const g1 = await first;
+    expect(await second).toBeNull();
+    expect(order).toEqual(["second:timeout", "first:doubao"]);
+    if (g1?.vendor === "doubao") g1.release();
+    expect(queue.length).toBe(0);
   });
 });

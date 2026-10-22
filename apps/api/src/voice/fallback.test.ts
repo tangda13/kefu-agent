@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AliyunTtsError, AliyunTtsGate, classifyAliyunFailure, parseAliyunTtsResponse } from "./aliyun";
 import { synthesizeWithFallback, VoiceSynthesisError, type SynthFn } from "./fallback";
 import { defaultVoicePool, selectVoice, type VoiceSelection } from "./pool";
-import { ConcurrencyLimiter, PacedLimiter, type LimiterClock } from "./rate-limit";
+import { ConcurrencyLimiter, EitherQueue, PacedLimiter, type LimiterClock } from "./rate-limit";
 
 const both = new Set(["doubao", "aliyun"]);
 const pool = defaultVoicePool();
@@ -195,9 +195,9 @@ describe("限流：阿里云 1 秒内轮不到先转豆包，两家都不行才�
     expect(calls).toHaveLength(2);
   });
 
-  it("两家都不行、5 秒内也排不到：报失败，原因记 busy", async () => {
+  it("豆包出错、阿里云 15 秒内也排不到：报失败，原因记 busy", async () => {
     const { gate } = gateWithClock();
-    gate.limiter.pause(10_000);
+    gate.limiter.pause(20_000);
     const { synth, calls } = fakeSynth(ok, fail(new Error("doubao 429")));
     const error = await synthesizeWithFallback(german(), "Hallo", synth, undefined, { aliyun: gate }).catch((e) => e);
     expect(error).toBeInstanceOf(VoiceSynthesisError);
@@ -269,6 +269,52 @@ describe("豆包并发计数：占着名额才发", () => {
     expect(slots.inFlight).toBe(0);
     await synthesizeWithFallback(briton(), "Hi", fakeSynth(ok, fail(new Error("x"))).synth, undefined, { doubao: slots }).catch(() => undefined);
     expect(slots.inFlight).toBe(0);
+  });
+});
+
+describe("两家都忙：进公共队列，谁先空出来用谁（2026-10-22 压测后）", () => {
+  afterEach(() => { vi.useRealTimers(); });
+  const busyBoth = (aliyunPauseMs: number) => {
+    vi.useFakeTimers();
+    const gate = new AliyunTtsGate();
+    gate.limiter.pause(aliyunPauseMs);
+    const slots = new ConcurrencyLimiter(1);
+    const hold = slots.tryAcquire()!;
+    return { gate, slots, hold, either: new EitherQueue(gate.limiter, slots) };
+  };
+
+  it("豆包先空出来：用豆包，原因记 busy，用完归还名额", async () => {
+    const { gate, slots, hold, either } = busyBoth(2_000);
+    const { synth, calls } = fakeSynth(ok);
+    const selection = german();
+    const pending = synthesizeWithFallback(selection, "Hallo", synth, undefined, { aliyun: gate, doubao: slots, either });
+    await vi.advanceTimersByTimeAsync(1_200);
+    expect(calls).toHaveLength(0);
+    hold();
+    await expect(pending).resolves.toMatchObject({ vendor: "doubao", fallback: true, fallbackReason: "busy" });
+    expect(calls).toEqual([`doubao:${selection.fallback!.voice.id}`]);
+    expect(slots.inFlight).toBe(0);
+  });
+
+  it("阿里云先到下一个发送时刻：用阿里云主音色", async () => {
+    const { gate, slots, either } = busyBoth(2_000);
+    const { synth, calls } = fakeSynth(ok);
+    const selection = german();
+    const pending = synthesizeWithFallback(selection, "Hallo", synth, undefined, { aliyun: gate, doubao: slots, either });
+    await vi.advanceTimersByTimeAsync(2_100);
+    await expect(pending).resolves.toMatchObject({ vendor: "aliyun", fallback: false, queued: true });
+    expect(calls).toEqual([`aliyun:${selection.voice.id}`]);
+  });
+
+  it("15 秒内两家都没空出来：报失败，不发任何请求", async () => {
+    const { gate, slots, either } = busyBoth(60_000);
+    const { synth, calls } = fakeSynth(ok);
+    const pending = synthesizeWithFallback(german(), "Hallo", synth, undefined, { aliyun: gate, doubao: slots, either }).catch((e) => e);
+    await vi.advanceTimersByTimeAsync(15_100);
+    const error = await pending;
+    expect(error).toBeInstanceOf(VoiceSynthesisError);
+    expect(String(error.message)).toMatch(/VOICE_QUEUE_FULL/);
+    expect(calls).toHaveLength(0);
   });
 });
 

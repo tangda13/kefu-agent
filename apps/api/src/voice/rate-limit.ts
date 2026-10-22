@@ -5,8 +5,8 @@
  *  - 只对 429、5xx 重试，指数退避 + 随机抖动，重试也要重新排队拿名额；
  *  - 收到 429 说明上游比我们算的更紧（同一主账号下别的程序也在用），整条队列暂停一会儿；
  *  - 重试用完或等不起了，抛给调用方。
- * 豆包按并发计（不是 RPM），用文件末尾的并发信号量 ConcurrencyLimiter。
- * 朗读怎么用它们（阿里云 1 秒内轮不到先转豆包、两家都不行才排队）见 fallback.ts。
+ * 豆包按并发计（不是 RPM），用并发信号量 ConcurrencyLimiter；两家都忙时用 EitherQueue 排队，谁先空出来给谁。
+ * 朗读怎么用它们（阿里云 1 秒内轮不到先转豆包、两家都忙才排队）见 fallback.ts。
  * 队列在进程内；只跑一个 api 实例时够用，多实例要换成 Redis 之类的集中计数。
  */
 
@@ -42,6 +42,19 @@ export class PacedLimiter {
     this.nextFreeAt = slot + this.intervalMs;
     if (slot > now) await this.clock.sleep(slot - now);
     return true;
+  }
+
+  /** 这一刻就有名额：占下返回 true；要等才轮得到返回 false，不占名额（EitherQueue 用，到点再来拿，不提前预订） */
+  tryAcquireNow(): boolean {
+    const now = this.clock.now();
+    if (this.nextFreeAt > now) return false;
+    this.nextFreeAt = now + this.intervalMs;
+    return true;
+  }
+
+  /** 下一个名额最早什么时候空出来 */
+  get nextFreeTime(): number {
+    return this.nextFreeAt;
   }
 
   /** 整条队列暂停 ms（已排到更晚的不受影响） */
@@ -94,11 +107,24 @@ export async function pacedCall<T>(fn: () => Promise<T>, options: PacedCallOptio
 export class ConcurrencyLimiter {
   private active = 0;
   private readonly waiters: Array<() => void> = [];
+  private readonly releaseListeners: Array<() => void> = [];
 
   constructor(readonly capacity: number) {}
 
   get inFlight(): number {
     return this.active;
+  }
+
+  /** 现在就有空位（且没人在排）：占下返回释放函数，否则返回 null，不排队 */
+  tryAcquire(): (() => void) | null {
+    if (this.active >= this.capacity || this.waiters.length > 0) return null;
+    this.active += 1;
+    return this.releaser();
+  }
+
+  /** 有名额归还时通知（先满足自己的排队者，再通知；EitherQueue 用它来派发） */
+  onRelease(listener: () => void): void {
+    this.releaseListeners.push(listener);
   }
 
   /** waitMs 内拿到名额返回释放函数（用完必须调用，重复调用无副作用），拿不到返回 null；waitMs 为 0 表示不等 */
@@ -141,6 +167,67 @@ export class ConcurrencyLimiter {
       released = true;
       this.active -= 1;
       this.waiters.shift()?.();
+      for (const listener of this.releaseListeners) listener();
     };
+  }
+}
+
+export type EitherGrant = { vendor: "aliyun" } | { vendor: "doubao"; release: () => void };
+
+/**
+ * 阿里云、豆包都忙时的公共排队：按到达顺序，谁先空出来就派给谁——豆包空出一个并发名额，或阿里云到了下一个发送时刻；
+ * waitMs 内没轮到返回 null。阿里云不提前预订名额（预订了又被豆包抢先做完，那个名额就白白浪费）。
+ * 2026-10-22 压测：原来只排阿里云、不等豆包，100 条朗读同一秒齐发失败 69 条；豆包每秒能腾出约 7 个名额，比阿里云快。
+ */
+export class EitherQueue {
+  private readonly waiting: Array<{ grant: (result: EitherGrant | null) => void; deadline: number }> = [];
+  private timer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    private readonly aliyun: PacedLimiter,
+    private readonly doubao: ConcurrencyLimiter,
+    private readonly clock: LimiterClock = systemClock,
+  ) {
+    doubao.onRelease(() => this.pump());
+  }
+
+  get length(): number {
+    return this.waiting.length;
+  }
+
+  wait(waitMs: number): Promise<EitherGrant | null> {
+    return new Promise((resolve) => {
+      this.waiting.push({ grant: resolve, deadline: this.clock.now() + waitMs });
+      this.pump();
+    });
+  }
+
+  private pump(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    const now = this.clock.now();
+    // 等过期的先放弃（不管排在第几）
+    for (let i = this.waiting.length - 1; i >= 0; i -= 1) {
+      if (this.waiting[i]!.deadline <= now) this.waiting.splice(i, 1)[0]!.grant(null);
+    }
+    while (this.waiting.length) {
+      const release = this.doubao.tryAcquire();
+      if (release) {
+        this.waiting.shift()!.grant({ vendor: "doubao", release });
+        continue;
+      }
+      if (this.aliyun.tryAcquireNow()) {
+        this.waiting.shift()!.grant({ vendor: "aliyun" });
+        continue;
+      }
+      break;
+    }
+    if (!this.waiting.length) return;
+    // 下次再看：阿里云下一个名额空出来，或最早的那个等过期（豆包归还名额会另外叫醒）
+    const nextDeadline = Math.min(...this.waiting.map((item) => item.deadline));
+    const at = Math.min(this.aliyun.nextFreeTime, nextDeadline);
+    this.timer = setTimeout(() => this.pump(), Math.max(1, at - this.clock.now()));
   }
 }

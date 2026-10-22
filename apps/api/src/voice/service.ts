@@ -6,6 +6,10 @@ import { mapAsrLanguage, mapExplicitLanguage, recognizeSpeech, synthesizeSpeech 
 import { synthesizeWithFallback, type FallbackReason } from "./fallback";
 import { ALIYUN_DEFAULT_BASE_URL, ALIYUN_DEFAULT_MODEL, aliyunTtsGate, synthesizeAliyun } from "./aliyun";
 import { DOUBAO_WAIT_MS, doubaoAsrSlots, doubaoBusy, doubaoTtsSlots, shouldRetryWithAutoLanguage } from "./doubao";
+import { EitherQueue } from "./rate-limit";
+
+/** 阿里云、豆包都忙时两家共用的排队（本进程一个），谁先空出来给谁 */
+const voiceEitherQueue = new EitherQueue(aliyunTtsGate.limiter, doubaoTtsSlots);
 import {
   defaultVoicePool, findMissingVoices, normalizeVoicePool, selectVoice,
   type BuyerVoiceFacts, type MissingVoice, type VoiceGender, type VoicePool, type VoiceSelection,
@@ -328,7 +332,7 @@ export class VoiceService {
       text,
       (item, content) => VOICE_VENDORS[item.voice.vendor]!.provider.synthesize(profile, content, item.voice.id, item.fellBack ? undefined : item.poolLanguage),
       log,
-      { aliyun: aliyunTtsGate, doubao: doubaoTtsSlots },
+      { aliyun: aliyunTtsGate, doubao: doubaoTtsSlots, either: voiceEitherQueue },
     );
     return { ...spoken, ext: VOICE_VENDORS[spoken.vendor]!.audioExt };
   }

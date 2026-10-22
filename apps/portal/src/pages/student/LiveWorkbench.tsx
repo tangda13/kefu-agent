@@ -241,6 +241,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   const listRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  /** 播报还在取音频（排队或合成中）：这期间再点不打断、不重发，取到才算“播报中” */
+  const [loadingTtsId, setLoadingTtsId] = useState<string | null>(null);
   const recorderRef = useRef<WavRecorder | null>(null);
   const [voiceState, setVoiceState] = useState<"idle" | "recording" | "recognizing">("idle");
   const [pendingVoice, setPendingVoice] = useState<{ blob: Blob; seconds: number } | null>(null);
@@ -582,6 +584,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     ttsResolve.current?.();
     ttsResolve.current = null;
     setPlayingId(null);
+    setLoadingTtsId(null);
   }
 
   /** 播报一条买家消息，播完（或被打断）才返回 */
@@ -604,9 +607,11 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         if (target === message) return;
       }
       if (token !== ttsToken.current) return;
-      setPlayingId(target.id);
+      setLoadingTtsId(target.id);
       const { audioUrl } = await requestMessageTts(session, cid, target.id);
       if (token !== ttsToken.current) return;
+      setLoadingTtsId(null);
+      setPlayingId(target.id);
       audioRef.current?.pause();
       const audio = new Audio(assetUrl(audioUrl) ?? undefined);
       audioRef.current = audio;
@@ -619,7 +624,10 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     } catch (cause) {
       if (token === ttsToken.current) setNotice(errorMessage(cause));
     } finally {
-      if (token === ttsToken.current) setPlayingId(null);
+      if (token === ttsToken.current) {
+        setPlayingId(null);
+        setLoadingTtsId(null);
+      }
     }
   }
 
@@ -638,6 +646,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
 
   async function playTts(message: ConversationMessage) {
     if (!activeId) return;
+    // 还在取音频：学生等不及连点时不打断、不重发（服务端同一条消息也只合成一次）
+    if (loadingTtsId === message.id) return;
     if (playingId === message.id) {
       stopSpeaking();
       return;
@@ -1334,6 +1344,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     const failed = translateFailed.has(message.id);
     const pending = !mine && text && autoTranslate && !message.translation && !failed;
     const playing = playingId === message.id;
+    const ttsLoading = loadingTtsId === message.id;
     return (
       <div key={message.id} className={mine ? "wbk-m is-me" : "wbk-m"}>
         {!mine ? <Av buyer={buyer} size={30} /> : null}
@@ -1346,9 +1357,15 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
           </div>
           <div className="wbk-mt">
             {!mine && text ? (
-              <button type="button" className={playing ? "is-playing" : ""} onClick={() => void playTts(message)} title={playing ? "停止播报" : "播报这条消息"}>
-                <Volume2 size={12} />{playing ? "播报中" : "播报"}
-              </button>
+              ttsLoading ? (
+                <button type="button" className="is-busy" disabled>
+                  <LoaderCircle size={12} className="wbk-spin" />加载中…
+                </button>
+              ) : (
+                <button type="button" className={playing ? "is-playing" : ""} onClick={() => void playTts(message)} title={playing ? "停止播报" : "播报这条消息"}>
+                  <Volume2 size={12} />{playing ? "播报中" : "播报"}
+                </button>
+              )
             ) : null}
             {!mine && text && !autoTranslate ? (
               translatingIds.has(message.id) ? (

@@ -11,17 +11,20 @@ const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep"
 const WEEKDAYS_ZH = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 const DAY_MS = 86_400_000;
 
+/** 只建一次：每次 new Intl.DateTimeFormat 很贵，历史消息每条都要算一次（2026-10-22 压测 CPU 分析里单个函数占 8%） */
+const LOCAL_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: TRAINING_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
 /** 某一时刻在实训时区里的日期（用 UTC 零点表示，便于加减天数）和时分 */
 function localDay(at: Date): { day: Date; time: string } {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: TRAINING_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(at);
+  const parts = LOCAL_PARTS.formatToParts(at);
   const get = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
   const day = new Date(Date.UTC(get("year"), get("month") - 1, get("day")));
   return { day, time: `${String(get("hour")).padStart(2, "0")}:${String(get("minute")).padStart(2, "0")}` };
