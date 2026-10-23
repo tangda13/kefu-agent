@@ -77,6 +77,7 @@ import { ProductsTab } from "./workbench/ProductsTab";
 import { ShiftBar } from "./workbench/ShiftBar";
 import { TranslateButton, targetOf } from "./workbench/TranslateButton";
 import { BUSINESS_STAGE_LABELS } from "@cecs/contracts";
+import { DEFAULT_ARRIVAL_INTERVAL_MINUTES } from "@cecs/domain";
 import { PRACTICE_EVENT, bumpPractice, readPractice, readPracticeTotal, writePractice, writePracticeTotal, type PracticeConfig } from "./practice";
 import { MAX_SERVE_LIMIT, type AgentState } from "./workbench/AgentStatus";
 import { Av, MessageBody, ServiceRatingLine, errorMessage, goToPage, hashSeed, isCardKind, timeLabel, toolCardLabel } from "./workbench/shared";
@@ -1265,7 +1266,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         if (mode === "all_at_once") {
           ready = true;
         } else if (mode === "interval") {
-          const interval = Math.max(1, task.arrivalIntervalMinutes ?? 5) * 60_000;
+          const interval = Math.max(1, task.arrivalIntervalMinutes ?? DEFAULT_ARRIVAL_INTERVAL_MINUTES) * 60_000;
           const lastArrival = conversations
             .filter((item) => item.taskId === task.id)
             .reduce((max, item) => Math.max(max, new Date(item.createdAt).getTime()), 0);
@@ -1656,7 +1657,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
               <button type="button" onClick={() => imageInputRef.current?.click()} disabled={cardDisabled} title="发送图片" aria-label="发送图片"><ImagePlus size={18} /></button>
               <button type="button" onClick={() => videoInputRef.current?.click()} disabled={cardDisabled} title="发送视频" aria-label="发送视频"><Film size={18} /></button>
               <button type="button" onClick={() => fileInputRef.current?.click()} disabled={cardDisabled} title="发送文件" aria-label="发送文件"><Paperclip size={18} /></button>
-              <button ref={phraseButtonRef} type="button" className="wbk-phrase-btn" onClick={openPhrasePanel} disabled={!active || !canType}><MessageSquareText size={16} />快捷短语</button>
+              <button ref={phraseButtonRef} type="button" className="wbk-phrase-btn" onClick={openPhrasePanel} disabled={composerDisabled || !canType}><MessageSquareText size={16} />快捷短语</button>
               {canType ? (
                 <TranslateButton
                   target={outTarget}
@@ -1698,7 +1699,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
                 <button
                   type="button"
                   className={voiceState === "recording" ? "wbk-ptt is-recording" : "wbk-ptt"}
-                  disabled={!active || isClosed || voiceState === "recognizing" || streamingText !== null}
+                  disabled={composerDisabled || voiceState === "recognizing" || streamingText !== null}
                   onMouseDown={() => void startVoiceInput()}
                   onMouseUp={() => void stopVoiceInput()}
                   onMouseLeave={() => { if (voiceState === "recording") void stopVoiceInput(); }}

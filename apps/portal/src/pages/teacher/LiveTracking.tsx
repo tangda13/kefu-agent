@@ -1,7 +1,7 @@
 import { Archive, Clock, Download, FileSpreadsheet, Lightbulb, List, Lock, MessagesSquare, MonitorPlay, Send, Target } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ASSESSMENT_DIMENSIONS, type ReceptionStats } from "@cecs/contracts";
+import { ASSESSMENT_DIMENSIONS, SCENARIO_SCRIPT_FIELDS, type ReceptionStats } from "@cecs/contracts";
 import {
   ApiError, apiGet, apiPost, apiRequestPatch, assetUrl,
   type BuyerPublicView, type ConversationMessage, type Session,
@@ -510,13 +510,9 @@ function LiveConsole({ session, items, onReplay, onNavigate }: { session: Sessio
               <h5>场景剧本<span className="mon-lock"><Lock size={12} />只有老师能看到</span></h5>
               {view.objective ? <p className="mon-objective"><Target size={14} />{view.objective}</p> : null}
               <dl className="mon-script">
-                {([
-                  ["买家想要", view.buyerGoal],
-                  ["隐藏信息", view.hiddenInfo, "学生问到点子上，买家才会说出来"],
-                  ["情绪触发点", view.emotionTriggers],
-                  ["买家底线", view.bottomLine],
-                  ["结束条件", view.endConditions],
-                ] as Array<[string, string | null | undefined, string?]>).filter(([, value]) => value).map(([label, value, tip]) => (
+                {/* 字段名和场景配置里写剧本时的一样 */}
+                {SCENARIO_SCRIPT_FIELDS.map(({ key, label }) => [label, view[key], key === "hiddenInfo" ? "学生问到点子上，买家才会说出来" : undefined] as [string, string | null | undefined, string?])
+                  .filter(([, value]) => value).map(([label, value, tip]) => (
                   <Fragment key={label}><dt>{label}{tip ? <HelpTip>{tip}</HelpTip> : null}</dt><dd>{value}</dd></Fragment>
                 ))}
               </dl>

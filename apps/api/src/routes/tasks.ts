@@ -3,7 +3,7 @@ import { ASSESSMENT_DIMENSIONS, BUSINESS_STAGES } from "@cecs/contracts";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
 import { teacherOwnsClass, writeAudit } from "../auth-context";
-import { averageReplySec, filterPersonaTemplates, replyWithinRate, type PersonaRule } from "@cecs/domain";
+import { DEFAULT_ARRIVAL_INTERVAL_MINUTES, averageReplySec, filterPersonaTemplates, replyWithinRate, type PersonaRule } from "@cecs/domain";
 import { loadReceptionTimings, sumReplySummaries } from "../reception-stats";
 import { ratingSummary } from "../service-rating";
 import { loadEnabledPersonaTemplates } from "./catalog";
@@ -171,7 +171,7 @@ export function registerTaskRoutes(
         return { code: "INVALID_INPUT", message: ruleProblem };
       }
       const arrivalMode = body.arrivalMode ?? "sequential";
-      const arrivalIntervalMinutes = arrivalMode === "interval" ? body.arrivalIntervalMinutes ?? 5 : null;
+      const arrivalIntervalMinutes = arrivalMode === "interval" ? body.arrivalIntervalMinutes ?? DEFAULT_ARRIVAL_INTERVAL_MINUTES : null;
       const arrivalProblem = validateArrivalPolicy(arrivalMode, arrivalIntervalMinutes);
       if (arrivalProblem) {
         reply.code(400);
@@ -312,7 +312,7 @@ export function registerTaskRoutes(
         reply.code(400);
         return { code: "INVALID_INPUT", message: ruleProblem };
       }
-      if (merged.arrivalMode === "interval" && merged.arrivalIntervalMinutes == null) merged.arrivalIntervalMinutes = 5;
+      if (merged.arrivalMode === "interval" && merged.arrivalIntervalMinutes == null) merged.arrivalIntervalMinutes = DEFAULT_ARRIVAL_INTERVAL_MINUTES;
       if (merged.arrivalMode !== "interval") merged.arrivalIntervalMinutes = null;
       const arrivalProblem = validateArrivalPolicy(merged.arrivalMode, merged.arrivalIntervalMinutes);
       if (arrivalProblem) {

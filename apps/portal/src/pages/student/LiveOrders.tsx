@@ -31,7 +31,11 @@ import {
   type StudentOrder,
 } from "../../api/client";
 import { Button, HeaderTabs, MoreMenu, Tag } from "../../ui";
+import { REVIEW_GRADE_LABELS, reviewGrade, type ReviewGrade } from "@cecs/domain";
 import "../../styles/student-store.css";
+
+/** 评价标签的颜色：好评绿、中评灰、差评红（和评价页同一套分法） */
+const GRADE_PILL: Record<ReviewGrade, string> = { good: "status-pill green", medium: "status-pill gray", bad: "status-pill warn-pill" };
 
 type DetailTab = "detail" | "logistics" | "review";
 
@@ -803,7 +807,7 @@ export function LiveOrders({ session }: { session: Session }) {
         </div>
       );
     }
-    const negative = info.review.rating <= 3;
+    const grade = reviewGrade(info.review.rating);
     const replied = replies[current.id];
     return (
       <div className="order-detail-body">
@@ -831,9 +835,7 @@ export function LiveOrders({ session }: { session: Session }) {
                   已改评{typeof info.review.original?.rating === "number" ? ` · 原 ${info.review.original.rating} 星` : ""}
                 </em>
               ) : null}
-              <em className={negative ? "status-pill warn-pill" : "status-pill green"}>
-                {negative ? "差评" : "好评"}
-              </em>
+              <em className={GRADE_PILL[grade]}>{REVIEW_GRADE_LABELS[grade]}</em>
             </span>
           </div>
           <p className="review-content">{info.review.content}</p>

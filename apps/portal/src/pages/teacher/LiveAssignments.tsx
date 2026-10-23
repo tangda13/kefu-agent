@@ -4,6 +4,7 @@ import {
   ASSESSMENT_DIMENSIONS, BUSINESS_STAGES, BUSINESS_STAGE_LABELS, BUYER_ROLES, CUSTOMER_TYPES, DECISION_STYLES, EMOTIONS, NATIONALITIES, PERSONALITIES,
   type BusinessStage,
 } from "@cecs/contracts";
+import { DEFAULT_ARRIVAL_INTERVAL_MINUTES } from "@cecs/domain";
 import {
   ApiError, createTask, deleteTask, fetchClasses, fetchPersonas, fetchScenarios, fetchTeacherTasks, previewPersonaRule, updateTask,
   type ClassSummary, type PersonaSample, type PersonaTemplate, type ScenarioSummary, type Session, type TeacherTask,
@@ -79,7 +80,7 @@ function emptyForm(): TaskForm {
   return {
     name: "", businessStage: "pre_sale", classIds: [], scenarioIds: [], interactionMode: "text_voice",
     timeLimit: "30", startAt: "", deadline: "", completionRule: "all_scenarios", requiredCount: "1", passScore: "",
-    arrivalMode: "sequential", arrivalInterval: "5", weights: defaultWeights(),
+    arrivalMode: "sequential", arrivalInterval: String(DEFAULT_ARRIVAL_INTERVAL_MINUTES), weights: defaultWeights(),
     rule: { ...EMPTY_RULE },
   };
 }
@@ -92,7 +93,7 @@ function formFromTask(task: TeacherTask): TaskForm {
     startAt: toLocalInput(task.startAt), deadline: toLocalInput(task.deadline),
     completionRule: task.completionRule ?? "all_scenarios", requiredCount: String(task.requiredCount ?? 1),
     passScore: task.passScore != null ? String(task.passScore) : "", arrivalMode: task.arrivalMode ?? "sequential",
-    arrivalInterval: String(task.arrivalIntervalMinutes ?? 5), weights: { ...defaultWeights(), ...task.scoringWeights },
+    arrivalInterval: String(task.arrivalIntervalMinutes ?? DEFAULT_ARRIVAL_INTERVAL_MINUTES), weights: { ...defaultWeights(), ...task.scoringWeights },
     rule: { ...EMPTY_RULE, ...Object.fromEntries(Object.entries(rule).filter(([, value]) => Array.isArray(value))) },
   };
 }
@@ -198,7 +199,7 @@ function TaskDetail({ session, task, scenarios, onClose, onEdit }: {
         ]} />
         <DetailGroup title="交互模式" rows={[
           ["交互模式", INTERACTION_LABELS[task.interactionMode] ?? task.interactionMode],
-          ["买家进线", task.arrivalMode === "interval" ? `每 ${task.arrivalIntervalMinutes ?? 5} 分钟进线一位` : ARRIVAL_LABELS[task.arrivalMode ?? "sequential"]],
+          ["买家进线", task.arrivalMode === "interval" ? `每 ${task.arrivalIntervalMinutes ?? DEFAULT_ARRIVAL_INTERVAL_MINUTES} 分钟进线一位` : ARRIVAL_LABELS[task.arrivalMode ?? "sequential"]],
         ]} />
         <DetailGroup title="完成与达标" rows={[
           ["完成标准", task.completionRule === "conversation_count" ? `完成 ${task.requiredCount ?? 1} 次接待` : `每个场景至少接待一次（共 ${task.scenarioIds.length} 个）`],

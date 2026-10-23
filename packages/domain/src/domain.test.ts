@@ -13,6 +13,7 @@ import {
   patienceAction,
   patienceFactor,
   personaTemplates,
+  reviewGrade,
   standardPhrases,
   toStudentPersonaView,
   trainingScenarios,
@@ -234,5 +235,11 @@ describe("D-41 买家头像多样化", () => {
         if (m.avatarKind === kind && f.avatarKind === kind) expect(m).toEqual(f);
       }
     }
+  });
+});
+
+describe("商品评价按星级分好评、中评、差评", () => {
+  it("4–5 星好评，3 星中评，1–2 星差评（评价页的页签和订单详情的标签同一套）", () => {
+    expect([5, 4, 3, 2, 1].map((rating) => reviewGrade(rating))).toEqual(["good", "good", "medium", "bad", "bad"]);
   });
 });

@@ -159,7 +159,7 @@ function buildInboundMail(order: StudentOrder): InboundMail | null {
     [subject, body] = pool[variant]!;
     atMs = customsAt ? new Date(customsAt).getTime() + 6 * 3_600_000 : placedMs + 10 * 86_400_000;
   } else if (info.status === "delivered" && info.review && info.review.rating <= 3) {
-    // 投诉来信与该订单的差评内容保持一致
+    // 3 星及以下（中评、差评）：投诉来信与该订单的评价内容保持一致
     subject = `Disappointed with my order ${info.orderNo}`;
     body = `Hello,\n\nI received the ${info.productName}, but I have to complain: ${info.review.content}\n\nI'd like to know how you plan to resolve this - a replacement or a refund would both work for me.\n\n${sign}`;
     atMs = new Date(info.review.at).getTime() - 3 * 3_600_000;

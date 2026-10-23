@@ -13,7 +13,7 @@ const SUGGESTION_TYPES = {
   payment_reminder: "礼貌催付：提醒买家完成付款，说明库存保留时间，不施压",
   logistics_update: "物流同步与安抚：同步当前物流节点，解释可能的延误并安抚情绪",
   review_reply:
-    "评价回复：以英文回复买家对本订单的评价（评价内容与星级见订单 JSON 的 review 字段）；差评（3 星及以下）需表达歉意并给出具体补救方案，好评则真诚致谢并欢迎再次选购",
+    "评价回复：以英文回复买家对本订单的评价（评价内容与星级见订单 JSON 的 review 字段）；中评、差评（3 星及以下）需表达歉意并给出具体补救方案，好评则真诚致谢并欢迎再次选购",
 } as const;
 
 type SuggestionType = keyof typeof SUGGESTION_TYPES;

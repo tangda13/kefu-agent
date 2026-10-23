@@ -799,6 +799,15 @@ function orderBase(
   };
 }
 
+/** 商品评价分好评、中评、差评：4–5 星好评，3 星中评，1–2 星差评（评价页的页签、订单详情的标签共用） */
+export type ReviewGrade = "good" | "medium" | "bad";
+export const REVIEW_GRADE_LABELS: Record<ReviewGrade, string> = { good: "好评", medium: "中评", bad: "差评" };
+export function reviewGrade(rating: number): ReviewGrade {
+  if (rating >= 4) return "good";
+  if (rating === 3) return "medium";
+  return "bad";
+}
+
 /** 差评文案池（订单生成期预设差评从中抽取；闭环评价 LLM 失败时也作兜底） */
 export const NEGATIVE_REVIEW_POOL = [
   "Item arrived damaged and looks different from the listing. Very disappointed with this purchase.",
@@ -968,6 +977,9 @@ export function generateBuyerOrderHistory(
 
 export { scenarioScripts } from "./scenario-scripts";
 export { productLibrary } from "./product-library";
+/** 任务“按间隔进线”没填分钟数时，每几分钟进一位（服务端存库、学生工作台计时、任务大厅和教师端显示都用它） */
+export const DEFAULT_ARRIVAL_INTERVAL_MINUTES = 5;
+
 export * from "./store";
 export * from "./patience";
 export * from "./responsiveness";

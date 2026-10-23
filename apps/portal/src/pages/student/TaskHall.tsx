@@ -2,6 +2,7 @@ import { Check, ClipboardCheck, Headset, Mail, MessageCircle, PenLine } from "lu
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ASSESSMENT_DIMENSIONS, BUSINESS_STAGES, BUSINESS_STAGE_LABELS, type BusinessStage } from "@cecs/contracts";
+import { DEFAULT_ARRIVAL_INTERVAL_MINUTES } from "@cecs/domain";
 import {
   fetchBaselineStatus,
   fetchScenarios,
@@ -35,7 +36,7 @@ const INTERACTION_LABELS: Record<string, string> = {
 
 const ARRIVAL_NOTES: Record<StudentTask["arrivalMode"], (minutes: number | null) => string> = {
   sequential: () => "买家会一位一位进线",
-  interval: (minutes) => `每 ${minutes ?? 3} 分钟进线一位买家`,
+  interval: (minutes) => `每 ${minutes ?? DEFAULT_ARRIVAL_INTERVAL_MINUTES} 分钟进线一位买家`,
   all_at_once: () => "所有买家会同时进线",
 };
 

@@ -15,10 +15,10 @@ import {
   type StudentReview,
 } from "../../api/client";
 import { HeaderTabs, MoreMenu } from "../../ui";
+import { reviewGrade, type ReviewGrade } from "@cecs/domain";
 import "../../styles/student-store.css";
 
-type Grade = "good" | "medium" | "bad";
-type Tab = "all" | Grade;
+type Tab = "all" | ReviewGrade;
 /** 回复状态：普通筛选项，不当成待办（电商平台没有“必须回复评价”的逻辑） */
 type ReplyFilter = "all" | "unreplied" | "replied";
 type Sort = "latest" | "lowest" | "highest";
@@ -30,13 +30,6 @@ const TIME_RANGES: ReadonlyArray<[string, string, number | null]> = [
   ["30d", "近 30 天", 30],
   ["90d", "近 90 天", 90],
 ];
-
-/** 4-5 星好评、3 星中评、1-2 星差评 */
-function gradeOf(rating: number): Grade {
-  if (rating >= 4) return "good";
-  if (rating === 3) return "medium";
-  return "bad";
-}
 
 function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
@@ -109,7 +102,7 @@ export function LiveReviews({
 
   const stats = useMemo(() => {
     const total = inRange.length;
-    const count = (grade: Grade) => inRange.filter((record) => gradeOf(record.review.rating) === grade).length;
+    const count = (grade: ReviewGrade) => inRange.filter((record) => reviewGrade(record.review.rating) === grade).length;
     const byStar = [5, 4, 3, 2, 1].map((star) => ({
       star,
       n: inRange.filter((record) => record.review.rating === star).length,
@@ -130,7 +123,7 @@ export function LiveReviews({
     const list = inRange.filter((record) => {
       if (replyFilter === "unreplied" && replies[record.orderId]) return false;
       if (replyFilter === "replied" && !replies[record.orderId]) return false;
-      if ((tab === "good" || tab === "medium" || tab === "bad") && gradeOf(record.review.rating) !== tab) return false;
+      if ((tab === "good" || tab === "medium" || tab === "bad") && reviewGrade(record.review.rating) !== tab) return false;
       if (starFilter !== null && record.review.rating !== starFilter) return false;
       if (!keyword) return true;
       return [record.buyer.name, record.productName, record.orderNo, record.review.content]
