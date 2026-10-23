@@ -228,8 +228,9 @@ export function TaskHall({
   const practiced = (summary?.conversations.practice ?? 0) > 0;
   /* 没有任务时的“当前步”：先测评，再练习 */
   const curStep = !baselineDone ? 1 : !practiced ? 2 : 3;
-  /* 有任务但没做训前测评：进行中列表顶部留一行提示 */
+  /* 有任务但没做训前测评：页签上方一整条横条，三个页签都看得到（没有任务时由“开始三步”的第一步承担） */
   const needBaseline = !!session && !!baseline && !baseline.completed;
+  const showBaselineBand = needBaseline && loaded && !isEmpty;
 
   async function startPractice() {
     if (practiceBusy || !session) return;
@@ -350,9 +351,10 @@ export function TaskHall({
           <p className="th3-meta">已完成 {first.progressDone} / {first.requiredTotal} 次接待</p>
         )}
         <div className="th3-acts">
+          {/* 测评没做时一页只留“开始测评”一个主按钮，这里降为白底（照样能点） */}
           {next.mail
-            ? <Button variant="primary" icon={PenLine} onClick={() => go(first)}>写邮件</Button>
-            : <Button variant="primary" icon={Headset} onClick={() => go(first)}>进入工作台</Button>}
+            ? <Button variant={showBaselineBand ? "secondary" : "primary"} icon={PenLine} onClick={() => go(first)}>写邮件</Button>
+            : <Button variant={showBaselineBand ? "secondary" : "primary"} icon={Headset} onClick={() => go(first)}>进入工作台</Button>}
           <Button variant="ghost" onClick={() => setDetail(first)}>任务要求</Button>
           <span className="th3-note">{next.mail ? "收件人和模板已经备好" : ARRIVAL_NOTES[first.arrivalMode](first.arrivalIntervalMinutes)}</span>
         </div>
@@ -362,14 +364,6 @@ export function TaskHall({
 
   const todoView = (
     <>
-      {/* 训前测评也是一件待办；前面用测评图标，不用序号（序号是“开始三步”里的步骤号） */}
-      {needBaseline && tab === "todo" ? (
-        <div className="th3-s3 cur th3-base">
-          <span className="no is-icon"><ClipboardCheck size={15} aria-hidden="true" /></span>
-          <div><b>先做训前测评</b><small>10 道题，约 8 分钟，测出各项能力的起点</small></div>
-          <Button size="sm" onClick={() => setShowQuiz(true)}>开始测评</Button>
-        </div>
-      ) : null}
       {firstView}
       {restList.map((task) => {
         const status = statusOf(task);
@@ -388,7 +382,7 @@ export function TaskHall({
           </div>
         );
       })}
-      {list.length === 0 && !(needBaseline && tab === "todo") ? (
+      {list.length === 0 ? (
         <p className="th3-none">{tab === "doing" ? "现在没有正在做的任务，没开始的在“待办”里。" : "没有待办的任务，已完成的可以在“已完成”里看复盘。"}</p>
       ) : null}
     </>
@@ -430,6 +424,13 @@ export function TaskHall({
 
       <div className="th3-grid">
         <section className="th3-main">
+          {showBaselineBand ? (
+            <div className="th3-base">
+              <span className="th3-base-icon"><ClipboardCheck size={22} aria-hidden="true" /></span>
+              <div><b>先做训前测评</b><small>10 道题，约 8 分钟，测出各项能力的起点</small></div>
+              <Button variant="primary" onClick={() => setShowQuiz(true)}>开始测评</Button>
+            </div>
+          ) : null}
           {head}
           {!loaded ? <p className="th3-none">正在加载任务</p> : isEmpty ? stepsView : tab === "done" ? doneView : todoView}
         </section>

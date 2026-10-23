@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Check, Plus } from "lucide-react";
 import { ASSESSMENT_DIMENSIONS } from "@cecs/contracts";
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, fetchClasses, fetchTeacherTasks, type ClassSummary, type Session, type TeacherTask } from "../../api/client";
@@ -89,25 +89,29 @@ export function LiveOverview({ session, onNavigate }: { session: Session; onNavi
         />
       </div>
 
+      {/* 开课三步（设计稿 docs/design/p23-start-guides）：下发第一个任务后整块换成“进行中的任务”，所以第二、三步不会出现做完状态 */}
       {starting ? (
-        <Board title="开课三步">
-          <div className="trio">
-            <div className="step">
-              <span className={studentCount ? "steps-no is-done" : "steps-no"}>{studentCount ? "✓" : "1"}</span>
+        <Board className="ov-start">
+          <header className="ov-start-head"><h3>开课三步</h3><span className="board-count">{studentCount ? 1 : 0} / 3</span></header>
+          <div className="ov-steps">
+            <div className={studentCount ? "ov-step is-done" : "ov-step is-cur"}>
+              <span className="ov-step-no">{studentCount ? <Check size={15} strokeWidth={3} aria-hidden="true" /> : 1}</span>
               <b>导入学生名单</b>
-              <p>{studentCount ? `已导入 ${studentCount} 人。` : "按“学号,姓名”粘贴全班名单，系统自动生成初始密码。"}</p>
-              <Button variant={studentCount ? "ghost" : "primary"} onClick={() => go("classes")}>{studentCount ? "查看名单" : "去导入"}</Button>
+              <p>{studentCount ? `已导入 ${studentCount} 人` : "粘贴“学号,姓名”名单，自动生成初始密码"}</p>
+              {studentCount
+                ? <BoardLink onClick={() => go("classes")}>查看名单</BoardLink>
+                : <Button variant="primary" onClick={() => go("classes")}>去导入</Button>}
             </div>
-            <div className="step">
-              <span className="steps-no">2</span>
+            <div className={studentCount ? "ov-step is-cur" : "ov-step"}>
+              <span className="ov-step-no">2</span>
               <b>下发第一个任务</b>
-              <p>选班级和场景，几分钟就能配好。建议先用“一位接一位”的进线方式。</p>
+              <p>选班级和场景，几分钟就能配好</p>
               <Button variant={studentCount ? "primary" : "secondary"} icon={Plus} onClick={() => go("assignments")}>新建任务</Button>
             </div>
-            <div className="step">
-              <span className="steps-no">3</span>
+            <div className="ov-step">
+              <span className="ov-step-no">3</span>
               <b>看学生练习</b>
-              <p>学生开始接待后，可以在实训跟踪里旁观对话，随时发指导。</p>
+              <p>学生接待时可以旁观对话、随时发指导</p>
               <Button onClick={() => go("tracking")}>去实训跟踪</Button>
             </div>
           </div>
