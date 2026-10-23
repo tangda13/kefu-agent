@@ -154,6 +154,9 @@
 .wbk-mt button:hover { color: var(--c-brand-ink); }
 .wbk-mt button.is-playing { color: var(--c-brand-ink); font-weight: 600; }
 .wbk-mt button.is-busy { color: var(--c-brand-ink); cursor: default; }
+/* 没发出去的消息：真实聊天软件的红色叹号 + 重发 */
+.wbk-mt button.wbk-failed, .wbk-mt button.wbk-failed:hover { color: var(--c-danger); font-weight: 600; }
+.wbk-mt button.wbk-failed:disabled { cursor: default; opacity: 0.6; }
 .wbk-mt svg { width: 12px; height: 12px; }
 .wbk-mt .is-typing { color: var(--c-brand-ink); }
 .wbk-m.is-me .wbk-mt { justify-content: flex-end; }

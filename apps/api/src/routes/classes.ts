@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
-import { teacherOwnsClass, writeAudit } from "../auth-context";
+import { revokeAllRefreshTokens, teacherOwnsClass, writeAudit } from "../auth-context";
 import { generateTemporaryPassword, hashPassword, passwordPolicyError } from "../security";
 import { clearLoginFailures } from "../login-throttle";
 
@@ -379,10 +379,7 @@ export function registerClassRoutes(
         [status ?? null, displayName ?? null, moving ? classId : null, studentId],
       );
       if (status === "disabled") {
-        await db.query(
-          "update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null",
-          [studentId],
-        );
+        await revokeAllRefreshTokens(db, studentId);
       }
       if (moving) await syncStudentTasks(db, studentId, classId!);
       guard.invalidateAccount(studentId);
@@ -678,10 +675,7 @@ export function registerClassRoutes(
          where id = $2`,
         [passwordHash, studentId],
       );
-      await db.query(
-        "update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null",
-        [studentId],
-      );
+      await revokeAllRefreshTokens(db, studentId);
       await clearLoginFailures(db, student.username);
       guard.invalidateAccount(studentId);
       await writeAudit(db, user.sub, "student.reset_password", studentId);

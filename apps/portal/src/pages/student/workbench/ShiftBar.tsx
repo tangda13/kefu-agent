@@ -28,19 +28,27 @@ interface Props {
   onTimeUp: () => void;
 }
 
-/** 本场结束时间 = min(会话开始 + 单次限时, 任务截止) */
-function endsAtOf(task: StudentTask | null, startedAt: number | null): number | null {
-  if (!task) return null;
-  const candidates: number[] = [];
-  if (task.timeLimitMinutes && startedAt) candidates.push(startedAt + task.timeLimitMinutes * 60_000);
-  if (task.deadline) candidates.push(new Date(task.deadline).getTime());
-  return candidates.length ? Math.min(...candidates) : null;
+/** 不限时的任务，离截止不到这么久才显示倒计时（截止到了会话也会结束） */
+const DEADLINE_CLOCK_MS = 60 * 60_000;
+
+/**
+ * 本场结束时间：只在有接待进行时计时 = min(会话开始 + 单次限时, 任务截止)。
+ * 没有进行中的接待就不计时（之前会退回去倒数任务截止，显示成“剩余 10014:12”）
+ */
+function endsAtOf(task: StudentTask | null, startedAt: number | null, now: number): number | null {
+  if (!task || !startedAt) return null;
+  const deadline = task.deadline ? new Date(task.deadline).getTime() : null;
+  if (task.timeLimitMinutes) {
+    const limitEnd = startedAt + task.timeLimitMinutes * 60_000;
+    return deadline !== null ? Math.min(limitEnd, deadline) : limitEnd;
+  }
+  return deadline !== null && deadline - now <= DEADLINE_CLOCK_MS ? deadline : null;
 }
 
 export function ShiftBar({ task, practice, practiceInfo, agent, startedAt, timerKey, stats, onTimeUp }: Props) {
   const slot = useContext(ShellSlotContext);
   const now = useNow(1000);
-  const endsAt = endsAtOf(task, startedAt);
+  const endsAt = endsAtOf(task, startedAt, now);
   const remaining = endsAt === null ? null : Math.ceil((endsAt - now) / 1000);
 
   // 剩 5 分钟轻提示一次；到 0 提示并刷新会话状态（服务端每分钟扫描超时会话）

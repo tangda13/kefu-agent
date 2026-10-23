@@ -6,7 +6,7 @@ import type { FastifyInstance } from "fastify";
 import type { Db } from "../db";
 import { once } from "../inflight";
 import type { AuthGuard } from "../auth-context";
-import { writeAudit } from "../auth-context";
+import { revokeAllRefreshTokens, writeAudit } from "../auth-context";
 import { getSetting, setSetting, type QuotaSettings } from "../settings";
 import type { LlmGateway } from "../llm/gateway";
 import { maskSecret } from "../llm/secret";
@@ -198,10 +198,7 @@ export function registerAdminRoutes(
       }
       // 停用即时生效（I6）：吊销刷新令牌，鉴权缓存失效后已签发的访问令牌也随即被拒
       if (status === "disabled") {
-        await db.query(
-          "update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null",
-          [request.params.teacherId],
-        );
+        await revokeAllRefreshTokens(db, request.params.teacherId);
       }
       guard.invalidateAccount(request.params.teacherId);
       await writeAudit(db, request.user!.sub, "admin.teacher_update", request.params.teacherId, { status, displayName });
@@ -225,10 +222,7 @@ export function registerAdminRoutes(
         reply.code(404);
         return { code: "NOT_FOUND", message: "教师不存在。" };
       }
-      await db.query(
-        "update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null",
-        [request.params.teacherId],
-      );
+      await revokeAllRefreshTokens(db, request.params.teacherId);
       await clearLoginFailures(db, teacher.username);
       guard.invalidateAccount(request.params.teacherId);
       await writeAudit(db, request.user!.sub, "admin.teacher_reset_password", request.params.teacherId);

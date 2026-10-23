@@ -10,7 +10,7 @@ import { loadEnv } from "../env";
 import { createPool } from "../db";
 import { generateTemporaryPassword, hashPassword } from "../security";
 import { clearLoginFailures } from "../login-throttle";
-import { writeAudit } from "../auth-context";
+import { revokeAllRefreshTokens, writeAudit } from "../auth-context";
 
 const username = process.argv[2]?.trim();
 if (!username) {
@@ -31,10 +31,7 @@ try {
     console.error(`账号不存在：${username}`);
     process.exitCode = 1;
   } else {
-    await db.query(
-      "update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null",
-      [user.id],
-    );
+    await revokeAllRefreshTokens(db, user.id);
     await clearLoginFailures(db, username);
     await writeAudit(db, null, "cli.reset_password", user.id, { username });
     console.log(`已重置 ${username}（${user.role}）的密码。`);

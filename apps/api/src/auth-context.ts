@@ -108,6 +108,18 @@ export async function teacherOwnsClass(
   return Boolean(result.rowCount);
 }
 
+/**
+ * 让这个账号所有登录立即失效（改密、重置密码、停用）：连刚续期换掉、还在续期宽限里的那张也一起作废，
+ * 宽限不能绕过这些操作。调用方还要调 guard.invalidateAccount，访问令牌才会立即失效
+ */
+export async function revokeAllRefreshTokens(db: Db, userId: string): Promise<void> {
+  await db.query(
+    `update refresh_tokens set revoked_at = coalesce(revoked_at, now()), rotated_at = null
+     where user_id = $1 and (revoked_at is null or rotated_at is not null)`,
+    [userId],
+  );
+}
+
 export async function writeAudit(
   db: Db,
   actorId: string | null,

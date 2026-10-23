@@ -1,6 +1,6 @@
 import { Camera, Eye, EyeOff, History, KeyRound, LogOut, School, ShieldCheck, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { ApiError, apiGet, apiRequestDelete, apiRequestPatch, assetUrl, changePassword, login, saveSession, uploadMyAvatar, type Session } from "../api/client";
+import { ApiError, apiGet, apiRequestDelete, apiRequestPatch, assetUrl, changePassword, loadSession, login, saveSession, uploadMyAvatar, type Session } from "../api/client";
 import { Button, Dialog, Field, Input, toast } from "../ui";
 
 /** 个人中心（顶栏头像）：查看资料、改姓名、改密码。三个端共用 */
@@ -85,7 +85,9 @@ export function ProfileDialog({ session, onClose, onSessionChange, onChangePassw
 
   const avatarUrl = session.user.avatarUrl ?? profile?.avatarUrl ?? null;
   const commit = (patch: Partial<Session["user"]>) => {
-    const next = { ...session, user: { ...session.user, ...patch } };
+    // 令牌以本机存的为准（续期后手里这份是旧的），只改用户资料
+    const base = loadSession() ?? session;
+    const next = { ...base, user: { ...base.user, ...patch } };
     saveSession(next);
     onSessionChange(next);
   };

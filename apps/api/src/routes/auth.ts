@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { ApiEnv } from "../env";
 import type { Db } from "../db";
 import type { AuthGuard } from "../auth-context";
-import { writeAudit } from "../auth-context";
+import { revokeAllRefreshTokens, writeAudit } from "../auth-context";
 import {
   generateRefreshToken,
   hashPassword,
@@ -14,6 +14,9 @@ import {
 import { clearLoginFailures, lockedMinutes, recordLoginFailure } from "../login-throttle";
 
 const ROLE_LABEL: Record<DbUser["role"], string> = { student: "学生", teacher: "教师", admin: "管理员" };
+
+/** 刷新令牌续期换掉后多久内还能再用一次（见迁移 045） */
+export const REFRESH_REUSE_GRACE_SECONDS = 60;
 
 /** 客户端外壳在 User-Agent 末尾加 CecsDesktop/<版本>（apps/desktop/main.cjs）；返回版本号，不是客户端返回 null */
 export function desktopClientVersion(userAgent: string | undefined): string | null {
@@ -141,13 +144,21 @@ export function registerAuthRoutes(
         return { code: "INVALID_INPUT", message: "缺少刷新令牌。" };
       }
       const tokenHash = hashRefreshToken(refreshToken);
-      const result = await db.query<{ user_id: string }>(
-        `update refresh_tokens set revoked_at = now()
+      // 正常续期：这张作废换新的，记下是续期换掉的
+      const rotated = await db.query<{ user_id: string }>(
+        `update refresh_tokens set revoked_at = now(), rotated_at = now()
          where token_hash = $1 and revoked_at is null and expires_at > now()
          returning user_id`,
         [tokenHash],
       );
-      const row = result.rows[0];
+      // 续期宽限：刚换掉不到 60 秒的再拿来续期也放行（响应丢了、两个页签同时续期）；登出、改密、停用会清掉 rotated_at，不在宽限内
+      const row =
+        rotated.rows[0] ??
+        (await db.query<{ user_id: string }>(
+          `select user_id from refresh_tokens
+           where token_hash = $1 and rotated_at > now() - make_interval(secs => $2) and expires_at > now()`,
+          [tokenHash, REFRESH_REUSE_GRACE_SECONDS],
+        )).rows[0];
       if (!row) {
         reply.code(401);
         return { code: "INVALID_REFRESH_TOKEN", message: "登录已过期，请重新登录。" };
@@ -170,10 +181,13 @@ export function registerAuthRoutes(
     async (request) => {
       const { refreshToken } = request.body ?? {};
       if (refreshToken) {
-        await db.query(
-          "update refresh_tokens set revoked_at = now() where token_hash = $1",
+        // 作废这张；这个账号刚续期换掉、还在宽限里的旧令牌也不再放行，登出后旧令牌续不出新登录
+        const target = await db.query<{ user_id: string }>(
+          "update refresh_tokens set revoked_at = coalesce(revoked_at, now()), rotated_at = null where token_hash = $1 returning user_id",
           [hashRefreshToken(refreshToken)],
         );
+        const userId = target.rows[0]?.user_id;
+        if (userId) await db.query("update refresh_tokens set rotated_at = null where user_id = $1 and rotated_at is not null", [userId]);
       }
       return { ok: true };
     },
@@ -209,10 +223,7 @@ export function registerAuthRoutes(
          where id = $2`,
         [newHash, user.sub],
       );
-      await db.query(
-        "update refresh_tokens set revoked_at = now() where user_id = $1 and revoked_at is null",
-        [user.sub],
-      );
+      await revokeAllRefreshTokens(db, user.sub);
       guard.invalidateAccount(user.sub);
       await writeAudit(db, user.sub, "auth.change_password");
       return { ok: true };

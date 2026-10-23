@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { createPool, resetDatabase, type Db } from "./db";
 import { buildServer } from "./server";
+import { hashRefreshToken } from "./security";
 
 const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ??
@@ -78,20 +79,50 @@ describe("阶段1：认证", () => {
     expect(relogin.user.mustChangePassword).toBe(false);
   });
 
-  it("刷新令牌旋转：旧令牌二次使用被拒绝", async () => {
+  const refresh = (refreshToken: string) => app.inject({ method: "POST", url: "/v1/auth/refresh", payload: { refreshToken } });
+  /** 让这张刷新令牌“换掉”的时间往前推，模拟宽限已过 */
+  const ageRotation = (refreshToken: string, seconds: number) =>
+    db.query("update refresh_tokens set rotated_at = rotated_at - make_interval(secs => $2) where token_hash = $1", [hashRefreshToken(refreshToken), seconds]);
+
+  it("刷新令牌旋转：换掉的旧令牌 60 秒内还能再续一次（响应丢了、两个页签同时续期），过了宽限被拒绝", async () => {
     const session = await login("admin", "Admin#Prod9");
-    const first = await app.inject({
-      method: "POST",
-      url: "/v1/auth/refresh",
-      payload: { refreshToken: session.refreshToken },
-    });
+    const first = await refresh(session.refreshToken);
     expect(first.statusCode).toBe(200);
-    const replay = await app.inject({
+    // 宽限内：再拿旧令牌续期照样成功，拿到的是另一张新令牌，两张都能用
+    const replay = await refresh(session.refreshToken);
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().refreshToken).not.toBe(first.json().refreshToken);
+    expect((await refresh(first.json().refreshToken)).statusCode).toBe(200);
+    // 宽限过了：旧令牌被拒绝
+    await ageRotation(session.refreshToken, 61);
+    expect((await refresh(session.refreshToken)).statusCode).toBe(401);
+    // 新令牌续出来的访问令牌照常能用
+    const fresh = (await refresh(replay.json().refreshToken)).json();
+    expect((await app.inject({ method: "GET", url: "/v1/me", headers: auth(fresh) })).statusCode).toBe(200);
+  });
+
+  it("登出、改密之后，宽限里的旧令牌也续不出新登录", async () => {
+    const session = await login("admin", "Admin#Prod9");
+    const next = (await refresh(session.refreshToken)).json();
+    await app.inject({ method: "POST", url: "/v1/auth/logout", payload: { refreshToken: next.refreshToken } });
+    expect((await refresh(next.refreshToken)).statusCode).toBe(401);
+    expect((await refresh(session.refreshToken)).statusCode).toBe(401);
+
+    // 改密：所有令牌作废，包括刚换掉的
+    const again = await login("admin", "Admin#Prod9");
+    const renewed = (await refresh(again.refreshToken)).json();
+    const changed = await app.inject({
       method: "POST",
-      url: "/v1/auth/refresh",
-      payload: { refreshToken: session.refreshToken },
+      url: "/v1/auth/change-password",
+      headers: auth(renewed),
+      payload: { currentPassword: "Admin#Prod9", newPassword: "Admin#Prod8" },
     });
-    expect(replay.statusCode).toBe(401);
+    expect(changed.statusCode).toBe(200);
+    expect((await refresh(again.refreshToken)).statusCode).toBe(401);
+    expect((await refresh(renewed.refreshToken)).statusCode).toBe(401);
+    // 改回来，后面的用例还用原密码
+    const back = await login("admin", "Admin#Prod8");
+    expect((await app.inject({ method: "POST", url: "/v1/auth/change-password", headers: auth(back), payload: { currentPassword: "Admin#Prod8", newPassword: "Admin#Prod9" } })).statusCode).toBe(200);
   });
 
   it("未认证访问受保护接口返回 401", async () => {

@@ -446,6 +446,8 @@ async function streamBuyerTurn(options: {
 
   // 买家离开：自动结束会话并触发评分（真实规则：只有客户会主动断开）
   let conversationClosed = false;
+  /** 服务端记的结束时间：前端拿它在消息流里画“客户已离开”，不用学生电脑的时钟（电脑慢几秒告别就会排到它下面） */
+  let closedAt: string | null = null;
   if (followUp && outcome === "success") {
     // 跟进：买家收尾离开，或客服已回满 3 轮（这一条是买家的收尾），跟进结束；不评分、不打星、不留评
     if (buyerLeft || followUpTurns >= FOLLOWUP_MAX_TURNS) {
@@ -453,11 +455,12 @@ async function streamBuyerTurn(options: {
     }
   } else if (buyerLeft && outcome === "success") {
     const closed = await db.query(
-      "update conversations set status = 'closed', closed_reason = 'buyer_left', closed_at = now() where id = $1 and status = 'active' returning id",
+      "update conversations set status = 'closed', closed_reason = 'buyer_left', closed_at = now() where id = $1 and status = 'active' returning id, closed_at",
       [conversation.id],
     );
     if (closed.rowCount) {
       conversationClosed = true;
+      closedAt = new Date(closed.rows[0].closed_at).toISOString();
       await rateService(db, conversation.id).catch((error) => log.error(error, "service rating failed"));
       const { assessConversation } = await import("../assessment");
       void assessConversation(db, gateway, conversation.id).catch((error) =>
@@ -486,6 +489,7 @@ async function streamBuyerTurn(options: {
     type: outcome === "success" ? "done" : "error",
     messageId: buyerMessageId,
     closed: conversationClosed,
+    ...(closedAt ? { closedAt } : {}),
     ...(corrected ? { segments } : {}),
     metrics: {
       ttftMs: firstCharAt ? firstCharAt.getTime() - receivedAt.getTime() : null,
@@ -1105,7 +1109,7 @@ export function registerConversationRoutes(
       }
       const result = await db.query(
         `update conversations set status = 'closed', closed_reason = 'student_ended', closed_at = now()
-         where id = $1 and student_id = $2 and status = 'active' returning id`,
+         where id = $1 and student_id = $2 and status = 'active' returning id, closed_at`,
         [request.params.conversationId, user.sub],
       );
       if (!result.rowCount) {
@@ -1123,7 +1127,8 @@ export function registerConversationRoutes(
       void generateBuyerReview(db, gateway, request.params.conversationId, request.log).catch((error) =>
         request.log.error(error, "buyer review failed"),
       );
-      return { ok: true };
+      // 结束时间用服务端的：前端按它在消息流里画结束提示
+      return { ok: true, closedAt: new Date(result.rows[0].closed_at).toISOString() };
     },
   );
 

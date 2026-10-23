@@ -41,7 +41,7 @@ function writeRemembered(role: UserRole, username: string | null) {
 
 const roleLabel: Record<UserRole, string> = { student: "学生", teacher: "教师", admin: "管理员" };
 
-export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; onLogin: (session: Session) => void }) {
+export function LoginScreen({ initialRole, notice = "", onLogin }: { initialRole: UserRole; /** 登录失效被送回来时的说明，显示在错误位置 */ notice?: string; onLogin: (session: Session) => void }) {
   // 学生/教师共用同一客户端，登录卡片内切页签；管理端走独立登录（浏览器 ?role=admin）。
   const tabbed = initialRole !== "admin";
   const [activeRole, setActiveRole] = useState<UserRole>(initialRole);
@@ -57,7 +57,7 @@ export function LoginScreen({ initialRole, onLogin }: { initialRole: UserRole; o
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [pendingSession, setPendingSession] = useState<Session | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(notice);
   /** 页签与账号角色不符时，可一键切换到的页签（I7） */
   const [switchTo, setSwitchTo] = useState<UserRole | null>(null);
   const [hint, setHint] = useState("");

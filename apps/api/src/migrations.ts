@@ -714,4 +714,12 @@ alter table conversations add column if not exists buyer_ledger jsonb;
 alter table conversation_messages add column if not exists buyer_note text;
 `,
   },
+  {
+    /* 刷新令牌续期宽限：rotated_at = 这张是续期时被换掉的（不是登出、改密、停用作废的）。
+       换掉后 60 秒内再拿来续期照样放行：续期的响应丢了（断网、页面被关）、两个页签同时续期时，后到的那个不会被踢回登录页 */
+    id: "045_refresh_reuse_grace",
+    sql: `
+alter table refresh_tokens add column if not exists rotated_at timestamptz;
+`,
+  },
 ];

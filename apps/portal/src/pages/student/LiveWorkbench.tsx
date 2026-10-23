@@ -50,6 +50,7 @@ import {
   streamConversationReply,
   translateMessage,
   type ConversationMessage,
+  type StreamHandlers,
   type ConversationOrder,
   type ConversationSummary,
   type MyPhrase,
@@ -123,10 +124,12 @@ function writeFlag(key: string, value: boolean): void {
   }
 }
 
-/** 重新拉到的消息和本地状态合并：译文展开状态按（发送方 + 内容）沿用 */
+/** 重新拉到的消息和本地状态合并：译文展开状态按（发送方 + 内容）沿用；没发出去的（服务端没有）留在最后等学生重发 */
 function mergeRows(current: ConversationMessage[] | null, rows: ConversationMessage[]): ConversationMessage[] {
   const shown = new Map((current ?? []).filter((item) => item.showTranslation).map((item) => [`${item.sender}|${item.content}`, true]));
-  return rows.map((row) => (shown.has(`${row.sender}|${row.content}`) ? { ...row, showTranslation: true } : row));
+  const merged = rows.map((row) => (shown.has(`${row.sender}|${row.content}`) ? { ...row, showTranslation: true } : row));
+  const failed = (current ?? []).filter((item) => item.failed);
+  return failed.length ? [...merged, ...failed] : merged;
 }
 
 /** 任务下一位要进线的场景；ok=false 表示没有可进线的了 */
@@ -239,6 +242,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   closedIdsRef.current = new Set(closedConversations.map((item) => item.id));
   const translatingRef = useRef<Set<string>>(new Set());
   const listRef = useRef<HTMLDivElement>(null);
+  /** 发送失败的消息怎么重发（按本地消息 id） */
+  const failedRetries = useRef(new Map<string, () => void>());
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   /** 播报还在取音频（排队或合成中）：这期间再点不打断、不重发，取到才算“播报中” */
@@ -317,10 +322,14 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       .catch(() => [] as ConversationSummary[]);
   }, [session]);
 
-  const markEnded = useCallback((cid: string, reason: string) => {
+  /**
+   * closedAt：服务端记的结束时间。结束提示按时间插进消息流：拉回来的消息是服务端时间，刚流出来的气泡是本机时间，
+   * 两边时钟差几秒，告别就会排到“客户已离开”下面。取两者里晚的那个，结束前已经在的消息（含刚流出的告别）都排在它上面
+   */
+  const markEnded = useCallback((cid: string, reason: string, closedAt?: string | null) => {
     setClosedLocal((current) => new Set(current).add(cid));
     setClosedReasonLocal((current) => ({ ...current, [cid]: reason }));
-    setClosedAtLocal((current) => ({ ...current, [cid]: Date.now() }));
+    setClosedAtLocal((current) => ({ ...current, [cid]: Math.max(closedAt ? Date.parse(closedAt) || 0 : 0, Date.now()) }));
     setJustEnded((list) => {
       if (list.some((item) => item.id === cid)) return list;
       const base = conversations.find((item) => item.id === cid);
@@ -500,19 +509,28 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     const cid = activeId;
     setStreamingText("");
     const handlers = appendBuyerStream(cid);
-    void streamConversationOpening(session, cid, {
-      ...handlers,
-      onError: (message) => {
-        openingRequested.current.delete(cid);
-        handlers.onError(message);
-      },
-    });
+    const onError = (message: string) => {
+      openingRequested.current.delete(cid);
+      handlers.onError(message);
+    };
+    void streamConversationOpening(session, cid, { ...handlers, onError }).catch((cause) => onError(errorMessage(cause)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, activeId, messages]);
 
+  // 换会话、来了新消息、买家正在打字、会话结束时滚到底。点“显示译文”这类原地变化不滚（之前一律滚到底，点了就被带走）；
+  // 只有最后一条变了、而且本来就停在底部时才跟着滚，免得最新一条的译文藏在下面
+  const listAtBottomRef = useRef(true);
+  const scrollSeenRef = useRef({ cid: null as string | null, count: 0, streaming: null as string | null, closed: false, lastKey: "" });
   useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages, streamingText, isClosed]);
+    const list = listRef.current;
+    if (!list) return;
+    const last = messages?.at(-1);
+    const seen = scrollSeenRef.current;
+    const state = { cid: activeId, count: messages?.length ?? 0, streaming: streamingText, closed: isClosed, lastKey: last ? `${last.id}|${last.translation ?? ""}|${last.showTranslation ? 1 : 0}` : "" };
+    scrollSeenRef.current = state;
+    const moved = state.cid !== seen.cid || state.count !== seen.count || state.streaming !== seen.streaming || state.closed !== seen.closed;
+    if (moved || (state.lastKey !== seen.lastKey && listAtBottomRef.current)) list.scrollTo({ top: list.scrollHeight });
+  }, [activeId, messages, streamingText, isClosed]);
 
   // ---------- 买家消息翻译 ----------
 
@@ -751,14 +769,14 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
         pushBubble();
         if (activeIdRef.current === cid) setStreamingText("");
       },
-      onDone: (_metrics: unknown, extra?: { closed?: boolean; segments?: string[] }) => {
+      onDone: (_metrics: unknown, extra?: { closed?: boolean; closedAt?: string; segments?: string[] }) => {
         buyerStreamingRef.current.delete(cid);
         pushBubble();
         if (extra?.segments?.length) replaceBubbles(extra.segments);
         if (activeIdRef.current === cid) setStreamingText(null);
         // 买家离开：会话由客户结束（真实客服无权挂断），刷新列表并保留当前对话展示
         if (extra?.closed) {
-          markEnded(cid, "buyer_left");
+          markEnded(cid, "buyer_left", extra.closedAt);
           void loadClosed();
         }
         void loadConversations();
@@ -806,7 +824,9 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     replyTimers.current.delete(cid);
     replyDeadlines.current.delete(cid);
     if (activeIdRef.current === cid) setStreamingText("");
-    void streamConversationReply(session, cid, appendBuyerStream(cid));
+    // 学生的消息已经存了，买家这条没回成只提示；断网时不会一直显示“正在输入”
+    const handlers = appendBuyerStream(cid);
+    void streamConversationReply(session, cid, handlers).catch((cause) => handlers.onError(errorMessage(cause)));
   }
 
   function scheduleReply(cid: string) {
@@ -837,21 +857,64 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     }
   }
 
-  async function send() {
-    const text = input.trim();
-    if (!text || !activeId || busy || !canType) return;
-    setInput("");
-    const cid = activeId;
+  // ---------- 发送失败（断网、登录失效、被拒）：这条标红“发送失败”，不清掉，学生点一下重发 ----------
+
+  function markFailed(cid: string, localId: string, retry: () => void) {
+    failedRetries.current.set(localId, retry);
+    if (activeIdRef.current === cid) {
+      setMessages((current) => (current ?? []).map((item) => (item.id === localId ? { ...item, failed: true } : item)));
+    }
+  }
+
+  function resend(message: ConversationMessage) {
+    const retry = failedRetries.current.get(message.id);
+    if (!retry || isClosed || busy) return;
+    failedRetries.current.delete(message.id);
+    setMessages((current) => (current ?? []).filter((item) => item.id !== message.id));
+    retry();
+  }
+
+  /**
+   * 卡片、附件、语音：发出去和买家回复是同一个请求。请求本身没成功（断网、登录失效、被拒）= 这条没发出去，标成发送失败；
+   * 买家回复中途出错不算（学生这条服务端已经存了），只提示
+   */
+  async function streamOrMarkFailed(cid: string, localId: string, retry: () => void, run: (handlers: StreamHandlers) => Promise<void>) {
+    const handlers = appendBuyerStream(cid);
+    try {
+      await run({
+        ...handlers,
+        onError: (message, code) => {
+          if (code) markFailed(cid, localId, retry);
+          handlers.onError(message, code);
+        },
+      });
+    } catch (cause) {
+      markFailed(cid, localId, retry);
+      handlers.onError(errorMessage(cause));
+    }
+  }
+
+  /** 发一条文字：先只存消息（买家等批量窗口结束再回），存不进去就标成发送失败 */
+  async function sendText(cid: string, text: string) {
+    const localId = `local-${Date.now()}`;
     setMessages((current) => [
       ...(current ?? []),
-      { id: `local-${Date.now()}`, sender: "student", content: text, createdAt: new Date().toISOString() },
+      { id: localId, sender: "student", content: text, createdAt: new Date().toISOString() },
     ]);
     try {
       await postConversationMessage(session, cid, text);
       scheduleReply(cid);
     } catch (cause) {
+      markFailed(cid, localId, () => void sendText(cid, text));
       setNotice(errorMessage(cause));
     }
+  }
+
+  async function send() {
+    const text = input.trim();
+    if (!text || !activeId || busy || !canType) return;
+    setInput("");
+    await sendText(activeId, text);
   }
 
   async function sendCard(type: "product" | "coupon" | "order" | "invite", refId: string, orderPayload?: Record<string, unknown>) {
@@ -860,12 +923,13 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     let payload: Record<string, unknown> | undefined = orderPayload;
     if (type === "product" || type === "invite") payload = products.find((item) => item.id === refId) as unknown as Record<string, unknown>;
     else if (type === "coupon") payload = coupons.find((item) => item.id === refId) as unknown as Record<string, unknown>;
+    const localId = `local-${Date.now()}`;
     setMessages((current) => [
       ...(current ?? []),
-      { id: `local-${Date.now()}`, sender: "student", content: "", kind: type, payload: payload ?? null, createdAt: new Date().toISOString() },
+      { id: localId, sender: "student", content: "", kind: type, payload: payload ?? null, createdAt: new Date().toISOString() },
     ]);
     setStreamingText("");
-    await streamCardMessage(session, cid, type, refId, appendBuyerStream(cid));
+    await streamOrMarkFailed(cid, localId, () => void sendCard(type, refId, orderPayload), (handlers) => streamCardMessage(session, cid, type, refId, handlers));
   }
 
   function sendOrderCard(order: ConversationOrder) {
@@ -887,10 +951,11 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     const cid = activeId;
     const localUrl = URL.createObjectURL(file);
     const label = kind === "image" ? "[图片]" : kind === "video" ? "[视频]" : "[文件]";
+    const localId = `local-${Date.now()}`;
     setMessages((current) => [
       ...(current ?? []),
       {
-        id: `local-${Date.now()}`,
+        id: localId,
         sender: "student",
         content: label,
         kind,
@@ -899,7 +964,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       },
     ]);
     setStreamingText("");
-    await streamAttachmentMessage(session, cid, file, kind, appendBuyerStream(cid));
+    await streamOrMarkFailed(cid, localId, () => void sendAttachment(kind, file), (handlers) => streamAttachmentMessage(session, cid, file, kind, handlers));
   }
 
   function onAttachmentChosen(kind: "image" | "video" | "file", event: React.ChangeEvent<HTMLInputElement>) {
@@ -1005,10 +1070,11 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     const { blob, seconds } = voice;
     setPendingVoice(null);
     const localUrl = URL.createObjectURL(blob);
+    const localId = `local-${Date.now()}`;
     setMessages((current) => [
       ...(current ?? []),
       {
-        id: `local-${Date.now()}`,
+        id: localId,
         sender: "student",
         content: "[语音消息]",
         kind: "voice",
@@ -1017,7 +1083,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       },
     ]);
     setStreamingText("");
-    await streamVoiceMessage(session, cid, blob, appendBuyerStream(cid));
+    await streamOrMarkFailed(cid, localId, () => void sendVoice({ blob, seconds }), (handlers) => streamVoiceMessage(session, cid, blob, handlers));
   }
 
   function playVoice(url: string) {
@@ -1097,11 +1163,11 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     const cid = activeId;
     setEnding(true);
     try {
-      await closeConversation(session, cid);
+      const { closedAt } = await closeConversation(session, cid);
       const timer = replyTimers.current.get(cid);
       if (timer) window.clearTimeout(timer);
       replyTimers.current.delete(cid);
-      markEnded(cid, "student_ended");
+      markEnded(cid, "student_ended", closedAt);
       setStreamingText(null);
       setEndConfirm(false);
       void loadClosed();
@@ -1380,7 +1446,11 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
             ) : null}
             {toolCardLabel(message) ? <span className="wbk-tool-src">{message.kind === "payment_reminder" ? "催付" : "物流同步"} · 从订单页发送</span> : null}
             <time>{timeLabel(message.createdAt)}</time>
-            {mine ? <CheckCheck size={13} className="wbk-tick" /> : null}
+            {mine && message.failed ? (
+              <button type="button" className="wbk-failed" onClick={() => resend(message)} disabled={isClosed} title="这条没有发出去，点一下重新发送">
+                <CircleAlert size={12} />发送失败，重发
+              </button>
+            ) : mine ? <CheckCheck size={13} className="wbk-tick" /> : null}
           </div>
         </div>
       </div>
@@ -1388,7 +1458,8 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
   };
   // 结束过的会话：“客户已离开 · 会话时长”和服务评价画在第一次结束的时间点；
   // 之后的工具卡片、跟进消息接在下面（D-56）
-  const closedAtMs = active?.closedAt ? new Date(active.closedAt).getTime() : activeId ? closedAtLocal[activeId] ?? null : null;
+  // 这一回刚结束的用本机记的（见 markEnded）；以前结束的用服务端的
+  const closedAtMs = (activeId ? closedAtLocal[activeId] : undefined) ?? (active?.closedAt ? new Date(active.closedAt).getTime() : null);
   const ended = !!active && messages !== null && (isClosed || (followUpLive && closedAtMs !== null));
   const before = ended && closedAtMs !== null ? visibleMessages.filter((item) => new Date(item.createdAt).getTime() <= closedAtMs) : visibleMessages;
   const after = ended && closedAtMs !== null ? visibleMessages.filter((item) => new Date(item.createdAt).getTime() > closedAtMs) : [];
@@ -1490,7 +1561,14 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
           ) : null}
         </div>
 
-        <div className="wbk-msgs" ref={listRef}>
+        <div
+          className="wbk-msgs"
+          ref={listRef}
+          onScroll={(event) => {
+            const list = event.currentTarget;
+            listAtBottomRef.current = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+          }}
+        >
           {active && messages !== null ? <span className="wbk-sys">{timeLabel(active.createdAt)} 会话已分配给你</span> : null}
           {before.map(renderMessage)}
           {ended && active ? (

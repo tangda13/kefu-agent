@@ -137,30 +137,82 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string,
 ): Promise<void> {
-  const response = await fetch(`${API_BASE}/v1/auth/change-password`, {
+  const response = await authFetch(session, `${API_BASE}/v1/auth/change-password`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${session.accessToken}`,
-    },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify({ currentPassword, newPassword }),
   });
   if (!response.ok) await parseError(response);
 }
 
+/* 令牌续期：访问令牌 15 分钟过期，刷新令牌用一次就作废（服务端轮换）。
+   页面各处拿着的 session 是登录时那一份，续期后的新令牌只存本机、不推进 React 状态（推进会让依赖 session 的数据全部重载），
+   所以发请求一律按本机存的最新令牌发；同一时刻只续一次，几个请求同时 401 时共用这次结果，不拿作废的刷新令牌再去换。 */
+
+const expiredListeners = new Set<(message: string) => void>();
+
+/** 登录真的失效（刷新令牌过期、被吊销、账号停用）时通知外壳回登录页，message 显示在登录页上 */
+export function onSessionExpired(listener: (message: string) => void): () => void {
+  expiredListeners.add(listener);
+  return () => expiredListeners.delete(listener);
+}
+
+/** 清掉这份登录并通知外壳；本机已经换成另一份登录（别处续过期、退出后重新登录）时不动它 */
+function expireSession(session: Session, message: string): void {
+  if (loadSession()?.refreshToken !== session.refreshToken) return;
+  clearSession();
+  for (const listener of expiredListeners) listener(message);
+}
+
+/** 同一账号以本机存的为准：续期后令牌已换新，手里这份可能是旧的 */
+function latestSession(session: Session): Session {
+  const stored = loadSession();
+  return stored && stored.user.id === session.user.id ? stored : session;
+}
+
+let refreshing: Promise<Session | null> | null = null;
+
 async function refreshSession(session: Session): Promise<Session | null> {
+  // 断网照常抛出（显示“连不上服务器”），服务器 5xx 也不清登录：只有服务端明确说刷新令牌不行了才算登录失效
   const response = await fetch(`${API_BASE}/v1/auth/refresh`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ refreshToken: session.refreshToken }),
   });
-  if (!response.ok) {
-    clearSession();
+  if (response.status === 400 || response.status === 401) {
+    // 别处已经拿这张刷新令牌续过了：用那份新的
+    const stored = loadSession();
+    if (stored && stored.user.id === session.user.id && stored.refreshToken !== session.refreshToken) return stored;
+    const body = (await response.json().catch(() => ({}))) as { message?: string };
+    expireSession(session, body.message ?? "登录已过期，请重新登录。");
     return null;
   }
+  if (!response.ok) throw new ApiError(response.status, "REFRESH_UNAVAILABLE", "服务器暂时不可用，请稍后重试。");
   const next = (await response.json()) as Session;
   saveSession(next);
   return next;
+}
+
+function renewSession(session: Session): Promise<Session | null> {
+  refreshing ??= refreshSession(session).finally(() => { refreshing = null; });
+  return refreshing;
+}
+
+/** 带登录的请求：按最新令牌发，401 时续期一次再重发（鉴权在接口处理之前，重发不会重复执行） */
+async function authFetch(session: Session, url: string, init: RequestInit = {}): Promise<Response> {
+  const send = (token: string) =>
+    fetch(url, { ...init, headers: { ...(init.headers as Record<string, string> | undefined), authorization: `Bearer ${token}` } });
+  const used = latestSession(session);
+  const response = await send(used.accessToken);
+  if (response.status !== 401) return response;
+  // 只有“令牌无效”才续期；当前密码错误这类 401 原样交回，账号被停用直接回登录页
+  const { code, message } = ((await response.clone().json().catch(() => ({}))) ?? {}) as { code?: string; message?: string };
+  if (code === "ACCOUNT_DISABLED") expireSession(used, message ?? "账号已停用，请联系教师或管理员。");
+  if (code !== "UNAUTHORIZED") return response;
+  // 等响应期间别的请求可能已经续好了，直接用新的
+  const current = latestSession(session);
+  const renewed = current.accessToken !== used.accessToken ? current : await renewSession(current);
+  return renewed ? send(renewed.accessToken) : response;
 }
 
 async function apiRequest<T>(
@@ -169,21 +221,11 @@ async function apiRequest<T>(
   session: Session,
   body?: unknown,
 ): Promise<T> {
-  const request = (token: string) =>
-    fetch(`${API_BASE}${path}`, {
-      method,
-      headers: {
-        authorization: `Bearer ${token}`,
-        ...(body !== undefined ? { "content-type": "application/json" } : {}),
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-  let response = await request(session.accessToken);
-  if (response.status === 401) {
-    const renewed = await refreshSession(session);
-    if (!renewed) await parseError(response);
-    response = await request(renewed!.accessToken);
-  }
+  const response = await authFetch(session, `${API_BASE}${path}`, {
+    method,
+    headers: body !== undefined ? { "content-type": "application/json" } : {},
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
   if (!response.ok) await parseError(response);
   return (await response.json()) as T;
 }
@@ -552,6 +594,8 @@ export interface ConversationMessage {
   createdAt: string;
   translation?: string;
   showTranslation?: boolean;
+  /** 只在前端：学生这条没发到服务器（断网、登录失效），标红“发送失败”、可以重发 */
+  failed?: boolean;
 }
 
 export interface StoreProduct {
@@ -596,7 +640,7 @@ export interface ProductDraft {
 export async function uploadMyAvatar(session: Session, image: Blob): Promise<{ avatarUrl: string }> {
   const form = new FormData();
   form.append("file", image, "avatar.jpg");
-  const response = await fetch(`${API_BASE}/v1/me/avatar`, { method: "POST", headers: { authorization: `Bearer ${session.accessToken}` }, body: form });
+  const response = await authFetch(session, `${API_BASE}/v1/me/avatar`, { method: "POST", body: form });
   if (!response.ok) await parseError(response);
   return (await response.json()) as { avatarUrl: string };
 }
@@ -610,9 +654,8 @@ export async function uploadProductImage(
 ): Promise<{ imageUrl: string; images: string[] }> {
   const form = new FormData();
   form.append("file", file, file instanceof File ? file.name : "image.jpg");
-  const response = await fetch(`${API_BASE}/v1/store/products/${productId}/images${main ? "?main=1" : ""}`, {
+  const response = await authFetch(session, `${API_BASE}/v1/store/products/${productId}/images${main ? "?main=1" : ""}`, {
     method: "POST",
-    headers: { authorization: `Bearer ${session.accessToken}` },
     body: form,
   });
   if (!response.ok) await parseError(response);
@@ -664,8 +707,9 @@ export interface StreamMetrics {
 
 export const fetchConversations = (session: Session, status: "active" | "closed" = "active") =>
   apiGet<ConversationSummary[]>(`/v1/conversations?status=${status}`, session);
+/** closedAt 是服务端记的结束时间（老服务端没有），结束提示按它画在消息流里 */
 export const closeConversation = (session: Session, conversationId: string) =>
-  apiPost<{ ok: boolean }>(`/v1/conversations/${conversationId}/close`, session);
+  apiPost<{ ok: boolean; closedAt?: string }>(`/v1/conversations/${conversationId}/close`, session);
 export const translateMessage = (session: Session, conversationId: string, messageId: string) =>
   apiPost<{ translation: string }>(
     `/v1/conversations/${conversationId}/messages/${messageId}/translate`,
@@ -679,9 +723,8 @@ export async function recognizeAudio(
 ): Promise<{ text: string; elapsedMs: number }> {
   const form = new FormData();
   form.append("file", audio, "speech.wav");
-  const response = await fetch(`${API_BASE}/v1/conversations/${conversationId}/asr`, {
+  const response = await authFetch(session, `${API_BASE}/v1/conversations/${conversationId}/asr`, {
     method: "POST",
-    headers: { authorization: `Bearer ${session.accessToken}` },
     body: form,
   });
   if (!response.ok) await parseError(response);
@@ -878,11 +921,11 @@ export async function streamAttachmentMessage(
   const form = new FormData();
   form.append("kind", kind);
   form.append("file", file, file.name);
-  const response = await fetch(
+  const response = await authFetch(
+    session,
     `${API_BASE}/v1/conversations/${conversationId}/attachment-messages`,
     {
       method: "POST",
-      headers: { authorization: `Bearer ${session.accessToken}` },
       body: form,
     },
   );
@@ -899,8 +942,11 @@ export interface StreamHandlers {
   onDelta: (text: string) => void;
   /** 买家连发：当前气泡结束，后续 delta 属于下一条消息 */
   onSplit?: () => void;
-  /** extra.closed=true 表示买家已结束会话（问题解决或失去耐心离开）；extra.segments：服务端改写过（如去掉漏出的中文），以它为准替换刚流出的气泡 */
-  onDone: (metrics: StreamMetrics, extra?: { closed?: boolean; segments?: string[] }) => void;
+  /**
+   * extra.closed=true 表示买家已结束会话（问题解决或失去耐心离开），extra.closedAt 是服务端记的结束时间；
+   * extra.segments：服务端改写过（如去掉漏出的中文），以它为准替换刚流出的气泡
+   */
+  onDone: (metrics: StreamMetrics, extra?: { closed?: boolean; closedAt?: string; segments?: string[] }) => void;
   /** code：服务端错误码（如 NO_PENDING_MESSAGE），网络错误时为空 */
   onError: (message: string, code?: string) => void;
 }
@@ -942,11 +988,11 @@ export async function streamVoiceMessage(
 ): Promise<void> {
   const form = new FormData();
   form.append("file", audio, "voice.wav");
-  const response = await fetch(
+  const response = await authFetch(
+    session,
     `${API_BASE}/v1/conversations/${conversationId}/voice-messages`,
     {
       method: "POST",
-      headers: { authorization: `Bearer ${session.accessToken}` },
       body: form,
     },
   );
@@ -959,12 +1005,9 @@ async function streamSse(
   body: unknown,
   handlers: StreamHandlers,
 ): Promise<void> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await authFetch(session, `${API_BASE}${path}`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${session.accessToken}`,
-    },
+    headers: { "content-type": "application/json" },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   await readSseResponse(response, handlers);
@@ -994,7 +1037,7 @@ async function readSseResponse(
     for (const rawLine of lines) {
       const line = rawLine.trim();
       if (!line.startsWith("data:")) continue;
-      let event: { type: string; text?: string; metrics?: StreamMetrics; closed?: boolean; segments?: string[] };
+      let event: { type: string; text?: string; metrics?: StreamMetrics; closed?: boolean; closedAt?: string; segments?: string[] };
       try {
         event = JSON.parse(line.slice(5).trim());
       } catch {
@@ -1003,7 +1046,7 @@ async function readSseResponse(
       if (event.type === "delta" && event.text) handlers.onDelta(event.text);
       else if (event.type === "split") handlers.onSplit?.();
       else if (event.type === "done" && event.metrics)
-        handlers.onDone(event.metrics, { closed: event.closed === true, segments: event.segments });
+        handlers.onDone(event.metrics, { closed: event.closed === true, closedAt: event.closedAt, segments: event.segments });
       else if (event.type === "error") {
         handlers.onError("AI 回复失败，请重试或联系教师。");
         return;
@@ -1358,9 +1401,9 @@ export const saveBackupSchedule = (session: Session, schedule: Pick<BackupSchedu
 
 /** 音色试听：返回可直接播放的 mp3 地址（用完需 revokeObjectURL） */
 export async function previewVoice(session: Session, speaker: string, vendor = "doubao", language = "en"): Promise<string> {
-  const response = await fetch(`${API_BASE}/v1/admin/voice/preview`, {
+  const response = await authFetch(session, `${API_BASE}/v1/admin/voice/preview`, {
     method: "POST",
-    headers: { authorization: `Bearer ${session.accessToken}`, "content-type": "application/json" },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify({ speaker, vendor, language }),
   });
   if (!response.ok) await parseError(response);
@@ -1369,7 +1412,7 @@ export async function previewVoice(session: Session, speaker: string, vendor = "
 
 /** 带鉴权下载文件（备份、导出），浏览器另存 */
 export async function downloadWithAuth(session: Session, path: string, fileName: string): Promise<void> {
-  const response = await fetch(`${API_BASE}${path}`, { headers: { authorization: `Bearer ${session.accessToken}` } });
+  const response = await authFetch(session, `${API_BASE}${path}`);
   if (!response.ok) await parseError(response);
   const blob = await response.blob();
   const link = document.createElement("a");

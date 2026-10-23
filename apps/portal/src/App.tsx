@@ -27,6 +27,7 @@ import {
   migrateLocalOnce,
   saveReadMarks,
   loadSession,
+  onSessionExpired,
   type GuidanceItem,
   type Session,
   type StudentAnnouncement, saveSession,
@@ -65,6 +66,13 @@ export function App() {
     : roleNav[role][0]!.id;
   const [signedIn, setSignedIn] = useState(demo || session !== null);
   const [active, setActive] = useState(initialPage);
+  /** 登录失效被送回登录页时的说明（如“登录已过期，请重新登录。”） */
+  const [loginNotice, setLoginNotice] = useState("");
+  useEffect(() => onSessionExpired((message) => {
+    setSession(null);
+    setSignedIn(false);
+    setLoginNotice(message);
+  }), []);
 
   // 教师指导通知：学生端顶栏「消息」轮询（不进入会话消息流）
   const [guidance, setGuidance] = useState<GuidanceItem[]>([]);
@@ -220,7 +228,9 @@ export function App() {
     return (
       <LoginScreen
         initialRole={requestedRole}
+        notice={loginNotice}
         onLogin={(next) => {
+          setLoginNotice("");
           setSession(next);
           setActive(roleNav[next.user.role][0]!.id);
           setSignedIn(true);
