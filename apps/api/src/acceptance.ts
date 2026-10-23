@@ -1,8 +1,9 @@
 import { ACCEPTANCE_THRESHOLDS } from "@cecs/contracts";
-import { composePersonaWithRule } from "@cecs/domain";
+import { composePersonaWithRule, planBuyerLedger } from "@cecs/domain";
 import type { Db } from "./db";
 import type { CallInfo, LlmGateway } from "./llm/gateway";
 import { buildBuyerMessages } from "./prompts/buyer";
+import { BuyerNoteSplitter } from "./prompts/buyer-note";
 import { getSetting, setSetting } from "./settings";
 
 export interface AcceptanceRunState {
@@ -142,9 +143,10 @@ export async function runAcceptanceTest(db: Db, gateway: LlmGateway, samples: nu
   try {
     const admin = await db.query("select id from users where role = 'admin' limit 1");
     const persona = composePersonaWithRule([], {});
-    // 用真实的场景剧本和买家提示词压测，口径与学生实训一致
-    const scenario = await db.query("select name, objective, script from scenarios where id = 'AFTER-001'");
+    // 用真实的场景剧本和买家提示词压测（含两本账，买家每条先写判断，D-90），口径与学生实训一致
+    const scenario = await db.query("select name, objective, stage, script from scenarios where id = 'AFTER-001'");
     const scene = scenario.rows[0];
+    const ledger = planBuyerLedger({ stage: scene?.stage ?? "after_sale", goal: scene?.script?.buyerGoal ?? scene?.objective, persona });
     const conversation = await db.query(
       `insert into conversations (student_id, scenario_id, persona, status)
        values ($1, 'AFTER-001', $2, 'closed') returning id`,
@@ -173,7 +175,10 @@ export async function runAcceptanceTest(db: Db, gateway: LlmGateway, samples: nu
           personaSnapshot: persona as never,
           orderSnapshot: {},
           history: [{ role: "student", content: prompts[index % prompts.length]! }],
+          ledger,
         });
+        // 首字是学生看到的第一个字：开头那段判断不算
+        const splitter = new BuyerNoteSplitter();
         for await (const text of gateway.stream("dialogue", messages, {
           signal: abort.signal,
           conversationId,
@@ -181,8 +186,15 @@ export async function runAcceptanceTest(db: Db, gateway: LlmGateway, samples: nu
             info = value;
           },
         })) {
+          const visible = splitter.push(text);
+          if (!visible) continue;
           if (!firstCharAt) firstCharAt = new Date();
-          chars += text.length;
+          chars += visible.length;
+        }
+        const rest = splitter.finish();
+        if (rest) {
+          firstCharAt ??= new Date();
+          chars += rest.length;
         }
         if (!firstCharAt) outcome = "error";
       } catch {

@@ -20,6 +20,8 @@ import {
   replyWithinRate,
   resolvePersonaGender,
   toStudentPersonaView,
+  type BuyerLedger,
+  type BuyerNote,
   type OrderInfo,
 } from "@cecs/domain";
 import type { Db } from "../db";
@@ -37,6 +39,8 @@ import {
   TOOL_REACTION_NONE,
   TOOL_REACTION_PAID,
 } from "../prompts/buyer";
+import { BuyerNoteSplitter, NOTE_OPEN, parseBuyerNote, serializeBuyerNote, stripBuyerNotes } from "../prompts/buyer-note";
+import { loadOrPlanLedger, saveLedger, settleBuyerTurn } from "../buyer-ledger";
 import { loadEnabledPersonaTemplates } from "./catalog";
 import { loadStoreProfile } from "./store";
 import { once } from "../inflight";
@@ -70,9 +74,26 @@ interface ConversationRow {
   /** 工具跟进（D-56），见 tool-followup.ts */
   tool_followup?: ToolFollowUp | null;
   channel?: string;
+  /** 买家的两本账（D-90），见 buyer-ledger.ts */
+  buyer_ledger?: BuyerLedger | null;
 }
 
 type LogLike = { error: (obj: unknown, msg?: string) => void; warn: (obj: unknown, msg?: string) => void; info: (obj: unknown, msg?: string) => void };
+
+type BuyerHistoryItem = { role: "buyer" | "student" | "teacher"; content: string; note?: string | null };
+
+/** 给买家看的聊天记录（最近 300 条，含教师指导）；买家每一轮开头的判断（D-90）一起带上 */
+async function loadBuyerHistory(db: Db, conversationId: string): Promise<BuyerHistoryItem[]> {
+  const result = await db.query(
+    "select sender, content, buyer_note from conversation_messages where conversation_id = $1 order by created_at desc, id desc limit 300",
+    [conversationId],
+  );
+  return result.rows.reverse().map((row) => ({
+    role: row.sender as BuyerHistoryItem["role"],
+    content: row.content as string,
+    note: (row.buyer_note as string | null) ?? null,
+  }));
+}
 
 /** 跟进开始后客服回了几轮（连发的几条算一轮） */
 async function followUpAgentTurns(db: Db, conversationId: string, startedAt: string): Promise<number> {
@@ -98,16 +119,29 @@ const SPLIT_MARK = "|||";
 /** 漏中文改写最多试几次：flash 偶尔原样吐回来，再试一次通常就改掉了 */
 const CHINESE_FIX_ATTEMPTS = 2;
 
-async function loadScene(db: Db, scenarioId: string | null): Promise<{ prompt: string; script: ScenarioScript | null }> {
-  const fallback = { prompt: "General customer service conversation.", script: null };
+interface SceneInfo {
+  prompt: string;
+  script: ScenarioScript | null;
+  /** 业务环节和场景目标：定买家的两本账用（D-90） */
+  stage: string | null;
+  objective: string | null;
+}
+
+async function loadScene(db: Db, scenarioId: string | null): Promise<SceneInfo> {
+  const fallback: SceneInfo = { prompt: "General customer service conversation.", script: null, stage: null, objective: null };
   if (!scenarioId) return fallback;
   const result = await db.query(
-    "select name, objective, script from scenarios where id = $1",
+    "select name, objective, stage, script from scenarios where id = $1",
     [scenarioId],
   );
   const scenario = result.rows[0];
   return scenario
-    ? { prompt: `${scenario.name}：${scenario.objective}`, script: (scenario.script as ScenarioScript | null) ?? null }
+    ? {
+        prompt: `${scenario.name}：${scenario.objective}`,
+        script: (scenario.script as ScenarioScript | null) ?? null,
+        stage: (scenario.stage as string | null) ?? null,
+        objective: (scenario.objective as string | null) ?? null,
+      }
     : fallback;
 }
 
@@ -123,7 +157,7 @@ async function streamBuyerTurn(options: {
   reply?: FastifyReply;
   log?: LogLike;
   conversation: ConversationRow;
-  history: Array<{ role: "buyer" | "student" | "teacher"; content: string }>;
+  history: BuyerHistoryItem[];
 }): Promise<{ closed: boolean }> {
   const { db, gateway, request, reply, conversation, history } = options;
   const log: LogLike = request?.log ?? options.log ?? console;
@@ -134,6 +168,8 @@ async function streamBuyerTurn(options: {
   // 工具跟进（D-56）：买家知道这是短跟进，客服回满 3 轮后这一条收尾
   const followUp = followUpActive(conversation.tool_followup) ? conversation.tool_followup : null;
   const followUpTurns = followUp ? await followUpAgentTurns(db, conversation.id, followUp.startedAt) : 0;
+  // 买家的两本账（D-90）：聊天接待才记；跟进有自己的 2–3 轮规则，邮件不是聊天
+  const ledger = !followUp && conversation.channel !== "mail" ? await loadOrPlanLedger(db, conversation, scene) : null;
 
   const raw = reply && request ? reply.raw : null;
   if (reply && request) {
@@ -176,6 +212,14 @@ async function streamBuyerTurn(options: {
     flushText();
     writeEvent(payload);
   };
+  const silentDone = () => {
+    send({ type: "done", messageId: null, closed: false, metrics: { ttftMs: null, validChars: 0, charsPerSecond: 0, outcome: "success" } });
+    raw?.end();
+    return { closed: false };
+  };
+
+  // 买家已经默默走了（D-90）：不再回话，等巡检到点显示“客户已离开”
+  if (ledger?.exit?.silent) return silentDone();
 
   let firstCharAt: Date | null = null;
   let buyerReply = "";
@@ -189,12 +233,14 @@ async function streamBuyerTurn(options: {
     abort.abort();
   }, STREAM_TIMEOUT_MS);
 
-  // 流式外发：扣留尾部（防止把标记流给前端）；|||→split 事件（买家连发），END→停止外发
+  // 流式外发：扣留尾部（防止把标记流给前端）；|||→split 事件（买家连发），END→停止外发；
+  // 正文里冒出判断（D-90，被写到了末尾）就停在它前面，等最后清掉再放
   const emitSafeDelta = (finalFlush = false) => {
     if (emissionEnded) return;
     for (;;) {
       const endIdx = buyerReply.indexOf(END_MARK, emittedChars);
       const splitIdx = buyerReply.indexOf(SPLIT_MARK, emittedChars);
+      const holdIdx = buyerReply.indexOf(NOTE_OPEN, emittedChars);
       let token: "end" | "split" | null = null;
       let tokenIdx = -1;
       if (endIdx >= 0 && (splitIdx < 0 || endIdx < splitIdx)) {
@@ -203,6 +249,11 @@ async function streamBuyerTurn(options: {
       } else if (splitIdx >= 0) {
         token = "split";
         tokenIdx = splitIdx;
+      }
+      if (holdIdx >= 0 && (!token || holdIdx < tokenIdx)) {
+        if (holdIdx > emittedChars) send({ type: "delta", text: buyerReply.slice(emittedChars, holdIdx) });
+        emittedChars = holdIdx;
+        return;
       }
       if (token) {
         if (tokenIdx > emittedChars) send({ type: "delta", text: buyerReply.slice(emittedChars, tokenIdx) });
@@ -235,8 +286,18 @@ async function streamBuyerTurn(options: {
     history,
     startedAt: conversation.created_at,
     followUp: followUp ? { kind: followUp.kind, agentTurns: followUpTurns, maxTurns: FOLLOWUP_MAX_TURNS } : null,
+    ledger,
   });
+  // 买家每条开头那段判断（D-90）：截下来记账、不外发；首字按第一个正文字算
+  let splitter = new BuyerNoteSplitter();
+  let note: BuyerNote | null = null;
+  let noteSeen = false;
+  let silentExit = false;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
+    splitter = new BuyerNoteSplitter();
+    note = null;
+    noteSeen = false;
+    silentExit = false;
     try {
       const stream = gateway.stream("dialogue", messages, {
         signal: abort.signal,
@@ -246,11 +307,19 @@ async function streamBuyerTurn(options: {
         },
       });
       for await (const text of stream) {
+        const visible = splitter.push(text);
+        if (!noteSeen && splitter.note !== null) {
+          noteSeen = true;
+          note = parseBuyerNote(splitter.note);
+          // 默默离开：判断写着不回了，后面写了什么都不放出去
+          if (ledger?.silentLeave && note?.leave === "silent") silentExit = true;
+        }
+        if (!visible || silentExit) continue;
         if (!firstCharAt) {
           firstCharAt = new Date();
           send({ type: "start", ttftMs: firstCharAt.getTime() - receivedAt.getTime() });
         }
-        buyerReply += text;
+        buyerReply += visible;
         emitSafeDelta();
       }
       outcome = "success";
@@ -263,19 +332,31 @@ async function streamBuyerTurn(options: {
   }
   clearTimeout(timer);
 
+  if (!silentExit) {
+    const rest = splitter.finish();
+    if (rest) {
+      firstCharAt ??= new Date();
+      buyerReply += rest;
+    }
+  }
+  // 判断被写进了正文（末尾、写了两次、没写完）就清掉；开头没写的，用正文里这段补上
+  const stripped = stripBuyerNotes(buyerReply);
+  buyerReply = stripped.text;
+  if (!noteSeen && stripped.note) note = parseBuyerNote(stripped.note);
+
   // 剥离离场标记；买家离开 = 会话由买家结束（客服无权挂断）
   const markIdx = buyerReply.indexOf(END_MARK);
-  const buyerLeft = markIdx >= 0;
+  let buyerLeft = markIdx >= 0;
   if (buyerLeft) {
     buyerReply = (buyerReply.slice(0, markIdx) + buyerReply.slice(markIdx + END_MARK.length)).trimEnd();
   }
-  emitSafeDelta(true);
+  if (!silentExit) emitSafeDelta(true);
   const completedAt = new Date();
 
   // 漏中文兜底：改写后再落库，done 事件带上改好的内容，前端替换刚流出来的气泡
   const buyerLanguage = conversation.persona.language as string | undefined;
   let corrected = false;
-  if (outcome === "success" && hasChineseLeak(buyerReply, buyerLanguage)) {
+  if (outcome === "success" && !silentExit && hasChineseLeak(buyerReply, buyerLanguage)) {
     for (let attempt = 1; attempt <= CHINESE_FIX_ATTEMPTS && !corrected; attempt += 1) {
       try {
         const { text } = await gateway.complete("assist", buildChineseFixMessages(buyerReply, buyerLanguage), {
@@ -295,18 +376,52 @@ async function streamBuyerTurn(options: {
   }
 
   // 按 ||| 拆成多条短消息分行落库（拟真买家连发；回放/教师端同样逐条展示）
-  const segments = buyerReply
-    .split(SPLIT_MARK)
-    .map((part) => part.trim())
-    .filter(Boolean);
+  const segments = silentExit
+    ? []
+    : buyerReply
+        .split(SPLIT_MARK)
+        .map((part) => part.trim())
+        .filter(Boolean);
   const totalChars = segments.reduce((sum, part) => sum + part.length, 0);
 
+  // 两本账（D-90）：按这条开头的判断记账，定这一条走不走（判的是学生最近一条消息）
+  if (ledger && outcome === "success") {
+    if (!silentExit && segments.length === 0 && note && note.leave !== "no") silentExit = true;
+    if (segments.length > 0 || silentExit) {
+      const judged = await db.query(
+        "select id from conversation_messages where conversation_id = $1 and sender = 'student' order by created_at desc, id desc limit 1",
+        [conversation.id],
+      );
+      const settled = settleBuyerTurn(ledger, {
+        note,
+        endMarked: buyerLeft,
+        hasText: segments.length > 0,
+        agentTurn: countAgentTurns(history),
+        messageId: (judged.rows[0]?.id as string | undefined) ?? null,
+      });
+      if (settled.leave === "silent") silentExit = true;
+      if (settled.leave === "said") buyerLeft = true;
+      await saveLedger(db, conversation.id, settled.ledger);
+    }
+  }
+  if (silentExit) {
+    // 默默离开：不落消息、不记验收指标（不是一条回复）；约 2 分钟后巡检结束会话，显示“客户已离开”
+    if (history.some((item) => item.role === "student")) {
+      void loadDirector()
+        .then(({ runDirector }) => runDirector(db, gateway, conversation.id))
+        .catch((error) => log.error(error, "director failed"));
+    }
+    return silentDone();
+  }
+
+  // 这一轮的判断（D-90）记在第一条上，下一轮原样放回聊天记录里给买家看
+  const noteText = ledger && note ? serializeBuyerNote(note) : null;
   let buyerMessageId: string | null = null;
-  for (const segment of segments) {
+  for (const [index, segment] of segments.entries()) {
     const saved = await db.query(
-      `insert into conversation_messages (conversation_id, sender, content)
-       values ($1, 'buyer', $2) returning id`,
-      [conversation.id, segment],
+      `insert into conversation_messages (conversation_id, sender, content, buyer_note)
+       values ($1, 'buyer', $2, $3) returning id`,
+      [conversation.id, segment, index === 0 ? noteText : null],
     );
     buyerMessageId = saved.rows[0].id;
   }
@@ -394,11 +509,7 @@ async function buyerReactToToolCard(db: Db, gateway: LlmGateway, conversationId:
   if (!conversation || conversation.status !== "closed" || !followUp || followUp.startedAt || followUp.endedAt) return;
   const scene = await loadScene(db, conversation.scenario_id);
   const orders = await loadBuyerOrders(db, conversation.id);
-  const historyRows = await db.query(
-    "select sender, content from conversation_messages where conversation_id = $1 order by created_at desc, id desc limit 300",
-    [conversation.id],
-  );
-  const history = historyRows.rows.reverse().map((row) => ({ role: row.sender as "buyer" | "student" | "teacher", content: row.content as string }));
+  const history = await loadBuyerHistory(db, conversation.id);
   const { text } = await gateway.complete(
     "dialogue",
     buildBuyerToolReactionMessages(
@@ -417,7 +528,8 @@ async function buyerReactToToolCard(db: Db, gateway: LlmGateway, conversationId:
   );
   const paid = followUp.kind === "payment_reminder" && text.includes(TOOL_REACTION_PAID);
   const left = text.includes(END_MARK);
-  let content = text
+  // 卡片反应的提示词里没有账、不会写判断（D-90）；万一写了照样清掉
+  let content = stripBuyerNotes(text).text
     .replace(TOOL_REACTION_PAID, "")
     .replace(TOOL_REACTION_NONE, "")
     .replace(END_MARK, "")
@@ -1234,14 +1346,7 @@ export function registerConversationRoutes(
       fs.writeFileSync(target, audio);
       const durationMs = voiceFormat === "wav" ? Math.round((audio.length - 44) / 32) : 0; // 16k/16bit/mono
 
-      const historyResult = await db.query(
-        `select sender, content from conversation_messages
-         where conversation_id = $1 order by created_at desc limit 300`,
-        [conversation.id],
-      );
-      const history = historyResult.rows
-        .reverse()
-        .map((row) => ({ role: row.sender as "buyer" | "student" | "teacher", content: row.content }));
+      const history = await loadBuyerHistory(db, conversation.id);
       await db.query(
         `insert into conversation_messages (conversation_id, sender, content, kind, payload)
          values ($1, 'student', $2, 'voice', $3)`,
@@ -1331,14 +1436,7 @@ export function registerConversationRoutes(
       const noun = kind === "image" ? "an image" : kind === "video" ? "a video" : "a file";
       const content = `[Sent ${noun}: ${payload.name}]`;
 
-      const historyResult = await db.query(
-        `select sender, content from conversation_messages
-         where conversation_id = $1 order by created_at desc limit 300`,
-        [conversation.id],
-      );
-      const history = historyResult.rows
-        .reverse()
-        .map((row) => ({ role: row.sender as "buyer" | "student" | "teacher", content: row.content }));
+      const history = await loadBuyerHistory(db, conversation.id);
       await db.query(
         `insert into conversation_messages (conversation_id, sender, content, kind, payload)
          values ($1, 'student', $2, $3, $4)`,
@@ -1436,14 +1534,7 @@ export function registerConversationRoutes(
         return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "请由管理员配置 LLM 对话服务。" };
       }
 
-      const historyResult = await db.query(
-        `select sender, content from conversation_messages
-         where conversation_id = $1 order by created_at desc limit 300`,
-        [conversation.id],
-      );
-      const history = historyResult.rows
-        .reverse()
-        .map((row) => ({ role: row.sender as "buyer" | "student" | "teacher", content: row.content }));
+      const history = await loadBuyerHistory(db, conversation.id);
       await db.query(
         `insert into conversation_messages (conversation_id, sender, content, kind, payload)
          values ($1, 'student', $2, $3, $4)`,
@@ -1510,11 +1601,7 @@ export function registerConversationRoutes(
       }
       const content = toolCardContent(kind, info, text);
       const payload = toolCardPayload(kind, orderRow.order_id, info, text);
-      const historyResult = await db.query(
-        "select sender, content from conversation_messages where conversation_id = $1 order by created_at desc limit 300",
-        [conversation.id],
-      );
-      const history = historyResult.rows.reverse().map((row) => ({ role: row.sender as "buyer" | "student" | "teacher", content: row.content as string }));
+      const history = await loadBuyerHistory(db, conversation.id);
       await db.query(
         "insert into conversation_messages (conversation_id, sender, content, kind, payload) values ($1, 'student', $2, $3, $4)",
         [conversation.id, content, kind, JSON.stringify(payload)],
@@ -1629,14 +1716,7 @@ export function registerConversationRoutes(
         };
       }
 
-      const historyResult = await db.query(
-        `select sender, content from conversation_messages
-         where conversation_id = $1 order by created_at desc limit 300`,
-        [conversation.id],
-      );
-      const history = historyResult.rows
-        .reverse()
-        .map((row) => ({ role: row.sender as "buyer" | "student" | "teacher", content: row.content }));
+      const history = await loadBuyerHistory(db, conversation.id);
 
       await db.query(
         `insert into conversation_messages (conversation_id, sender, content)
@@ -1674,14 +1754,7 @@ export function registerConversationRoutes(
         reply.code(503);
         return { code: "AI_PROVIDER_NOT_CONFIGURED", message: "请由管理员配置 LLM 对话服务。" };
       }
-      const historyResult = await db.query(
-        `select sender, content from conversation_messages
-         where conversation_id = $1 order by created_at desc limit 300`,
-        [conversation.id],
-      );
-      const history = historyResult.rows
-        .reverse()
-        .map((row) => ({ role: row.sender as "buyer" | "student" | "teacher", content: row.content }));
+      const history = await loadBuyerHistory(db, conversation.id);
       const last = history[history.length - 1];
       if (!last || last.role !== "student") {
         reply.code(409);

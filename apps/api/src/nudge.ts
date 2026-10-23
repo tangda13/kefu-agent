@@ -1,8 +1,10 @@
-import { patienceAction, patienceFactor } from "@cecs/domain";
+import { applyWaitPenalty, patienceAction, patienceFactor, recordExit, type BuyerLedger } from "@cecs/domain";
 import type { ScenarioScript } from "@cecs/contracts";
 import type { Db } from "./db";
 import type { LlmGateway } from "./llm/gateway";
-import { buildBuyerNudgeMessages, buildChineseFixMessages, hasChineseLeak } from "./prompts/buyer";
+import { buildBuyerNudgeMessages, buildChineseFixMessages, countAgentTurns, hasChineseLeak } from "./prompts/buyer";
+import { stripBuyerNotes } from "./prompts/buyer-note";
+import { saveLedger } from "./buyer-ledger";
 import { once } from "./inflight";
 import { loadBuyerOrders } from "./buyer-orders";
 import { assessConversation } from "./assessment";
@@ -15,6 +17,7 @@ import { endFollowUp, followUpActive } from "./tool-followup";
  * 买家耐心（D-40）：买家最后一条消息之后客服一直没回，约 2 / 5 分钟催促，约 10 分钟留言离开（buyer_left）。
  * 时间点按画像倍率缩放（patienceFactor）；催促和离开的话术都由模型生成，模型未配置时不催也不离开（不用固定话术）。
  * 催促记录存 conversations.state.nudge：以“买家原消息时间”为起点计时，催促消息本身不重置计时。
+ * 两本账（D-90）：每催一次耐心减 1、复盘记“回得太慢”；等不到回复离开算失望离开（星级最多 2 星）。
  */
 export interface NudgeState {
   /** 计时起点（买家原消息时间，ISO） */
@@ -33,7 +36,7 @@ export async function sweepBuyerPatience(db: Db, gateway: LlmGateway, log: LogLi
   if (!gateway.isConfigured("dialogue")) return 0;
   // 最后一条非教师消息是买家发的、会话进行中；取最后消息 id 与时间
   const result = await db.query(
-    `select c.id, c.persona, c.state, c.scenario_id, c.created_at, c.tool_followup, last.id as last_id, last.created_at as last_at
+    `select c.id, c.persona, c.state, c.scenario_id, c.created_at, c.tool_followup, c.buyer_ledger, last.id as last_id, last.created_at as last_at
      from conversations c
      join lateral (
        select m.id, m.sender, m.created_at from conversation_messages m
@@ -100,7 +103,8 @@ async function runNudge(
     leaving: step.leaving,
   });
   const { text } = await gateway.complete("dialogue", messages, { conversationId: row.id });
-  let content = text
+  // 催促的提示词里没有账，不会写判断；万一写了照样清掉
+  let content = stripBuyerNotes(text).text
     .replace("[END_OF_SERVICE]", "")
     .split("|||")
     .map((part) => part.trim())
@@ -133,6 +137,16 @@ async function runNudge(
     // 跟进中等不到回复：只结束跟进，不评分、不打星、不留评（D-56）
     await endFollowUp(db, row.id, "buyer_left");
     return true;
+  }
+  const ledger = (row.buyer_ledger ?? null) as BuyerLedger | null;
+  if (ledger && !followUpActive(row.tool_followup)) {
+    await saveLedger(
+      db,
+      row.id,
+      step.leaving
+        ? recordExit(ledger, { outcome: "disappointed", fault: "slow" })
+        : applyWaitPenalty(ledger, { agentTurn: countAgentTurns(history) }),
+    );
   }
   if (step.leaving) {
     const closed = await db.query(

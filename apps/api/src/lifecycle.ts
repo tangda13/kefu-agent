@@ -13,6 +13,8 @@ import { endFollowUp, FOLLOWUP_ABANDON_MINUTES } from "./tool-followup";
  */
 export const ABANDON_AFTER_MINUTES = 120;
 export const MIN_TURNS_TO_SCORE = 3;
+/** 买家默默离开（D-90）后多久显示“客户已离开”：真实平台是买家一段时间不回自动结束，这里不让学生干等太久 */
+export const SILENT_LEAVE_MINUTES = 2;
 
 export type CloseReason = "buyer_left" | "student_ended" | "timeout" | "abandoned" | "task_closed";
 const ALWAYS_SCORE: CloseReason[] = ["buyer_left", "student_ended", "timeout"];
@@ -30,11 +32,12 @@ export async function scoreIfEligible(db: Db, gateway: LlmGateway, conversationI
  * 扫描进行中的接待，满足结束条件的自动结束（API 内每分钟一次；也在结束任务时立即调用）。
  * 邮件会话（D-58）没有聊天，不按“无人发言”结束，只随任务结束。
  * 工具跟进（D-56）不受限时和任务截止约束，两边 30 分钟没说话就结束跟进（不改原来的结束原因、不评分）。
+ * 买家默默离开（D-90）的，过 2 分钟按“买家离开”结束（照常打星、评分、留评）。
  */
 export async function sweepConversations(db: Db, gateway: LlmGateway, options: { taskId?: string } = {}): Promise<number> {
   const result = await db.query(
     `with last as (
-       select c.id, c.task_id, c.channel, c.tool_followup,
+       select c.id, c.task_id, c.channel, c.tool_followup, c.buyer_ledger -> 'exit' as buyer_exit,
               coalesce((select max(m.created_at) from conversation_messages m where m.conversation_id = c.id and m.sender <> 'teacher'), c.created_at) as last_at,
               c.created_at, t.status as task_status, t.deadline, t.time_limit_minutes
        from conversations c left join tasks t on t.id = c.task_id
@@ -44,13 +47,14 @@ export async function sweepConversations(db: Db, gateway: LlmGateway, options: {
             case
               when tool_followup is not null then
                 case when last_at < now() - make_interval(mins => $3) then 'followup_abandoned' end
+              when buyer_exit ->> 'silent' = 'true' and (buyer_exit ->> 'at')::timestamptz < now() - make_interval(mins => $4) then 'buyer_left'
               when task_id is not null and (task_status = 'closed' or (deadline is not null and deadline < now())) then 'task_closed'
               when channel = 'mail' then null
               when time_limit_minutes is not null and created_at + make_interval(mins => time_limit_minutes) < now() then 'timeout'
               when last_at < now() - make_interval(mins => $2) then 'abandoned'
             end as reason
      from last`,
-    [options.taskId ?? null, ABANDON_AFTER_MINUTES, FOLLOWUP_ABANDON_MINUTES],
+    [options.taskId ?? null, ABANDON_AFTER_MINUTES, FOLLOWUP_ABANDON_MINUTES, SILENT_LEAVE_MINUTES],
   );
   let closed = 0;
   for (const row of result.rows) {
@@ -67,6 +71,8 @@ export async function sweepConversations(db: Db, gateway: LlmGateway, options: {
     closed += 1;
     await rateService(db, row.id).catch(() => undefined);
     if (row.task_id) await scoreIfEligible(db, gateway, row.id, row.reason as CloseReason).catch(() => undefined);
+    // 和买家说完再见离开一样，按这次服务留评 / 改评
+    if (row.reason === "buyer_left") void generateBuyerReview(db, gateway, row.id, { info: () => undefined, warn: () => undefined }).catch(() => undefined);
   }
   return closed;
 }

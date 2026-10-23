@@ -20,7 +20,7 @@ import { RecordKpis } from "./StudentKpis";
 import { MessageBody, ServiceRatingLine, isCardKind, mediaUrl } from "./workbench/shared";
 import "../../styles/student-workbench.css";
 import "../../styles/student-learn.css";
-import { ReceptionGrid } from "../../components/ReceptionStats";
+import { complaintMap, complaintText, ReceptionGrid } from "../../components/ReceptionStats";
 
 interface AssessmentRecord {
   id: string;
@@ -447,6 +447,8 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
   const higherCount = compared.filter((row) => row.v! > row.b!).length;
   const bestGain = compared.reduce<(typeof compared)[number] | null>((top, row) => (row.v! - row.b! > 0 && (!top || row.v! - row.b! > top.v! - top.b!) ? row : top), null);
   const weakest = dimRows.reduce<(typeof dimRows)[number] | null>((low, row) => (row.v != null && (!low || row.v < low.v!) ? row : low), null);
+  /* 复盘里让买家不满的那几条（D-90），消息下标红字 */
+  const complaints = complaintMap(active?.reception);
 
   return (
     <Bench className="sl-page">
@@ -620,6 +622,7 @@ export function LiveRecords({ session, onOpenHall }: { session: Session; onOpenH
                       <div>
                         <ReplayBody message={message} onPlayVoice={playVoice} />
                         <small>{message.sender === "student" ? "我 · " : ""}{timeOf(message.createdAt)}</small>
+                        {complaints.has(message.id) ? <small className="rec-flag">{complaintText(complaints.get(message.id)!)}</small> : null}
                       </div>
                     </div>
                   ),

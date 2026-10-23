@@ -2226,3 +2226,226 @@ describe("参数核对 · 教师端（D-59 数据总览、D-60 考核报表、D-
     expect(reviews[0]!.buyer?.avatarKind).toBeTruthy();
   });
 });
+
+describe("买家什么时候离开：两本账（D-90）", () => {
+  let upstream: Server;
+  let student: Session;
+  const requests: Array<{ messages: Array<{ role: string; content: string }>; response_format?: unknown }> = [];
+  /** 假上游按顺序回买家台词；观察员一律回这个满意度 */
+  const replies: string[] = [];
+  let observerSatisfaction = 90;
+
+  beforeAll(async () => {
+    upstream = createServer((req, res) => {
+      let raw = "";
+      req.on("data", (chunk) => (raw += chunk));
+      req.on("end", () => {
+        const body = JSON.parse(raw);
+        requests.push(body);
+        // 结构化输出（观察员、评分）共用一份 JSON，各取各的字段
+        const text = body.response_format
+          ? JSON.stringify({ turnScore: 70, satisfaction: observerSatisfaction, emotion: "平静", stage: "方案协商", scores: { professionalism: 60 }, comment: "买家因客服两次夸大宣传失望离开。" })
+          : replies.shift() ?? "ok";
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.end(
+          `data: ${JSON.stringify({ id: "x", choices: [{ index: 0, delta: { content: text } }] })}\n\n` +
+            `data: ${JSON.stringify({ id: "x", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n` +
+            "data: [DONE]\n\n",
+        );
+      });
+    });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`;
+    const { createSecretSealer } = await import("./llm/secret");
+    await db.query("update llm_profiles set is_default = false");
+    await db.query(
+      `insert into llm_profiles (name, base_url, api_key_enc, model, json_mode, is_default, test_status)
+       values ('两本账测试', $1, $2, 'fake-model', true, true, 'ok')`,
+      [`${base}/v1`, createSecretSealer("test-secret").seal("sk-ledger")],
+    );
+    await db.query("delete from app_settings where key = 'llm_routing'");
+    const admin = await login("admin", "Admin#Prod9");
+    expect((await app.inject({ method: "PUT", url: "/v1/admin/llm/routing", headers: auth(admin), payload: { directorEveryNTurns: 1 } })).statusCode).toBe(200);
+    const { hashPassword } = await import("./security");
+    await db.query(
+      `insert into users (username, display_name, role, password_hash, must_change_password)
+       values ('s-ledger', '两本账学生', 'student', $1, false) on conflict (username) do nothing`,
+      [await hashPassword("Student#Ledger1")],
+    );
+    student = await login("s-ledger", "Student#Ledger1");
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => upstream.close(() => resolve()));
+  });
+
+  /** 开一个售前会话，账换成固定的（免得画像随机影响能忍几次） */
+  async function open(ledger: Record<string, unknown>) {
+    const created = await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { scenarioId: "PRE-001" } });
+    const id = created.json().id as string;
+    await db.query("update conversations set buyer_ledger = $2 where id = $1", [id, JSON.stringify({ version: 1, extrasLeft: 0, judgements: [], mustLeave: null, exit: null, ...ledger })]);
+    return id;
+  }
+  const say = (id: string, content: string) => app.inject({ method: "POST", url: `/v1/conversations/${id}/messages`, headers: auth(student), payload: { content } });
+  const row = async (id: string) => (await db.query("select status, closed_reason, service_rating, buyer_ledger from conversations where id = $1", [id])).rows[0];
+  const buyerLines = async (id: string) =>
+    (await db.query("select content from conversation_messages where conversation_id = $1 and sender = 'buyer' order by created_at, id", [id])).rows.map((item) => item.content as string);
+
+  it("答差两次就走：判断不外发、不落库；该走没走下一条一定收尾；失望离开最多 2 星；评分依据和复盘标注", async () => {
+    observerSatisfaction = 90;
+    const id = await open({
+      items: [{ no: 1, kind: "main", text: "确认手表适不适合自己", status: "open", misses: 0 }],
+      patience: { start: 2, left: 2 },
+      silentLeave: false,
+    });
+    // 挂到一个任务上，结束后才会评分
+    const adminId = (await db.query("select id from users where username = 'admin'")).rows[0].id;
+    const taskId = (await db.query(
+      `insert into tasks (name, business_stage, scenario_ids, interaction_mode, scoring_weights, status, created_by)
+       values ('D-90 评分依据', 'pre_sale', '["PRE-001"]', 'text', '{}', 'published', $1) returning id`,
+      [adminId],
+    )).rows[0].id;
+    await db.query("update conversations set task_id = $2 where id = $1", [id, taskId]);
+    replies.push("<<reply=none ask=1>>Hi! Is the heart-rate reading accurate?");
+    const opening = await app.inject({ method: "POST", url: `/v1/conversations/${id}/opening`, headers: auth(student) });
+    expect(opening.body).toContain("heart-rate");
+    expect(opening.body).not.toContain("<<");
+
+    // 判断存在这一轮的第一条消息上（标准写法），接口不返回
+    expect((await db.query("select buyer_note from conversation_messages where conversation_id = $1 and sender = 'buyer'", [id])).rows[0].buyer_note).toBe("reply=none ask=1 leave=no");
+    const listed = (await app.inject({ method: "GET", url: `/v1/conversations/${id}/messages`, headers: auth(student) })).body;
+    expect(listed).not.toContain("reply=");
+
+    replies.push("<<reply=bad/exaggerate ask=1>>Is it certified or not? I want a straight answer.");
+    await say(id, "It reaches medical-grade accuracy!");
+    // 下一轮给买家看的聊天记录里，开场那条带着判断
+    const secondTurn = requests.filter((body) => !body.response_format).at(-1)!.messages;
+    expect(secondTurn.find((item) => item.role === "assistant")!.content).toBe("<<reply=none ask=1 leave=no>>Hi! Is the heart-rate reading accurate?");
+    let ledger = (await row(id)).buyer_ledger;
+    expect(ledger.patience.left).toBe(1);
+    const lastStudent = (await db.query("select id from conversation_messages where conversation_id = $1 and sender = 'student' order by created_at desc limit 1", [id])).rows[0].id;
+    expect(ledger.judgements[0]).toMatchObject({ turn: 1, verdict: "bad", fault: "exaggerate", patienceLeft: 1, messageId: lastStudent });
+
+    // 第二次夸大：耐心用完，可这条没写告别 → 记下“该走了”，会话还开着
+    replies.push("<<reply=bad/exaggerate>>That's exactly the kind of claim that puts me off.");
+    await say(id, "Not a medical device, but medical-grade accuracy.");
+    ledger = (await row(id)).buyer_ledger;
+    expect(ledger).toMatchObject({ patience: { left: 0 }, mustLeave: "disappointed" });
+    expect((await row(id)).status).toBe("active");
+
+    // 下一条提示词里写明该走了；这条不管说了什么都算告别
+    replies.push("<<reply=ok>>Never mind.");
+    const closing = await say(id, "Sorry, let me check.");
+    expect(closing.body).toContain('"closed":true');
+    const buyerPrompt = requests.filter((body) => !body.response_format).at(-1)!.messages[0]!.content;
+    expect(buyerPrompt).toContain("You have made up your mind to leave");
+    const closed = await row(id);
+    expect(closed).toMatchObject({ status: "closed", closed_reason: "buyer_left" });
+    expect(closed.buyer_ledger.exit).toMatchObject({ outcome: "disappointed", fault: "exaggerate" });
+    // 观察员给了 90 分（本来 5 星），失望离开最多 2 星
+    expect(closed.service_rating).toBe(2);
+    expect(await buyerLines(id)).toEqual([
+      "Hi! Is the heart-rate reading accurate?",
+      "Is it certified or not? I want a straight answer.",
+      "That's exactly the kind of claim that puts me off.",
+      "Never mind.",
+    ]);
+
+    // 复盘标注：两次夸大宣传的那两条，后一条“随后离开”；答一般的那条不标
+    const studentIds = (await db.query("select id from conversation_messages where conversation_id = $1 and sender = 'student' order by created_at, id", [id])).rows.map((item) => item.id as string);
+    const { loadReceptionStats } = await import("./reception-stats");
+    expect((await loadReceptionStats(db, [id])).get(id)!.complaints).toEqual([
+      { messageId: studentIds[0], severe: false, faults: ["exaggerate"], last: false },
+      { messageId: studentIds[1], severe: false, faults: ["exaggerate"], last: true },
+    ]);
+    // 评分依据：买家怎么走的、哪几句让他不满，评语第一句据此写（结束方式不在复盘里另开一行）
+    for (let i = 0; i < 60 && !(await db.query("select 1 from assessments where conversation_id = $1", [id])).rowCount; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const assessed = requests.find((body) => body.response_format && body.messages.some((item) => item.content.includes("买家怎么走的：买家失望离开")));
+    expect(assessed!.messages[1]!.content).toContain(
+      "客观依据——买家怎么走的：买家失望离开（耐心用完）。让买家不满的客服回复共 2 条：「It reaches medical-grade accuracy!」（夸大宣传）；「Not a medical device, but medical-grade accuracy.」（夸大宣传，买家随后离开）",
+    );
+    const evidence = (await db.query("select evidence from assessments where conversation_id = $1", [id])).rows[0].evidence;
+    expect(evidence.buyerExit.summary).toBe("买家失望离开（耐心用完）");
+  });
+
+  it("事情都办成的买家默默离开：不落消息、再发也不回；2 分钟后巡检按买家离开结束，至少 4 星", async () => {
+    observerSatisfaction = 30;
+    const id = await open({
+      items: [{ no: 1, kind: "main", text: "有没有 M 码", status: "open", misses: 0 }],
+      patience: { start: 2, left: 2 },
+      silentLeave: true,
+    });
+    replies.push("<<reply=none ask=1>>Do you have it in M?");
+    await app.inject({ method: "POST", url: `/v1/conversations/${id}/opening`, headers: auth(student) });
+    replies.push("<<reply=good done=1 leave=silent>>Thanks!");
+    const silent = await say(id, "Yes, M is in stock and ships today.");
+    expect(silent.body).toContain('"type":"done"');
+    expect(silent.body).not.toContain("Thanks");
+    expect(await buyerLines(id)).toEqual(["Do you have it in M?"]);
+    expect((await row(id)).buyer_ledger.exit).toMatchObject({ outcome: "settled", silent: true });
+    expect((await row(id)).status).toBe("active");
+    // 默默走了以后学生再发，买家不再回（也不再调模型）
+    const before = requests.filter((body) => !body.response_format).length;
+    const again = await say(id, "Anything else I can help with?");
+    expect(again.body).toContain('"type":"done"');
+    expect(requests.filter((body) => !body.response_format).length).toBe(before);
+
+    const { sweepConversations } = await import("./lifecycle");
+    const gateway = { isConfigured: () => false } as unknown as import("./llm/gateway").LlmGateway;
+    await sweepConversations(db, gateway);
+    expect((await row(id)).status).toBe("active");
+    await db.query(
+      "update conversations set buyer_ledger = jsonb_set(buyer_ledger, '{exit,at}', to_jsonb((now() - interval '3 minutes')::text)) where id = $1",
+      [id],
+    );
+    await sweepConversations(db, gateway);
+    const closed = await row(id);
+    expect(closed).toMatchObject({ status: "closed", closed_reason: "buyer_left" });
+    // 观察员只给了 30 分（本来 2 星），事情都办成至少 4 星
+    expect(closed.service_rating).toBe(4);
+  });
+
+  it("被晾到催了一次耐心减 1；等不到回复离开算失望离开", async () => {
+    const { sweepBuyerPatience } = await import("./nudge");
+    const log = { error: () => undefined, info: () => undefined, warn: () => undefined };
+    const gateway = {
+      isConfigured: (purpose: string) => purpose === "dialogue",
+      complete: async () => ({ text: "Hello? Anyone there?", info: {} }),
+    } as unknown as import("./llm/gateway").LlmGateway;
+    const studentId = (await db.query("select id from users where username = 's-ledger'")).rows[0].id;
+    const ledger = {
+      version: 1,
+      items: [{ no: 1, kind: "main", text: "退款", status: "open", misses: 0 }],
+      extrasLeft: 0,
+      patience: { start: 3, left: 3 },
+      silentLeave: false,
+      judgements: [],
+    };
+    const make = async (minutesAgo: number) => {
+      const id = (await db.query(
+        `insert into conversations (student_id, scenario_id, status, persona, buyer_ledger) values ($1, 'AFTER-001', 'active', $2, $3) returning id`,
+        [studentId, JSON.stringify({ personality: "理性谨慎", emotion: "平静", language: "en-US" }), JSON.stringify(ledger)],
+      )).rows[0].id as string;
+      await db.query(
+        "insert into conversation_messages (conversation_id, sender, content, created_at) values ($1, 'buyer', 'Where is my refund?', now() - ($2::float * interval '1 minute'))",
+        [id, minutesAgo],
+      );
+      return id;
+    };
+    const waiting = await make(3);
+    await sweepBuyerPatience(db, gateway, log);
+    expect((await row(waiting)).buyer_ledger.patience.left).toBe(2);
+    expect((await row(waiting)).buyer_ledger.judgements[0]).toMatchObject({ verdict: "bad", fault: "slow" });
+
+    const leaving = await make(13);
+    const firstId = (await db.query("select id from conversation_messages where conversation_id = $1", [leaving])).rows[0].id;
+    await db.query("update conversations set state = $2 where id = $1", [leaving, JSON.stringify({ satisfaction: 90, nudge: { baseAt: new Date(Date.now() - 13 * 60_000).toISOString(), count: 2, lastMessageId: firstId } })]);
+    await sweepBuyerPatience(db, gateway, log);
+    const left = await row(leaving);
+    expect(left).toMatchObject({ status: "closed", closed_reason: "buyer_left" });
+    expect(left.buyer_ledger.exit).toMatchObject({ outcome: "disappointed", fault: "slow" });
+    expect(left.service_rating).toBe(2);
+  });
+});

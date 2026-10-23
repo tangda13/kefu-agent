@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { AI_ASSESSMENT_DIMENSIONS, BUSINESS_STAGE_LABELS, type BusinessStage, type ScenarioScript } from "@cecs/contracts";
-import type { ResponsivenessResult } from "@cecs/domain";
+import { AGENDA_TOPIC_LABELS, REPLY_FAULTS, type BuyerLedger, type ReplyFault, type ResponsivenessResult } from "@cecs/domain";
 import type { ChatMessage } from "../llm/gateway";
 
-export const ASSESSMENT_PROMPT_VERSION = "assessment@2026-10-14";
+export const ASSESSMENT_PROMPT_VERSION = "assessment@2026-10-22";
 
 /** 评分读全量对话；超过这个长度时先分段摘要再评分（J4） */
 export const ASSESSMENT_FULL_TEXT_LIMIT = 24_000;
@@ -32,6 +32,63 @@ export interface AssessmentEvidence {
   responsiveness?: ResponsivenessResult;
   /** 评分时有没有拿到商品资料（商品信息准确性的依据） */
   hasProductFacts?: boolean;
+  /**
+   * 买家怎么走的（D-90，系统按买家每轮的判断记的）：一句话结局 + 让买家不满的客服回复。
+   * 总评第一句据此写清怎么结束、为什么（复盘里不另开一行，用户 2026-10-22 定）
+   */
+  buyerExit?: {
+    summary: string;
+    complaints: Array<{ excerpt: string; faults: ReplyFault[]; severe: boolean; last: boolean }>;
+  } | null;
+}
+
+const CLOSE_TEXT: Record<string, string> = {
+  student_ended: "客服结束了接待",
+  timeout: "到了单次限时",
+  abandoned: "长时间没有消息",
+  task_closed: "任务结束了",
+};
+
+/** 买家怎么走的，一句话（D-90）；老会话没有账返回 null */
+export function buyerExitSummary(ledger: BuyerLedger | null | undefined, closedReason: string | null): string | null {
+  if (!ledger) return null;
+  const main = ledger.items.find((item) => item.kind === "main");
+  const exit = ledger.exit;
+  if (!exit) {
+    const how = closedReason ? CLOSE_TEXT[closedReason] : null;
+    if (!how) return null;
+    return main?.status === "done" ? `${how}，买家的主要问题已经解决` : `${how}，买家的主要问题还没解决`;
+  }
+  switch (exit.outcome) {
+    case "disappointed":
+      if (exit.fault === "slow") return "买家等不到回复离开";
+      if (ledger.patience.left <= 0) return "买家失望离开（耐心用完）";
+      return main?.status === "dropped" ? "买家失望离开（主要问题两次没得到能用的答复）" : "买家失望离开";
+    case "settled":
+      return exit.silent ? "问题都解决了，买家没说再见直接离开" : "问题都解决了，买家满意离开";
+    case "partial": {
+      const missed = ledger.items
+        .filter((item) => item.kind !== "main" && item.status !== "done")
+        .map((item) => (item.topic ? AGENDA_TOPIC_LABELS[item.topic] : null) ?? item.text);
+      return `主要问题解决了${missed.length ? `，${missed.join("、")}没谈妥` : ""}，买家离开`;
+    }
+    case "pending":
+      return "客服答应稍后回复，买家先离开了";
+    default:
+      return "主要问题没解决，买家离开了";
+  }
+}
+
+function buyerExitLine(exit: AssessmentEvidence["buyerExit"]): string {
+  if (!exit) return "无（旧记录）";
+  const complaints = exit.complaints
+    .map((item) => {
+      const notes = [item.faults.map((fault) => REPLY_FAULTS[fault]).join("、") || "答得差", item.severe ? "很不满" : "", item.last ? "买家随后离开" : ""];
+      return `「${item.excerpt}」（${notes.filter(Boolean).join("，")}）`;
+    })
+    .join("；");
+  // 写明条数：只列出来的话，模型会把“一次施压”写成“两次”（2026-10-22 实测）
+  return complaints ? `${exit.summary}。让买家不满的客服回复共 ${exit.complaints.length} 条：${complaints}` : exit.summary;
 }
 
 export function formatTranscript(rows: Array<{ sender: string; content: string }>): string {
@@ -66,8 +123,9 @@ export function buildAssessmentMessages(input: {
   const system =
     "你是跨境电商客服实训评分专家。根据买家与客服学员（Agent）的对话记录，" +
     `从下面 ${AI_ASSESSMENT_DIMENSIONS.length} 个维度打分（0-100 整数）：\n${dims}\n` +
-    "并写一段不超过 80 字的中文总评，以及 2-3 条中文改进建议。\n" +
+    "并写一段不超过 100 字的中文总评，以及 2-3 条中文改进建议。\n" +
     "系统提供的客观依据必须纳入考量：\n" +
+    "- 买家怎么走的（系统按买家每轮的判断记录）：总评第一句写清这次接待怎么结束、为什么（例如“买家因客服一次敷衍、一次推卸责任失望离开”），原因和次数都按这条依据写，不要编造或多算；买家失望离开、等不到回复离开时，resolution 要体现业务结果失败。\n" +
     "- 命中违规用语时，compliance 应明显扣分并在总评中指出；导演逐轮得分反映学员表现的走势。\n" +
     "- knowledge：把学员说到的规格、价格、库存、物流时效、退换和运费政策逐条和“店铺商品资料”对照，说错或编造要明显扣分；" +
     "资料里没有的信息，学员说“核实后答复”不扣分；没有提供资料时，只看有没有编造和乱承诺。\n" +
@@ -86,6 +144,7 @@ export function buildAssessmentMessages(input: {
     `客观依据——违规用语命中：${hits}\n` +
     `客观依据——导演逐轮得分（按时间顺序）：${turns}\n` +
     `客观依据——系统计算的响应时效：${responsivenessLine(input.evidence.responsiveness)}\n` +
+    `客观依据——买家怎么走的：${buyerExitLine(input.evidence.buyerExit)}\n` +
     (input.evidence.summarized ? "（对话较长，前半部分为分段摘要，最后一段为原文）\n" : "") +
     `对话记录：\n${input.transcript}`;
   return [

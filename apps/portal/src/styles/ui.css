@@ -412,6 +412,7 @@
 .review-block h4 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
 .review-block p, .review-block ol { margin: 0; font-size: 13px; line-height: 1.7; color: var(--c-ink-2); }
 .review-block ol { margin-top: 6px; padding-left: 18px; }
+.review-block h4 + ol { margin-top: 0; }
 .review-block h4 .ui-help { vertical-align: -2px; margin-left: 4px; }
 
 /* 复盘“本次接待”（D-61）：学生端我的记录、教师端回放与评分共用 */
@@ -734,6 +735,9 @@
 .mon-msg.is-me { align-self: flex-end; flex-direction: row-reverse; }
 .mon-msg.is-me p { border-color: var(--c-brand); border-radius: 14px 4px 14px 14px; background: var(--c-brand); color: var(--c-on-brand); }
 .mon-msg.is-me small { text-align: right; }
+/* 让买家不满的那条（D-90），学生复盘的 .rec-flag 同样子 */
+.mon-msg small.mon-flag, .rec-msg > div > small.rec-flag { margin-top: 0; font-size: 11px; line-height: 16px; color: var(--c-danger); }
+.mon-flag::before, .rec-flag::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--c-danger); vertical-align: 1px; }
 .mon-stu { display: flex; flex: none; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; background: var(--c-cat-4-soft); font-size: 12px; font-weight: 700; color: var(--c-cat-4); }
 .mon-guide { display: flex; align-items: center; gap: 8px; align-self: center; max-width: 86%; padding: 6px 12px; border-radius: 999px; background: var(--c-warn-wash); font-size: var(--fs-caption); color: var(--c-warn); }
 .mon-guide svg { flex: none; }

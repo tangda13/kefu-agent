@@ -973,6 +973,7 @@ export * from "./patience";
 export * from "./responsiveness";
 export * from "./language";
 export * from "./service-rating";
+export * from "./buyer-ledger";
 
 /**
  * 商品资料卡（D-32）：给买家 AI 的“店铺真实信息”，用来判断客服说得对不对、让追问有依据。

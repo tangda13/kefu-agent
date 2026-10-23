@@ -1,4 +1,17 @@
 import type { ReceptionEndReason, ReceptionStats } from "@cecs/contracts";
+import { REPLY_FAULTS } from "@cecs/domain";
+
+type Complaint = NonNullable<ReceptionStats["complaints"]>[number];
+
+/** 复盘、回放里消息下的红字（D-90）：哪条学生消息让买家不满、为什么；按消息 id 查 */
+export function complaintMap(stats: ReceptionStats | null | undefined): Map<string, Complaint> {
+  return new Map((stats?.complaints ?? []).map((item) => [item.messageId, item]));
+}
+
+export function complaintText(item: Complaint): string {
+  const faults = item.faults.map((fault) => REPLY_FAULTS[fault as keyof typeof REPLY_FAULTS] ?? fault).join("、");
+  return `${item.severe ? "买家很不满" : "买家不满"}${faults ? `：${faults}` : ""}${item.last ? " · 随后离开" : ""}`;
+}
 
 /* 复盘里的“本次接待”（D-61，设计稿 docs/design/p17-params-teacher 第五节）：学生端我的记录、教师端回放与评分共用。
    每一项对应一个总数：买家评价 → 满意率，平均响应 → 平均响应时长，3 分钟回复率 → 同名总数，对话轮次 → 累计对话的“共 N 轮” */

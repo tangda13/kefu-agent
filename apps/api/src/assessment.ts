@@ -1,5 +1,5 @@
 import { AI_ASSESSMENT_DIMENSIONS, ASSESSMENT_DIMENSIONS, type BusinessStage, type ScenarioScript } from "@cecs/contracts";
-import { computeResponsiveness, forbiddenTerms as builtinForbiddenTerms } from "@cecs/domain";
+import { buyerComplaints, computeResponsiveness, forbiddenTerms as builtinForbiddenTerms, type BuyerLedger } from "@cecs/domain";
 import type { Db } from "./db";
 import type { LlmGateway } from "./llm/gateway";
 import { once } from "./inflight";
@@ -12,6 +12,7 @@ import {
   buildAssessmentMessages,
   buildChunkSummaryMessages,
   buildMailAssessmentMessages,
+  buyerExitSummary,
   formatTranscript,
   MAIL_ASSESSMENT_DIMENSION_IDS,
   mailAssessmentOutputSchema,
@@ -87,7 +88,7 @@ async function assessOnce(db: Db, gateway: LlmGateway, conversationId: string): 
   );
   if (existing.rowCount) return;
   const conversationResult = await db.query(
-    `select c.student_id, c.task_id, c.persona, c.state, c.closed_at, c.closed_reason, c.channel,
+    `select c.student_id, c.task_id, c.persona, c.state, c.closed_at, c.closed_reason, c.channel, c.buyer_ledger,
             s.name as scenario_name, s.objective, s.stage, s.script, t.scoring_weights
      from conversations c
      left join scenarios s on s.id = c.scenario_id
@@ -105,11 +106,11 @@ async function assessOnce(db: Db, gateway: LlmGateway, conversationId: string): 
   }
   // 评分读全量对话（J4），不再只取前 60 条
   const messagesResult = await db.query(
-    `select sender, content, created_at from conversation_messages
-     where conversation_id = $1 order by created_at`,
+    `select id, sender, content, created_at from conversation_messages
+     where conversation_id = $1 order by created_at, id`,
     [conversationId],
   );
-  const rows = messagesResult.rows as Array<{ sender: string; content: string; created_at: Date }>;
+  const rows = messagesResult.rows as Array<{ id: string; sender: string; content: string; created_at: Date }>;
   const studentMessages = rows.filter((row) => row.sender === "student").map((row) => row.content);
   if (studentMessages.length === 0) return;
 
@@ -121,12 +122,27 @@ async function assessOnce(db: Db, gateway: LlmGateway, conversationId: string): 
     rows.map((row) => ({ sender: row.sender, at: row.created_at })),
     { closedAt: conversation.closed_at, closedReason: conversation.closed_reason },
   );
+  // 买家怎么走的（D-90）：和复盘里标出来的消息同一套账，总评第一句据此写
+  const ledger = (conversation.buyer_ledger ?? null) as BuyerLedger | null;
+  const summary = buyerExitSummary(ledger, conversation.closed_reason ?? null);
+  const studentRows = rows.filter((row) => row.sender === "student");
   const evidence: AssessmentEvidence = {
     forbiddenHits: await findForbiddenHits(db, studentMessages),
     turnScores: state.scores ?? [],
     summarized: condensed.summarized,
     responsiveness,
     hasProductFacts: !!productFacts,
+    buyerExit: summary
+      ? {
+          summary,
+          complaints: buyerComplaints(ledger, studentRows.map((row) => ({ id: row.id, at: new Date(row.created_at).getTime() }))).map((item) => ({
+            excerpt: (studentRows.find((row) => row.id === item.messageId)?.content ?? "").slice(0, 80),
+            faults: item.faults,
+            severe: item.severe,
+            last: item.last,
+          })),
+        }
+      : null,
   };
   const { data: parsed, info } = await gateway.completeJson(
     "assessment",

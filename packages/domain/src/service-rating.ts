@@ -1,3 +1,5 @@
+import type { BuyerOutcome } from "./buyer-ledger";
+
 /**
  * 服务评价（D-54）：接待结束时买家给服务打 1–5 星，由结束时的满意度（0–100，后台观察员评估）换算。
  * 分界和买家给商品留评的星级同一套；满意率 = 4 星和 5 星的占比。纯函数，无数据库。
@@ -12,6 +14,17 @@ export function starsFromSatisfaction(satisfaction: number): number {
 
 /** 算满意的星级下限：4 星及以上 */
 export const SATISFIED_STARS = 4;
+
+/**
+ * 星级跟着买家走的原因（D-90）：失望离开最多 2 星，事情都办成至少 4 星，主要的办成、次要的没办成 3–4 星，
+ * 区间内用满意度换算的星级；其余（主要的事等客服回复、还悬着、老会话没有账）照满意度。
+ */
+export function starsForOutcome(stars: number, outcome: BuyerOutcome | null | undefined): number {
+  if (outcome === "disappointed") return Math.min(stars, 2);
+  if (outcome === "settled") return Math.max(stars, SATISFIED_STARS);
+  if (outcome === "partial") return Math.min(4, Math.max(stars, 3));
+  return stars;
+}
 
 export interface RatingSummary {
   /** 5 星到 1 星各多少次 */

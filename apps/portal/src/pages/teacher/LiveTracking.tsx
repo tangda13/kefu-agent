@@ -7,7 +7,7 @@ import {
   type BuyerPublicView, type ConversationMessage, type Session,
 } from "../../api/client";
 import { BuyerAvatar } from "../../components/BuyerAvatar";
-import { ReceptionGrid, receptionText } from "../../components/ReceptionStats";
+import { complaintMap, complaintText, ReceptionGrid, receptionText } from "../../components/ReceptionStats";
 import { UserAvatar } from "../../components/AccountCenter";
 import {
   Bench, Board, Button, Drawer, Empty, Field, FilterChips, HeaderTabs, HelpTip, Input, MoreMenu, SearchBox, Tag, Textarea, Toolbar, toast,
@@ -133,7 +133,7 @@ function StudentMark({ name }: { name: string }) {
 }
 
 /** 消息气泡：买家在左（带头像），学生在右（品牌色），老师指导是插在时间线里的橙色提示条 */
-function MessageBubble({ message, buyer, studentName }: { message: ConversationMessage; buyer?: BuyerPublicView | null; studentName?: string }) {
+function MessageBubble({ message, buyer, studentName, complaint }: { message: ConversationMessage; buyer?: BuyerPublicView | null; studentName?: string; /** 回放里这条让买家不满（D-90） */ complaint?: string | null }) {
   if (message.sender === "teacher") {
     return <div className="mon-guide"><Lightbulb size={14} />老师指导：{message.content} · {time(message.createdAt)}</div>;
   }
@@ -151,6 +151,7 @@ function MessageBubble({ message, buyer, studentName }: { message: ConversationM
           <p className={message.kind === "mail" ? "is-mail" : undefined}>{messageText(message)}</p>
         )}
         <small>{mine ? studentName ?? "学生" : SENDER_LABELS[message.sender] ?? message.sender} · {time(message.createdAt)}</small>
+        {complaint ? <small className="mon-flag">{complaint}</small> : null}
       </div>
     </div>
   );
@@ -698,6 +699,8 @@ function ReviewDrawer({ session, item, onClose, onSaved }: { session: Session; i
     scores[dim.id]?.trim() === "" ? !optional(dim.id) : !Number.isFinite(numeric[dim.id]) || numeric[dim.id]! < 0 || numeric[dim.id]! > 100,
   );
   const total = invalid ? null : previewTotal(numeric, item.weights);
+  /* 让买家不满的那几条（D-90）：回放里消息下标红字，导出的文字里跟在那条后面 */
+  const complaints = complaintMap(item.reception);
 
   async function save() {
     if (invalid) return toast.error(`「${invalid.label}」要填 0–100`);
@@ -719,7 +722,10 @@ function ReviewDrawer({ session, item, onClose, onSaved }: { session: Session; i
       `买家：${item.buyerName}　时间：${new Date(item.createdAt).toLocaleString("zh-CN")}`,
       "",
       "【对话】",
-      ...(messages ?? []).map((message) => `${time(message.createdAt)} ${SENDER_LABELS[message.sender] ?? message.sender}：${KIND_LABELS[message.kind ?? ""] ?? ""}${messageText(message)}`),
+      ...(messages ?? []).map((message) => {
+        const complaint = complaints.get(message.id);
+        return `${time(message.createdAt)} ${SENDER_LABELS[message.sender] ?? message.sender}：${KIND_LABELS[message.kind ?? ""] ?? ""}${messageText(message)}${complaint ? `（${complaintText(complaint)}）` : ""}`;
+      }),
       ...(item.serviceRating ? [`买家评价了本次服务：${item.serviceRating} 星`] : []),
       ...(item.reception ? ["", `【本次接待】${receptionText(item.reception)}`] : []),
       "",
@@ -755,7 +761,10 @@ function ReviewDrawer({ session, item, onClose, onSaved }: { session: Session; i
       <div className="review">
         <div className="review-chat">
           <p className="review-chat-meta">{item.taskName ?? "自由练习"} · 买家 {item.buyerName} · {new Date(item.createdAt).toLocaleString("zh-CN")}</p>
-          {messages === null ? <p className="console-hint">正在读取对话…</p> : messages.length === 0 ? <Empty>这次接待没有消息</Empty> : messages.map((message) => <MessageBubble key={message.id} message={message} buyer={item.buyer} studentName={item.studentName} />)}
+          {messages === null ? <p className="console-hint">正在读取对话…</p> : messages.length === 0 ? <Empty>这次接待没有消息</Empty> : messages.map((message) => {
+            const complaint = complaints.get(message.id);
+            return <MessageBubble key={message.id} message={message} buyer={item.buyer} studentName={item.studentName} complaint={complaint ? complaintText(complaint) : null} />;
+          })}
           {messages && messages.length > 0 && item.serviceRating ? (
             <p className="review-rating">买家评价了本次服务 <span aria-label={`${item.serviceRating} 星`}>{"★".repeat(item.serviceRating)}<i>{"★".repeat(5 - item.serviceRating)}</i></span></p>
           ) : null}
@@ -798,10 +807,14 @@ function ReviewDrawer({ session, item, onClose, onSaved }: { session: Session; i
           <div className="review-block">
             <h4>AI 评语</h4>
             <p>{item.comment || "—"}</p>
-            {item.suggestions?.length ? (
-              <ol>{item.suggestions.map((tip, index) => <li key={index}>{tip}</li>)}</ol>
-            ) : null}
           </div>
+          {/* 改进建议单独一块，和学生复盘一样有自己的标题，不然看着像评语的一部分 */}
+          {item.suggestions?.length ? (
+            <div className="review-block">
+              <h4>改进建议</h4>
+              <ol>{item.suggestions.map((tip, index) => <li key={index}>{tip}</li>)}</ol>
+            </div>
+          ) : null}
           <Field label="老师评语" hint="学生在「我的记录」里会看到，和 AI 评语分开显示">
             <Textarea rows={4} maxLength={500} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="写给学生的话，可以不填" />
           </Field>

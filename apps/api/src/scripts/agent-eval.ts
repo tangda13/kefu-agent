@@ -1,8 +1,8 @@
 /**
  * Agent 评测集（J8）：脚本扮演学生，自动跑典型场景，检查买家 Agent 是否“变差”。改提示词、换模型后跑一遍对比。
  *
- *   pnpm --filter @cecs/api agent-eval              # 快速集：4 个用例 × 8 轮 + 1 个真实议价会话回放（4 个关键回合 × 3 次）
- *   pnpm --filter @cecs/api agent-eval -- --full    # 完整集：9 个用例，含 20 轮长对话
+ *   pnpm --filter @cecs/api agent-eval              # 快速集：5 个用例 × 8 轮 + 1 个真实议价会话回放（4 个关键回合 × 3 次）
+ *   pnpm --filter @cecs/api agent-eval -- --full    # 完整集：10 个用例，含 20 轮长对话（这一个买家不走，D-90）
  *   pnpm --filter @cecs/api agent-eval -- --turns 12 --case AFTER-001
  *
  * 用开发库里当前生效的模型档案（管理端配置）真实调用，会产生少量费用；对话只在内存里进行，不写会话表。
@@ -10,13 +10,24 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { composePersonaWithRule, generateOrderForScenario, personaTemplates } from "@cecs/domain";
+import {
+  composePersonaWithRule,
+  generateOrderForScenario,
+  personaTemplates,
+  planBuyerLedger,
+  REPLY_FAULTS,
+  type AgendaItemStatus,
+  type BuyerLedger,
+  type BuyerOutcome,
+} from "@cecs/domain";
 import type { BusinessStage, ScenarioScript } from "@cecs/contracts";
 import { loadEnv } from "../env";
 import { createPool } from "../db";
 import { LlmGateway, type ChatMessage } from "../llm/gateway";
 import { createSecretSealer } from "../llm/secret";
-import { buildBuyerMessages, BUYER_PROMPT_VERSION, hasChineseLeak, trimHistory } from "../prompts/buyer";
+import { buildBuyerMessages, BUYER_PROMPT_VERSION, countAgentTurns, hasChineseLeak, trimHistory } from "../prompts/buyer";
+import { BuyerNoteSplitter, parseBuyerNote, serializeBuyerNote, stripBuyerNotes } from "../prompts/buyer-note";
+import { settleBuyerTurn } from "../buyer-ledger";
 import { DIRECTOR_HISTORY_CHAR_BUDGET, DIRECTOR_PROMPT_VERSION } from "../prompts/director";
 import { directTurn, type SessionState } from "../director";
 import { HAGGLE_REPLAY, type ReplayFixture } from "./agent-eval-fixtures";
@@ -48,6 +59,7 @@ const QUICK: EvalCase[] = [
   { id: "after-unhelpful-en", scenarioId: "AFTER-001", personaId: "P-010", style: "unhelpful", turns: 8, note: "货损退款，学员敷衍 → 满意度下降、情绪恶化" },
   { id: "logistics-fr", scenarioId: "IN-002", personaId: "P-003", style: "helpful", turns: 8, note: "清关延误（画像现为德国买家，D-33 后模板变了，id 沿用）→ 全程用母语" },
   { id: "presale-es", scenarioId: "PRE-001", personaId: "P-008", style: "helpful", turns: 8, note: "批发采购商售前咨询（画像现为德国买家，id 沿用）→ 全程用母语" },
+  { id: "presale-unhelpful", scenarioId: "PRE-001", personaId: "P-008", style: "unhelpful", turns: 8, note: "售前学员敷衍（D-90）→ 能忍的次数用完就失望离开，不聊满轮数" },
   {
     id: "haggle-replay-es",
     scenarioId: "PRE-005",
@@ -201,10 +213,34 @@ interface CaseResult {
   turnsRun: number;
   ended: boolean;
   checks: Array<{ name: string; pass: boolean; detail: string }>;
-  transcript: Array<{ role: "buyer" | "student"; content: string }>;
+  transcript: Array<{ role: "buyer" | "student"; content: string; note?: string | null }>;
   satisfaction: number[];
   emotions: string[];
   errors: string[];
+  /** 买家的两本账（D-90）跑完后的样子；长对话、回放用例没有 */
+  ledger?: BuyerLedger | null;
+}
+
+const ITEM_LABEL: Record<AgendaItemStatus, string> = { open: "没办", done: "办成", waiting: "等客服回复", dropped: "放弃" };
+const OUTCOME_LABEL: Record<BuyerOutcome, string> = {
+  settled: "都办成",
+  partial: "主要的办成",
+  pending: "主要的等客服回复",
+  disappointed: "失望离开",
+  unresolved: "主要的没办就走",
+};
+const VERDICT_LABEL = { good: "好", ok: "一般", bad: "差", severe: "很差" } as const;
+
+/** 报告里的两本账：来办的事、能忍几次的变化、每轮判断、怎么走的 */
+function ledgerSummary(ledger: BuyerLedger): string[] {
+  const judgements = ledger.judgements
+    .map((item) => `第${item.turn}轮${VERDICT_LABEL[item.verdict]}${item.fault ? `（${REPLY_FAULTS[item.fault]}）` : ""}→剩${item.patienceLeft}`)
+    .join("，");
+  return [
+    `- 来办的事：${ledger.items.map((item) => `${item.no}.${item.kind === "main" ? "【主】" : item.kind === "extra" ? "【临时】" : ""}${item.text}（${ITEM_LABEL[item.status]}）`).join("；")}`,
+    `- 能忍 ${ledger.patience.start} 次；判断：${judgements || "无"}`,
+    `- 结局：${ledger.exit ? `${OUTCOME_LABEL[ledger.exit.outcome]}${ledger.exit.silent ? "（默默离开）" : ""}` : "没走"}`,
+  ];
 }
 
 type ProductRow = { name: string; spec: string; price: number; imageUrl: null };
@@ -229,7 +265,7 @@ async function runCase(
   const storeContext = order
     ? `the buyer's order ${JSON.stringify(order)}`
     : `the store's product catalog ${JSON.stringify(products.map((item) => ({ name: item.name, spec: item.spec, price: item.price })))}`;
-  const history: Array<{ role: "buyer" | "student"; content: string }> = [];
+  const history: Array<{ role: "buyer" | "student"; content: string; note?: string | null }> = [];
   let state: SessionState = { emotion: persona.emotion, satisfaction: 60 };
   const satisfaction: number[] = [];
   const emotions: string[] = [];
@@ -237,20 +273,39 @@ async function runCase(
   const rawBuyer: string[] = [];
   let ended = false;
   let turnsRun = 0;
+  // 两本账（D-90）：和实时回复同一套记账；20 轮长对话测的是连贯，买家不走、不记账
+  const holdOpen = testCase.turns > 12;
+  let ledger: BuyerLedger | null = holdOpen
+    ? null
+    : planBuyerLedger({ stage: scenario.stage, goal: scenario.script?.buyerGoal ?? scenario.objective, persona: personaSnapshot });
+  let notesAtStart = 0;
 
   const buyerTurn = async () => {
     let text = "";
     for await (const part of gateway.stream(
       "dialogue",
-      buildBuyerMessages({ scenePrompt: `${scenario.name}：${scenario.objective}`, script: scenario.script, personaSnapshot, orderSnapshot, history }),
+      buildBuyerMessages({ scenePrompt: `${scenario.name}：${scenario.objective}`, script: scenario.script, personaSnapshot, orderSnapshot, history, ledger, holdOpen }),
     )) {
       text += part;
     }
     rawBuyer.push(text);
-    const hasMark = text.includes(END_MARK);
-    const clean = text.replace(END_MARK, "").trim();
-    for (const segment of clean.split("|||").map((item) => item.trim()).filter(Boolean)) history.push({ role: "buyer", content: segment });
-    return hasMark;
+    const splitter = new BuyerNoteSplitter();
+    const stripped = stripBuyerNotes(splitter.push(text) + splitter.finish());
+    if (splitter.note !== null) notesAtStart += 1;
+    const note = parseBuyerNote(splitter.note ?? stripped.note);
+    const hasMark = stripped.text.includes(END_MARK);
+    const segments = stripped.text.replace(END_MARK, "").split("|||").map((item) => item.trim()).filter(Boolean);
+    let leave = hasMark;
+    if (ledger) {
+      const settled = settleBuyerTurn(ledger, { note, endMarked: hasMark, hasText: segments.length > 0, agentTurn: countAgentTurns(history) });
+      ledger = settled.ledger;
+      leave = settled.leave !== null;
+      // 默默离开：这条不发出去
+      if (settled.leave === "silent") return true;
+    }
+    // 和实时回复一样，判断记在这一轮第一条上，下一轮放回聊天记录
+    segments.forEach((segment, index) => history.push({ role: "buyer", content: segment, note: index === 0 && ledger && note ? serializeBuyerNote(note) : null }));
+    return leave;
   };
 
   try {
@@ -296,7 +351,9 @@ async function runCase(
   // 买家语言按国籍母语（D-44），以组合出来的具体买家为准，不看模板上的旧字段
   const buyerLanguage = String(personaSnapshot.language ?? persona.language);
   const langs = buyerTexts.map(guessLanguage);
-  const wrongLang = langs.filter((language) => language !== "unknown" && language !== buyerLanguage).length;
+  // 词表只分到语种（英式、美式英语一个词表），按语种比，免得 en-GB 买家说英语也被算成“其他语种”
+  const baseOf = (code: string) => code.split("-")[0];
+  const wrongLang = langs.filter((language) => language !== "unknown" && baseOf(language) !== baseOf(buyerLanguage)).length;
   checks.push({
     name: `全程使用 ${buyerLanguage}`,
     pass: wrongLang <= Math.floor(buyerTexts.length * 0.2),
@@ -309,7 +366,8 @@ async function runCase(
   // 一条里至少两行列表项才算列表（德语日期“12. Oktober”开头不算）
   const listLike = buyerTexts.some((text) => (text.match(/^\s*([-*•]|\d+\.)\s/gm) ?? []).length >= 2);
   checks.push({ name: "聊天口吻（短句、无列表）", pass: avgWords <= 30 && !listLike, detail: `平均 ${avgWords.toFixed(1)} 词${listLike ? "，出现列表格式" : ""}` });
-  if (satisfaction.length >= 2) {
+  // 20 轮长对话里学员故意一遍遍确认细节，买家烦了是真实的（D-90 里“让买家重复说”算差），这个用例只看连贯
+  if (satisfaction.length >= 2 && !holdOpen) {
     const first = satisfaction[0]!;
     const last = satisfaction.at(-1)!;
     const expectUp = testCase.style === "helpful";
@@ -321,6 +379,25 @@ async function runCase(
   }
   if (testCase.style === "helpful" && testCase.turns <= 10) {
     checks.push({ name: "问题解决后买家主动结束", pass: ended, detail: ended ? `第 ${turnsRun} 轮结束` : `${turnsRun} 轮内未结束` });
+  }
+  if (ledger) {
+    checks.push({ name: "每条开头都写了判断（D-90）", pass: notesAtStart === rawBuyer.length, detail: `${rawBuyer.length} 条中 ${notesAtStart} 条` });
+    const outcome = ledger.exit?.outcome;
+    if (testCase.style === "unhelpful") {
+      checks.push({
+        name: "答得差时失望离开（D-90）",
+        pass: ended && outcome === "disappointed",
+        detail: ended ? `第 ${turnsRun} 轮离开，${outcome ? OUTCOME_LABEL[outcome] : "-"}` : `${turnsRun} 轮内没走`,
+      });
+    }
+    if (testCase.style === "helpful" && ended) {
+      // 店里资料不全、学员答应去问的，主要的事办不成算“没办就走”，只要不是失望离开就行
+      checks.push({
+        name: "好好接待时不会失望离开（D-90）",
+        pass: outcome !== "disappointed",
+        detail: outcome ? OUTCOME_LABEL[outcome] : "-",
+      });
+    }
   }
   if (testCase.turns > 12) {
     try {
@@ -342,7 +419,7 @@ async function runCase(
       errors.push(`coherence judge: ${(error as Error).message}`);
     }
   }
-  return { testCase, turnsRun, ended, checks, transcript: history, satisfaction, emotions, errors };
+  return { testCase, turnsRun, ended, checks, transcript: history, satisfaction, emotions, errors, ledger };
 }
 
 function parseArgs(argv: string[]) {
@@ -401,9 +478,11 @@ try {
     lines.push(`## ${result.testCase.id}（${result.testCase.scenarioId} · ${result.testCase.personaId} · 学员${{ helpful: "积极", unhelpful: "敷衍", replay: "真实会话回放" }[result.testCase.style]}）`, "", result.testCase.note, "");
     lines.push("| 检查 | 结果 | 说明 |", "|---|---|---|");
     for (const check of result.checks) lines.push(`| ${check.name} | ${check.pass ? "✅" : "❌"} | ${check.detail.replace(/\|/g, "/")} |`);
+    if (result.ledger) lines.push("", ...ledgerSummary(result.ledger));
     if (result.errors.length) lines.push("", `错误：${result.errors.join("；")}`);
     lines.push("", "<details><summary>对话记录</summary>", "");
-    for (const item of result.transcript) lines.push(`- **${item.role === "buyer" ? "买家" : "学员"}**：${item.content}`);
+    // 买家这一轮开头的判断（D-90）一起列出来，方便对着看它为什么走、为什么不走
+    for (const item of result.transcript) lines.push(`- **${item.role === "buyer" ? "买家" : "学员"}**：${item.note ? `\`${item.note}\` ` : ""}${item.content}`);
     lines.push("", "</details>", "");
   }
   const dir = path.resolve(process.cwd(), "eval-reports");

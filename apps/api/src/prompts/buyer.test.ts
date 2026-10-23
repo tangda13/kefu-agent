@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { BuyerLedger } from "@cecs/domain";
 import {
   buildBuyerMessages,
   buildBuyerNudgeMessages,
@@ -114,5 +115,79 @@ describe("轮数硬上限", () => {
     const history = rounds(40);
     const messages = buildBuyerMessages(context({ history }));
     expect(messages).toHaveLength(1 + history.length);
+  });
+});
+
+describe("两本账（D-90）", () => {
+  function ledger(patch: Partial<BuyerLedger> = {}): BuyerLedger {
+    return {
+      version: 1,
+      items: [
+        { no: 1, kind: "main", text: "确认这款手表适不适合自己", status: "done", misses: 0 },
+        { no: 2, kind: "side", text: "how long delivery to you takes", topic: "shipping", status: "open", misses: 1 },
+        { no: 3, kind: "side", text: "the warranty and after-sales support", topic: "warranty", status: "waiting", misses: 0 },
+        { no: 4, kind: "extra", text: "the matching strap", status: "dropped", misses: 2 },
+      ],
+      extrasLeft: 1,
+      patience: { start: 3, left: 2 },
+      silentLeave: false,
+      judgements: [],
+      mustLeave: null,
+      exit: null,
+      ...patch,
+    };
+  }
+
+  it("有账时：清单带进度、只问清单上的事、能忍几次、每条先写判断；不出现观察员的满意度", () => {
+    const prompt = buildBuyerSystemPrompt(context({ history: rounds(2), ledger: ledger(), personaSnapshot: { name: "Rachel", language: "en-GB", concerns: ["物流时效"] } }));
+    expect(prompt).toContain("1. [main reason] 确认这款手表适不适合自己 — settled");
+    expect(prompt).toContain("2. [also want to know] how long delivery to you takes — still open (the agent has already failed to answer it once)");
+    expect(prompt).toContain("3. [also want to know] the warranty and after-sales support — waiting for the agent to get back to you");
+    expect(prompt).toContain("4. [came up in the chat] the matching strap — given up");
+    expect(prompt).toContain("do not make up other questions");
+    expect(prompt).toContain("you may take up one new thing");
+    expect(prompt).toContain("YOUR PATIENCE: right now you will put up with 2 more poor replies");
+    expect(prompt).toContain("only ask about what is on your to-do list");
+    expect(prompt).toContain("<<reply=bad/vague done=2 ask=3 leave=no>>");
+    // 笼统的旧规则不再出现，也不会提默默离开
+    expect(prompt).not.toContain("leaving condition in your private script");
+    expect(prompt).not.toContain("leave=silent");
+    expect(prompt).not.toMatch(/satisfaction|Director/);
+  });
+
+  it("耐心用完：这一条就走；按账该走没走：下一条一定收尾；会默默离开的买家才知道 leave=silent", () => {
+    expect(buildBuyerSystemPrompt(context({ ledger: ledger({ patience: { start: 2, left: 0 } }) }))).toContain("you have none left");
+    expect(buildBuyerSystemPrompt(context({ ledger: ledger({ patience: { start: 2, left: 0 } }) }))).toContain("Unless your verdict on the agent's latest message is good, THIS reply is your goodbye");
+    // 剩 1 次：差或很差就是告别；剩 2 次：很差就是告别，差就把不满说出来
+    expect(buildBuyerSystemPrompt(context({ ledger: ledger({ patience: { start: 2, left: 1 } }) }))).toContain("is bad or severe, THIS reply is your goodbye");
+    expect(buildBuyerSystemPrompt(context({ ledger: ledger() }))).toContain("If it is bad, you are down to your last bit of patience");
+    expect(buildBuyerSystemPrompt(context({ ledger: ledger({ mustLeave: "disappointed" }) }))).toContain("You have made up your mind to leave");
+    expect(buildBuyerSystemPrompt(context({ ledger: ledger({ silentLeave: true }) }))).toContain("leave=silent");
+    expect(buildBuyerSystemPrompt(context({ ledger: ledger({ extrasLeft: 0 }) }))).toContain("Do not take up anything new.");
+  });
+
+  it("买家以前每轮开头的判断原样放回聊天记录，最后再提醒一句；没有账时不放", () => {
+    const history: BuyerContext["history"] = [
+      { role: "buyer", content: "Is it waterproof?", note: "reply=none ask=1 leave=no" },
+      { role: "buyer", content: "I swim a lot." },
+      { role: "student", content: "Yes, 5 ATM." },
+    ];
+    const messages = buildBuyerMessages(context({ history, ledger: ledger() }));
+    expect(messages.map((item) => item.content).slice(1, 4)).toEqual(["<<reply=none ask=1 leave=no>>Is it waterproof?", "I swim a lot.", "Yes, 5 ATM."]);
+    expect(messages.at(-1)).toMatchObject({ role: "system" });
+    expect(messages.at(-1)!.content).toContain("Begin with your hidden status note");
+    const plain = buildBuyerMessages(context({ history }));
+    expect(plain[1]!.content).toBe("Is it waterproof?");
+    expect(plain).toHaveLength(4);
+  });
+
+  it("没有账（催促、工具卡片、跟进）照旧用笼统规则，不要求写判断；评测长对话不走", () => {
+    const plain = buildBuyerSystemPrompt(context());
+    expect(plain).not.toContain("BEFORE EVERY MESSAGE");
+    expect(plain).toContain("you have what you came for");
+    const held = buildBuyerSystemPrompt(context({ ledger: ledger(), holdOpen: true, history: rounds(BUYER_WRAP_UP_TURNS) }));
+    expect(held).toContain("do not leave yet");
+    expect(held).not.toContain("Wrap up in THIS reply");
+    expect(held).not.toContain("BEFORE EVERY MESSAGE");
   });
 });

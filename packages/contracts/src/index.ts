@@ -230,6 +230,11 @@ export interface ReceptionStats {
   /** 进线到接待结束的秒数（结束后的工具跟进不算） */
   durationSec: number | null;
   endReason: ReceptionEndReason | null;
+  /**
+   * 让买家不满的学生消息（D-90，复盘和回放在消息下标红字）：faults 是原因代号（界面按 domain 的 REPLY_FAULTS 显示），
+   * last = 买家失望离开前最后一条。老记录没有
+   */
+  complaints?: Array<{ messageId: string; severe: boolean; faults: string[]; last: boolean }>;
 }
 
 export * from "./llm";

@@ -698,4 +698,20 @@ alter table conversations add column if not exists review_done_at timestamptz;
 update conversations set review_done_at = coalesce(closed_at, now()) where status = 'closed' and review_done_at is null;
 `,
   },
+  {
+    /* D-90 买家的两本账：来办的事（items）、还能忍几次（patience）、每轮判断（judgements）、怎么走的（exit）。
+       结构见 domain 的 buyer-ledger.ts；老会话为空，第一次轮到买家说话时补 */
+    id: "043_buyer_ledger",
+    sql: `
+alter table conversations add column if not exists buyer_ledger jsonb;
+`,
+  },
+  {
+    /* D-90 买家每条开头那段判断，存在这一轮的第一条买家消息上：下一轮给买家看聊天时原样放回去，
+       不然买家照着自己前面不带判断的消息学，第二条起就不写了（评测 2026-10-22）。只给买家提示词用，接口不返回 */
+    id: "044_buyer_note",
+    sql: `
+alter table conversation_messages add column if not exists buyer_note text;
+`,
+  },
 ];

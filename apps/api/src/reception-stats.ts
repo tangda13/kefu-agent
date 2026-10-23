@@ -3,9 +3,11 @@ import {
   EMPTY_REPLY_SUMMARY,
   addReplySummaries,
   averageReplySec,
+  buyerComplaints,
   computeResponsiveness,
   replyRounds,
   summarizeReplies,
+  type BuyerLedger,
   type ReplySummary,
   type TimedMessage,
 } from "@cecs/domain";
@@ -25,11 +27,13 @@ interface ConversationTiming {
   closed_reason: string | null;
   service_rating: number | null;
   tool_followup: { endedAt?: string } | null;
+  /** 买家的两本账（D-90）：默默离开的接待时长、复盘标注用 */
+  buyer_ledger?: BuyerLedger | null;
 }
 
 export interface ReceptionTiming {
   conversation: ConversationTiming;
-  messages: Array<TimedMessage & { at: Date }>;
+  messages: Array<TimedMessage & { at: Date; id: string }>;
 }
 
 /** 最后没回的那一轮等到什么时候为止：还在接待（含工具跟进中）用现在；已结束用结束时间，跟进结束得更晚就用跟进结束时间 */
@@ -46,19 +50,21 @@ export async function loadReceptionTimings(db: Db, conversationIds: string[]): P
   if (!conversationIds.length) return map;
   const [conversations, messages] = await Promise.all([
     db.query(
-      `select id, status, channel, created_at, closed_at, closed_reason, service_rating, tool_followup
+      `select id, status, channel, created_at, closed_at, closed_reason, service_rating, tool_followup, buyer_ledger
        from conversations where id = any($1::uuid[])`,
       [conversationIds],
     ),
     db.query(
-      `select conversation_id, sender, created_at from conversation_messages
+      `select id, conversation_id, sender, created_at from conversation_messages
        where conversation_id = any($1::uuid[]) and sender in ('buyer', 'student')
-       order by conversation_id, created_at`,
+       order by conversation_id, created_at, id`,
       [conversationIds],
     ),
   ]);
   for (const row of conversations.rows as ConversationTiming[]) map.set(row.id, { conversation: row, messages: [] });
-  for (const row of messages.rows) map.get(row.conversation_id as string)?.messages.push({ sender: row.sender as string, at: row.created_at as Date });
+  for (const row of messages.rows) {
+    map.get(row.conversation_id as string)?.messages.push({ id: row.id as string, sender: row.sender as string, at: row.created_at as Date });
+  }
   return map;
 }
 
@@ -87,14 +93,18 @@ function endReasonOf(timing: ReceptionTiming): ReceptionEndReason | null {
   return (["student_ended", "timeout", "abandoned", "task_closed"] as const).find((item) => item === reason) ?? null;
 }
 
-/** 后台巡检关闭的会话（限时到、长时间没消息、任务结束）关闭时间可能晚很多，接待时长按结束前最后一条消息算 */
+/**
+ * 后台巡检关闭的会话（限时到、长时间没消息、任务结束）关闭时间可能晚很多，接待时长按结束前最后一条消息算；
+ * 买家默默离开的（D-90）也是巡检过 2 分钟才关，同样按最后一条消息算
+ */
 const SWEPT_REASONS = ["timeout", "abandoned", "task_closed"];
 
 function receptionEndAt(timing: ReceptionTiming): number | null {
   const { conversation } = timing;
   if (!conversation.closed_at) return null;
   const closedAt = conversation.closed_at.getTime();
-  if (!SWEPT_REASONS.includes(conversation.closed_reason ?? "")) return closedAt;
+  const swept = SWEPT_REASONS.includes(conversation.closed_reason ?? "") || (conversation.closed_reason === "buyer_left" && Boolean(conversation.buyer_ledger?.exit?.silent));
+  if (!swept) return closedAt;
   const last = timing.messages.filter((message) => message.at.getTime() <= closedAt).at(-1);
   return last ? last.at.getTime() : closedAt;
 }
@@ -105,6 +115,10 @@ export function receptionStatsOf(timing: ReceptionTiming, now = Date.now()): Rec
   if (conversation.channel !== "chat") return null;
   const summary = replySummaryOf(timing, undefined, now);
   const endAt = receptionEndAt(timing);
+  const complaints = buyerComplaints(
+    conversation.buyer_ledger,
+    timing.messages.filter((message) => message.sender === "student").map((message) => ({ id: message.id, at: message.at.getTime() })),
+  );
   return {
     rating: conversation.service_rating == null ? null : Number(conversation.service_rating),
     avgReplySec: averageReplySec(summary),
@@ -112,6 +126,8 @@ export function receptionStatsOf(timing: ReceptionTiming, now = Date.now()): Rec
     rounds: timing.messages.filter((message) => message.sender === "student").length,
     durationSec: endAt != null ? Math.max(0, Math.round((endAt - conversation.created_at.getTime()) / 1000)) : null,
     endReason: endReasonOf(timing),
+    // 没有要标的（老记录、没让买家不满）就不带这个字段
+    ...(complaints.length ? { complaints } : {}),
   };
 }
 

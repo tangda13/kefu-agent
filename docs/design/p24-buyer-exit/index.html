@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>买家为什么走</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+* { box-sizing: border-box; } html, body { margin: 0; }
+body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc h1 { margin: 0 0 6px; font-size: 24px; } .doc h2 { margin: 52px 0 8px; font-size: 20px; } .doc h2 small { font-size: 13px; font-weight: 400; color: #465163; margin-left: 8px; }
+.lede { margin: 0 0 16px; color: #465163; max-width: 1120px; }
+.note { font-size: 13px; color: #465163; margin-top: 10px; max-width: 1120px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } figure { margin: 0; } figcaption { font-size: 13px; color: #465163; margin-top: 6px; }
+.shot { width: 100%; display: block; border-radius: 10px; border: 1px solid #d6dce5; box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); }
+.t { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d6dce5; border-radius: 10px; overflow: hidden; font-size: 13px; }
+.t th, .t td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #edf0f4; vertical-align: top; } .t th { background: #f6f8fb; color: #465163; font-size: 12px; white-space: nowrap; } .t td:first-child { white-space: nowrap; font-weight: 600; }
+.list { margin: 8px 0 0; padding-left: 20px; max-width: 1120px; } .list li { margin: 4px 0; }
+.flag { font-size: 11px; color: #b8302a; white-space: nowrap; } .flag::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: #b8302a; vertical-align: 1px; }
+.muted { color: #5e6a7b; }
+.done { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 10px; background: #e3f4ea; color: #1a7445; font-size: 12px; font-weight: 600; vertical-align: 3px; }
+</style>
+</head>
+<body>
+<div class="doc">
+<h1>买家为什么走：复盘和教师回放<span class="done">已定稿 · 已实现</span></h1>
+<p class="lede">D-90 之后买家会按自己的耐心离开，答得差两三次就走。学生需要知道是哪几句让买家不满、最后为什么走。工作台照真实平台不显示；接待结束后在<b>复盘</b>（学生）和<b>回放与评分</b>（教师）里看。初稿在“本次接待”下单独加了一行“结束方式”，用户 2026-10-22 定：<b>结束方式放进 AI 评语，不单独开一块</b>。下面的改后截图是实现后在开发库真跑的一场（差评挽回，客服要求删差评、把责任推给快递）。</p>
+
+<h2>一、两处</h2>
+<table class="t">
+<tr><th>位置</th><th>怎么做</th></tr>
+<tr><td>AI 评语</td><td>评分模型拿到“买家怎么走的”作为客观依据（结局一句话 + 让买家不满的客服回复原文、原因、条数），<b>总评第一句写清这次接待怎么结束、为什么</b>，原因和次数按依据写。页面不加东西</td></tr>
+<tr><td>对话回放</td><td>买家判为<b>差</b>或<b>很差</b>的学生消息，时间下面一行红字：<span class="flag">买家很不满：施压强推</span>；最后让买家走的那条后面加“随后离开”</td></tr>
+</table>
+
+<h2>二、改前</h2>
+<div class="pair">
+  <figure><img class="shot" src="assets/before-student.png" alt="学生复盘改前"><figcaption>学生：我的记录 → 复盘</figcaption></figure>
+  <figure><img class="shot" src="assets/before-teacher.png" alt="教师回放改前"><figcaption>教师：实训跟踪 → 回放与评分</figcaption></figure>
+</div>
+
+<h2>三、改后 <small>实现后的真实页面</small></h2>
+<div class="pair">
+  <figure><img class="shot" src="assets/after-student.png" alt="学生复盘改后"><figcaption>学生复盘：两条消息下标了红字；AI 评语第一句讲清买家为什么走；“本次接待”不变</figcaption></figure>
+  <figure><img class="shot" src="assets/after-teacher.png" alt="教师回放改后"><figcaption>教师回放：同样的标注和评语；改进建议单独一块、有自己的标题（原来接在 AI 评语下面，像评语的一部分）</figcaption></figure>
+</div>
+<p class="note">这场的评语是加“条数”之前生成的，写成了“两次施压删评”（实际一次）。依据里写明条数后，同一场重评 3 次都写对了：“买家因客服一次施压删评、一次推卸责任而失望离开……”。</p>
+
+<h2>四、交给评分模型的结局说法</h2>
+<table class="t">
+<tr><th>结局</th><th>依据里写</th></tr>
+<tr><td>耐心用完</td><td>买家失望离开（耐心用完）。让买家不满的客服回复共 2 条：「……」（施压强推，很不满）；「……」（推卸责任，很不满，买家随后离开）</td></tr>
+<tr><td>主要问题两次没答上</td><td>买家失望离开（主要问题两次没得到能用的答复）</td></tr>
+<tr><td>等不到回复</td><td>买家等不到回复离开</td></tr>
+<tr><td>事情都办成</td><td>问题都解决了，买家满意离开 / 问题都解决了，买家没说再见直接离开</td></tr>
+<tr><td>主要的办成</td><td>主要问题解决了，物流时效没谈妥，买家离开</td></tr>
+<tr><td>客服答应稍后回复</td><td>客服答应稍后回复，买家先离开了</td></tr>
+<tr><td>主要问题没解决</td><td>主要问题没解决，买家离开了</td></tr>
+<tr><td>学生结束、限时到等</td><td>客服结束了接待 / 到了单次限时……，买家的主要问题已经解决 / 还没解决</td></tr>
+<tr><td>D-90 之前的老记录</td><td class="muted">无（旧记录），评语照旧</td></tr>
+</table>
+
+<h2>五、对话里的标注</h2>
+<table class="t">
+<tr><th>买家的判断</th><th>标注</th></tr>
+<tr><td>差</td><td><span class="flag">买家不满：敷衍含糊</span></td></tr>
+<tr><td>很差</td><td><span class="flag">买家很不满：推卸责任</span></td></tr>
+<tr><td>买家看完这条就走了</td><td><span class="flag">买家很不满：推卸责任 · 随后离开</span></td></tr>
+<tr><td>回得太慢被催了</td><td><span class="flag">买家不满：回得太慢，买家催了</span>（标在被催之后那条迟到的回复下）</td></tr>
+<tr><td>一般、好</td><td class="muted">不标</td></tr>
+</table>
+<p class="note">原因的叫法：答非所问、敷衍含糊、问了不答、让买家自己去查、让买家重复说、夸大宣传、前后说法不一、态度生硬、推卸责任、施压强推、引导站外交易、关键信息说错。教师“导出回放”的文字里，这些标注跟在对应消息后面。</p>
+
+<h2>六、改动范围</h2>
+<ul class="list">
+  <li>评分：<code>prompts/assessment.ts</code>（assessment@2026-10-22）加“买家怎么走的”依据和总评第一句的要求，依据随评分存进 <code>assessments.evidence.buyerExit</code>。</li>
+  <li>接口：复盘和回放已有的 <code>reception</code> 多带 <code>complaints</code>（被标的消息 id、原因代号、是否很不满、是否随后离开），没有要标的就不带。</li>
+  <li>前端：学生复盘、教师回放的消息下加一行红字；“本次接待”、工作台、我的记录列表都不动。没有新迁移。</li>
+</ul>
+</div>
+</body>
+</html>
