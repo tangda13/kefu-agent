@@ -92,7 +92,7 @@ cd ~/cecs && cp .env.example .env && vi .env
 
 ```bash
 cd ~/cecs
-echo '{ "minVersion": "0.1.0" }' > updates/policy.json
+echo '{ "minVersion": "1.0.0" }' > updates/policy.json
 sudo docker compose up -d --build
 sudo docker compose ps                       # db / api / web 都在运行
 sudo docker compose logs api | tail -50      # 确认迁移和种子数据没有报错
@@ -168,7 +168,7 @@ certbot 会把 `location /` 原样复制到 443 的 server 块里。申请完用
   sudo docker compose exec -T db psql -U cecs -d cecs < backup-xxxx.sql
   sudo docker compose start api
   ```
-- 更新服务端：重新上传代码（第三节，`.env` 和 `updates/` 不会被覆盖）→ `sudo docker compose up -d --build`。
+- 更新服务端：先在管理端「数据与备份」手动备份一次 → 重新上传代码（第三节，`.env` 和 `updates/` 不会被覆盖）→ `sudo docker compose up -d --build`。数据库迁移在 api 启动时自动执行，出问题用刚才的备份按上面的步骤恢复。
 
 ## 十一、常见问题
 

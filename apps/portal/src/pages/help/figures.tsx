@@ -456,7 +456,7 @@ export function SmartScreenFigure() {
         </g>
       ) : (
         <g>
-          <text x={24} y={118} className="w" style={{ fontSize: 12, opacity: 0.9 }}>应用：cecs-client-setup-0.1.0.exe</text>
+          <text x={24} y={118} className="w" style={{ fontSize: 12, opacity: 0.9 }}>应用：cecs-client-setup-1.0.0.exe</text>
           <text x={24} y={136} className="w" style={{ fontSize: 12, opacity: 0.9 }}>发布者：未知发布者</text>
         </g>
       )}

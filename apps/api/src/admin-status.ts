@@ -285,11 +285,14 @@ export async function collectServices(db: Db, gateway: LlmGateway, voice: VoiceS
   return services;
 }
 
-/** 系统版本：服务端版本取发布时注入的 APP_VERSION，数据库结构取最近一次迁移 */
+/** 服务端版本：发布时注入的 APP_VERSION，没有就取 apps/api/package.json 的 version（pnpm start 会带上）；/health 和系统总览共用 */
+export const SERVER_VERSION = process.env.APP_VERSION ?? process.env.npm_package_version ?? "开发版";
+
+/** 系统版本：服务端版本见 SERVER_VERSION，数据库结构取最近一次迁移 */
 export async function collectVersion(db: Db) {
   const migration = await db.query("select id from schema_migrations order by id desc limit 1").catch(() => ({ rows: [] as Array<{ id: string }> }));
   return {
-    server: process.env.APP_VERSION ?? process.env.npm_package_version ?? "开发版",
+    server: SERVER_VERSION,
     schema: (migration.rows[0]?.id as string | undefined) ?? "—",
     uptimeSeconds: Math.round((Date.now() - STARTED_AT) / 1000),
   };

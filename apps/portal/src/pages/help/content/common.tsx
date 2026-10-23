@@ -18,7 +18,7 @@ export function installSection(role: ClientRole): HelpSection {
           <li>发语音消息要有麦克风；听买家朗读要有耳机或音箱。</li>
         </Dots>
         <Steps>
-          <li>从{role === "student" ? "老师" : "管理员"}那里拿到安装包（文件名形如 <code>cecs-client-setup-0.1.0.exe</code>），双击运行。</li>
+          <li>从{role === "student" ? "老师" : "管理员"}那里拿到安装包（文件名形如 <code>cecs-client-setup-1.0.0.exe</code>），双击运行。</li>
           <li>如果弹出“Windows 已保护你的电脑”，点“更多信息”，再点“仍要运行”。安装包没有数字签名，第一次运行会这样提示，放行一次即可。</li>
           <li>选安装范围：机房电脑建议“只为我安装”，以后自动更新不用管理员权限；也可以选“为所有用户安装”。</li>
           <li>装好后，桌面和开始菜单会出现“跨境电商客服AI实训平台”的快捷方式，双击打开。</li>

@@ -21,6 +21,7 @@ import { loadEnv, type ApiEnv } from "./env";
 import { createPool, migrate, type Db } from "./db";
 import { seedAdmin, seedCatalog, seedContentTerms, seedStoreProducts } from "./seed";
 import { createAuthGuard } from "./auth-context";
+import { SERVER_VERSION } from "./admin-status";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerClassRoutes, type BackupBeforeDelete } from "./routes/classes";
 import { registerCatalogRoutes } from "./routes/catalog";
@@ -127,7 +128,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   app.get("/health", async () => ({
     status: "ok",
     service: "cecs-cloud-api",
-    version: "0.1.0",
+    version: SERVER_VERSION,
     timestamp: new Date().toISOString(),
   }));
 
