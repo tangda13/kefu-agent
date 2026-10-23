@@ -474,6 +474,8 @@ export interface ConversationSummary {
   status?: string;
   lastMessage?: { content: string; sender: string; createdAt: string } | null;
   unreplied?: boolean;
+  /** 未读（D-96）：上次看这条会话之后买家又发了几条，会话列表显示绿色数字 */
+  unreadCount?: number;
   visits72h?: number;
   createdAt: string;
   /** 系统客户标签（按订单规则计算，只读）：粉丝 / 大订单客户 / 普通客户 / 沉睡客户 / 新客 */
@@ -710,6 +712,9 @@ export const fetchConversations = (session: Session, status: "active" | "closed"
 /** closedAt 是服务端记的结束时间（老服务端没有），结束提示按它画在消息流里 */
 export const closeConversation = (session: Session, conversationId: string) =>
   apiPost<{ ok: boolean; closedAt?: string }>(`/v1/conversations/${conversationId}/close`, session);
+/** 正在看这条会话：买家到现在为止的消息记为已读（D-96，存云端） */
+export const markConversationRead = (session: Session, conversationId: string) =>
+  apiPost<{ ok: boolean }>(`/v1/conversations/${conversationId}/read`, session);
 export const translateMessage = (session: Session, conversationId: string, messageId: string) =>
   apiPost<{ translation: string }>(
     `/v1/conversations/${conversationId}/messages/${messageId}/translate`,

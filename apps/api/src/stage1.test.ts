@@ -1780,6 +1780,28 @@ describe("学生端改版：店铺资料、系统客户标签与客服标记（C
     expect(persona.storeName).toBe("Nova Shop");
   });
 
+  it("D-96 会话未读：买家消息计未读，学生看过清零，之后再来的重新计；只能标自己的会话", async () => {
+    const id = (await app.inject({ method: "POST", url: "/v1/conversations", headers: auth(student), payload: { scenarioId: "IN-002" } })).json().id as string;
+    const unread = async () =>
+      ((await app.inject({ method: "GET", url: "/v1/conversations", headers: auth(student) })).json() as Array<Record<string, unknown>>)
+        .find((item) => item.id === id)!.unreadCount;
+    expect(await unread()).toBe(0);
+    await db.query("insert into conversation_messages (conversation_id, sender, content) values ($1, 'buyer', 'Hi'), ($1, 'buyer', 'Anyone there?')", [id]);
+    expect(await unread()).toBe(2);
+    expect((await app.inject({ method: "POST", url: `/v1/conversations/${id}/read`, headers: auth(student) })).statusCode).toBe(200);
+    expect(await unread()).toBe(0);
+    // 客服自己的消息不算；之后买家再发的重新计（时间往后拨一秒，免得和已读时间落在同一时刻）
+    await db.query(
+      `insert into conversation_messages (conversation_id, sender, content, created_at)
+       values ($1, 'student', 'Hello!', now() + interval '1 second'), ($1, 'buyer', 'Where is my parcel?', now() + interval '1 second')`,
+      [id],
+    );
+    expect(await unread()).toBe(1);
+    const missing = await app.inject({ method: "POST", url: "/v1/conversations/00000000-0000-4000-8000-000000000000/read", headers: auth(student) });
+    expect(missing.statusCode).toBe(403);
+    expect((await app.inject({ method: "POST", url: `/v1/conversations/${id}/read`, headers: auth(teacher) })).statusCode).toBe(403);
+  });
+
   it("关键数字：已完成任务、班级排名、累计对话", async () => {
     const summary = await app.inject({ method: "GET", url: "/v1/student/summary", headers: auth(student) });
     expect(summary.statusCode).toBe(200);

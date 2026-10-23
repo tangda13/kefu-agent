@@ -822,7 +822,10 @@ export function registerConversationRoutes(
                 lm.content as last_content, lm.sender as last_sender, lm.created_at as last_at,
                 (select count(*) from conversation_messages mv
                  where mv.conversation_id = c.id and mv.sender = 'buyer'
-                   and mv.created_at > now() - interval '72 hours') as visits72
+                   and mv.created_at > now() - interval '72 hours') as visits72,
+                (select count(*) from conversation_messages mu
+                 where mu.conversation_id = c.id and mu.sender = 'buyer'
+                   and mu.created_at > coalesce(c.student_read_at, '-infinity'::timestamptz)) as unread
          from conversations c
          left join scenarios s on s.id = c.scenario_id
          left join orders o on o.conversation_id = c.id and o.is_primary
@@ -864,6 +867,8 @@ export function registerConversationRoutes(
           ? { content: row.last_content, sender: row.last_sender, createdAt: row.last_at }
           : null,
         unreplied: row.last_sender === "buyer",
+        /* 未读（D-96）：学生上次看这条会话之后，买家又发了几条 */
+        unreadCount: Number(row.unread ?? 0),
         visits72h: Number(row.visits72 ?? 0),
         createdAt: row.created_at,
         closedAt: row.closed_at ?? null,
@@ -1651,6 +1656,23 @@ export function registerConversationRoutes(
         translation: row.translated_content ?? undefined,
         createdAt: row.created_at,
       }));
+    },
+  );
+
+  // 已读（D-96）：工作台正在看这条会话，买家到现在为止的消息记为看过，会话列表的未读数清零
+  app.post<{ Params: { conversationId: string } }>(
+    "/v1/conversations/:conversationId/read",
+    { preHandler: guard.requireRole("student") },
+    async (request, reply) => {
+      const result = await db.query(
+        "update conversations set student_read_at = now() where id = $1 and student_id = $2",
+        [request.params.conversationId, request.user!.sub],
+      );
+      if (!result.rowCount) {
+        reply.code(403);
+        return { code: "FORBIDDEN", message: "无权操作该会话。" };
+      }
+      return { ok: true };
     },
   );
 

@@ -39,6 +39,7 @@ import {
   fetchStoreProfile,
   fetchStudentTasks,
   fetchWorkbenchStats,
+  markConversationRead,
   postConversationMessage,
   recognizeAudio,
   requestMessageTts,
@@ -310,6 +311,18 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
     setJustEnded(apply);
   }, []);
 
+  /* 未读（D-96）：记到云端，会话列表的绿色数字跟着清零。
+     标记完成之前发出的列表请求，带回来的还是旧的未读数，到了一律按 0 算，免得切走后这条又冒出数字 */
+  const readDoneAt = useRef(new Map<string, number>());
+  const markRead = useCallback((cid: string) => {
+    void markConversationRead(session, cid)
+      .then(() => {
+        readDoneAt.current.set(cid, Date.now());
+        patchConversation(cid, { unreadCount: 0 });
+      })
+      .catch(() => undefined);
+  }, [session, patchConversation]);
+
   const loadStats = useCallback(() => {
     fetchWorkbenchStats(session).then(setStats).catch(() => undefined);
   }, [session]);
@@ -341,11 +354,12 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
 
   const loadConversations = useCallback(async () => {
     try {
+      const requestedAt = Date.now();
       const [conversationList, taskList] = await Promise.all([
         fetchConversations(session),
         fetchStudentTasks(session),
       ]);
-      setConversations(conversationList);
+      setConversations(conversationList.map((item) => ((readDoneAt.current.get(item.id) ?? 0) > requestedAt ? { ...item, unreadCount: 0 } : item)));
       setTasks(taskList);
       // 买家回复了订单页的工具卡片：这位买家回到“接待中”，去掉本地的结束标记
       const revived = conversationList.filter((item) => followUpActive(item.toolFollowUp)).map((item) => item.id);
@@ -480,6 +494,18 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       cancelled = true;
     };
   }, [session, activeId]);
+
+  // 正在看的会话记已读（D-96）：打开时、聊天区多了买家消息时（轮询到的催促、流式回完的回复）各记一次。
+  // 买家这条还在流式生成时先不记：服务端回完才落库，早记了这几条会算成没看过
+  const readSeenRef = useRef({ cid: null as string | null, count: -1 });
+  useEffect(() => {
+    if (!activeId || messages === null || messagesCidRef.current !== activeId || buyerStreamingRef.current.has(activeId)) return;
+    const count = messages.filter((item) => item.sender === "buyer").length;
+    const seen = readSeenRef.current;
+    if (seen.cid === activeId && seen.count === count) return;
+    readSeenRef.current = { cid: activeId, count };
+    markRead(activeId);
+  }, [activeId, messages, streamingText, markRead]);
 
   // 当前买家的全部订单（关联订单 + 历史订单）
   useEffect(() => {
@@ -726,6 +752,30 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       arrivalBusyRef.current.delete(taskId);
       setBusy(false);
     }
+  }
+
+  /**
+   * 自动进线的买家（任务、自由练习共用）：后台生成开场白，不抢当前聊天焦点，落库后列表出现这句话和等待计时。
+   * 这条会话已经开着时（手上没有别的会话，新买家会自动打开；或学生先点开了），开场白同时刷进聊天区，
+   * 不然要等 15 秒一次的消息轮询：计时在走，聊天区却是空的
+   */
+  function openInBackground(cid: string) {
+    openingRequested.current.add(cid);
+    void streamConversationOpening(session, cid, {
+      onDelta: () => undefined,
+      onDone: () => {
+        void loadConversations();
+        if (activeIdRef.current !== cid) return;
+        fetchConversationMessages(session, cid)
+          .then((rows) => {
+            if (activeIdRef.current === cid) setMessages((current) => mergeRows(current, rows));
+          })
+          .catch(() => undefined);
+      },
+      onError: () => {
+        openingRequested.current.delete(cid);
+      },
+    }).catch(() => openingRequested.current.delete(cid));
   }
 
   /** 正在生成买家回复的会话：学生照常打字、发文字，只是下一次买家回复要等这一条生成完 */
@@ -1213,25 +1263,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       arrivalBusyRef.current.add(task.id);
       try {
         const created = await createConversation(session, scenarioId ? { taskId: task.id, scenarioId } : { taskId: task.id });
-        // 后台生成买家开场消息（不抢当前聊天焦点），落库后列表出现未读红点与等待时长
-        openingRequested.current.add(created.id);
-        void streamConversationOpening(session, created.id, {
-          onDelta: () => undefined,
-          onDone: () => {
-            void loadConversations();
-            // 学生已提前点开这条会话：同步把刚生成的开场消息刷进聊天区
-            if (activeIdRef.current === created.id) {
-              fetchConversationMessages(session, created.id)
-                .then((rows) => {
-                  if (activeIdRef.current === created.id) setMessages(rows);
-                })
-                .catch(() => undefined);
-            }
-          },
-          onError: () => {
-            openingRequested.current.delete(created.id);
-          },
-        });
+        openInBackground(created.id);
         await loadConversations();
       } catch (cause) {
         if (cause instanceof ApiError && cause.code === "TASK_CLOSED") {
@@ -1324,12 +1356,7 @@ export function LiveWorkbench({ session, initialTaskId }: { session: Session; in
       void createConversation(session, { scenarioId })
         .then((created) => {
           bumpPractice();
-          openingRequested.current.add(created.id);
-          void streamConversationOpening(session, created.id, {
-            onDelta: () => undefined,
-            onDone: () => void loadConversations(),
-            onError: () => openingRequested.current.delete(created.id),
-          });
+          openInBackground(created.id);
           return loadConversations();
         })
         .catch(() => { practiceNotBeforeRef.current = Date.now() + 60_000; })

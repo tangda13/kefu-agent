@@ -54,6 +54,8 @@ export function ConversationRail({ tab, onTab, search, onSearch, active, justEnd
     const lastAt = item.lastMessage?.createdAt ?? item.createdAt;
     const waitedSeconds = Math.max(0, Math.floor((now - new Date(lastAt).getTime()) / 1000));
     const wTone = waitedSeconds > 60 ? "is-red" : waitedSeconds > 30 ? "is-orange" : "";
+    // 未读（D-96）：正在看的这条和“最近联系”里的不显示
+    const unread = kind !== "recent" && item.id !== activeId ? item.unreadCount ?? 0 : 0;
     return (
       <button key={item.id} type="button" className={item.id === activeId ? "wbk-qi is-on" : "wbk-qi"} onClick={() => onPick(item.id)}>
         <Av buyer={item.buyer} size={40} />
@@ -66,8 +68,11 @@ export function ConversationRail({ tab, onTab, search, onSearch, active, justEnd
               <span className="wbk-wait is-gray">{listTimeLabel(lastAt)}</span>
             )}
           </span>
-          <span className={typing ? "wbk-qi-l2 is-typing" : "wbk-qi-l2"}>
-            {typing ? "对方正在输入…" : item.lastMessage ? item.lastMessage.content : "买家刚进线…"}
+          <span className="wbk-qi-l2">
+            <span className={typing ? "wbk-qi-text is-typing" : "wbk-qi-text"}>
+              {typing ? "对方正在输入…" : item.lastMessage ? item.lastMessage.content : "买家刚进线…"}
+            </span>
+            {unread > 0 ? <span className="wbk-unread" aria-label={`${unread} 条新消息`}>{unread > 99 ? "99+" : unread}</span> : null}
           </span>
           {/* 会话列表不放客户标签：标签在右栏客户资料里看 */}
         </span>

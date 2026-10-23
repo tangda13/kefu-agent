@@ -722,4 +722,13 @@ alter table conversation_messages add column if not exists buyer_note text;
 alter table refresh_tokens add column if not exists rotated_at timestamptz;
 `,
   },
+  {
+    /* D-96 会话未读：学生看到哪了。之后的买家消息算未读，工作台会话列表显示绿色数字。
+       已读位置存云端（机房换机器、还原卡也对得上）；上线前的会话都算看过 */
+    id: "046_conversation_read",
+    sql: `
+alter table conversations add column if not exists student_read_at timestamptz;
+update conversations set student_read_at = now() where student_read_at is null;
+`,
+  },
 ];

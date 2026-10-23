@@ -109,8 +109,11 @@
 .wbk-wait.is-red { color: var(--c-danger); font-weight: 700; }
 .wbk-wait.is-gray { font-weight: 500; }
 .wbk-wait svg { width: 12px; height: 12px; }
-.wbk-qi-l2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--c-ink-2); line-height: 20px; }
-.wbk-qi-l2.is-typing { color: var(--c-brand-ink); }
+.wbk-qi-l2 { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--c-ink-2); line-height: 20px; }
+.wbk-qi-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wbk-qi-text.is-typing { color: var(--c-brand-ink); }
+/* 未读条数（D-96）：绿底白字，排在等待计时正下方 */
+.wbk-unread { flex: none; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--c-ok); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
 .wbk-qi-l3 { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
 .wbk-ql-empty { margin: 0; padding: 28px 20px; text-align: center; font-size: 13px; color: var(--c-ink-3); }
 .wbk-queue { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--c-line); font-size: 12px; color: var(--c-ink-3); }
