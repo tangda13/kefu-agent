@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { UserRole } from "@cecs/contracts";
 import { AdminPages } from "./pages/admin/AdminPages";
-import { AppShell, roleNav, type ShellAnnouncement, type ShellNotificationCenter } from "./components/AppShell";
+import { AppShell, HELP_PAGE, roleNav, type ShellAnnouncement, type ShellNotificationCenter } from "./components/AppShell";
 import { LoginScreen } from "./components/LoginScreen";
 import { MailStudio } from "./pages/student/MailStudio";
 import { LiveMail, MAIL_COMPOSE_KEY, MAIL_TASK_KEY, buyerMailPreset, countUnreadMail } from "./pages/student/LiveMail";
@@ -36,6 +36,13 @@ import {
   type StoreProfile,
   } from "./api/client";
 
+/** 使用帮助（D-91）：内容多、平时用得少，点开时再加载 */
+const HelpCenter = lazy(() => import("./pages/help/HelpCenter"));
+
+/** 当前身份能打开的页面：侧栏导航里的页面，加上使用帮助 */
+const pageAllowed = (role: UserRole, page: string | null | undefined) =>
+  page === HELP_PAGE || roleNav[role].some((item) => item.id === page);
+
 /** 旧版本的指导已读状态存在本机（且不分账号），首次进入时迁到云端（K4） */
 const LEGACY_GUIDANCE_READ_KEY = "cecs.guidance.read";
 export const OPEN_CONVERSATION_KEY = "cecs.openConversation";
@@ -61,9 +68,7 @@ export function App() {
   // demo=1 仅用于界面预览；真实会话以服务端返回的角色为准。
   const role: UserRole = demo ? requestedRole : session?.user.role ?? requestedRole;
   const requestedPage = params.get("page");
-  const initialPage = roleNav[role].some((item) => item.id === requestedPage)
-    ? requestedPage!
-    : roleNav[role][0]!.id;
+  const initialPage = pageAllowed(role, requestedPage) ? requestedPage! : roleNav[role][0]!.id;
   const [signedIn, setSignedIn] = useState(demo || session !== null);
   const [active, setActive] = useState(initialPage);
   /** 登录失效被送回登录页时的说明（如“登录已过期，请重新登录。”） */
@@ -161,7 +166,7 @@ export function App() {
   useEffect(() => {
     const onNavigate = (event: Event) => {
       const page = (event as CustomEvent<{ page?: string }>).detail?.page;
-      if (page && roleNav[role].some((item) => item.id === page)) setActive(page);
+      if (page && pageAllowed(role, page)) setActive(page);
     };
     window.addEventListener("cecs:navigate", onNavigate);
     return () => window.removeEventListener("cecs:navigate", onNavigate);
@@ -263,11 +268,19 @@ export function App() {
             }
       }
     >
-      {role === "student" && (
-        <StudentPage active={active} onNavigate={setActive} session={session} />
+      {active === HELP_PAGE ? (
+        <Suspense fallback={<div className="page"><p className="muted">正在打开使用帮助…</p></div>}>
+          <HelpCenter role={role} />
+        </Suspense>
+      ) : (
+        <>
+          {role === "student" && (
+            <StudentPage active={active} onNavigate={setActive} session={session} />
+          )}
+          {role === "teacher" && <TeacherPages page={active} session={session} onNavigate={setActive} />}
+          {role === "admin" && <AdminPages page={active} session={session} onNavigate={setActive} />}
+        </>
       )}
-      {role === "teacher" && <TeacherPages page={active} session={session} onNavigate={setActive} />}
-      {role === "admin" && <AdminPages page={active} session={session} onNavigate={setActive} />}
     </AppShell>
   );
 }

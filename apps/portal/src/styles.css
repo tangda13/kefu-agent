@@ -156,6 +156,8 @@ small { color: var(--c-ink-3); }
 .shell-nav button.is-active { background: var(--c-brand-soft); color: var(--c-brand-ink); font-weight: 600; }
 .shell-nav button svg, .shell-side-foot button svg { flex: none; color: var(--c-ink-3); }
 .shell-nav button.is-active svg { color: var(--c-brand-ink); }
+.shell-side-foot button.is-active { background: var(--c-brand-soft); color: var(--c-brand-ink); font-weight: 600; }
+.shell-side-foot button.is-active svg { color: var(--c-brand-ink); }
 .shell-side-foot { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--c-line); }
 .shell-side-foot button { width: 100%; font-size: var(--fs-body); }
 /* 侧栏折叠：只留图标（64 宽），名称放悬停提示 */

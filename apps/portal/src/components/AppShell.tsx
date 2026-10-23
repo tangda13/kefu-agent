@@ -44,6 +44,9 @@ export interface NavItem {
 /** 店铺后台的页面：左右顶格、不显示页名（D-37） */
 export const STORE_PAGES = new Set(["workbench", "orders", "reviews", "mail"]);
 
+/** 侧栏底部“使用帮助”打开的页面（D-91）：三端都有，不进导航列表 */
+export const HELP_PAGE = "help";
+
 export const roleNav: Record<UserRole, NavItem[]> = {
   student: [
     { id: "tasks", label: "任务大厅", icon: LayoutDashboard },
@@ -234,7 +237,8 @@ export function AppShell({ role, active, onNavigate, children, onSignOut, userNa
   const meta = userMeta ?? fallback.meta;
   const navigation = roleNav[role];
   const activeItem = navigation.find((item) => item.id === active);
-  const activeLabel = activeItem?.label ?? "";
+  const helpOpen = active === HELP_PAGE;
+  const activeLabel = helpOpen ? "使用帮助" : activeItem?.label ?? "";
   const storePage = activeItem?.group === "store";
   // 顶栏里给页面放页签的位置（HeaderTabs 渲染到这里）
   const [slot, setSlot] = useState<HTMLElement | null>(null);
@@ -273,7 +277,7 @@ export function AppShell({ role, active, onNavigate, children, onSignOut, userNa
           })}
         </nav>
         <div className="shell-side-foot">
-          <button type="button" title={collapsed ? "使用帮助" : undefined}><BookOpenCheck size={18} /><span>使用帮助</span></button>
+          <button type="button" title={collapsed ? "使用帮助" : undefined} className={helpOpen ? "is-active" : undefined} aria-current={helpOpen ? "page" : undefined} onClick={() => onNavigate(HELP_PAGE)}><BookOpenCheck size={18} /><span>使用帮助</span></button>
           <button type="button" className="shell-collapse" onClick={toggleCollapsed} aria-label={collapsed ? "展开侧栏" : "收起侧栏"} title={collapsed ? "展开侧栏" : "收起侧栏"}>
             {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
             <span>收起侧栏</span>

@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>使用帮助：操作手册</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+* { box-sizing: border-box; } html, body { margin: 0; }
+body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.doc { max-width: 1520px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc > h1 { margin: 0 0 6px; font-size: 24px; } .doc > h2 { margin: 56px 0 8px; font-size: 20px; } .doc > h2 small { font-size: 13px; font-weight: 400; color: #465163; margin-left: 8px; }
+.lede { margin: 0 0 16px; color: #465163; max-width: 1120px; }
+.note { font-size: 13px; color: #465163; margin-top: 10px; max-width: 1120px; }
+.tag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 10px; background: #fdf0dc; color: #9a5200; font-size: 12px; font-weight: 600; vertical-align: 3px; }
+.t { width: 100%; max-width: 1120px; border-collapse: collapse; background: #fff; border: 1px solid #d6dce5; border-radius: 10px; overflow: hidden; font-size: 13px; }
+.t th, .t td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #edf0f4; vertical-align: top; } .t th { background: #f6f8fb; color: #465163; font-size: 12px; white-space: nowrap; } .t td:first-child { white-space: nowrap; font-weight: 600; }
+.list { margin: 8px 0 0; padding-left: 20px; max-width: 1120px; } .list li { margin: 4px 0; }
+.before { width: 100%; max-width: 900px; display: block; border-radius: 10px; border: 1px solid #d6dce5; }
+.frame { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid #d6dce5; box-shadow: 0 12px 40px -16px rgba(16,24,40,.22); background: #f4f6f9; margin-top: 8px; }
+.screen { position: absolute; top: 0; left: 0; width: 1440px; transform-origin: 0 0; overflow: hidden; }
+.cap { margin: 22px 0 0; font-size: 13px; color: #465163; max-width: 1120px; } .cap b { color: #161c26; }
+.three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; max-width: 1120px; }
+.three .t td:first-child { white-space: normal; }
+
+/* ===== 织 UI 外壳（照搬现状） ===== */
+.s { --canvas:#f4f6f9; --line:#e3e7ee; --line-2:#edf0f4; --hover:#eef2f7; --ink:#161c26; --ink-2:#465163; --ink-3:#5e6a7b; --ink-4:#9aa3b0; --brand:#1d5fd1; --brand-soft:#e8effc; --brand-ink:#174aa8; --ok:#1a7445; --ok-wash:#e3f4ea; --warn:#9a5200; --warn-wash:#fdf0dc; --bad:#b8302a; --bad-wash:#fbe8e6;
+  background: var(--canvas); color: var(--ink); font: 400 14px/22px Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.s svg.ic { width: 18px; height: 18px; stroke-width: 1.75; flex: none; }
+.app { display: grid; grid-template-columns: 232px 1fr; height: 100%; }
+.side { background: #fff; border-right: 1px solid var(--line); padding: 14px 12px; display: flex; flex-direction: column; height: 100%; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 18px; font-weight: 700; font-size: 14px; }
+.mark { display: inline-flex; width: 26px; height: 26px; border-radius: 6px; background: var(--brand); color: #fff; align-items: center; justify-content: center; } .mark svg { width: 16px !important; height: 16px !important; }
+.nav { display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 6px; color: var(--ink-2); } .nav svg { color: var(--ink-3); } .nav.on { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; } .nav.on svg { color: var(--brand-ink); }
+.navlabel { display: flex; align-items: center; gap: 8px; margin: 16px 12px 6px; font-size: 13px; color: var(--ink-2); } .navlabel .shop { width: 20px; height: 20px; border-radius: 5px; background: #1c2230; color: #fff; display: grid; place-items: center; } .navlabel .shop svg { width: 12px !important; height: 12px !important; }
+.side-foot { margin-top: auto; border-top: 1px solid var(--line); padding-top: 8px; }
+.main { display: flex; flex-direction: column; min-width: 0; height: 100%; overflow: hidden; }
+.head { display: flex; align-items: center; gap: 16px; height: 56px; flex: none; padding: 0 40px; background: #fff; border-bottom: 1px solid var(--line); } .head h1 { margin: 0; font-size: 20px; }
+.head .right { margin-left: auto; display: flex; gap: 12px; align-items: center; color: var(--ink-2); }
+.av { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: #eef2f7; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--brand-ink); }
+.notice { display: flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 13px; } .notice svg { width: 15px !important; height: 15px !important; }
+
+/* ===== 使用帮助：目录 + 正文 ===== */
+.hb { flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: 236px minmax(0, 860px); gap: 28px; justify-content: center; padding: 24px 40px 0; }
+.toc { padding-top: 4px; }
+.toc-head b { display: block; font-size: 15px; line-height: 22px; }
+.toc-head small { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.toc-head .pdf { display: inline-flex; align-items: center; gap: 4px; color: var(--brand-ink); } .toc-head .pdf svg { width: 13px !important; height: 13px !important; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; background: #e9edf3; border-radius: 6px; padding: 2px; margin: 12px 0 2px; font-size: 13px; text-align: center; } .seg span { height: 28px; line-height: 28px; border-radius: 5px; color: var(--ink-2); } .seg .on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.06); }
+.toc ol { list-style: none; margin: 14px 0 0; padding: 0; }
+.ch { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 6px; color: var(--ink-2); }
+.ch .n { width: 16px; color: var(--ink-4); font-variant-numeric: tabular-nums; font-size: 13px; }
+.ch.on { color: var(--ink); font-weight: 600; } .ch.on .n { color: var(--brand-ink); }
+.secs { margin: 0 0 8px 36px; border-left: 1px solid var(--line); }
+.secs span { display: block; padding: 4px 12px; margin-left: -1px; border-left: 2px solid transparent; font-size: 13px; line-height: 20px; color: var(--ink-3); }
+.secs span.on { color: var(--brand-ink); border-left-color: var(--brand); }
+.paper { background: #fff; border: 1px solid var(--line); border-radius: 12px 12px 0 0; border-bottom: 0; padding: 36px 52px 48px; min-height: 100%; }
+.paper.full { border-radius: 12px; border-bottom: 1px solid var(--line); }
+.crumb { font-size: 12px; color: var(--ink-3); margin-bottom: 6px; }
+.paper h1 { margin: 0 0 8px; font-size: 22px; line-height: 30px; }
+.paper .lead { margin: 0 0 8px; color: var(--ink-2); }
+.paper h2 { margin: 34px 0 10px; font-size: 16px; line-height: 24px; } .paper h2 .no { color: var(--brand-ink); margin-right: 8px; font-variant-numeric: tabular-nums; }
+.paper h3 { margin: 20px 0 6px; font-size: 14px; }
+.paper p { margin: 8px 0; line-height: 24px; }
+.paper ul.dots { margin: 6px 0; padding-left: 18px; line-height: 24px; } .paper ul.dots li { margin: 2px 0; }
+.paper b.ui { font-weight: 600; }
+.fig { margin: 16px 0 22px; }
+.pic { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #f4f6f9; }
+.pic img { display: block; width: 100%; }
+.pic .zoom { position: absolute; right: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; background: rgba(22,28,38,.72); color: #fff; font-size: 12px; } .pic .zoom svg { width: 13px !important; height: 13px !important; }
+.mk { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: var(--brand); color: #fff; font: 700 12px/22px Manrope, sans-serif; text-align: center; box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(16,24,40,.28); }
+.fig figcaption { margin-top: 8px; font-size: 12px; color: var(--ink-3); text-align: center; }
+.legend { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 28px; font-size: 13px; line-height: 20px; }
+.legend li { display: flex; gap: 8px; } .legend i { flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; background: var(--brand-soft); color: var(--brand-ink); font: 700 11px/18px Manrope, sans-serif; font-style: normal; text-align: center; }
+.legend b { font-weight: 600; margin-right: 4px; }
+.steps { list-style: none; margin: 10px 0; padding: 0; counter-reset: st; }
+.steps li { position: relative; padding: 0 0 12px 34px; line-height: 24px; counter-increment: st; }
+.steps li::before { content: counter(st); position: absolute; left: 0; top: 1px; width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px #c3cad5; color: var(--ink-2); font: 600 12px/22px Manrope, sans-serif; text-align: center; }
+.steps li::after { content: ""; position: absolute; left: 11px; top: 27px; bottom: 2px; width: 1px; background: var(--line); } .steps li:last-child::after { display: none; }
+.tip { margin: 14px 0; padding: 2px 0 2px 14px; border-left: 2px solid var(--brand); line-height: 24px; } .tip > b:first-child { color: var(--brand-ink); margin-right: 8px; }
+.tip.warn { border-left-color: #c77a12; } .tip.warn > b:first-child { color: var(--warn); }
+.kbd { display: inline-block; padding: 0 5px; border: 1px solid #c8cfda; border-bottom-width: 2px; border-radius: 4px; font-size: 12px; line-height: 18px; color: var(--ink-2); }
+.lk { color: var(--brand-ink); }
+.mt { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 13px; line-height: 20px; }
+.mt th { text-align: left; padding: 8px 12px; background: #f8f9fb; color: var(--ink-2); font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.mt td { padding: 9px 12px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+.mt td.k { white-space: nowrap; font-weight: 600; }
+.mt.grid td, .mt.grid th { text-align: center; } .mt.grid td:first-child, .mt.grid th:first-child { text-align: left; }
+.chip { display: inline-block; padding: 0 7px; border-radius: 4px; font-size: 12px; line-height: 20px; white-space: nowrap; }
+.chip.good { background: var(--ok-wash); color: var(--ok); } .chip.ok { background: #eef0f3; color: var(--ink-2); } .chip.bad { background: var(--warn-wash); color: var(--warn); } .chip.sev { background: var(--bad-wash); color: var(--bad); }
+.pager { display: flex; justify-content: space-between; margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-3); } .pager b { display: block; color: var(--brand-ink); font-size: 14px; font-weight: 600; }
+.flag { font-size: 12px; color: var(--bad); white-space: nowrap; } .flag::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--bad); vertical-align: 1px; }
+
+/* 图解 */
+.dg { display: block; width: 100%; height: auto; margin: 4px 0 0; }
+.dg text { font-size: 13px; fill: #161c26; font-family: Manrope, "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; }
+.dg .sm { font-size: 12px; fill: #5e6a7b; } .dg .b { font-weight: 600; } .dg .w { fill: #fff; } .dg .bi { fill: #174aa8; } .dg .okc { fill: #1a7445; } .dg .wn { fill: #9a5200; } .dg .bd { fill: #b8302a; } .dg .mu { fill: #9aa3b0; }
+.dg .box { fill: #fff; stroke: #c8cfda; } .dg .soft { fill: #e8effc; stroke: #b9cdf3; } .dg .pane { fill: #f8f9fb; } .dg .line { stroke: #9aa3b0; stroke-width: 1.5; fill: none; } .dg .dash { stroke: #c8cfda; stroke-dasharray: 4 4; fill: none; }
+
+/* PDF 示意 */
+.pages { display: flex; gap: 24px; flex-wrap: wrap; }
+.a4 { width: 300px; height: 424px; background: #fff; border: 1px solid #d6dce5; border-radius: 4px; box-shadow: 0 8px 24px -12px rgba(16,24,40,.25); padding: 30px 28px; font-size: 9px; line-height: 15px; color: #161c26; position: relative; overflow: hidden; }
+.a4 .pg { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center; color: #9aa3b0; font-size: 8px; }
+.a4 h4 { margin: 0 0 6px; font-size: 13px; } .a4 h5 { margin: 10px 0 4px; font-size: 10px; } .a4 p { margin: 4px 0; color: #465163; }
+.a4.cover { display: flex; flex-direction: column; justify-content: center; padding: 40px 34px; }
+.a4.cover .mark { width: 34px; height: 34px; border-radius: 8px; margin-bottom: 18px; } .a4.cover .mark svg { width: 20px !important; height: 20px !important; }
+.a4.cover b { font-size: 12px; color: #465163; } .a4.cover strong { display: block; font-size: 22px; line-height: 30px; margin: 6px 0 10px; } .a4.cover small { color: #5e6a7b; font-size: 9px; }
+.a4 ol { margin: 6px 0 0; padding-left: 14px; } .a4 ol li { margin: 3px 0; } .a4 ol li span { color: #9aa3b0; }
+.a4 img { width: 100%; border: 1px solid #e3e7ee; border-radius: 3px; margin: 4px 0; }
+</style>
+</head>
+<body>
+<div class="doc">
+<h1>使用帮助：做成操作手册<span class="tag">设计稿 · 待确认</span></h1>
+<p class="lede">侧栏底部的“使用帮助”现在点了没有反应。把它做成平台内的操作手册：学生、教师、管理员各一本，讲清每个页面怎么用；另用一章讲清 AI 买家是怎么工作的（买家怎么来、怎么判断客服的回复、什么时候走、星级和成绩怎么算），配截图和图解。手册可整本导出 PDF，当验收资料里的“客户端操作手册”（参数 4.3.3）。</p>
+
+<h2>一、问题诊断</h2>
+<table class="t">
+<tr><th>现在</th><th>问题</th><th>改法</th></tr>
+<tr><td>“使用帮助”是个空按钮</td><td>学生、老师第一次用不知道从哪开始；验收资料要“客户端操作手册”，D-14 还定过手册要写 SmartScreen 放行步骤，目前都没有</td><td>点开在内容区打开手册（和切换页面一样），按登录身份打开对应的一本；目录 + 正文，一次看一章</td></tr>
+<tr><td>AI 买家的去留、星级对学生是黑盒</td><td>“买家为什么突然走了”“为什么只给 2 星”“为什么这句算敷衍”，问号浮层只讲口径，讲不了机制</td><td>单独一章讲 AI 买家：画像怎么拼、两本账、每条回复怎么判、什么时候走、催促、星级、评分。三本手册共用这一章</td></tr>
+<tr><td>老师配置和买家行为对不上号</td><td>进线方式、买家范围、剧本、限时改了会怎样，只能自己试</td><td>教师手册在对应步骤里说清影响，并链接到 AI 买家那一章的相应小节</td></tr>
+<tr><td>口径散在各页的问号里</td><td>单看都对，但没有一个从头讲到尾的地方</td><td>手册集中讲；页面上的问号保持不变</td></tr>
+</table>
+
+<h2>二、改前</h2>
+<img class="before" src="assets/before.png" alt="改前：侧栏底部的使用帮助">
+<p class="note">用户圈出的位置：侧栏底部“使用帮助”，点了没有任何反应。</p>
+
+<h2>三、改后：手册怎么打开、怎么看 <small>学生端 · 1440 × 900</small></h2>
+<div class="frame" data-h="900"><div class="screen s">
+  <div class="app">
+    <nav class="side">
+      <div class="brand"><span class="mark"><i data-lucide="headset" class="ic"></i></span>跨境电商客服AI实训平台</div>
+      <div class="nav"><i data-lucide="layout-dashboard" class="ic"></i>任务大厅</div>
+      <div class="nav"><i data-lucide="graduation-cap" class="ic"></i>我的记录</div>
+      <div class="navlabel"><span class="shop"><i data-lucide="store" class="ic"></i></span>店铺后台 · Aurora Mart</div>
+      <div class="nav"><i data-lucide="message-square-more" class="ic"></i>客服工作台</div>
+      <div class="nav"><i data-lucide="package-search" class="ic"></i>订单</div>
+      <div class="nav"><i data-lucide="star" class="ic"></i>评价</div>
+      <div class="nav"><i data-lucide="mail" class="ic"></i>邮件</div>
+      <div class="side-foot"><div class="nav on"><i data-lucide="book-open-check" class="ic"></i>使用帮助</div><div class="nav"><i data-lucide="panel-left-close" class="ic"></i>收起侧栏</div></div>
+    </nav>
+    <div class="main">
+      <header class="head"><h1>使用帮助</h1><span class="notice"><i data-lucide="megaphone" class="ic"></i>暂无公告</span><div class="right"><i data-lucide="bell" class="ic"></i><span class="av">张</span>张三 <i data-lucide="chevron-down" class="ic"></i></div></header>
+      <div class="hb">
+        <aside class="toc">
+          <div class="toc-head"><b>学生端操作手册</b><small>2026 年 10 月版 · <span class="pdf"><i data-lucide="download" class="ic"></i>导出 PDF</span></small></div>
+          <ol>
+            <li class="ch on"><span class="n">1</span>开始使用</li>
+            <li class="secs"><span>安装客户端</span><span>登录与改密码</span><span class="on">认识界面</span><span>个人资料</span></li>
+            <li class="ch"><span class="n">2</span>任务大厅</li>
+            <li class="ch"><span class="n">3</span>客服工作台</li>
+            <li class="ch"><span class="n">4</span>订单</li>
+            <li class="ch"><span class="n">5</span>评价</li>
+            <li class="ch"><span class="n">6</span>邮件</li>
+            <li class="ch"><span class="n">7</span>我的记录</li>
+            <li class="ch"><span class="n">8</span>AI 买家是怎么工作的</li>
+            <li class="ch"><span class="n">9</span>常见问题</li>
+          </ol>
+        </aside>
+        <article class="paper">
+          <div class="crumb">学生端操作手册 › 1 开始使用</div>
+          <h2 style="margin-top:4px"><span class="no">1.3</span>认识界面</h2>
+          <p>登录后先到“任务大厅”。左边是侧栏，分上下两组：上面是学习区，做任务、看成绩；下面是店铺后台，接待买家。右上角是消息和你的头像。</p>
+          <figure class="fig">
+            <div class="pic"><img src="assets/hall.png" alt="任务大厅">
+              <span class="mk" style="left:15.6%;top:3.1%">1</span>
+              <span class="mk" style="left:13.6%;top:10.8%">2</span>
+              <span class="mk" style="left:13.6%;top:27.6%">3</span>
+              <span class="mk" style="left:9.6%;top:92.1%">4</span>
+              <span class="mk" style="left:19.4%;top:10.4%">5</span>
+              <span class="mk" style="left:89%;top:8.6%">6</span>
+              <span class="mk" style="left:94.6%;top:8.6%">7</span>
+              <span class="zoom"><i data-lucide="maximize-2" class="ic"></i>点击放大</span>
+            </div>
+            <figcaption>图 1-3　学生端界面（任务大厅）</figcaption>
+          </figure>
+          <ol class="legend">
+            <li><i>1</i><span><b>平台名称</b>学校可在管理端改名</span></li>
+            <li><i>2</i><span><b>学习区</b>任务大厅做任务，我的记录看成绩和复盘</span></li>
+            <li><i>3</i><span><b>店铺后台</b>客服工作台、订单、评价、邮件；点店名看店铺资料</span></li>
+            <li><i>4</i><span><b>使用帮助</b>打开本手册</span></li>
+            <li><i>5</i><span><b>页面内容</b>这里是任务大厅</span></li>
+            <li><i>6</i><span><b>消息</b>老师发给你的指导，点开跳到那位买家</span></li>
+            <li><i>7</i><span><b>头像菜单</b>个人资料、修改密码、退出登录</span></li>
+          </ol>
+          <div class="tip"><b>提示</b>店铺后台的页面和真实店铺的客服软件一样，不显示页名、不显示老师公告；老师的公告只出现在学习区的顶栏。</div>
+        </article>
+      </div>
+    </div>
+  </div>
+</div></div>
+<p class="cap"><b>入口</b>：侧栏底部“使用帮助”点开后，内容区换成手册，侧栏这一项选中，顶栏页名“使用帮助”；切回别的页面和平时一样。<b>目录</b>在左边，当前章展开到小节，随正文滚动高亮；<b>正文</b>是一张白纸、限宽 860，一次看一章，底部“上一章 / 下一章”。<b>截图</b>上用蓝色编号标出位置，下面按编号说明；点截图放大看。<b>提示</b>用蓝色左线、<b>注意</b>用橙色左线，不加边框。</p>
+
+<h2>四、样章一：客服工作台 <small>学生手册第 3 章开头 · 原样大小</small></h2>
+<div class="frame" data-h="1720"><div class="screen s">
+  <div class="app">
+    <nav class="side">
+      <div class="brand"><span class="mark"><i data-lucide="headset" class="ic"></i></span>跨境电商客服AI实训平台</div>
+      <div class="nav"><i data-lucide="layout-dashboard" class="ic"></i>任务大厅</div>
+      <div class="nav"><i data-lucide="graduation-cap" class="ic"></i>我的记录</div>
+      <div class="navlabel"><span class="shop"><i data-lucide="store" class="ic"></i></span>店铺后台 · Aurora Mart</div>
+      <div class="nav"><i data-lucide="message-square-more" class="ic"></i>客服工作台</div>
+      <div class="nav"><i data-lucide="package-search" class="ic"></i>订单</div>
+      <div class="nav"><i data-lucide="star" class="ic"></i>评价</div>
+      <div class="nav"><i data-lucide="mail" class="ic"></i>邮件</div>
+      <div class="side-foot"><div class="nav on"><i data-lucide="book-open-check" class="ic"></i>使用帮助</div><div class="nav"><i data-lucide="panel-left-close" class="ic"></i>收起侧栏</div></div>
+    </nav>
+    <div class="main">
+      <header class="head"><h1>使用帮助</h1><span class="notice"><i data-lucide="megaphone" class="ic"></i>暂无公告</span><div class="right"><i data-lucide="bell" class="ic"></i><span class="av">张</span>张三 <i data-lucide="chevron-down" class="ic"></i></div></header>
+      <div class="hb">
+        <aside class="toc">
+          <div class="toc-head"><b>学生端操作手册</b><small>2026 年 10 月版 · <span class="pdf"><i data-lucide="download" class="ic"></i>导出 PDF</span></small></div>
+          <ol>
+            <li class="ch"><span class="n">1</span>开始使用</li>
+            <li class="ch"><span class="n">2</span>任务大厅</li>
+            <li class="ch on"><span class="n">3</span>客服工作台</li>
+            <li class="secs"><span class="on">界面一览</span><span>接待一位买家</span><span>买家怎么进线</span><span>回复的几种方式</span><span>发商品、优惠券、订单</span><span>客户资料与标记</span><span>结束接待以后</span><span>客服状态与今日数据</span></li>
+            <li class="ch"><span class="n">4</span>订单</li>
+            <li class="ch"><span class="n">5</span>评价</li>
+            <li class="ch"><span class="n">6</span>邮件</li>
+            <li class="ch"><span class="n">7</span>我的记录</li>
+            <li class="ch"><span class="n">8</span>AI 买家是怎么工作的</li>
+            <li class="ch"><span class="n">9</span>常见问题</li>
+          </ol>
+        </aside>
+        <article class="paper">
+          <div class="crumb">学生端操作手册</div>
+          <h1>3　客服工作台</h1>
+          <p class="lead">工作台是接待海外买家的地方，和真实店铺的客服软件一样：左边会话列表，中间聊天，右边是客户资料、订单、商品和优惠券。买家由 AI 扮演，按老师设定的节奏陆续进线；做任务时同一时间最多接待 3 位。</p>
+          <h2><span class="no">3.1</span>界面一览</h2>
+          <figure class="fig">
+            <div class="pic"><img src="assets/workbench.png" alt="客服工作台">
+              <span class="mk" style="left:19.7%;top:5.6%">1</span>
+              <span class="mk" style="left:31.2%;top:5.6%">2</span>
+              <span class="mk" style="left:67.7%;top:5.6%">3</span>
+              <span class="mk" style="left:82.6%;top:5.6%">4</span>
+              <span class="mk" style="left:23.6%;top:19.3%">5</span>
+              <span class="mk" style="left:50.5%;top:26.3%">6</span>
+              <span class="mk" style="left:38.6%;top:82.4%">7</span>
+              <span class="mk" style="left:69.6%;top:9.4%">8</span>
+              <span class="mk" style="left:91.8%;top:9.6%">9</span>
+              <span class="mk" style="left:91.6%;top:35.3%">10</span>
+              <span class="zoom"><i data-lucide="maximize-2" class="ic"></i>点击放大</span>
+            </div>
+            <figcaption>图 3-1　客服工作台（示例数据）</figcaption>
+          </figure>
+          <ol class="legend">
+            <li><i>1</i><span><b>客服状态</b>在线可接待；小休只接待手上的买家，不进新买家；离线不能收发消息</span></li>
+            <li><i>2</i><span><b>今日数据</b>今日接待、平均响应、未回复、满意率，点 ˅ 看更多</span></li>
+            <li><i>3</i><span><b>任务条</b>这位买家属于哪个任务、做到第几个，点开看任务要求</span></li>
+            <li><i>4</i><span><b>剩余时间</b>这一次接待还剩多久，老师设了限时才显示</span></li>
+            <li><i>5</i><span><b>会话列表</b>“等你回复”排在最前，红色计时是买家已经等了多久</span></li>
+            <li><i>6</i><span><b>聊天区</b>买家消息下点“播报”听原声，点“翻译”看中文</span></li>
+            <li><i>7</i><span><b>输入区</b>表情、图片、视频、文件、快捷短语、译成买家语言、按住说话</span></li>
+            <li><i>8</i><span><b>待跟进、结束会话</b>鼠标移上去有说明</span></li>
+            <li><i>9</i><span><b>客户资料</b>客户标签、历史订单、客户备注；标签由系统按订单打</span></li>
+            <li><i>10</i><span><b>订单 / 商品 / 优惠券</b>查订单、看商品详情，点“发送”发卡片</span></li>
+          </ol>
+          <h2><span class="no">3.2</span>接待一位买家</h2>
+          <ol class="steps">
+            <li>在任务大厅点任务的“进入工作台”。第一位买家进线，先发来消息，聊天区出现“会话已分配给你”。</li>
+            <li>在会话列表点开买家。等得最久的排在最前，计时超过 1 分钟变红。</li>
+            <li>读完买家的消息。看不懂点“翻译”，想听原声点“播报”。</li>
+            <li>在输入框写回复，按 <span class="kbd">Enter</span> 发送，<span class="kbd">Shift</span> + <span class="kbd">Enter</span> 换行。可以先写中文，再点“译成英语”换成买家的语言。</li>
+            <li>要报商品参数、发优惠券或订单时，在右栏查好，点“发送”发出卡片。</li>
+            <li>事情办完买家会自己离开，聊天区出现“客户已离开”和买家打的星。也可以点会话头的“结束会话”提前结束。</li>
+          </ol>
+          <div class="tip"><b>提示</b>连发两三条也没关系：买家会把它们当成一轮，看完一起回。买家正在输入时，你照样可以打字、发文字。</div>
+          <div class="tip warn"><b>注意</b>买家发来消息后一直不回，买家约 2 分钟会催一次，约 10 分钟会留言离开（性子急的更快），这样离开算失望离开，最多 2 星。见 <span class="lk">8.6 客服不回复时</span>。</div>
+          <div class="pager"><span>上一章<b>2 任务大厅</b></span><span style="text-align:right">下一章<b>4 订单</b></span></div>
+        </article>
+      </div>
+    </div>
+  </div>
+</div></div>
+<p class="cap">截图用<b>示例数据</b>：截图脚本在浏览器里替换几条接口的返回（会话、消息、订单、今日数据），画面和真实页面一模一样，但不写开发库、不调用模型。开发库里现有的会话大多是“故意答差”的测试，放进手册会误导学生。</p>
+
+<h2>五、样章二：AI 买家是怎么工作的 <small>三本手册共用 · 下面是这一章在正文区的样子（宽 860，原样大小）</small></h2>
+<p class="lede">内容全部按现在的代码写（D-33、D-40、D-50、D-54、D-90 等），数字已核对。示例里的买家、订单都是编的，不出现任何内置场景的剧本原文和任务的买家范围。表里的“能忍几次”“星级”“响应时效得分”在页面里由系统规则直接算出来显示，规则改了手册跟着变。</p>
+<div style="max-width:860px" class="s">
+<article class="paper full">
+<div class="crumb">学生端操作手册</div>
+<h1>8　AI 买家是怎么工作的</h1>
+<p class="lead">平台里的每位买家都由 AI（大语言模型）现场扮演：没有固定话术，也不按关键词回复。买家有自己的身份和脾气，带着要办的事来，看客服怎么回，自己决定接下来说什么、什么时候走。这一章按一次接待的顺序讲。</p>
+
+<svg class="dg" viewBox="0 0 780 352" role="img" aria-label="一次接待的全过程">
+  <defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#9aa3b0"/></marker></defs>
+  <text x="0" y="55" class="sm b">开始前</text><text x="0" y="171" class="sm b">接待中</text><text x="0" y="303" class="sm b">结束后</text>
+  <g><rect x="70" y="20" width="208" height="60" rx="8" class="box"/><circle cx="90" cy="40" r="10" fill="#1d5fd1"/><text x="90" y="44" class="w b" text-anchor="middle" style="font-size:11px">1</text><text x="108" y="45" class="b">现场生成一位买家</text><text x="108" y="66" class="sm">画像、语言、订单、商品资料</text></g>
+  <g><rect x="300" y="20" width="208" height="60" rx="8" class="box"/><circle cx="320" cy="40" r="10" fill="#1d5fd1"/><text x="320" y="44" class="w b" text-anchor="middle" style="font-size:11px">2</text><text x="338" y="45" class="b">定下两本账</text><text x="338" y="66" class="sm">来办的事 · 还能忍几次</text></g>
+  <g><rect x="530" y="20" width="208" height="60" rx="8" class="box"/><circle cx="550" cy="40" r="10" fill="#1d5fd1"/><text x="550" y="44" class="w b" text-anchor="middle" style="font-size:11px">3</text><text x="568" y="45" class="b">买家先开口</text><text x="568" y="66" class="sm">说出来意</text></g>
+  <path d="M278 50H296" class="line" marker-end="url(#a1)"/><path d="M508 50H526" class="line" marker-end="url(#a1)"/><path d="M634 80V132" class="line" marker-end="url(#a1)"/>
+  <g><rect x="70" y="136" width="406" height="60" rx="8" class="soft"/><circle cx="90" cy="156" r="10" fill="#1d5fd1"/><text x="90" y="160" class="w b" text-anchor="middle" style="font-size:11px">5</text><text x="108" y="161" class="b">买家先判断客服的回复、记账，再回复</text><text x="108" y="182" class="sm">后台观察员同时评估满意度和情绪</text></g>
+  <g><rect x="530" y="136" width="208" height="60" rx="8" class="box"/><circle cx="550" cy="156" r="10" fill="#1d5fd1"/><text x="550" y="160" class="w b" text-anchor="middle" style="font-size:11px">4</text><text x="568" y="161" class="b">客服回复</text><text x="568" y="182" class="sm">文字、语音、卡片</text></g>
+  <path d="M530 156H480" class="line" marker-end="url(#a1)"/><path d="M476 178H526" class="line" marker-end="url(#a1)"/>
+  <text x="738" y="216" class="sm" text-anchor="end">客服不回复时</text><text x="738" y="234" class="sm" text-anchor="end">约 2、5 分钟各催一次，约 10 分钟离开</text>
+  <path d="M151 196V264" class="line" marker-end="url(#a1)"/><text x="162" y="235" class="sm">买家离开，或接待结束</text>
+  <g><rect x="70" y="268" width="162" height="60" rx="8" class="box"/><circle cx="90" cy="288" r="10" fill="#1d5fd1"/><text x="90" y="292" class="w b" text-anchor="middle" style="font-size:11px">6</text><text x="108" y="293" class="b">接待结束</text><text x="108" y="314" class="sm">买家走或到时</text></g>
+  <g><rect x="248" y="268" width="162" height="60" rx="8" class="box"/><circle cx="268" cy="288" r="10" fill="#1d5fd1"/><text x="268" y="292" class="w b" text-anchor="middle" style="font-size:11px">7</text><text x="286" y="293" class="b">买家打星</text><text x="286" y="314" class="sm">1–5 星</text></g>
+  <g><rect x="426" y="268" width="162" height="60" rx="8" class="box"/><circle cx="446" cy="288" r="10" fill="#1d5fd1"/><text x="446" y="292" class="w b" text-anchor="middle" style="font-size:11px">8</text><text x="464" y="293" class="b">AI 评分和评语</text><text x="464" y="314" class="sm">八项能力</text></g>
+  <g><rect x="604" y="268" width="162" height="60" rx="8" class="box"/><circle cx="624" cy="288" r="10" fill="#1d5fd1"/><text x="624" y="292" class="w b" text-anchor="middle" style="font-size:11px">9</text><text x="642" y="293" class="b">买家给订单留评</text><text x="642" y="314" class="sm">已送达的订单</text></g>
+  <path d="M232 298H244" class="line" marker-end="url(#a1)"/><path d="M410 298H422" class="line" marker-end="url(#a1)"/><path d="M588 298H600" class="line" marker-end="url(#a1)"/>
+</svg>
+<figcaption class="sm" style="text-align:center;font-size:12px;color:#5e6a7b;margin:6px 0 0">图 8-1　一次接待里 AI 做的事</figcaption>
+
+<h2><span class="no">8.1</span>买家是怎么来的</h2>
+<p>每次买家进线，系统现场“拼”出一位买家，开始前谁也不知道会来谁。一位买家由三部分组成：</p>
+<svg class="dg" viewBox="0 0 780 312" role="img" aria-label="一位买家由三部分拼成">
+  <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9aa3b0"/></marker></defs>
+  <rect x="0" y="0" width="470" height="80" rx="8" class="pane"/><text x="16" y="26" class="b">画像模板 · 这是哪一类买家</text>
+  <g transform="translate(16 40)"><rect width="76" height="24" rx="4" class="box"/><text x="38" y="16" text-anchor="middle" style="font-size:12px">个人消费者</text>
+    <rect x="84" width="76" height="24" rx="4" class="box"/><text x="122" y="16" text-anchor="middle" style="font-size:12px">品质导向型</text>
+    <rect x="168" width="64" height="24" rx="4" class="box"/><text x="200" y="16" text-anchor="middle" style="font-size:12px">复购老客</text>
+    <rect x="240" width="172" height="24" rx="4" class="box"/><text x="326" y="16" text-anchor="middle" style="font-size:12px">看重：发票交期、退换政策</text></g>
+  <rect x="0" y="100" width="470" height="80" rx="8" class="pane"/><text x="16" y="126" class="b">每次随机 · 这一位是谁</text>
+  <g transform="translate(16 140)"><rect width="96" height="24" rx="4" class="box"/><text x="48" y="16" text-anchor="middle" style="font-size:12px">Emma Wilson</text>
+    <rect x="104" width="30" height="24" rx="4" class="box"/><text x="119" y="16" text-anchor="middle" style="font-size:12px">女</text>
+    <rect x="142" width="44" height="24" rx="4" class="box"/><text x="164" y="16" text-anchor="middle" style="font-size:12px">英国</text>
+    <rect x="194" width="68" height="24" rx="4" class="box"/><text x="228" y="16" text-anchor="middle" style="font-size:12px">理性谨慎</text>
+    <rect x="270" width="44" height="24" rx="4" class="box"/><text x="292" y="16" text-anchor="middle" style="font-size:12px">平静</text>
+    <rect x="322" width="104" height="24" rx="4" class="box"/><text x="374" y="16" text-anchor="middle" style="font-size:12px">说英语（英式）</text></g>
+  <rect x="0" y="200" width="470" height="80" rx="8" class="pane"/><text x="16" y="226" class="b">场景 · 这次为什么来</text>
+  <g transform="translate(16 240)"><rect width="92" height="24" rx="4" class="box"/><text x="46" y="16" text-anchor="middle" style="font-size:12px">订单进度跟进</text>
+    <rect x="100" width="48" height="24" rx="4" class="box"/><text x="124" y="16" text-anchor="middle" style="font-size:12px">剧本</text>
+    <rect x="156" width="126" height="24" rx="4" class="box"/><text x="219" y="16" text-anchor="middle" style="font-size:12px">关联订单（已发货）</text>
+    <rect x="290" width="64" height="24" rx="4" class="box"/><text x="322" y="16" text-anchor="middle" style="font-size:12px">历史订单</text>
+    <rect x="362" width="64" height="24" rx="4" class="box"/><text x="394" y="16" text-anchor="middle" style="font-size:12px">商品资料</text></g>
+  <path d="M470 40C496 40 494 128 516 128" class="line" marker-end="url(#a2)"/><path d="M470 140H516" class="line" marker-end="url(#a2)"/><path d="M470 240C496 240 494 152 516 152" class="line" marker-end="url(#a2)"/>
+  <rect x="520" y="12" width="260" height="256" rx="10" class="box"/>
+  <circle cx="550" cy="50" r="18" fill="#e8effc"/><text x="550" y="55" text-anchor="middle" class="bi b" style="font-size:15px">E</text>
+  <text x="578" y="46" class="b" style="font-size:14px">Emma Wilson</text><text x="578" y="66" class="sm">英国 · 说英语（英式）</text>
+  <path d="M536 86H764" stroke="#e3e7ee"/>
+  <text x="536" y="110" class="sm">哪一类</text><text x="596" y="110">品质导向型个人消费者</text>
+  <text x="536" y="134" class="sm">客户类型</text><text x="596" y="134">复购老客</text>
+  <text x="536" y="158" class="sm">脾气</text><text x="596" y="158">理性谨慎 · 进店时平静</text>
+  <text x="536" y="182" class="sm">来意</text><text x="596" y="182">包裹到哪了、哪天能到</text>
+  <text x="536" y="206" class="sm">顺带</text><text x="596" y="206">要发票；不合适怎么退</text>
+  <text x="536" y="230" class="sm">能忍</text><text x="596" y="230">4 次答得差的回复</text>
+  <text x="520" y="288" class="sm">工作台里只看得到头像、姓名、国籍和客户标签，</text><text x="520" y="306" class="sm">其余都在买家“心里”</text>
+</svg>
+<figcaption style="text-align:center;font-size:12px;color:#5e6a7b;margin:6px 0 0">图 8-2　一位买家由三部分拼成（示例）</figcaption>
+<table class="mt">
+<tr><th>画像里的项</th><th>可选值</th><th>影响买家什么</th></tr>
+<tr><td class="k">买家角色</td><td>个人消费者、礼品购买者、小B店主、批发采购商、企业采购、代购转售</td><td>身份、买多少</td></tr>
+<tr><td class="k">消费偏好</td><td>品质导向型、品牌口碑型、新奇尝鲜型、享受逛买型、价格敏感型、冲动下单型、选择困难型、习惯忠诚型<br><span style="color:#5e6a7b">依据 Sproles &amp; Kendall 消费者决策风格量表（1986）</span></td><td>怎么做决定：价格敏感型至少压一次价，选择困难型要客服帮着拿主意，品质导向型细问材质参数</td></tr>
+<tr><td class="k">客户类型</td><td>潜在意向客、复购老客、粉丝客、沉睡客</td><td>和店铺的关系；复购老客、粉丝客有历史订单，买家自己记得</td></tr>
+<tr><td class="k">关注点</td><td>价格优惠、物流时效、退换政策、材质参数、尺码合身、包装礼盒、售后保修、正品资质、批量价格、发票交期、新品（最多 3 个）</td><td>会顺带问到的事（见 8.3）</td></tr>
+<tr><td class="k">性格</td><td>理性谨慎、直接高效、友好健谈、敏感挑剔、犹豫保守</td><td>说话方式和耐心</td></tr>
+<tr><td class="k">进店情绪</td><td>平静、焦虑、不满、期待</td><td>开场的语气和耐心</td></tr>
+<tr><td class="k">国籍</td><td>美国、英国、加拿大、澳大利亚、德国、法国、西班牙、意大利、日本、巴西</td><td>姓名、头像、说哪种语言</td></tr>
+</table>
+<h3>每次进线时</h3>
+<ol class="steps">
+<li>按任务的“买家范围”筛出能抽的画像：老师可以限定客户类型、买家角色、消费偏好，或直接指定几个画像。筛选只缩小范围，不改画像本身。</li>
+<li>从筛出来的画像里随机抽一个。</li>
+<li>现场决定这一位是谁：性别各一半；姓名从这个国籍的常见姓名里取；头像大多是生活照（照片优先选同一地区的人），也有首字母和宠物风景。国籍、性格、进店情绪：老师在任务里勾了范围，就在范围里随机；没勾就用画像的默认值。</li>
+<li>定语言：说国籍的母语（德国买家说德语、巴西买家说葡萄牙语）。这门语言没有合适的朗读声音时，这位买家改说英语；老师在任务里指定了语言，就按老师的。</li>
+<li>按场景生成关联订单（待付款、待发货、运输中、清关、派送异常、已送达、差评、好评等）。售前没有订单，买家会对店里一件在售商品感兴趣。复购老客、粉丝客、沉睡客还有一两笔历史订单，潜在意向客没有。</li>
+<li>把这件商品在店里的真实资料（规格、价格、物流、售后、常见问题）交给买家，买家据此判断客服说得对不对。</li>
+</ol>
+<div class="tip"><b>提示</b>工作台右栏的“客户标签”（粉丝、大订单客户、普通客户、沉睡客户、新客）是系统按订单自动打的，和画像里的“客户类型”是两回事：前者是店铺看到的，后者是买家的真实身份。</div>
+
+<h2><span class="no">8.2</span>买家带着剧本来</h2>
+<p>每个场景都有一份剧本，只给 AI 买家看，学生端任何地方都不显示。买家照剧本行事，但不会把它说出来。</p>
+<table class="mt">
+<tr><th>剧本里的项</th><th>作用</th></tr>
+<tr><td class="k">买家目标</td><td>这次来要办成什么，也就是买家的“主要的事”</td></tr>
+<tr><td class="k">隐藏信息</td><td>不会主动说，客服问到点子上才说</td></tr>
+<tr><td class="k">情绪触发点</td><td>哪些做法让买家更不满，哪些让买家缓和</td></tr>
+<tr><td class="k">让步底线</td><td>最多能接受到什么程度，不会一开始就说</td></tr>
+<tr><td class="k">结束条件</td><td>满意时怎么收尾（下单、改评、撤纠纷），失望时怎么走（差评、开纠纷、取消订单）</td></tr>
+</table>
+<div class="tip"><b>提示</b>隐藏信息往往决定方案对不对：真正的用途、预算、期限、问题的实际情况。多问一句“方便说下用在哪 / 什么时候要吗”，常常就是解题的关键，评分时也算“客户沟通有效性”。</div>
+
+<h2><span class="no">8.3</span>两本账：来办的事、还能忍几次</h2>
+<p>买家心里有两本账。判断由买家自己做，次数由系统来数，不靠 AI 自己记。</p>
+<svg class="dg" viewBox="0 0 780 248" role="img" aria-label="两本账">
+  <text x="0" y="16" class="b" style="font-size:14px">事情账 · 来办的事</text>
+  <g transform="translate(0 32)"><rect width="500" height="38" rx="6" class="pane"/><circle cx="20" cy="19" r="10" fill="#fff" stroke="#c8cfda"/><text x="20" y="23" text-anchor="middle" class="sm b">1</text><rect x="38" y="9" width="40" height="20" rx="4" fill="#e8effc"/><text x="58" y="23" text-anchor="middle" class="bi" style="font-size:12px">主要</text><text x="90" y="24">包裹现在到哪了、哪天能到</text><text x="486" y="24" text-anchor="end" class="okc b">办成</text></g>
+  <g transform="translate(0 78)"><rect width="500" height="38" rx="6" class="pane"/><circle cx="20" cy="19" r="10" fill="#fff" stroke="#c8cfda"/><text x="20" y="23" text-anchor="middle" class="sm b">2</text><rect x="38" y="9" width="40" height="20" rx="4" fill="#eef0f3"/><text x="58" y="23" text-anchor="middle" style="font-size:12px;fill:#465163">顺带</text><text x="90" y="24">要一张发票</text><text x="486" y="24" text-anchor="end" class="bi b">等客服回复</text></g>
+  <g transform="translate(0 124)"><rect width="500" height="38" rx="6" class="pane"/><circle cx="20" cy="19" r="10" fill="#fff" stroke="#c8cfda"/><text x="20" y="23" text-anchor="middle" class="sm b">3</text><rect x="38" y="9" width="40" height="20" rx="4" fill="#eef0f3"/><text x="58" y="23" text-anchor="middle" style="font-size:12px;fill:#465163">顺带</text><text x="90" y="24">不合适的话怎么退</text><text x="486" y="24" text-anchor="end" class="wn b">还没办 · 没答上 1 次</text></g>
+  <g transform="translate(0 170)"><rect width="500" height="38" rx="6" class="pane"/><circle cx="20" cy="19" r="10" fill="#fff" stroke="#c8cfda"/><text x="20" y="23" text-anchor="middle" class="sm b">4</text><rect x="38" y="9" width="40" height="20" rx="4" fill="#eef0f3"/><text x="58" y="23" text-anchor="middle" style="font-size:12px;fill:#465163">临时</text><text x="90" y="24">客服推荐的同款杯盖</text><text x="486" y="24" text-anchor="end" class="mu b">放弃</text></g>
+  <text x="0" y="236" class="sm">主要的事 1 件 · 顺带的事 0–3 件 · 临时冒出来的最多 2 件，只能由客服引出</text>
+  <text x="540" y="16" class="b" style="font-size:14px">耐心账 · 还能忍几次</text>
+  <rect x="540" y="34" width="50" height="62" rx="6" fill="#1d5fd1"/><rect x="598" y="34" width="50" height="62" rx="6" fill="#1d5fd1"/><rect x="656" y="34" width="50" height="62" rx="6" fill="#e3e7ee"/><rect x="714" y="34" width="50" height="62" rx="6" fill="#e3e7ee"/>
+  <text x="540" y="128" class="b" style="font-size:16px">还能忍 2 次</text><text x="540" y="150" class="sm">开始时 4 次，已经被扣了 2 次</text>
+  <text x="540" y="186" class="sm">售中 3 × 理性谨慎 1.2 × 平静 1.0 = 3.6</text><text x="540" y="206" class="sm">四舍五入，开始时能忍 4 次</text>
+</svg>
+<figcaption style="text-align:center;font-size:12px;color:#5e6a7b;margin:6px 0 0">图 8-3　买家的两本账（示例：上面那位 Emma）</figcaption>
+
+<h3>事情账：来办的事</h3>
+<ul class="dots">
+<li><b class="ui">主要的事 1 件</b>：剧本里的买家目标。</li>
+<li><b class="ui">顺带的事 0–3 件</b>：由消费偏好和关注点带出来。价格敏感型一定会要个优惠，选择困难型要客服帮着选；关注点里再随机抽几件，直接高效的买家抽得少（0–1 件），理性谨慎、敏感挑剔的抽得多（1–3 件）。只抽这个环节问得出口的事，售后投诉不会去问新品。</li>
+<li><b class="ui">临时冒出来的事</b>：最多 0–2 件，只能由客服引出（推荐了别的商品，或回答里带出新问题）。享受逛买型、冲动下单型、新奇尝鲜型最容易被带着走。</li>
+</ul>
+<table class="mt">
+<tr><th>每件事的状态</th><th>什么时候</th></tr>
+<tr><td class="k">还没办</td><td>还没拿到能用的答复</td></tr>
+<tr><td class="k">办成</td><td>拿到具体答复，或者一个能接受的方案、下一步（不必是保证）</td></tr>
+<tr><td class="k">等客服回复</td><td>客服说“我去核实一下再告诉您”，买家愿意等</td></tr>
+<tr><td class="k">放弃</td><td>同一件事问了两次，两次的回复都被判为“差”或“很差”。顺带的事放弃了就不再问；主要的事放弃，买家就走。客服反问订单号、答得不全（“一般”）不算没答上</td></tr>
+</table>
+
+<h3>耐心账：还能忍几次</h3>
+<p>能忍几次 = 环节基数 × 性格倍率 × 情绪倍率，四舍五入，最少 1 次、最多 4 次。</p>
+<ul class="dots">
+<li>环节基数：售前沟通、客户分层维护 2 次（换一家店很容易）；售中处理、售后处理 3 次（钱已经付了，没法一走了之）。</li>
+<li>性格倍率：友好健谈 1.4、理性谨慎 1.2、犹豫保守 1.1、直接高效 0.8、敏感挑剔 0.8。</li>
+<li>情绪倍率：期待 1.1、平静 1.0、焦虑 0.6、不满 0.6。</li>
+</ul>
+<table class="mt grid">
+<tr><th>能忍几次　售前、维护 / 售中、售后</th><th>平静</th><th>期待</th><th>焦虑</th><th>不满</th></tr>
+<tr><td>友好健谈</td><td>3 / 4</td><td>3 / 4</td><td>2 / 3</td><td>2 / 3</td></tr>
+<tr><td>理性谨慎</td><td>2 / 4</td><td>3 / 4</td><td>1 / 2</td><td>1 / 2</td></tr>
+<tr><td>犹豫保守</td><td>2 / 3</td><td>2 / 4</td><td>1 / 2</td><td>1 / 2</td></tr>
+<tr><td>直接高效</td><td>2 / 2</td><td>2 / 3</td><td>1 / 1</td><td>1 / 1</td></tr>
+<tr><td>敏感挑剔</td><td>2 / 2</td><td>2 / 3</td><td>1 / 1</td><td>1 / 1</td></tr>
+</table>
+
+<h3>每一轮回复怎么判</h3>
+<p>客服每回复一轮（连发的几条算一轮），买家先在心里判一次，客服看不到。</p>
+<table class="mt">
+<tr><th>判断</th><th>什么样的回复</th><th>耐心</th></tr>
+<tr><td class="k"><span class="chip good">好</span></td><td>用具体事实或可行的方案回答了买家问的事；或者道歉并改正了错误</td><td>加回 1 次，不超过开始时</td></tr>
+<tr><td class="k"><span class="chip ok">一般</span></td><td>能接受，但不完整</td><td>不变</td></tr>
+<tr><td class="k"><span class="chip bad">差</span></td><td>答非所问、套话敷衍、含糊不给具体信息、问了不答、让买家自己去查、让买家把说过的再说一遍、夸大宣传、前后说法不一</td><td>减 1 次</td></tr>
+<tr><td class="k"><span class="chip sev">很差</span></td><td>态度生硬、推卸责任怪买家、施压强推、要求删差评或撤纠纷、引导站外交易、关键信息（价格、退款、时效）说错还坚持</td><td>减 2 次</td></tr>
+<tr><td class="k"><span class="chip bad">回得太慢</span></td><td>买家等不到回复，催了一次</td><td>减 1 次</td></tr>
+</table>
+<p>只剩 1 次时，买家会把不满直接说出来；减到 0，这一条就是告别。</p>
+<svg class="dg" viewBox="0 0 780 196" role="img" aria-label="耐心怎么变">
+  <g class="sm b"><text x="56" y="14" text-anchor="middle">开始</text><text x="186" y="14" text-anchor="middle">第 1 轮</text><text x="316" y="14" text-anchor="middle">第 2 轮</text><text x="446" y="14" text-anchor="middle">第 3 轮</text><text x="576" y="14" text-anchor="middle">第 4 轮</text><text x="706" y="14" text-anchor="middle">第 5 轮</text></g>
+  <text x="56" y="45" text-anchor="middle" class="mu">—</text>
+  <rect x="160" y="28" width="52" height="24" rx="4" fill="#eef0f3"/><text x="186" y="45" text-anchor="middle" style="font-size:12px;fill:#465163">一般</text>
+  <rect x="270" y="28" width="92" height="24" rx="4" fill="#fdf0dc"/><text x="316" y="45" text-anchor="middle" class="wn" style="font-size:12px">差 · 敷衍含糊</text>
+  <rect x="426" y="28" width="40" height="24" rx="4" fill="#e3f4ea"/><text x="446" y="45" text-anchor="middle" class="okc" style="font-size:12px">好</text>
+  <rect x="524" y="28" width="104" height="24" rx="4" fill="#fbe8e6"/><text x="576" y="45" text-anchor="middle" class="bd" style="font-size:12px">很差 · 推卸责任</text>
+  <rect x="660" y="28" width="92" height="24" rx="4" fill="#fdf0dc"/><text x="706" y="45" text-anchor="middle" class="wn" style="font-size:12px">差 · 问了不答</text>
+  <g id="pips"></g>
+  <g fill="#1d5fd1">
+    <rect x="22" y="70" width="20" height="12" rx="2"/><rect x="46" y="70" width="20" height="12" rx="2"/><rect x="70" y="70" width="20" height="12" rx="2"/>
+    <rect x="152" y="70" width="20" height="12" rx="2"/><rect x="176" y="70" width="20" height="12" rx="2"/><rect x="200" y="70" width="20" height="12" rx="2"/>
+    <rect x="282" y="70" width="20" height="12" rx="2"/><rect x="306" y="70" width="20" height="12" rx="2"/><rect x="330" y="70" width="20" height="12" rx="2" fill="#e3e7ee"/>
+    <rect x="412" y="70" width="20" height="12" rx="2"/><rect x="436" y="70" width="20" height="12" rx="2"/><rect x="460" y="70" width="20" height="12" rx="2"/>
+    <rect x="542" y="70" width="20" height="12" rx="2"/><rect x="566" y="70" width="20" height="12" rx="2" fill="#e3e7ee"/><rect x="590" y="70" width="20" height="12" rx="2" fill="#e3e7ee"/>
+    <rect x="672" y="70" width="20" height="12" rx="2" fill="#e3e7ee"/><rect x="696" y="70" width="20" height="12" rx="2" fill="#e3e7ee"/><rect x="720" y="70" width="20" height="12" rx="2" fill="#e3e7ee"/>
+  </g>
+  <g style="font-size:12px"><text x="56" y="106" text-anchor="middle">能忍 3 次</text><text x="186" y="106" text-anchor="middle">3 次</text><text x="316" y="106" text-anchor="middle">2 次</text><text x="446" y="106" text-anchor="middle">3 次（加回 1）</text><text x="576" y="106" text-anchor="middle" class="bd">1 次</text><text x="706" y="106" text-anchor="middle" class="bd">0 次</text></g>
+  <path d="M0 122H780" stroke="#edf0f4"/>
+  <g class="sm"><text x="56" y="146" text-anchor="middle">说出来意</text><text x="186" y="146" text-anchor="middle">接着问</text><text x="316" y="146" text-anchor="middle">追问细节</text><text x="446" y="146" text-anchor="middle">语气缓和</text><text x="576" y="146" text-anchor="middle">直接说出不满</text><text x="706" y="146" text-anchor="middle" class="bd">这一条就告别</text><text x="706" y="164" text-anchor="middle" class="bd">失望离开</text></g>
+  <text x="0" y="190" class="sm">示例：售后处理、平静、犹豫保守的买家，开始时能忍 3 次（3 × 1.1 × 1.0 = 3.3）</text>
+</svg>
+<figcaption style="text-align:center;font-size:12px;color:#5e6a7b;margin:6px 0 0">图 8-4　耐心怎么变（示例）</figcaption>
+
+<h2><span class="no">8.4</span>每一条回复是怎么生成的</h2>
+<svg class="dg" viewBox="0 0 780 300" role="img" aria-label="一条回复是怎么生成的">
+  <defs><marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#465163"/></marker></defs>
+  <rect x="40" y="0" width="140" height="34" rx="6" class="box"/><text x="110" y="22" text-anchor="middle" class="b">客服（工作台）</text>
+  <rect x="320" y="0" width="140" height="34" rx="6" class="soft"/><text x="390" y="22" text-anchor="middle" class="b">平台</text>
+  <rect x="600" y="0" width="140" height="34" rx="6" class="box"/><text x="670" y="22" text-anchor="middle" class="b">AI 买家</text>
+  <path d="M110 34V296M390 34V296M670 34V296" class="dash"/>
+  <path d="M110 66H384" stroke="#465163" stroke-width="1.5" marker-end="url(#a5)"/><text x="122" y="58" style="font-size:12px">① 发出一条消息</text>
+  <path d="M390 116H664" stroke="#465163" stroke-width="1.5" marker-end="url(#a5)"/><text x="402" y="96" style="font-size:12px">② 买家资料、剧本、订单、完整聊天</text><text x="402" y="110" style="font-size:12px">+ 还有哪几件事、还能忍几次</text>
+  <path d="M670 166H396" stroke="#465163" stroke-width="1.5" marker-end="url(#a5)"/><text x="658" y="146" text-anchor="end" style="font-size:12px">③ 先写一段判断，再写回复</text><text x="658" y="160" text-anchor="end" class="sm">〔好 · 第 1 件办成 · 不走〕Great, that's a relief…</text>
+  <rect x="300" y="186" width="180" height="40" rx="6" class="soft"/><text x="390" y="203" text-anchor="middle" style="font-size:12px">④ 截下判断，记账、数次数</text><text x="390" y="219" text-anchor="middle" class="sm">这段判断客服看不到</text>
+  <path d="M390 262H116" stroke="#465163" stroke-width="1.5" marker-end="url(#a5)"/><text x="378" y="254" text-anchor="end" style="font-size:12px">⑤ 只推回复正文，一个字一个字地出现</text><text x="378" y="282" text-anchor="end" class="sm">一般 1 秒内出第一个字（要求 3 秒内）</text>
+</svg>
+<figcaption style="text-align:center;font-size:12px;color:#5e6a7b;margin:6px 0 0">图 8-5　一条回复是怎么生成的</figcaption>
+<ul class="dots">
+<li>下一轮，平台只告诉买家“还有几件事、还能忍几次”这两件事实，不把上次的理由塞回去，免得买家揪着旧账不放。</li>
+<li>按账该走了、这一条却没走的，下一条一定收尾。</li>
+<li>买家像在手机上打字：短句、口语，常常连发两三条。</li>
+<li>买家只认聊天里真实出现过的话；客服纠正了错误，买家会认，不会揪着不放。</li>
+<li>说到日期时按日历算：“3–5 个工作日”会换成具体日期，再和自己的期限比。</li>
+<li>买家只说自己的母语。客服打中文买家也看得懂，但回复里一个中文字都不会有（偶尔漏出来，平台会自动改写）。</li>
+<li>买家从不承认自己是 AI，也不会提“实训”。</li>
+</ul>
+
+<h2><span class="no">8.5</span>买家什么时候走</h2>
+<p>真实平台上客服不能挂断，只有买家决定什么时候走。</p>
+<table class="mt">
+<tr><th>情况</th><th>买家怎么做</th><th>打几星</th></tr>
+<tr><td class="k">来办的事都办成</td><td>道谢，说下一步（下单、等消息）后离开。有的买家不说再见、直接不回，约 2 分钟后显示“客户已离开”；直接高效的买家这样走的多（约三分之一），友好健谈的很少</td><td>至少 4 星</td></tr>
+<tr><td class="k">主要的办成，顺带的没谈妥</td><td>离开</td><td>3–4 星</td></tr>
+<tr><td class="k">主要的事在等客服回复</td><td>先离开，等客服的消息</td><td>按满意度</td></tr>
+<tr><td class="k">耐心用完，或主要的事两次没答上</td><td>失望离开。售前、客户维护的买家安静地走；售中、售后的买家走时说出后果（差评、开纠纷、取消订单）</td><td>最多 2 星</td></tr>
+<tr><td class="k">客服一直不回</td><td>催两次后留一句话离开（见 8.6）</td><td>最多 2 星</td></tr>
+</table>
+<p>其他结束方式：客服点“结束会话”；到了任务设的单次限时；2 小时没人说话；任务被结束或过了截止时间。客服说满 25 轮时，买家这一条一定收尾——这只是兜底，正常接待远到不了。</p>
+
+<h2><span class="no">8.6</span>客服不回复时</h2>
+<svg class="dg" viewBox="0 0 780 206" role="img" aria-label="催促和离开的时间">
+  <g class="sm"><text x="150" y="16" text-anchor="middle">0</text><text x="226" y="16" text-anchor="middle">2</text><text x="303" y="16" text-anchor="middle">4</text><text x="379" y="16" text-anchor="middle">6</text><text x="455" y="16" text-anchor="middle">8</text><text x="531" y="16" text-anchor="middle">10</text><text x="608" y="16" text-anchor="middle">12</text><text x="684" y="16" text-anchor="middle">14</text><text x="760" y="16" text-anchor="end">16 分钟</text></g>
+  <path d="M150 24V166M226 24V166M303 24V166M379 24V166M455 24V166M531 24V166M608 24V166M684 24V166M760 24V166" stroke="#f0f2f5"/>
+  <text x="0" y="56" style="font-size:12px">一般买家</text><text x="0" y="72" class="sm">倍率 1.0</text>
+  <path d="M150 62H531" stroke="#c8cfda" stroke-width="2"/><circle cx="226" cy="62" r="6" fill="#e0a54a"/><circle cx="341" cy="62" r="6" fill="#c77a12"/><rect x="525" y="56" width="12" height="12" rx="2" fill="#b8302a"/>
+  <text x="0" y="106" style="font-size:12px">焦虑、直接高效</text><text x="0" y="122" class="sm">倍率 0.48</text>
+  <path d="M150 112H333" stroke="#c8cfda" stroke-width="2"/><circle cx="187" cy="112" r="6" fill="#e0a54a"/><circle cx="242" cy="112" r="6" fill="#c77a12"/><rect x="327" y="106" width="12" height="12" rx="2" fill="#b8302a"/>
+  <text x="0" y="156" style="font-size:12px">期待、友好健谈</text><text x="0" y="172" class="sm">倍率 1.54</text>
+  <path d="M150 162H737" stroke="#c8cfda" stroke-width="2"/><circle cx="267" cy="162" r="6" fill="#e0a54a"/><circle cx="444" cy="162" r="6" fill="#c77a12"/><rect x="731" y="156" width="12" height="12" rx="2" fill="#b8302a"/>
+  <circle cx="156" cy="196" r="5" fill="#e0a54a"/><text x="166" y="200" class="sm">催一次，耐心 −1</text>
+  <circle cx="296" cy="196" r="5" fill="#c77a12"/><text x="306" y="200" class="sm">再催一次，耐心 −1，情绪转为不满</text>
+  <rect x="514" y="191" width="10" height="10" rx="2" fill="#b8302a"/><text x="530" y="200" class="sm">留一句话离开，算失望离开</text>
+</svg>
+<figcaption style="text-align:center;font-size:12px;color:#5e6a7b;margin:6px 0 0">图 8-6　买家最后一条消息之后，多久催、多久走</figcaption>
+<ul class="dots">
+<li>基准是约 2 分钟催一次、约 5 分钟再催、约 10 分钟离开，再乘耐心倍率（性格 × 买家当时的情绪）。焦虑、不满的买家走得快，友好健谈的买家等得久。</li>
+<li>从买家发来的最后一条消息开始计时，买家催的那两条不重新计时；客服一回复就重新开始。</li>
+<li>客服状态改成“小休”不会暂停计时。老师那边，买家等了 3 分钟以上，会出现在实时监控的“需介入”里。</li>
+</ul>
+
+<h2><span class="no">8.7</span>后台观察员</h2>
+<p>除了扮演买家的 AI，还有一个在后台旁观的 AI 观察员。买家每回复一轮，它评估一次：客服这一轮的表现分（0–100）、买家此刻的满意度（0–100）和情绪（平静、焦虑、不满、期待）、对话进行到哪一步（问题陈述、信息核实、方案协商、达成一致、僵持升级）。</p>
+<p>这些结果用在：老师实时监控里的实时得分和满意度走势（低于 40 会预警）、接待结束时买家打几星、AI 评分的参考、催促的快慢。观察员不指挥买家，也不往买家那边传任何话；买家怎么说、走不走，只由买家自己按两本账判断。</p>
+
+<h2><span class="no">8.8</span>接待结束以后</h2>
+<h3>买家打星</h3>
+<p>先按结束时的满意度换算星级，再按买家走的原因限定区间。满意率 = 4 星和 5 星的次数占比。</p>
+<svg class="dg" viewBox="0 0 780 234" role="img" aria-label="星级怎么定">
+  <g class="sm"><text x="220" y="14" text-anchor="middle">0</text><text x="355" y="14" text-anchor="middle">25</text><text x="463" y="14" text-anchor="middle">45</text><text x="598" y="14" text-anchor="middle">70</text><text x="679" y="14" text-anchor="middle">85</text><text x="760" y="14" text-anchor="middle">100</text></g>
+  <text x="0" y="39" style="font-size:12px">满意度换算</text>
+  <rect x="220" y="22" width="135" height="26" fill="#eef1f6"/><rect x="355" y="22" width="108" height="26" fill="#e1e7f1"/><rect x="463" y="22" width="135" height="26" fill="#cfdaee"/><rect x="598" y="22" width="81" height="26" fill="#a9c0ea"/><rect x="679" y="22" width="81" height="26" fill="#1d5fd1"/>
+  <g style="font-size:12px"><text x="287" y="40" text-anchor="middle">1 星</text><text x="409" y="40" text-anchor="middle">2 星</text><text x="530" y="40" text-anchor="middle">3 星</text><text x="638" y="40" text-anchor="middle">4 星</text><text x="719" y="40" text-anchor="middle" class="w b">5 星</text></g>
+  <text x="0" y="82" style="font-size:12px" class="b">失望离开</text><text x="0" y="98" class="sm">耐心用完 · 主要的事没办成 · 等不到回复</text>
+  <rect x="220" y="72" width="243" height="24" rx="12" fill="#fbe8e6"/><text x="341" y="89" text-anchor="middle" class="bd" style="font-size:12px">最多 2 星</text>
+  <text x="0" y="132" style="font-size:12px" class="b">主要的办成，顺带的没谈妥</text>
+  <rect x="463" y="120" width="216" height="24" rx="12" fill="#fdf0dc"/><text x="571" y="137" text-anchor="middle" class="wn" style="font-size:12px">3–4 星</text>
+  <text x="0" y="178" style="font-size:12px" class="b">来办的事都办成</text>
+  <rect x="598" y="166" width="162" height="24" rx="12" fill="#e3f4ea"/><text x="679" y="183" text-anchor="middle" class="okc" style="font-size:12px">至少 4 星</text>
+  <text x="0" y="222" style="font-size:12px" class="b">其他（在等回复、提前结束）</text>
+  <rect x="220" y="210" width="540" height="24" rx="12" fill="#f4f6f9" stroke="#e3e7ee"/><text x="490" y="227" text-anchor="middle" class="sm">按满意度，1–5 星</text>
+</svg>
+<figcaption style="text-align:center;font-size:12px;color:#5e6a7b;margin:6px 0 0">图 8-7　星级怎么定</figcaption>
+
+<h3>AI 评分：八项能力</h3>
+<table class="mt">
+<tr><th>能力</th><th>看什么</th><th>谁来评</th></tr>
+<tr><td class="k">服务话术规范</td><td>开场、确认、收尾话术是否到位，称呼和语气是否专业，礼仪是否符合买家所在国的习惯</td><td>AI</td></tr>
+<tr><td class="k">客户沟通有效性</td><td>先回应买家最关心的问题、一次说清；该问的信息（订单号、用途、预算）先问清再答；剧本里的隐藏信息有没有问出来</td><td>AI</td></tr>
+<tr><td class="k">客户情绪安抚</td><td>识别买家不满，先共情再给方案，买家情绪是否好转</td><td>AI</td></tr>
+<tr><td class="k">订单问题解决</td><td>方案可执行、写清时限和步骤；售前看是否推进到下单，售中售后看是否挽回取消、纠纷和差评</td><td>AI</td></tr>
+<tr><td class="k">商品信息准确性</td><td>规格、价格、物流时效、退换和运费政策是否和店铺资料一致，有没有乱承诺</td><td>AI</td></tr>
+<tr><td class="k">消息响应时效</td><td>首次响应和平均响应快不快，有没有让买家催促或等到离开</td><td>系统按消息时间算</td></tr>
+<tr><td class="k">语法准确性</td><td>外语拼写、语法、用词是否准确</td><td>AI</td></tr>
+<tr><td class="k">沟通用语合规</td><td>有无绝对化宣传、违规承诺、泄露隐私；命中违规词库明显扣分</td><td>AI</td></tr>
+</table>
+<p>评分时 AI 必须参考这些依据：违规词命中、观察员的逐轮得分、系统算的响应时效、买家怎么走的（总评第一句写清这次怎么结束、为什么）、客服说的规格价格政策和店铺资料是否一致、剧本结束条件对应的业务结果。</p>
+<svg class="dg" viewBox="0 0 780 214" role="img" aria-label="响应时效得分">
+  <path d="M60 20V180H760" stroke="#c8cfda" fill="none"/>
+  <g class="sm"><text x="52" y="24" text-anchor="end">100</text><text x="52" y="88" text-anchor="end">60</text><text x="52" y="184" text-anchor="end">0</text>
+    <text x="60" y="200" text-anchor="middle">0</text><text x="111" y="200" text-anchor="middle">45 秒</text><text x="162" y="200" text-anchor="middle">1.5 分</text><text x="264" y="200" text-anchor="middle">3 分</text><text x="468" y="200" text-anchor="middle">6 分</text><text x="740" y="200" text-anchor="middle">10 分钟</text></g>
+  <path d="M60 84H760" class="dash"/>
+  <path d="M196 20V180" stroke="#e0a54a" stroke-dasharray="3 3"/><text x="202" y="34" class="wn" style="font-size:12px">2 分钟：买家开始催</text>
+  <polyline points="60,20 111,20 162,44 264,84 468,132 740,180" fill="none" stroke="#1d5fd1" stroke-width="2.5" stroke-linejoin="round"/>
+  <g fill="#1d5fd1"><circle cx="111" cy="20" r="4"/><circle cx="162" cy="44" r="4"/><circle cx="264" cy="84" r="4"/><circle cx="468" cy="132" r="4"/><circle cx="740" cy="180" r="4"/></g>
+  <g style="font-size:12px"><text x="118" y="16">满分</text><text x="170" y="56">85</text><text x="272" y="100">60</text><text x="476" y="128">30</text><text x="728" y="172" text-anchor="end">0</text></g>
+</svg>
+<figcaption style="text-align:center;font-size:12px;color:#5e6a7b;margin:6px 0 0">图 8-8　消息响应时效：每一轮等了多久 → 这一轮得几分</figcaption>
+<ul class="dots">
+<li>每一轮按等待时间给分，第一次回复按两倍计；买家等不到回复离开的，这一项最高 40 分。</li>
+<li>总分按任务设的评分权重加权（合计 100），没有分的项不计；任务成绩是这个任务所有已评分接待的平均分。</li>
+<li>买家离开、客服结束会话、到单次限时：客服回过话就照常评分。2 小时没人说话、任务结束：客服说满 3 轮才评分，否则记“未完成、不计分”。自由练习不评分。邮件任务评六项，不评情绪安抚和响应时效。</li>
+<li>复盘里，让买家不满的消息下面标一行红字，例如 <span class="flag">买家很不满：推卸责任 · 随后离开</span>。老师可以在“回放与评分”里复核改分。</li>
+</ul>
+<h3>买家给订单留评</h3>
+<p>订单已送达或已完成、还没评价的，买家按这次服务留评，星级和打星同一套。原来是 3 星及以下的中差评，这次满意度到 70、又不是失望离开的，买家会改评（至少升 2 星，原评价保留可查）。</p>
+
+<h2><span class="no">8.9</span>订单卡片之后的跟进</h2>
+<ul class="dots">
+<li>付款提醒只能发给待付款的订单，物流通知只能发给已发货的订单。AI 按订单状态和买家情况写 3 个版本，客服选一个、改好再发。</li>
+<li>接待进行中发出：卡片进当前聊天，照常评分。</li>
+<li>接待已结束发出：买家自己决定回复、直接去付款（订单变成已付款）还是不理。回复了就开始一段跟进，最多 3 轮（买家一句加客服一句算一轮），买家会在 2–3 轮内收尾；跟进不评分、不打星，原来的成绩不变；两边 30 分钟没说话自动结束。跟进结束前，同一笔订单不能再发同一种卡片。</li>
+</ul>
+
+<h2><span class="no">8.10</span>邮件里的买家</h2>
+<ul class="dots">
+<li>回复买家来信：买家一定回。</li>
+<li>主动发的营销邮件：按客户类型决定回不回——复购老客、粉丝客约四分之三会回，潜在意向客一半，沉睡客约三分之一；回信的态度在“有兴趣追问 / 婉拒 / 好奇但有顾虑”里随机。</li>
+<li>邮件任务发出后 AI 评六项，评语和建议在“我的记录”里看。</li>
+</ul>
+
+<h2><span class="no">8.11</span>怎样让买家满意离开</h2>
+<ol class="steps">
+<li>先回应买家最关心的那件事，一次说清。</li>
+<li>给具体信息：数字、日期、步骤。店铺资料里查不到的，说“我核实后答复您”，并且真的回来答复。</li>
+<li>主动问用途、预算、时间要求——隐藏信息只在问到点子上时才说。</li>
+<li>不夸大、不推卸、不施压；不要求删差评，不引导站外交易。</li>
+<li>3 分钟内回复；同时接待几位时，先回等得最久的。</li>
+<li>事情办完问一句“还有别的需要帮忙吗”，买家没事会说没有，然后离开。</li>
+</ol>
+<div class="pager"><span>上一章<b>7 我的记录</b></span><span style="text-align:right">下一章<b>9 常见问题</b></span></div>
+</article>
+</div>
+
+<h2>六、教师端：手册切换和章节里的链接 <small>1440 × 900</small></h2>
+<div class="frame" data-h="900"><div class="screen s">
+  <div class="app">
+    <nav class="side">
+      <div class="brand"><span class="mark"><i data-lucide="headset" class="ic"></i></span>跨境电商客服AI实训平台</div>
+      <div class="nav"><i data-lucide="chart-column" class="ic"></i>数据总览</div>
+      <div class="nav"><i data-lucide="clipboard-list" class="ic"></i>实训任务</div>
+      <div class="nav"><i data-lucide="users" class="ic"></i>班级与学生</div>
+      <div class="nav"><i data-lucide="megaphone" class="ic"></i>通知公告</div>
+      <div class="nav"><i data-lucide="message-square-text" class="ic"></i>实训跟踪</div>
+      <div class="nav"><i data-lucide="file-chart-column" class="ic"></i>考核报表</div>
+      <div class="nav"><i data-lucide="boxes" class="ic"></i>场景配置</div>
+      <div class="side-foot"><div class="nav on"><i data-lucide="book-open-check" class="ic"></i>使用帮助</div><div class="nav"><i data-lucide="panel-left-close" class="ic"></i>收起侧栏</div></div>
+    </nav>
+    <div class="main">
+      <header class="head"><h1>使用帮助</h1><div class="right"><i data-lucide="bell" class="ic"></i><span class="av">王</span>王老师 <i data-lucide="chevron-down" class="ic"></i></div></header>
+      <div class="hb">
+        <aside class="toc">
+          <div class="toc-head"><b>教师端操作手册</b><small>2026 年 10 月版 · <span class="pdf"><i data-lucide="download" class="ic"></i>导出 PDF</span></small></div>
+          <div class="seg"><span class="on">教师端</span><span>学生端</span></div>
+          <ol>
+            <li class="ch"><span class="n">1</span>开始使用</li>
+            <li class="ch"><span class="n">2</span>数据总览</li>
+            <li class="ch on"><span class="n">3</span>实训任务</li>
+            <li class="secs"><span>任务列表</span><span>新建任务：五步</span><span class="on">买家怎么进线</span><span>编辑、结束与删除</span></li>
+            <li class="ch"><span class="n">4</span>班级与学生</li>
+            <li class="ch"><span class="n">5</span>通知公告</li>
+            <li class="ch"><span class="n">6</span>实训跟踪</li>
+            <li class="ch"><span class="n">7</span>考核报表</li>
+            <li class="ch"><span class="n">8</span>场景配置</li>
+            <li class="ch"><span class="n">9</span>AI 买家是怎么工作的</li>
+            <li class="ch"><span class="n">10</span>常见问题</li>
+          </ol>
+        </aside>
+        <article class="paper">
+          <div class="crumb">教师端操作手册 › 3 实训任务</div>
+          <h2 style="margin-top:4px"><span class="no">3.3</span>买家怎么进线</h2>
+          <p>新建任务第 3 步“时间与交互”里的“买家怎么进线”，是控制难度的主要手段。学生打开工作台、状态是“在线”时，买家才会进线；不论哪种方式，一个学生同时最多接待 3 位。</p>
+          <figure class="fig">
+            <div class="pic"><img src="assets/newtask.png" alt="新建任务 · 时间与交互">
+              <span class="mk" style="left:19.8%;top:25%">1</span>
+              <span class="mk" style="left:19.8%;top:33.7%">2</span>
+              <span class="mk" style="left:19.8%;top:50.4%">3</span>
+              <span class="mk" style="left:19.8%;top:61.7%">4</span>
+              <span class="zoom" style="bottom:auto;top:8px"><i data-lucide="maximize-2" class="ic"></i>点击放大</span>
+            </div>
+            <figcaption>图 3-4　新建任务 · 时间与交互</figcaption>
+          </figure>
+          <ol class="legend">
+            <li><i>1</i><span><b>单次接待限时</b>每位买家最多接待多久，到点自动结束、照常评分</span></li>
+            <li><i>2</i><span><b>买家怎么进线</b>见下表</span></li>
+            <li><i>3</i><span><b>怎样算完成</b>每个场景至少一次，或接待满几次</span></li>
+            <li><i>4</i><span><b>达标线</b>任务平均分达到这条线才算达标</span></li>
+          </ol>
+          <table class="mt">
+            <tr><th>进线方式</th><th>学生那边</th><th>适合</th></tr>
+            <tr><td class="k">一位接一位</td><td>上一位接待结束，下一位才进来（隔 3–8 秒）</td><td>入门，第一次练</td></tr>
+            <tr><td class="k">按间隔进线</td><td>每隔 N 分钟进一位，前一位没接待完也会进，可能同时接待几位</td><td>进阶，练多线程</td></tr>
+            <tr><td class="k">同时进线</td><td>开始后剩下的买家陆续一起进来</td><td>挑战，考核前冲刺</td></tr>
+          </table>
+          <div class="tip"><b>提示</b>单次限时到了接待自动结束、照常评分。买家急不急由买家画像决定，和限时无关：焦虑、不满的买家催得快、走得快，见 <span class="lk">9.6 客服不回复时</span>；想降低难度，可在第 4 步把进店情绪限定为“平静”“期待”，见 <span class="lk">9.1 买家是怎么来的</span>。</div>
+        </article>
+      </div>
+    </div>
+  </div>
+</div></div>
+<p class="cap"><b>教师</b>可在目录顶部切到“学生端”手册（给学生讲操作时用）；<b>管理员</b>三本都能看（管理端 / 教师端 / 学生端）；<b>学生</b>只看学生端。教师、管理员手册在相关步骤里链接到 AI 买家那一章的对应小节，点了跳过去并定位。</p>
+
+<h2>七、三本手册的目录</h2>
+<div class="three">
+<table class="t"><tr><th>学生端（9 章）</th></tr>
+<tr><td><b>1 开始使用</b><br>安装客户端（含 SmartScreen 放行）· 登录与改密码 · 认识界面 · 个人资料</td></tr>
+<tr><td><b>2 任务大厅</b><br>四个数字 · 任务列表 · 训前测评 · 自由练习</td></tr>
+<tr><td><b>3 客服工作台</b><br>界面一览 · 接待一位买家 · 买家怎么进线 · 回复的几种方式 · 发商品、优惠券、订单 · 客户资料与标记 · 结束接待以后 · 客服状态与今日数据</td></tr>
+<tr><td><b>4 订单</b><br>订单列表 · 订单详情 · 催付提醒 · 物流同步 · 卡片发出之后</td></tr>
+<tr><td><b>5 评价</b><br>评价列表 · 回复评价（AI 帮写 3 版）· 发邮件联系买家</td></tr>
+<tr><td><b>6 邮件</b><br>收件箱与回信 · 写邮件与模板 · 违规用语检测 · 邮件任务</td></tr>
+<tr><td><b>7 我的记录</b><br>四个数字 · 能力雷达 · 成绩记录 · 复盘（红字标注、AI 评语、老师评语）</td></tr>
+<tr><td><b>8 AI 买家是怎么工作的</b><br>共用章节，见上</td></tr>
+<tr><td><b>9 常见问题</b><br>买家为什么走了 · 评分中 · 自由练习算不算 · 换电脑记录还在吗 · 登录不上 · 播报没声音</td></tr>
+</table>
+<table class="t"><tr><th>教师端（10 章）</th></tr>
+<tr><td><b>1 开始使用</b><br>安装与登录 · 认识界面 · 开课三步</td></tr>
+<tr><td><b>2 数据总览</b><br>四个数字 · 进行中的任务 · 成绩分布与各项能力</td></tr>
+<tr><td><b>3 实训任务</b><br>任务列表 · 新建任务：五步 · 买家怎么进线 · 编辑、结束与删除</td></tr>
+<tr><td><b>4 班级与学生</b><br>新建班级与导入名单 · 分组、转班、重置密码 · 学生详情与导出 · 停用与删除</td></tr>
+<tr><td><b>5 通知公告</b><br>发布 · 已读统计 · 撤回</td></tr>
+<tr><td><b>6 实训跟踪</b><br>实时监控与预警 · 发指导 · 回放与复核 · 导出</td></tr>
+<tr><td><b>7 考核报表</b><br>一分两率 · 全班能力雷达 · 成绩排名 · 导出 Excel / PDF</td></tr>
+<tr><td><b>8 场景配置</b><br>场景与剧本 · 买家画像 · 店铺商品（三种添加方式）· 优惠券 · 店铺资料与客户分层</td></tr>
+<tr><td><b>9 AI 买家是怎么工作的</b><br>共用章节</td></tr>
+<tr><td><b>10 常见问题</b><br>学生看不到任务 · 没有可用的画像 · 未完成不计分 · 复核后学生能看到吗 · 买家为什么说英语</td></tr>
+</table>
+<table class="t"><tr><th>管理端（8 章）</th></tr>
+<tr><td><b>1 开始使用</b><br>浏览器登录 · 首次改密码 · 认识界面与顶部提醒</td></tr>
+<tr><td><b>2 系统总览</b><br>运行状态与告警 · 性能验收（首字 100 次）· 重新评分 · 品牌设置</td></tr>
+<tr><td><b>3 AI 与语音服务</b><br>模型 · 四个用途分别做什么 · 用途分配与备用 · 语音服务 · 买家音色池 · 用量与额度</td></tr>
+<tr><td><b>4 账号与权限</b><br>教师账号（删除时转交）· 班级与授权 · 学生账号批量导入 · 账号锁定与解锁</td></tr>
+<tr><td><b>5 内容资源库</b><br>违规词库 · 标准话术库</td></tr>
+<tr><td><b>6 数据与备份</b><br>手动与定时备份 · 保留份数 · 数据导出 · 恢复数据（交给运维）</td></tr>
+<tr><td><b>7 AI 买家是怎么工作的</b><br>共用章节</td></tr>
+<tr><td><b>8 故障处理</b><br>买家暂时无法回复 · 朗读没声音 · 评分一直不出 · 首字验收不达标 · 账号被锁</td></tr>
+</table>
+</div>
+
+<h2>八、导出 PDF</h2>
+<div class="pages s" style="background:transparent">
+  <div class="a4 cover"><span class="mark"><i data-lucide="headset" class="ic"></i></span><b>跨境电商客服AI实训平台</b><strong>学生端操作手册</strong><small>适用于 Windows 客户端 · 2026 年 10 月版</small></div>
+  <div class="a4"><h4>目录</h4><ol><li>开始使用 <span>· 安装客户端、登录与改密码、认识界面、个人资料</span></li><li>任务大厅</li><li>客服工作台</li><li>订单</li><li>评价</li><li>邮件</li><li>我的记录</li><li>AI 买家是怎么工作的</li><li>常见问题</li></ol><div class="pg">2</div></div>
+  <div class="a4"><h4>3　客服工作台</h4><p>工作台是接待海外买家的地方，和真实店铺的客服软件一样：左边会话列表，中间聊天，右边是客户资料、订单、商品和优惠券。</p><h5>3.1 界面一览</h5><img src="assets/workbench.png" alt=""><p>① 客服状态　② 今日数据　③ 任务条　④ 剩余时间　⑤ 会话列表……</p><h5>3.2 接待一位买家</h5><p>1　在任务大厅点任务的“进入工作台”……</p><div class="pg">7</div></div>
+</div>
+<p class="cap">目录顶部“导出 PDF”导出当前这一本：封面（平台名称取品牌设置）、目录、各章；每章从新的一页开始，截图和图解原样打印，“点击放大”、链接样式不印。客户端里直接存成 PDF 文件（同考核报表），浏览器里调系统打印。学生端 + 教师端两本 PDF 就是验收资料里的“客户端操作手册”。</p>
+
+<h2>九、需要你确认的</h2>
+<table class="t">
+<tr><th>#</th><th>事项</th><th>我的建议</th></tr>
+<tr><td>1</td><td>学生端也放“AI 买家是怎么工作的”这一章</td><td>放。只讲机制，示例都是编的，不出现任何场景的剧本原文和任务的买家范围（铁律 3）；学生知道“答得差几次买家会走、什么叫敷衍”，正是要练的东西</td></tr>
+<tr><td>2</td><td>谁能看哪本</td><td>学生：学生端；教师：教师端 + 学生端；管理员：三本</td></tr>
+<tr><td>3</td><td>截图怎么来</td><td>页面截图用开发环境；接待、监控这类画面用示例数据（截图脚本替换接口返回，不写开发库、不调用模型）。截图里的平台名是初始名称，学校改名后截图不变，正文里的名称跟着变。脚本留着，页面改版后重拍</td></tr>
+<tr><td>4</td><td>手册内容怎么跟着产品走</td><td>表里的数字（能忍几次、星级区间、响应时效得分）由系统规则直接算出来显示；写在文字里的规则，改代码时同步改手册（写进 kefu-weihu 的沉淀规则）</td></tr>
+<tr><td>5</td><td>导出 PDF</td><td>做。学生端、教师端两本 PDF 当验收资料“客户端操作手册”</td></tr>
+</table>
+
+<h2>十、改动范围</h2>
+<ul class="list">
+  <li>前端：侧栏“使用帮助”可点；外壳加一个“使用帮助”页（不进侧栏导航列表）；新目录 <code>apps/portal/src/pages/help/</code>（手册框架、三本手册、共用的 AI 买家章节、截图标注和图解组件）；<code>styles/help.css</code>；截图放 <code>apps/portal/public/help/</code>（约 25 张 WebP，合计约 2 MB，打开手册时才加载）。</li>
+  <li>没有新接口、没有迁移；导出 PDF 用客户端已有的“存 PDF”能力。</li>
+  <li>截图脚本：放 kefu-weihu 的 <code>scripts/</code>（Python Playwright，示例数据）。</li>
+  <li>文档：DESIGN.md 加“使用帮助”版式；<code>docs/architecture.html</code> 变更记录；kefu-weihu 加“改了页面操作或买家规则要同步手册”；决策 D-91。</li>
+</ul>
+</div>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+if (window.lucide) lucide.createIcons();
+function fit() { document.querySelectorAll(".frame").forEach((f) => { const s = f.querySelector(".screen"); const h = +(f.dataset.h || 900); s.style.height = `${h}px`; const k = f.clientWidth / 1440; s.style.transform = `scale(${k})`; f.style.height = `${h * k}px`; }); }
+fit(); addEventListener("resize", fit);
+</script>
+</body>
+</html>
