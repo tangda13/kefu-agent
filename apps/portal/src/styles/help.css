@@ -137,13 +137,32 @@
   .help-book .help-pic { cursor: default; }
   .help-book .help-ref { color: inherit; }
   .help-book-chapter { break-before: page; }
-  .help-book-cover { display: flex; flex-direction: column; justify-content: center; height: 250mm; padding: 0 12mm; break-after: page; }
-  .help-book-cover .mark { margin-bottom: 18px; }
-  .help-book-cover small { display: block; font-size: 13px; color: #465163; }
-  .help-book-cover strong { display: block; margin: 8px 0 14px; font-size: 32px; line-height: 42px; }
-  .help-book-cover span { font-size: 12px; color: #5e6a7b; }
-  .help-book-toc h1 { margin: 0 0 12px; font-size: 20px; }
-  .help-book-toc ol { margin: 0; padding-left: 20px; }
-  .help-book-toc li { margin: 6px 0; font-weight: 600; }
-  .help-book-toc li span { display: block; font-weight: 400; color: #5e6a7b; font-size: 11px; line-height: 18px; }
+  /* 封面（D-93）：命名页只给这一页去掉页边距，插画铺到纸边；不用 @page :first，免得考核报表打印的第一页也没了边距。
+     底色是插画背景的颜色，和插画上沿的渐隐接得上 */
+  @page help-cover { margin: 0; }
+  /* 命名页套在 flex 里时 Chromium 会把这一页按 182/210 缩小、底下空一截：导出时外壳改成块级 */
+  .shell-main:has(.help-root.is-printing) { display: block; }
+  .help-book-cover { page: help-cover; position: relative; height: 297mm; overflow: hidden; break-after: page; background: linear-gradient(180deg, #eceaf1 0%, #d9d7e0 46%, #d1d0d8 100%); color: var(--c-ink); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .help-book-cover .brand { position: absolute; left: 20mm; top: 20mm; display: flex; align-items: center; gap: 4mm; font-size: 4.4mm; font-weight: 600; line-height: 1.3; }
+  .help-book-cover .brand-mark-default, .help-book-cover .brand-mark-img { border-radius: 3mm; }
+  .help-book-cover .head { position: absolute; left: 20mm; right: 20mm; top: 66mm; }
+  .help-book-cover h1 { margin: 0; font-size: 15mm; line-height: 1.18; font-weight: 800; letter-spacing: .02em; }
+  .help-book-cover .sub { margin: 6mm 0 0; font-size: 4.6mm; line-height: 1.5; color: var(--c-ink-2); }
+  .help-book-cover .art { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 61%; object-fit: cover; object-position: 14% 100%;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 16%); mask-image: linear-gradient(180deg, transparent 0%, #000 16%); }
+  /* 目录（D-94，设计稿 docs/design/p27-manual-toc 的 C 版）：双栏，每章一块；章、节都是链接，PDF 里点了跳到那一页 */
+  .help-book-toc .top { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 3mm; border-bottom: 1px solid var(--c-ink); }
+  .help-book-toc .top b { font-size: 8mm; line-height: 1.2; letter-spacing: .08em; }
+  .help-book-toc .top span { font-size: 3.2mm; color: var(--c-ink-3); }
+  .help-book-toc .cols { column-count: 2; column-gap: 10mm; margin-top: 5mm; }
+  .help-book-toc .ch { break-inside: avoid; margin-bottom: 4.2mm; }
+  .help-book-toc a { display: flex; color: inherit; text-decoration: none; }
+  .help-book-toc .chead { flex-direction: column; }
+  .help-book-toc .cno { font-size: 7.6mm; font-weight: 300; line-height: 1; color: var(--c-brand); font-variant-numeric: tabular-nums; }
+  .help-book-toc .ctitle { margin-top: 1.6mm; padding-bottom: 1.6mm; border-bottom: 1px solid var(--c-line); font-size: 4.2mm; font-weight: 700; }
+  .help-book-toc .sec { gap: 2mm; margin-top: .8mm; font-size: 3.35mm; line-height: 1.55; color: var(--c-ink-2); }
+  .help-book-toc .sec .num { flex: none; width: 8mm; color: var(--c-ink-disabled); font-variant-numeric: tabular-nums; }
+  /* 页码（D-94）：封面不印，目录起每页页脚居中，和 PDF 阅读器里的页号一致。页边距盒里取不到页面变量，颜色直接写（同 --c-ink-3） */
+  .help-book-toc, .help-book-chapter { page: help-body; }
+  @page help-body { @bottom-center { content: counter(page); font-family: Manrope, "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 9pt; color: #5e6a7b; } }
 }

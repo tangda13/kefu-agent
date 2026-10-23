@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>操作手册目录页</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+* { box-sizing: border-box; } html, body { margin: 0; }
+body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.doc { max-width: 1320px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc > h1 { margin: 0 0 6px; font-size: 24px; }
+.doc > h2 { margin: 52px 0 6px; font-size: 20px; } .doc > h2 small { font-size: 13px; font-weight: 400; color: #465163; margin-left: 8px; }
+.lede { margin: 0 0 12px; color: #465163; max-width: 1000px; }
+.note { margin: 14px 0 0; font-size: 13px; color: #465163; max-width: 1000px; } .note b { color: #161c26; }
+.tag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 10px; background: #e8effc; color: #174aa8; font-size: 12px; font-weight: 600; vertical-align: 3px; }
+.row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; margin-top: 14px; }
+.cap { margin-top: 8px; font-size: 12px; color: #5e6a7b; text-align: center; }
+.before { display: block; width: 420px; border-radius: 3px; box-shadow: 0 14px 36px -18px rgba(16, 24, 40, .45); background: #fff; }
+.t { width: 100%; max-width: 1000px; border-collapse: collapse; background: #fff; border: 1px solid #d6dce5; border-radius: 10px; overflow: hidden; font-size: 13px; }
+.t th, .t td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #edf0f4; vertical-align: top; } .t th { background: #f6f8fb; color: #465163; font-size: 12px; } .t td:first-child { white-space: nowrap; font-weight: 600; }
+
+/* ===== 一页 A4：外层是尺寸容器，--mm 换算成毫米；页边距 14mm（和正文页一样） ===== */
+.page { container-type: inline-size; width: 600px; }
+.sheet { --mm: calc(100cqw / 210); position: relative; aspect-ratio: 210 / 297; overflow: hidden; border-radius: 3px; background: #fff; box-shadow: 0 14px 36px -18px rgba(16, 24, 40, .45);
+  padding: calc(var(--mm) * 14); color: #161c26; font-size: calc(var(--mm) * 3.35); line-height: 1.55; }
+.sheet .num { font-family: Manrope, "Microsoft YaHei UI", sans-serif; font-variant-numeric: tabular-nums; }
+.pno { position: absolute; left: 0; right: 0; bottom: calc(var(--mm) * 7); text-align: center; font-size: calc(var(--mm) * 3); color: #9aa3b0; }
+.top { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: calc(var(--mm) * 3); border-bottom: 1px solid #161c26; }
+.top b { font-size: calc(var(--mm) * 8); line-height: 1.2; letter-spacing: .08em; }
+.top span { font-size: calc(var(--mm) * 3.2); color: #5e6a7b; }
+
+/* A：章号 + 小节两栏 */
+.a .ch { display: grid; grid-template-columns: calc(var(--mm) * 14) 1fr; padding: calc(var(--mm) * 2.7) 0; border-bottom: 1px solid #e3e7ee; }
+.a .ch:last-child { border-bottom: 0; }
+.a .cno { font-size: calc(var(--mm) * 4.6); font-weight: 800; color: #1d5fd1; line-height: 1.3; }
+.a .ctitle { font-size: calc(var(--mm) * 4.2); font-weight: 700; line-height: 1.3; }
+.a .secs { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--mm) * 0.6) calc(var(--mm) * 6); margin-top: calc(var(--mm) * 1.4); }
+.a .sec { display: flex; gap: calc(var(--mm) * 2); color: #465163; }
+.a .sec .num { flex: none; width: calc(var(--mm) * 8); color: #9aa3b0; }
+
+/* B：单栏两级 */
+.b .ch { margin-top: calc(var(--mm) * 4.2); }
+.b .chead { display: flex; align-items: baseline; gap: calc(var(--mm) * 3); padding-bottom: calc(var(--mm) * 1.2); border-bottom: 1px solid #e3e7ee; }
+.b .cno { font-size: calc(var(--mm) * 3.6); font-weight: 700; color: #1d5fd1; }
+.b .ctitle { font-size: calc(var(--mm) * 4); font-weight: 700; }
+.b .sec { display: flex; gap: calc(var(--mm) * 3); padding: calc(var(--mm) * 0.9) 0 0 calc(var(--mm) * 9.5); color: #465163; }
+.b .sec .num { flex: none; width: calc(var(--mm) * 8); color: #9aa3b0; }
+
+/* C：双栏 */
+.c .cols { column-count: 2; column-gap: calc(var(--mm) * 10); margin-top: calc(var(--mm) * 5); }
+.c .ch { break-inside: avoid; margin-bottom: calc(var(--mm) * 4.2); }
+.c .cno { display: block; font-size: calc(var(--mm) * 7.6); font-weight: 300; line-height: 1; color: #1d5fd1; }
+.c .ctitle { display: block; margin-top: calc(var(--mm) * 1.6); padding-bottom: calc(var(--mm) * 1.6); border-bottom: 1px solid #e3e7ee; font-size: calc(var(--mm) * 4.2); font-weight: 700; }
+.c .sec { display: flex; gap: calc(var(--mm) * 2); margin-top: calc(var(--mm) * 0.8); color: #465163; }
+.c .sec .num { flex: none; width: calc(var(--mm) * 8); color: #9aa3b0; }
+</style>
+</head>
+<body>
+<div class="doc">
+<h1>操作手册目录页</h1>
+<p class="lede">现在的目录（左）是一串加粗的章名，小节挤在一行里用圆点隔开，没有层次。下面三种排法，都用学生端这本（9 章 44 节，小节最多）按 A4 原比例画；选定后三本一起改。封面上的“操作手册”小字和“本册内容”已经按你画的删掉了。</p>
+<div class="row">
+  <div><img class="before" src="assets/before.png" alt="现在的目录"><div class="cap">现在的目录（学生端）</div></div>
+</div>
+
+<h2>A 章号 + 小节两栏 <span class="tag">建议</span></h2>
+<p class="lede">左边一列蓝色章号，右边章名；小节带编号（1.1、1.2…，和正文标题一致），两栏排，章与章之间一条细线。一页放得下，章节一眼对得上正文。</p>
+<div class="row"><div class="page" data-style="a"></div></div>
+
+<h2>B 单栏两级</h2>
+<p class="lede">最传统的写法：章名一行，下面每个小节单独一行、缩进。最好读，但学生端要排两页。</p>
+<div class="row"><div class="page" data-style="b"></div></div>
+
+<h2>C 双栏</h2>
+<p class="lede">整页分左右两栏，每章一块：大号细体章号、章名、下面一行一个小节。看着像杂志目录，留白多。</p>
+<div class="row"><div class="page" data-style="c"></div></div>
+
+<h2>需要你定的</h2>
+<table class="t">
+  <tr><th>#</th><th>事项</th><th>建议</th></tr>
+  <tr><td>1</td><td>选哪一版</td><td>A。一页放得下，层次清楚，小节编号和正文标题对得上</td></tr>
+  <tr><td>2</td><td>每页页脚加页码（封面不印，目录页起印，上面三版的底部就是样子）</td><td>加。印出来翻找方便。目录里没法直接写“第几页”（打印引擎不支持自动算页码），所以目录做成可点击：在 PDF 里点哪一章、哪一节就跳过去，已实测可用</td></tr>
+</table>
+</div>
+
+<script src="assets/toc.js"></script>
+<script>
+const MANUAL = "学生端操作手册";
+const chapters = TOC.student;
+const pad = (no) => String(no).padStart(2, "0");
+
+function sheet(style) {
+  const head = `<div class="top"><b>目录</b><span>${MANUAL} · 2026 年 10 月版</span></div>`;
+  let body = "";
+  if (style === "a") {
+    body = chapters.map((c) => `<div class="ch"><span class="cno num">${pad(c.no)}</span><div><div class="ctitle">${c.title}</div>${c.sections.length ? `<div class="secs">${c.sections.map(([n, t]) => `<div class="sec"><span class="num">${n}</span><span>${t}</span></div>`).join("")}</div>` : ""}</div></div>`).join("");
+  } else if (style === "b") {
+    // 单栏两级排不下一页：这里只画第一页（到第 6 章），第二页接着排
+    body = chapters.slice(0, 6).map((c) => `<div class="ch"><div class="chead"><span class="cno num">${pad(c.no)}</span><span class="ctitle">${c.title}</span></div>${c.sections.map(([n, t]) => `<div class="sec"><span class="num">${n}</span><span>${t}</span></div>`).join("")}</div>`).join("");
+  } else {
+    body = `<div class="cols">${chapters.map((c) => `<div class="ch"><span class="cno num">${pad(c.no)}</span><span class="ctitle">${c.title}</span>${c.sections.map(([n, t]) => `<div class="sec"><span class="num">${n}</span><span>${t}</span></div>`).join("")}</div>`).join("")}</div>`;
+  }
+  return `<div class="sheet ${style}">${head}${body}<div class="pno num">2</div></div>`;
+}
+for (const node of document.querySelectorAll("[data-style]")) node.innerHTML = sheet(node.dataset.style);
+</script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>操作手册封面</title>
+<style>
+@font-face { font-family: "Manrope"; src: url("../../../apps/portal/src/assets/fonts/Manrope-Variable-latin.woff2") format("woff2"); font-weight: 400 800; unicode-range: U+0000-00FF, U+2000-206F; }
+* { box-sizing: border-box; } html, body { margin: 0; }
+body { background: #e9edf3; color: #161c26; font: 400 14px/1.6 Manrope, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; }
+.doc { max-width: 1240px; margin: 0 auto; padding: 32px 32px 96px; }
+.doc > h1 { margin: 0 0 6px; font-size: 24px; }
+.doc > h2 { margin: 52px 0 6px; font-size: 20px; } .doc > h2 small { font-size: 13px; font-weight: 400; color: #465163; margin-left: 8px; }
+.lede { margin: 0 0 12px; color: #465163; max-width: 980px; }
+.note { margin: 14px 0 0; font-size: 13px; color: #465163; max-width: 980px; } .note b { color: #161c26; }
+.tag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 10px; background: #e8effc; color: #174aa8; font-size: 12px; font-weight: 600; vertical-align: 3px; }
+.row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; margin-top: 14px; }
+.cap { margin-top: 8px; font-size: 12px; color: #5e6a7b; text-align: center; }
+.before { display: block; width: 300px; border-radius: 4px; box-shadow: 0 14px 36px -18px rgba(16, 24, 40, .45); background: #fff; }
+.t { width: 100%; max-width: 980px; border-collapse: collapse; background: #fff; border: 1px solid #d6dce5; border-radius: 10px; overflow: hidden; font-size: 13px; }
+.t th, .t td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #edf0f4; vertical-align: top; } .t th { background: #f6f8fb; color: #465163; font-size: 12px; } .t td:first-child { white-space: nowrap; font-weight: 600; }
+
+/* ===== 一页 A4（210 × 297 mm）：外层是尺寸容器，里面用 --mm 换算，放大缩小比例不变 ===== */
+.page { container-type: inline-size; width: 300px; }
+.page.big { width: 520px; }
+.cv { --mm: calc(100cqw / 210); position: relative; aspect-ratio: 210 / 297; overflow: hidden; border-radius: 3px; box-shadow: 0 14px 36px -18px rgba(16, 24, 40, .45); }
+.cv .brand { position: absolute; left: calc(var(--mm) * 20); top: calc(var(--mm) * 20); display: flex; align-items: center; gap: calc(var(--mm) * 4); font-size: calc(var(--mm) * 4.4); font-weight: 600; line-height: 1.3; }
+.cv .mark { display: grid; place-items: center; width: calc(var(--mm) * 12); height: calc(var(--mm) * 12); border-radius: calc(var(--mm) * 3); }
+.cv .mark svg { width: calc(var(--mm) * 7.4); height: calc(var(--mm) * 7.4); }
+.cv .head { position: absolute; left: calc(var(--mm) * 20); right: calc(var(--mm) * 20); top: calc(var(--mm) * 66); }
+.cv .eyebrow { font-size: calc(var(--mm) * 4.2); font-weight: 700; letter-spacing: .22em; }
+.cv h3 { margin: calc(var(--mm) * 3) 0 0; font-size: calc(var(--mm) * 15); line-height: 1.18; font-weight: 800; letter-spacing: .02em; }
+.cv .sub { margin-top: calc(var(--mm) * 6); font-size: calc(var(--mm) * 4.6); line-height: 1.5; }
+.cv .toc { margin-top: calc(var(--mm) * 3); max-width: calc(var(--mm) * 150); font-size: calc(var(--mm) * 3.5); line-height: 1.6; }
+
+/* A：品牌蓝满版 + 这一端的截图 */
+.a { background: radial-gradient(120% 70% at 100% 0%, #3b7fe8 0%, rgba(59, 127, 232, 0) 60%), #1d5fd1; color: #fff; }
+.a .mark { background: #fff; color: #1d5fd1; }
+.a .eyebrow { color: rgba(255, 255, 255, .72); }
+.a .sub { color: rgba(255, 255, 255, .88); }
+.a .toc { color: rgba(255, 255, 255, .7); }
+.a .shot { position: absolute; left: calc(var(--mm) * 26); top: calc(var(--mm) * 170); width: calc(var(--mm) * 205); padding: calc(var(--mm) * 1.6); border-radius: calc(var(--mm) * 3.2); background: rgba(255, 255, 255, .96); box-shadow: 0 calc(var(--mm) * 6) calc(var(--mm) * 18) rgba(6, 22, 60, .38); }
+.a .shot img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top left; border-radius: calc(var(--mm) * 2); }
+
+/* B：登录页同款插画 */
+.b { background: linear-gradient(180deg, #eceaf1 0%, #d9d7e0 46%, #d1d0d8 100%); color: #161c26; }
+.b .mark { background: #1d5fd1; color: #fff; }
+.b .head { top: calc(var(--mm) * 58); }
+.b .eyebrow { color: #1d5fd1; }
+.b .sub { color: #465163; }
+.b .toc { color: #5e6a7b; }
+.b .art { position: absolute; left: 0; right: 0; bottom: 0; height: 61%; width: 100%; object-fit: cover; object-position: 14% 100%;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 16%); mask-image: linear-gradient(180deg, transparent 0%, #000 16%); }
+
+/* C：白底留页边距 + 截图 */
+.c { background: #fff; color: #161c26; }
+.c .brand { left: calc(var(--mm) * 24); top: calc(var(--mm) * 24); }
+.c .mark { background: #1d5fd1; color: #fff; }
+.c .head { left: calc(var(--mm) * 24); right: calc(var(--mm) * 24); top: calc(var(--mm) * 70); padding-left: calc(var(--mm) * 7); border-left: calc(var(--mm) * 1.6) solid #1d5fd1; }
+.c .eyebrow { color: #5e6a7b; }
+.c .sub { color: #465163; }
+.c .toc { color: #5e6a7b; }
+.c .shot { position: absolute; left: calc(var(--mm) * 24); right: calc(var(--mm) * 24); top: calc(var(--mm) * 150); border: 1px solid #e3e7ee; border-radius: calc(var(--mm) * 2.4); overflow: hidden; box-shadow: 0 calc(var(--mm) * 4) calc(var(--mm) * 14) rgba(16, 24, 40, .12); }
+.c .shot img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top left; }
+.c .foot { position: absolute; left: calc(var(--mm) * 24); right: calc(var(--mm) * 24); bottom: calc(var(--mm) * 22); display: flex; justify-content: space-between; padding-top: calc(var(--mm) * 4); border-top: 1px solid #e3e7ee; font-size: calc(var(--mm) * 3.5); color: #5e6a7b; }
+</style>
+</head>
+<body>
+<div class="doc">
+<h1>操作手册封面</h1>
+<p class="lede">导出的三本 PDF 现在第一页只有标识、平台名和书名（下图左），不像封面。下面三版，每版把学生端、教师端、管理端三本都画出来；按 A4 等比例缩小，选定后照这个样子改。</p>
+
+<div class="row">
+  <div><img class="before" src="assets/before.png" alt="现在的第一页"><div class="cap">现在的第一页（教师端）</div></div>
+  <div><div class="page big" id="preview"></div><div class="cap">放大看：B 版 · 学生端（建议）</div></div>
+</div>
+
+<h2>A 品牌蓝满版 + 这一端的截图</h2>
+<p class="lede">整页品牌蓝，铺到纸边；下半页露出一张这一端的主界面截图（学生：客服工作台，教师：实训跟踪，管理员：系统总览），一眼看出是哪一端。</p>
+<div class="row" data-style="a"></div>
+
+<h2>B 登录页同款插画 <span class="tag">建议</span></h2>
+<p class="lede">背景和插画用登录页那张等距工作间（产品自己的主视觉），铺到纸边；上面是书名。三本只差书名和下面一行，统一、好认。</p>
+<div class="row" data-style="b"></div>
+
+<h2>C 白底留边 + 截图</h2>
+<p class="lede">白底，四周留页边距，书名左边一道品牌蓝竖线，中间放这一端的截图，底部一条细线写平台名和版次。最朴素，打印省墨。</p>
+<div class="row" data-style="c"></div>
+
+<h2>需要你定的</h2>
+<table class="t">
+  <tr><th>#</th><th>事项</th><th>建议</th></tr>
+  <tr><td>1</td><td>选哪一版</td><td>B。和登录页同一张插画，看着就是这个平台的东西；三本风格一致，只靠书名区分</td></tr>
+  <tr><td>2</td><td>书名下面要不要“本册内容”那一行（列出主要章节）</td><td>要。拿到 PDF 不用翻目录就知道这本讲什么；“开始使用”“常见问题”这类不列</td></tr>
+</table>
+<p class="note"><b>其他照现在的规则：</b>平台名称和标识跟着管理端的品牌设置走，学校改名后封面跟着变；插画和截图不变。封面后面是目录页、正文，都不动。</p>
+<p class="note"><b>技术上已经实测：</b>客户端导出 PDF 时，可以只给封面这一页去掉页边距，颜色和插画铺到纸边，后面各页照常留边；不影响考核报表的打印。</p>
+</div>
+
+<template id="tpl">
+  <div class="page"><div class="cv">
+    <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5Zm0 0a9 9 0 1 1 18 0m0 0v5a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3Z"/><path d="M21 16v2a4 4 0 0 1-4 4h-5"/></svg></span><span>跨境电商客服AI实训平台</span></div>
+    <div class="head"><div class="eyebrow">操作手册</div><h3></h3><div class="sub"></div><div class="toc"></div></div>
+  </div></div>
+</template>
+
+<script>
+const MANUALS = [
+  { title: "学生端操作手册", sub: "适用于 Windows 客户端 · 2026 年 10 月版", toc: "本册内容：任务大厅 · 客服工作台 · 订单 · 评价 · 邮件 · 我的记录 · AI 买家算法逻辑", shot: "s-workbench" },
+  { title: "教师端操作手册", sub: "适用于 Windows 客户端 · 2026 年 10 月版", toc: "本册内容：数据总览 · 实训任务 · 班级与学生 · 通知公告 · 实训跟踪 · 考核报表 · 场景配置 · AI 买家算法逻辑", shot: "t-tracking" },
+  { title: "管理端操作手册", sub: "适用于浏览器管理端 · 2026 年 10 月版", toc: "本册内容：系统总览 · AI 与语音服务 · 账号与权限 · 内容资源库 · 数据与备份 · AI 买家算法逻辑", shot: "a-system" },
+];
+const SHOTS = "../../../apps/portal/src/pages/help/shots/";
+const SCENE = "../../../apps/portal/src/assets/login/scene.webp";
+
+function cover(style, manual, big) {
+  const node = document.getElementById("tpl").content.firstElementChild.cloneNode(true);
+  if (big) node.classList.add("big");
+  const cv = node.querySelector(".cv");
+  cv.classList.add(style);
+  cv.querySelector("h3").textContent = manual.title;
+  cv.querySelector(".sub").textContent = style === "c" ? manual.sub.split(" · ")[0] : manual.sub;
+  cv.querySelector(".toc").textContent = manual.toc;
+  if (style === "a" || style === "c") {
+    const shot = document.createElement("div");
+    shot.className = "shot";
+    shot.innerHTML = `<img src="${SHOTS}${manual.shot}.webp" alt="">`;
+    cv.appendChild(shot);
+  }
+  if (style === "b") {
+    const art = document.createElement("img");
+    art.className = "art"; art.src = SCENE; art.alt = "";
+    cv.appendChild(art);
+  }
+  if (style === "c") {
+    const foot = document.createElement("div");
+    foot.className = "foot";
+    foot.innerHTML = `<span>跨境电商客服AI实训平台</span><span>2026 年 10 月版</span>`;
+    cv.appendChild(foot);
+  }
+  return node;
+}
+
+for (const row of document.querySelectorAll("[data-style]")) {
+  const style = row.dataset.style;
+  for (const manual of MANUALS) {
+    const wrap = document.createElement("div");
+    wrap.appendChild(cover(style, manual));
+    const cap = document.createElement("div");
+    cap.className = "cap"; cap.textContent = manual.title;
+    wrap.appendChild(cap);
+    row.appendChild(wrap);
+  }
+}
+document.getElementById("preview").replaceWith(cover("b", MANUALS[0], true));
+</script>
+</body>
+</html>

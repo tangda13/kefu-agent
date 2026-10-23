@@ -17,11 +17,12 @@ import {
   type ShotView,
 } from "./model";
 import { ShotPicture } from "./parts";
+import sceneImage from "../../assets/login/scene.webp";
 import "../../styles/help.css";
 
 /*
  * 使用帮助（D-91，设计稿 docs/design/p25-help-manual）：侧栏底部“使用帮助”打开，按登录身份给手册
- * （学生只看学生端；教师看教师端、学生端；管理员三本都能看）。一次看一章，目录随正文滚动高亮。
+ * （学生、教师只看自己那本；管理员三本都能看）。一次看一章，目录随正文滚动高亮。
  * “导出 PDF”把当前这本整本（封面 + 目录 + 各章）渲染出来再打印：客户端直接存文件，浏览器调系统打印。
  */
 
@@ -45,6 +46,9 @@ function writePref(role: UserRole, value: { manual: ManualId; chapter: string })
   }
 }
 
+/** 整本里章、节的锚点（PDF 目录点了跳过去）；和屏幕上那份的节 id 分开，免得重名 */
+const bookAnchor = (chapterId: string, sectionId?: string) => `help-book-${chapterId}${sectionId ? `-${sectionId}` : ""}`;
+
 function ChapterBody({ manual, chapter, no, onPage }: { manual: HelpManual; chapter: HelpChapter; no: number; onPage?: boolean }) {
   const merged = chapter.sections.length === 1 && chapter.sections[0]?.title === chapter.title;
   return (
@@ -55,7 +59,7 @@ function ChapterBody({ manual, chapter, no, onPage }: { manual: HelpManual; chap
       {chapter.sections.map((section, index) => {
         const Body = section.body;
         return (
-          <section key={section.id} id={onPage ? sectionDomId(chapter.id, section.id) : undefined} data-section={section.id}>
+          <section key={section.id} id={onPage ? sectionDomId(chapter.id, section.id) : bookAnchor(chapter.id, section.id)} data-section={section.id}>
             {merged ? null : <h2><span className="no">{no}.{index + 1}</span>{section.title}</h2>}
             <Body />
           </section>
@@ -70,25 +74,39 @@ function Book({ manual }: { manual: HelpManual }) {
   const { brand } = useBrand();
   return (
     <>
+      {/* 封面（D-93，设计稿 docs/design/p26-manual-cover 的 B 版）：登录页同款插画铺满整页 */}
       <section className="help-book-cover">
-        <span className="mark"><BrandMark size={40} /></span>
-        <small>{brand.name}</small>
-        <strong>{manual.title}</strong>
-        <span>{manual.id === "admin" ? "适用于浏览器管理端" : "适用于 Windows 客户端"} · {HELP_EDITION}</span>
+        <div className="brand"><BrandMark size={45} /><span>{brand.name}</span></div>
+        <div className="head">
+          <h1>{manual.title}</h1>
+          <p className="sub">{manual.id === "admin" ? "适用于浏览器管理端" : "适用于 Windows 客户端"} · {HELP_EDITION}</p>
+        </div>
+        <img className="art" src={sceneImage} alt="" />
       </section>
+      {/* 目录（D-94，设计稿 docs/design/p27-manual-toc 的 C 版）：双栏，每章一块，章和节都能点 */}
       <section className="help-book-toc">
-        <h1>目录</h1>
-        <ol>
-          {manual.chapters.map((chapter) => (
-            <li key={chapter.id}>
-              {chapter.title}
-              {chapter.sections.length > 1 || chapter.sections[0]?.title !== chapter.title ? <span>{chapter.sections.map((section) => section.title).join(" · ")}</span> : null}
-            </li>
-          ))}
-        </ol>
+        <header className="top"><b>目录</b><span>{manual.title} · {HELP_EDITION}</span></header>
+        <div className="cols">
+          {manual.chapters.map((chapter, index) => {
+            const merged = chapter.sections.length === 1 && chapter.sections[0]?.title === chapter.title;
+            return (
+              <div key={chapter.id} className="ch">
+                <a className="chead" href={`#${bookAnchor(chapter.id)}`}>
+                  <span className="cno">{String(index + 1).padStart(2, "0")}</span>
+                  <span className="ctitle">{chapter.title}</span>
+                </a>
+                {merged ? null : chapter.sections.map((section, sectionIndex) => (
+                  <a key={section.id} className="sec" href={`#${bookAnchor(chapter.id, section.id)}`}>
+                    <span className="num">{index + 1}.{sectionIndex + 1}</span>{section.title}
+                  </a>
+                ))}
+              </div>
+            );
+          })}
+        </div>
       </section>
       {manual.chapters.map((chapter, index) => (
-        <section key={chapter.id} className="help-book-chapter">
+        <section key={chapter.id} id={bookAnchor(chapter.id)} className="help-book-chapter">
           <article className="help-paper"><ChapterBody manual={manual} chapter={chapter} no={index + 1} /></article>
         </section>
       ))}
